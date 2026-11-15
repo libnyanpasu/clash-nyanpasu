@@ -7,12 +7,15 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
-import { Input } from '@nyanpasu/ui/input'
 import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { useRemoteAccess } from '@nyanpasu/query'
-import type { HttpAccessStrategy, Scope } from '@nyanpasu/rpc/types'
+import type {
+  HttpAccessStrategy,
+  HttpServerStatus,
+  Scope,
+} from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -23,6 +26,8 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
+import CertificateSettings from './certificate-settings'
+import SaveField from './save-field'
 import ScopeCheckboxes from './scope-checkboxes'
 import { LOCAL_OPEN_SCOPES } from './scope-labels'
 
@@ -43,66 +48,34 @@ function parsePort(text: string): number | null | undefined {
     : undefined
 }
 
-function PortField({
-  committed,
-  disabled,
-  onSave,
-}: {
-  committed: number | null
-  disabled: boolean
-  onSave: (port: number | null) => void
-}) {
-  const [text, setText] = useState(committed?.toString() ?? '')
+const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
-  const parsed = parsePort(text)
-  const invalid = parsed === undefined
-  const unchanged = parsed === committed
+function isIpv4(text: string) {
+  const match = IPV4_PATTERN.exec(text)
 
-  return (
-    <div className="flex flex-col gap-2" data-slot="remote-access-port">
-      <ItemLabel>
-        <ItemLabelText>{m.settings_remote_access_port_title()}</ItemLabelText>
+  return match != null && match.slice(1).every((part) => Number(part) <= 255)
+}
 
-        <ItemLabelDescription>
-          {m.settings_remote_access_port_description()}
-        </ItemLabelDescription>
-      </ItemLabel>
+function isIpv6(text: string) {
+  if (!text.includes(':')) {
+    return false
+  }
 
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!invalid && !unchanged) {
-            onSave(parsed)
-          }
-        }}
-      >
-        <Input
-          className="w-full"
-          label={m.settings_remote_access_port_title()}
-          aria-label={m.settings_remote_access_port_title()}
-          inputMode="numeric"
-          value={text}
-          disabled={disabled}
-          onChange={(event) => setText(event.target.value)}
-        />
+  try {
+    return new URL(`http://[${text}]/`).hostname !== ''
+  } catch {
+    return false
+  }
+}
 
-        <Button
-          type="submit"
-          variant="flat"
-          disabled={disabled || invalid || unchanged}
-        >
-          {m.common_save()}
-        </Button>
-      </form>
+/** The address to listen on, or null when the field is empty; undefined when it is no address. */
+function parseLanBind(text: string): string | null | undefined {
+  const trimmed = text.trim()
+  if (trimmed === '') {
+    return null
+  }
 
-      {invalid && (
-        <p role="alert" className="text-error text-sm">
-          {m.settings_remote_access_port_invalid()}
-        </p>
-      )}
-    </div>
-  )
+  return isIpv4(trimmed) || isIpv6(trimmed) ? trimmed : undefined
 }
 
 function StrategySelector({
@@ -118,12 +91,15 @@ function StrategySelector({
     local_authenticated:
       m.settings_remote_access_strategy_local_authenticated(),
     local_open: m.settings_remote_access_strategy_local_open(),
+    lan_authenticated: m.settings_remote_access_strategy_lan_authenticated(),
   } as Partial<Record<HttpAccessStrategy, string>>
 
   const descriptions = {
     local_authenticated:
       m.settings_remote_access_strategy_local_authenticated_description(),
     local_open: m.settings_remote_access_strategy_local_open_description(),
+    lan_authenticated:
+      m.settings_remote_access_strategy_lan_authenticated_description(),
   } as Partial<Record<HttpAccessStrategy, string>>
 
   return (
@@ -181,6 +157,12 @@ export default function ServerSettings() {
     setError(null)
     update.mutate(patch, { onError: reportFailure })
   }
+
+  const faultMessages = {
+    port_in_use: m.settings_remote_access_fault_port_in_use(),
+    bind_failed: m.settings_remote_access_fault_bind_failed(),
+    tls_unavailable: m.settings_remote_access_fault_tls_unavailable(),
+  } satisfies Record<NonNullable<HttpServerStatus['fault']>, string>
 
   const loaded = http != null
   const locked = !loaded || update.isPending
@@ -242,9 +224,7 @@ export default function ServerSettings() {
                 data-slot="remote-access-fault"
                 className="text-error text-sm"
               >
-                {status.data.fault === 'port_in_use'
-                  ? m.settings_remote_access_fault_port_in_use()
-                  : m.settings_remote_access_fault_bind_failed()}
+                {faultMessages[status.data.fault]}
               </p>
             )}
 
@@ -288,7 +268,15 @@ export default function ServerSettings() {
             <StrategySelector
               value={strategy}
               disabled={locked}
-              onChange={(next) => change({ strategy: next })}
+              onChange={(next) =>
+                // Credentials must not cross the network in the clear, so the LAN strategy
+                // brings HTTPS with it.
+                change(
+                  next === 'lan_authenticated'
+                    ? { strategy: next, tls: 'self_signed' }
+                    : { strategy: next },
+                )
+              }
             />
 
             {strategy === 'local_open' && (
@@ -329,14 +317,90 @@ export default function ServerSettings() {
                 </div>
               </>
             )}
+
+            {strategy === 'lan_authenticated' && (
+              <>
+                <p
+                  role="note"
+                  data-slot="remote-access-lan-warning"
+                  className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
+                >
+                  {m.settings_remote_access_strategy_lan_authenticated_warning()}
+                </p>
+
+                <SaveField
+                  key={http?.lan_bind ?? 'all'}
+                  slot="remote-access-lan-bind"
+                  title={m.settings_remote_access_lan_bind_title()}
+                  description={m.settings_remote_access_lan_bind_description()}
+                  invalidMessage={m.settings_remote_access_lan_bind_invalid()}
+                  committed={http?.lan_bind ?? null}
+                  parse={parseLanBind}
+                  disabled={locked}
+                  onSave={(lan_bind) => change({ lan_bind })}
+                />
+
+                {status.data?.port != null && (
+                  <span
+                    data-slot="remote-access-lan-url-hint"
+                    className="text-on-surface-variant text-sm select-text"
+                  >
+                    {m.settings_remote_access_lan_url_hint({
+                      port: status.data.port,
+                    })}
+                  </span>
+                )}
+              </>
+            )}
           </SettingsCardContent>
         </SettingsCard>
 
         <SettingsCard>
           <SettingsCardContent>
-            <PortField
+            <ItemContainer>
+              <ItemLabel>
+                <ItemLabelText>
+                  {m.settings_remote_access_tls_title()}
+                </ItemLabelText>
+
+                <ItemLabelDescription>
+                  {m.settings_remote_access_tls_description()}
+                </ItemLabelDescription>
+              </ItemLabel>
+
+              <Switch
+                aria-label={m.settings_remote_access_tls_title()}
+                checked={http?.tls === 'self_signed'}
+                // The LAN strategy cannot run without HTTPS.
+                disabled={locked || strategy === 'lan_authenticated'}
+                onCheckedChange={(on) =>
+                  change({ tls: on ? 'self_signed' : 'http' })
+                }
+              />
+            </ItemContainer>
+
+            {http?.tls === 'self_signed' && (
+              <CertificateSettings
+                tls={status.data?.tls ?? undefined}
+                bindOutsideCertificate={
+                  status.data?.bind_outside_certificate ?? false
+                }
+              />
+            )}
+          </SettingsCardContent>
+        </SettingsCard>
+
+        <SettingsCard>
+          <SettingsCardContent>
+            <SaveField
               key={http?.port ?? 'none'}
+              slot="remote-access-port"
+              title={m.settings_remote_access_port_title()}
+              description={m.settings_remote_access_port_description()}
+              invalidMessage={m.settings_remote_access_port_invalid()}
+              inputMode="numeric"
               committed={http?.port ?? null}
+              parse={parsePort}
               disabled={locked}
               onSave={(port) => change({ port })}
             />

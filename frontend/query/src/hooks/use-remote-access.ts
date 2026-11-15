@@ -11,7 +11,8 @@ import { useQueryApi } from '../provider/rpc-provider'
 /**
  * The HTTP server's state and its remote-access settings.
  *
- * The status never carries a credential. The launch URL, which logs a caller in, is created on
+ * The status never carries a credential; its certificate fingerprint is public to every TLS
+ * client. The launch URL, which logs a caller in, is created on
  * demand by a mutation and handed straight to the opener, so it is never kept in the query cache.
  */
 export function useRemoteAccess() {
@@ -55,6 +56,16 @@ export function useRemoteAccess() {
       ]),
   })
 
+  const resetCertificateCommand = api.mutations.resetRemoteAccessTls
+  const resetCertificate = useMutation({
+    mutationKey: resetCertificateCommand.mutationKey,
+    mutationFn: async () =>
+      unwrapResult(await invokeMutation(resetCertificateCommand, [])),
+    // The listener restarts with the new certificate, whose fingerprint the status reports.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
+  })
+
   const launchCommand = api.mutations.createHttpLaunchUrl
   const openCommand = api.mutations.openWebUrl
   const openInBrowser = useMutation({
@@ -73,6 +84,7 @@ export function useRemoteAccess() {
     http:
       remoteAccess.value == null ? undefined : (remoteAccess.value.http ?? {}),
     update,
+    resetCertificate,
     openInBrowser,
   }
 }

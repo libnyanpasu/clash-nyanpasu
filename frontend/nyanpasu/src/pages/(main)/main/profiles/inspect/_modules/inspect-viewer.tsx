@@ -15,6 +15,7 @@ import { m } from '@/paraglide/messages'
 import type { RuntimeInspection } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import type { UseQueryResult } from '@tanstack/react-query'
+import type { LinkProps } from '@tanstack/react-router'
 import {
   buildSteps,
   filterSteps,
@@ -40,6 +41,10 @@ export type InspectionSource = {
 
 export default function InspectViewer({
   source,
+  title,
+  titleHidden,
+  backTo,
+  emptyMessage,
   selectedStep: stepParam,
   onStepChange: selectStep,
   inspectView,
@@ -52,6 +57,10 @@ export default function InspectViewer({
   onRefresh,
 }: {
   source: InspectionSource
+  title?: string
+  titleHidden?: boolean
+  backTo?: LinkProps['to']
+  emptyMessage?: string
   selectedStep?: string
   onStepChange: (step: string) => void
   inspectView: InspectView
@@ -156,6 +165,9 @@ export default function InspectViewer({
       className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <InspectToolbar
+        title={title}
+        titleHidden={titleHidden}
+        backTo={backTo}
         snapshot={snapshot}
         snapshotControls={snapshotControls}
         status={status}
@@ -190,7 +202,7 @@ export default function InspectViewer({
         <EmptyState
           tone="normal"
           className="flex-1"
-          message={m.inspect_empty()}
+          message={emptyMessage ?? m.inspect_empty()}
         />
       )}
 

@@ -2,7 +2,7 @@ use crate::{
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
         WindowManager, kinds,
-        kinds::{EditorWindow, EditorWindowType, MainWindow},
+        kinds::{EditorWindow, EditorWindowType, MainWindow, RejectedConfigWindow},
     },
 };
 use chrono::Local;
@@ -867,6 +867,18 @@ pub async fn create_editor_window(
     uid: Option<String>,
 ) -> Result<()> {
     let (window, params) = EditorWindow::for_type(window_type, uid.as_deref())?;
+    windows.open(&window, params)?;
+    Ok(())
+}
+
+#[nyanpasu_macro::rpc]
+#[tauri::command]
+#[specta::specta]
+pub async fn open_rejected_config_window(
+    windows: State<'_, WindowManager>,
+    snapshot_id: String,
+) -> Result<()> {
+    let (window, params) = RejectedConfigWindow::for_snapshot(&snapshot_id)?;
     windows.open(&window, params)?;
     Ok(())
 }

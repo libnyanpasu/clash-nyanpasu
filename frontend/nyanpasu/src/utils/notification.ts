@@ -67,6 +67,7 @@ export type MessageOptions = {
   okLabel?: string
   /** The caught error; a failed command adds a copy-details button. */
   error?: unknown
+  action?: { label: string; onSelect: () => void | Promise<void> }
 }
 
 const nativeButtons = (
@@ -165,7 +166,14 @@ export const message = async (
   const runtime = detectRuntime()
   if (runtime.platform.surface === 'browser') {
     const browser = createBrowserAdapter()
-    browser?.alert(value)
+    if (dialog?.action) {
+      if (browser?.confirm(`${value}\n\n${dialog.action.label}?`)) {
+        await dialog.action.onSelect()
+        return
+      }
+    } else {
+      browser?.alert(value)
+    }
     if (
       details !== undefined &&
       browser?.confirm(`${m.common_copy_error_details()}?`)
@@ -212,11 +220,13 @@ const showErrorMessage = async (
   const title = dialog?.title
     ? `Clash Nyanpasu - ${dialog.title}`
     : 'Clash Nyanpasu'
-  const buttons: NativeDialogButtons = {
-    type: 'ok_cancel_custom',
-    ok: copyLabel,
-    cancel: m.common_close(),
-  }
+  const buttons = nativeButtons(
+    dialog?.action
+      ? { yes: dialog.action.label, no: copyLabel, cancel: m.common_close() }
+      : { ok: copyLabel, cancel: m.common_close() },
+    undefined,
+    m.common_close(),
+  )
   const result = unwrapResult(
     await commands.showNativeMessageDialog(
       value,
@@ -225,5 +235,9 @@ const showErrorMessage = async (
       buttons,
     ),
   )
-  if (result === copyLabel) await writeClipboardText(details)
+  if (dialog?.action && result === dialog.action.label) {
+    await dialog.action.onSelect()
+  } else if (result === copyLabel) {
+    await writeClipboardText(details)
+  }
 }

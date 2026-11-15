@@ -290,3 +290,62 @@ test('invalid params keeps its message instead of localizing the domain payload'
   expect(formatError(invalid)).toBe('Invalid profile parameter')
   expect(formatError(new Error('offline'))).toBe('offline')
 })
+
+test('native error actions keep copy details and close choices', async () => {
+  const onSelect = vi.fn()
+  const copied: string[] = []
+  let choice = m.error_runtime_core_rejected_config_view()
+  mockIPC((command, args) => {
+    expect(command).toBe('call_rpc')
+    const { method, params } = args as {
+      method: string
+      params: { buttons: unknown; text: string }
+    }
+    if (method === 'get_profiles')
+      return { items, current: 'p1', global_transforms: [] }
+    if (method === 'write_clipboard_text') {
+      copied.push(params.text)
+      return
+    }
+    expect(method).toBe('show_native_message_dialog')
+    expect(params.buttons).toEqual({
+      type: 'yes_no_cancel_custom',
+      yes: m.error_runtime_core_rejected_config_view(),
+      no: m.common_copy_error_details(),
+      cancel: m.common_close(),
+    })
+    return choice
+  })
+  const show = () =>
+    message(formatError(error), {
+      error,
+      action: { label: m.error_runtime_core_rejected_config_view(), onSelect },
+    })
+  await show()
+  expect(onSelect).toHaveBeenCalledOnce()
+  choice = m.common_copy_error_details()
+  await show()
+  expect(copied).toEqual([
+    JSON.stringify({ method: error.method, envelope: error.envelope }, null, 2),
+  ])
+  choice = m.common_close()
+  await show()
+  expect(onSelect).toHaveBeenCalledOnce()
+})
+
+test('browser error actions use the existing confirmation path', async () => {
+  vi.stubGlobal('isTauri', false)
+  const onSelect = vi.fn()
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  try {
+    await message('opaque failure', {
+      action: { label: m.error_runtime_core_rejected_config_view(), onSelect },
+    })
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(
+      `opaque failure\n\n${m.error_runtime_core_rejected_config_view()}?`,
+    )
+    expect(onSelect).toHaveBeenCalledOnce()
+  } finally {
+    confirm.mockRestore()
+  }
+})

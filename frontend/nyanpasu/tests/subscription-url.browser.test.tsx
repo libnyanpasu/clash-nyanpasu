@@ -9,12 +9,14 @@ import CreateProfileModal from '@/pages/(main)/main/profiles/_modules/create-pro
 import ProfileQuickImport from '@/pages/(main)/main/profiles/_modules/profile-quick-import'
 import SubscriptionUrlEditor from '@/pages/(main)/main/profiles/$type/detail/_modules/subscription-url-editor'
 import { m } from '@/paraglide/messages'
-import type { ProfileItem_Serialize } from '@nyanpasu/rpc/types'
+import type { IpcError, ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { TestQueryProvider as QueryClientProvider } from './query-provider'
 
 // Generated commands take the desktop IPC path that `mockIPC` serves.
+// The module-level RPC client chooses its transport on import.
+vi.hoisted(() => vi.stubGlobal('isTauri', true))
 beforeEach(() => vi.stubGlobal('isTauri', true))
 afterEach(() => vi.unstubAllGlobals())
 
@@ -340,4 +342,68 @@ test('a failed subscription save keeps the draft and restores cancellation', asy
   await expect.element(view.getByRole('textbox')).toHaveValue(loopbackUrls[0])
   await cancel.click()
   await expect.element(view.getByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('a rejected subscription refresh opens its persisted build window', async ({
+  onTestFinished,
+}) => {
+  const calls: RpcCall[] = []
+  const failure: IpcError = {
+    kind: {
+      domain: 'profiles',
+      error: {
+        kind: 'commit',
+        uid: profile.uid,
+        path: 'profile.yaml',
+        source: {
+          kind: 'runtime_refused',
+          runtime: { kind: 'untouched' },
+          errors: [
+            {
+              kind: 'core_rejected_config',
+              core_kind: 'config_check_failed',
+              message: 'opaque',
+              rejected_snapshot_id: 'a'.repeat(21),
+            },
+          ],
+        },
+      },
+    },
+    message: 'opaque',
+    detail: 'opaque',
+  }
+  mockIPC(
+    (command, args) => {
+      expect(command).toBe('call_rpc')
+      const call = args as RpcCall
+      calls.push(call)
+      if (call.method === 'replace_profile_definition') return outcome(null)
+      if (call.method === 'update_profile')
+        return Promise.reject({
+          kind: 'application_error',
+          message: 'opaque',
+          domain_error: failure,
+        })
+      if (call.method === 'open_rejected_config_window') return
+      throw new Error(`Unexpected RPC ${call.method}`)
+    },
+    { shouldMockEvents: true },
+  )
+  const view = await mount(
+    <SubscriptionUrlEditor profile={profile}>
+      <span>Edit subscription</span>
+    </SubscriptionUrlEditor>,
+    onTestFinished,
+  )
+  await view.getByRole('button', { name: 'Edit subscription' }).click()
+  await view.getByRole('textbox').first().fill(loopbackUrls[0])
+  await view.getByRole('button', { name: m.common_save() }).click()
+  await expect.poll(() => notifications.message.mock.calls.length).toBe(1)
+  const action = notifications.message.mock.calls[0][1].action
+  expect(action.label).toBe(m.error_runtime_core_rejected_config_view())
+  await action.onSelect()
+  expect(calls.at(-1)).toEqual({
+    method: 'open_rejected_config_window',
+    params: { snapshotId: 'a'.repeat(21) },
+  })
 })

@@ -3,13 +3,13 @@
 //! Subcommands that reach the shell map to curated operations (see `commands.rs`) through
 //! [`Command::plan`]; everything else is local to the CLI.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use serde_json::{Value, json};
 
-use crate::{error::CliError, target::TransportChoice};
+use crate::{describe::Scope, error::CliError, target::TransportChoice};
 
 /// Controls a running Clash Nyanpasu shell over its local socket or HTTP.
 #[derive(Debug, Parser)]
@@ -69,6 +69,10 @@ pub enum Command {
     /// Read or patch application settings.
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Administer remote access: the HTTP server, the local socket, tokens and sessions.
+    /// Only the local socket offers these commands.
+    #[command(subcommand)]
+    Remote(RemoteCommand),
     /// List the commands the shell offers this caller (`rpc_describe`).
     Methods,
     /// Call any allowed RPC method with a JSON parameter object.
@@ -242,6 +246,149 @@ pub enum ConfigCommand {
     },
 }
 
+/// Remote access administration. It needs the `remote_admin` scope, which only the desktop
+/// and the same-user local socket hold, so it never runs over HTTP.
+#[derive(Debug, Subcommand)]
+pub enum RemoteCommand {
+    /// Show the remote access settings and what each listener is doing.
+    Status,
+    /// Turn the HTTP server on or off, or choose how it authenticates.
+    #[command(subcommand)]
+    Http(HttpCommand),
+    /// Turn the local socket on or off. Turning it off ends this connection's access.
+    #[command(subcommand)]
+    Socket(SwitchOnOff),
+    /// Manage the access tokens that authenticate over HTTP.
+    #[command(subcommand)]
+    Token(TokenCommand),
+    /// Manage browser sessions.
+    #[command(subcommand)]
+    Session(SessionCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum HttpCommand {
+    /// Start the HTTP server.
+    On,
+    /// Stop the HTTP server.
+    Off,
+    /// Choose how HTTP callers authenticate.
+    Strategy {
+        /// `local_authenticated` requires a credential; `local_open` lets every local
+        /// process of every OS user call the API with the configured open scopes.
+        #[arg(value_enum)]
+        strategy: HttpStrategy,
+    },
+}
+
+/// How the HTTP server authenticates a caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HttpStrategy {
+    #[value(name = "local_authenticated", alias = "local-authenticated")]
+    LocalAuthenticated,
+    #[value(name = "local_open", alias = "local-open")]
+    LocalOpen,
+}
+
+impl HttpStrategy {
+    /// The persisted spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalAuthenticated => "local_authenticated",
+            Self::LocalOpen => "local_open",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SwitchOnOff {
+    /// Turn it on.
+    On,
+    /// Turn it off.
+    Off,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TokenCommand {
+    /// Create a token. Its secret is printed once and cannot be shown again.
+    Create(TokenCreate),
+    /// List the tokens without their secrets.
+    List,
+    /// Revoke a token, closing the browser sessions it opened.
+    Revoke {
+        /// The token id shown by `token list`.
+        id: String,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct TokenCreate {
+    /// A name for the token, shown in lists and audit records.
+    pub name: String,
+    /// A scope the token holds; repeat for several. A token never holds `remote_admin`.
+    #[arg(
+        long = "scope",
+        required = true,
+        value_name = "SCOPE",
+        value_parser = parse_token_scope
+    )]
+    pub scopes: Vec<Scope>,
+    /// How long the token stays valid, such as `90m`, `12h` or `30d`. It does not expire
+    /// when omitted.
+    #[arg(long, value_name = "DURATION", value_parser = parse_lifetime)]
+    pub expires_in: Option<Duration>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SessionCommand {
+    /// List the open browser sessions.
+    List,
+    /// Close a browser session.
+    Revoke {
+        /// The session id shown by `session list`.
+        id: String,
+    },
+}
+
+/// A scope a token may hold: every scope except `remote_admin`.
+fn parse_token_scope(text: &str) -> Result<Scope, String> {
+    let held = || {
+        Scope::ALL
+            .into_iter()
+            .filter(|scope| *scope != Scope::RemoteAdmin)
+            .map(Scope::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match serde_json::from_value::<Scope>(Value::String(text.to_owned())) {
+        Ok(Scope::RemoteAdmin) => Err(format!(
+            "a token cannot hold remote_admin; choose from {}",
+            held()
+        )),
+        Ok(scope) => Ok(scope),
+        Err(_) => Err(format!("unknown scope `{text}`; choose from {}", held())),
+    }
+}
+
+/// A positive duration such as `90s`, `15m`, `12h` or `30d`.
+fn parse_lifetime(text: &str) -> Result<Duration, String> {
+    let invalid = || format!("`{text}` is not a duration such as 90m, 12h or 30d");
+    let (number, unit) = text.split_at(text.len().saturating_sub(1));
+    let seconds_per_unit: u64 = match unit {
+        "s" => 1,
+        "m" => 60,
+        "h" => 60 * 60,
+        "d" => 24 * 60 * 60,
+        _ => return Err(invalid()),
+    };
+    let count: u64 = number.parse().map_err(|_| invalid())?;
+    let seconds = count
+        .checked_mul(seconds_per_unit)
+        .filter(|seconds| *seconds > 0)
+        .ok_or_else(invalid)?;
+    Ok(Duration::from_secs(seconds))
+}
+
 #[derive(Debug, Args)]
 pub struct CallArgs {
     /// The RPC method name; list them with `nyanpasu-cli methods`.
@@ -340,8 +487,8 @@ fn switch(command: &SwitchCommand, status: &'static str, set: &'static str) -> P
 }
 
 impl Command {
-    /// The curated operation a subcommand stands for, or `None` for local subcommands
-    /// and `methods` and `call`, which the application layer handles itself.
+    /// The curated operation a subcommand stands for, or `None` for local subcommands,
+    /// `remote`, `methods` and `call`, which the application layer handles itself.
     ///
     /// # Errors
     /// Malformed JSON arguments are usage errors.
@@ -416,9 +563,11 @@ impl Command {
             Self::Config(ConfigCommand::Patch { patch: text }) => {
                 plan("config_patch", json!({"patch": parse_json_object(text)?}))
             }
-            Self::Methods | Self::Call(_) | Self::Context(_) | Self::Completion(_) => {
-                return Ok(None);
-            }
+            Self::Remote(_)
+            | Self::Methods
+            | Self::Call(_)
+            | Self::Context(_)
+            | Self::Completion(_) => return Ok(None),
         };
         Ok(Some(plan))
     }
@@ -492,6 +641,7 @@ mod tests {
     fn local_and_generic_subcommands_have_no_plan() {
         for arguments in [
             &["methods"][..],
+            &["remote", "status"],
             &["call", "get_core_status"],
             &["context", "list"],
             &["completion", "bash"],
@@ -579,5 +729,116 @@ mod tests {
             .is_err()
         );
         assert!(Cli::try_parse_from(["nyanpasu-cli", "context", "add", "x", "--socket"]).is_ok());
+    }
+
+    #[test]
+    fn remote_subcommands_parse() {
+        for arguments in [
+            &["remote", "status"][..],
+            &["remote", "http", "on"],
+            &["remote", "http", "off"],
+            &["remote", "http", "strategy", "local_open"],
+            &["remote", "http", "strategy", "local-authenticated"],
+            &["remote", "socket", "on"],
+            &["remote", "socket", "off"],
+            &["remote", "token", "create", "laptop", "--scope", "read"],
+            &[
+                "remote",
+                "token",
+                "create",
+                "ci",
+                "--scope",
+                "read",
+                "--scope",
+                "proxy",
+                "--expires-in",
+                "30d",
+            ],
+            &["remote", "token", "list"],
+            &["remote", "token", "revoke", "tok_1"],
+            &["remote", "session", "list"],
+            &["remote", "session", "revoke", "sess_1"],
+        ] {
+            assert!(
+                Cli::try_parse_from(
+                    std::iter::once("nyanpasu-cli").chain(arguments.iter().copied())
+                )
+                .is_ok(),
+                "{arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_token_is_created_with_explicit_scopes_and_never_remote_admin() {
+        for arguments in [
+            &["remote", "token", "create", "laptop"][..],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--scope",
+                "remote_admin",
+            ],
+            &["remote", "token", "create", "laptop", "--scope", "admin"],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--scope",
+                "read",
+                "--expires-in",
+                "0d",
+            ],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--scope",
+                "read",
+                "--expires-in",
+                "soon",
+            ],
+            &["remote", "http", "strategy", "lan_authenticated"],
+        ] {
+            assert!(
+                Cli::try_parse_from(
+                    std::iter::once("nyanpasu-cli").chain(arguments.iter().copied())
+                )
+                .is_err(),
+                "{arguments:?}"
+            );
+        }
+        let Command::Remote(RemoteCommand::Token(TokenCommand::Create(create))) = parse(&[
+            "remote", "token", "create", "ci", "--scope", "read", "--scope", "system",
+        ])
+        .command
+        else {
+            panic!("a token create command");
+        };
+        assert_eq!(create.scopes, [Scope::Read, Scope::System]);
+        assert_eq!(create.expires_in, None);
+    }
+
+    #[test]
+    fn lifetimes_are_positive_whole_units() {
+        for (text, seconds) in [
+            ("90s", 90),
+            ("15m", 900),
+            ("12h", 43_200),
+            ("30d", 2_592_000),
+        ] {
+            assert_eq!(
+                parse_lifetime(text),
+                Ok(Duration::from_secs(seconds)),
+                "{text}"
+            );
+        }
+        for bad in ["", "d", "0s", "-5m", "1.5h", "10w", "18446744073709551615d"] {
+            assert!(parse_lifetime(bad).is_err(), "{bad}");
+        }
     }
 }

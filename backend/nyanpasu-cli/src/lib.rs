@@ -18,6 +18,7 @@ pub mod describe;
 pub mod endpoint;
 pub mod error;
 pub mod output;
+pub mod remote;
 pub mod target;
 pub mod transport;
 

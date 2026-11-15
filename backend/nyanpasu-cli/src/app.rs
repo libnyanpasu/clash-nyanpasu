@@ -21,6 +21,7 @@ use crate::{
     endpoint,
     error::{CliError, ExitStatus},
     output::{Output, render_human},
+    remote,
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
     transport::{
         Connection, EventFeed, HttpTransport, SocketTransport, StreamKind, Transport, event,
@@ -143,6 +144,9 @@ async fn run<C: Connector>(
 
     let config = CliConfig::load(&services.paths.config_file)?;
     let target = resolve(&config, cli.context.as_deref(), cli.transport, environment)?;
+    if matches!(cli.command, Command::Remote(_)) {
+        remote::require_local_socket(&target)?;
+    }
     let token = resolve_token(&target, environment, &services.vault)?;
     let transport = services.connector.connect(&target, token).await?;
     let (raw, capabilities) = describe(&transport).await?;
@@ -152,6 +156,9 @@ async fn run<C: Connector>(
         stdout: &mut *io.stdout,
         stderr: &mut *io.stderr,
     };
+    if let Command::Remote(command) = &cli.command {
+        return remote::run(command, &transport, &capabilities, &mut output).await;
+    }
     if let Some((method, params)) = call {
         capabilities.require(&method)?;
         let value = transport.call(&method, params).await?;
@@ -162,7 +169,7 @@ async fn run<C: Connector>(
     }
     match plan {
         Some(plan) => run_plan(&transport, &capabilities, &plan, &mut output).await,
-        None => unreachable!("every connected subcommand has a plan, a call or methods"),
+        None => unreachable!("every connected subcommand has a plan, a call, `remote` or methods"),
     }
 }
 
@@ -413,7 +420,7 @@ fn build_context<C>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use clap::Parser as _;
 
@@ -428,14 +435,25 @@ mod tests {
     struct FakeConnector {
         targets: Mutex<Vec<(ResolvedTarget, Option<String>)>>,
         outcome: Mutex<Option<Result<FakeTransport, CliError>>>,
+        /// What the scripted transport was asked, kept after it moves into the command.
+        calls: Arc<Mutex<Vec<(String, Value)>>>,
     }
 
     impl FakeConnector {
         fn new(outcome: Result<FakeTransport, CliError>) -> Self {
+            let calls = outcome
+                .as_ref()
+                .map(|transport| transport.calls.clone())
+                .unwrap_or_default();
             Self {
                 targets: Mutex::default(),
                 outcome: Mutex::new(Some(outcome)),
+                calls,
             }
+        }
+
+        fn calls(&self) -> Vec<(String, Value)> {
+            self.calls.lock().unwrap().clone()
         }
     }
 
@@ -915,6 +933,252 @@ mod tests {
         assert_eq!(run.status, ExitStatus::Success);
         assert!(run.stdout.contains("nyanpasu-cli"), "{}", run.stdout);
         drop(harness.directory);
+    }
+
+    /// A local principal holding every scope, with the remote administration commands allowed.
+    fn describe_remote() -> Result<Value, CliError> {
+        let methods: Vec<(&str, Scope)> = [
+            "get_app_settings",
+            "get_http_server_status",
+            "get_local_socket_status",
+            "set_remote_access",
+            "list_remote_access_tokens",
+            "create_remote_access_token",
+            "revoke_remote_access_token",
+            "list_remote_browser_sessions",
+            "revoke_remote_browser_session",
+        ]
+        .into_iter()
+        .map(|method| (method, Scope::RemoteAdmin))
+        .collect();
+        describe_reply(&Scope::ALL, &methods)
+    }
+
+    fn committed_settings() -> Value {
+        json!({"remote_access": {
+            "http": {"enabled": false, "strategy": "local_authenticated", "port": null,
+                     "serve_webui": true, "local_open_scopes": ["read"]},
+            "local_socket": {"enabled": true},
+        }})
+    }
+
+    #[tokio::test]
+    async fn remote_status_reads_the_settings_and_both_listeners() {
+        let transport = FakeTransport::new(vec![
+            describe_remote(),
+            Ok(committed_settings()),
+            Ok(json!({"enabled": true, "url": "http://127.0.0.1:41234/", "port": 41234})),
+            Ok(json!({"enabled": true, "endpoint": "/run/user/1000/rpc.sock"})),
+        ]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["--json", "remote", "status"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        let value: Value = serde_json::from_str(run.stdout.trim()).unwrap();
+        assert_eq!(value["settings"]["local_socket"]["enabled"], true);
+        assert_eq!(value["http"]["port"], 41234);
+        assert_eq!(value["local_socket"]["endpoint"], "/run/user/1000/rpc.sock");
+        let calls = harness.services.connector.calls();
+        let methods: Vec<_> = calls.iter().map(|(method, _)| method.as_str()).collect();
+        assert_eq!(
+            methods,
+            [
+                "rpc_describe",
+                "get_app_settings",
+                "get_http_server_status",
+                "get_local_socket_status"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_remote_switch_writes_the_whole_section_back_with_one_field_changed() {
+        for (arguments, pointer, expected) in [
+            (&["remote", "http", "on"][..], "/http/enabled", json!(true)),
+            (&["remote", "http", "off"], "/http/enabled", json!(false)),
+            (
+                &["remote", "http", "strategy", "local_open"],
+                "/http/strategy",
+                json!("local_open"),
+            ),
+            (
+                &["remote", "socket", "off"],
+                "/local_socket/enabled",
+                json!(false),
+            ),
+        ] {
+            let transport = FakeTransport::new(vec![
+                describe_remote(),
+                Ok(committed_settings()),
+                Ok(json!({"status": "committed", "value": null, "commits": [],
+                          "notifications_pending": false, "degradations": []})),
+            ]);
+            let harness = harness(Ok(transport));
+            let run = invoke(&harness, &Environment::default(), arguments, "").await;
+            assert_eq!(
+                run.status,
+                ExitStatus::Success,
+                "{arguments:?}: {}",
+                run.stderr
+            );
+            let calls = harness.services.connector.calls();
+            let methods: Vec<_> = calls.iter().map(|(method, _)| method.as_str()).collect();
+            assert_eq!(
+                methods,
+                ["rpc_describe", "get_app_settings", "set_remote_access"]
+            );
+            let mut sent = calls[2].1["config"].clone();
+            assert_eq!(sent.pointer(pointer), Some(&expected), "{arguments:?}");
+            // Everything else is the committed value, unchanged.
+            let mut original = committed_settings()["remote_access"].clone();
+            *sent.pointer_mut(pointer).unwrap() = Value::Null;
+            *original.pointer_mut(pointer).unwrap() = Value::Null;
+            assert_eq!(sent, original, "{arguments:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn opening_the_http_api_to_local_processes_is_warned_about() {
+        let transport = FakeTransport::new(vec![
+            describe_remote(),
+            Ok(committed_settings()),
+            Ok(json!({"status": "committed", "value": null})),
+        ]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["remote", "http", "strategy", "local_open"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        assert!(run.stderr.contains("every OS user"), "{}", run.stderr);
+    }
+
+    #[tokio::test]
+    async fn a_listener_that_cannot_follow_exits_six() {
+        let transport = FakeTransport::new(vec![
+            describe_remote(),
+            Ok(committed_settings()),
+            Ok(json!({
+                "status": "committed_degraded", "value": null, "commits": [],
+                "notifications_pending": false,
+                "degradations": [{"phase": "system_effect", "message": "the HTTP server is not running: PortInUse"}]
+            })),
+        ]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["remote", "http", "on"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Degraded);
+        assert!(run.stderr.contains("PortInUse"), "{}", run.stderr);
+    }
+
+    #[tokio::test]
+    async fn token_creation_sends_the_scopes_and_prints_the_secret_once() {
+        let created = json!({
+            "summary": {"id": "tok_1", "name": "ci", "scopes": ["read", "proxy"]},
+            "token": "npk_tok_1_secret",
+        });
+        let transport = FakeTransport::new(vec![describe_remote(), Ok(created.clone())]);
+        let human = harness(Ok(transport));
+        let run = invoke(
+            &human,
+            &Environment::default(),
+            &[
+                "remote",
+                "token",
+                "create",
+                "ci",
+                "--scope",
+                "read",
+                "--scope",
+                "proxy",
+                "--expires-in",
+                "1h",
+            ],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        assert!(run.stdout.contains("npk_tok_1_secret"), "{}", run.stdout);
+        assert!(run.stderr.contains("shown once"), "{}", run.stderr);
+        let calls = human.services.connector.calls();
+        let request = &calls[1].1["request"];
+        assert_eq!(calls[1].0, "create_remote_access_token");
+        assert_eq!(request["name"], "ci");
+        assert_eq!(request["scopes"], json!(["read", "proxy"]));
+        assert!(request["expires_at_ms"].as_i64().unwrap() > 0);
+
+        let transport = FakeTransport::new(vec![describe_remote(), Ok(created.clone())]);
+        let machine = harness(Ok(transport));
+        let run = invoke(
+            &machine,
+            &Environment::default(),
+            &[
+                "--json", "remote", "token", "create", "ci", "--scope", "read",
+            ],
+            "",
+        )
+        .await;
+        assert_eq!(
+            serde_json::from_str::<Value>(run.stdout.trim()).unwrap(),
+            created,
+            "--json prints the shell result unchanged"
+        );
+        assert!(!run.stderr.contains("shown once"), "{}", run.stderr);
+    }
+
+    #[tokio::test]
+    async fn remote_administration_never_connects_to_an_http_target() {
+        let harness = harness(Err(CliError::failed("must not connect")));
+        let environment = Environment {
+            url: Some("http://127.0.0.1:9090".to_owned()),
+            token: Some("npk_1_secret".to_owned()),
+        };
+        for arguments in [
+            &["remote", "status"][..],
+            &["remote", "token", "list"],
+            &["remote", "http", "on"],
+        ] {
+            let run = invoke(&harness, &environment, arguments, "").await;
+            assert_eq!(run.status, ExitStatus::Unsupported, "{arguments:?}");
+            assert!(run.stderr.contains("local socket"), "{}", run.stderr);
+        }
+        assert!(
+            harness
+                .services
+                .connector
+                .targets
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_shell_that_does_not_offer_remote_administration_is_unsupported() {
+        // A shell older than this CLI, or one that exposes none of the commands.
+        let transport = FakeTransport::new(vec![describe_reply(&Scope::ALL, &[])]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["remote", "token", "list"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Unsupported, "{}", run.stderr);
     }
 
     #[test]

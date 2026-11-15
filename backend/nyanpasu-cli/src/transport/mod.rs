@@ -126,13 +126,17 @@ pub(crate) fn error_chain(error: &dyn std::error::Error) -> String {
 
 #[cfg(test)]
 pub(crate) mod fakes {
-    use std::{collections::VecDeque, sync::Mutex};
+    use std::{
+        collections::VecDeque,
+        sync::{Arc, Mutex},
+    };
 
     use super::*;
 
-    /// A scripted transport that records every call.
+    /// A scripted transport that records every call. The record is shared, so a test can read
+    /// it after the transport moved into a command.
     pub struct FakeTransport {
-        pub calls: Mutex<Vec<(String, Value)>>,
+        pub calls: Arc<Mutex<Vec<(String, Value)>>>,
         pub replies: Mutex<VecDeque<Result<Value, CliError>>>,
         pub feed: Mutex<Option<Vec<Result<Value, CliError>>>>,
     }
@@ -140,7 +144,7 @@ pub(crate) mod fakes {
     impl FakeTransport {
         pub fn new(replies: Vec<Result<Value, CliError>>) -> Self {
             Self {
-                calls: Mutex::default(),
+                calls: Arc::default(),
                 replies: Mutex::new(replies.into()),
                 feed: Mutex::default(),
             }

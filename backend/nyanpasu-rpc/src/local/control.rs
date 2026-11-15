@@ -95,12 +95,29 @@ struct Running {
     task: tokio::task::JoinHandle<()>,
 }
 
+/// Waits for a stopped listener's task to finish, and aborts it past [`STOP_JOIN_TIMEOUT`].
+async fn join_stopped(mut task: tokio::task::JoinHandle<()>) {
+    match tokio::time::timeout(STOP_JOIN_TIMEOUT, &mut task).await {
+        Ok(result) => nyanpasu_owner_support::blocking::join(result),
+        Err(_) => {
+            task.abort();
+            if let Err(error) = task.await
+                && error.is_panic()
+            {
+                std::panic::resume_unwind(error.into_panic());
+            }
+        }
+    }
+}
+
 pub struct LocalSocketActor;
 pub struct LocalSocketState {
     data_directory: PathBuf,
     endpoint_override: Option<PathBuf>,
     routes: Arc<dyn LocalRoutes>,
     running: Option<Running>,
+    /// Listeners that no longer admit connections but still flush their in-flight replies.
+    draining: Vec<tokio::task::JoinHandle<()>>,
     fault: Option<LocalSocketFault>,
     generation: u64,
 }
@@ -170,19 +187,39 @@ impl LocalSocketState {
     }
 
     async fn stop(&mut self) {
-        if let Some(mut running) = self.running.take() {
+        if let Some(running) = self.running.take() {
             running.cancellation.cancel();
-            match tokio::time::timeout(STOP_JOIN_TIMEOUT, &mut running.task).await {
-                Ok(result) => nyanpasu_owner_support::blocking::join(result),
-                Err(_) => {
-                    running.task.abort();
-                    if let Err(error) = running.task.await
-                        && error.is_panic()
-                    {
-                        std::panic::resume_unwind(error.into_panic());
-                    }
-                }
-            }
+            join_stopped(running.task).await;
+        }
+    }
+
+    /// Stops admission and releases the endpoint without waiting for in-flight calls.
+    ///
+    /// A call may itself be the request that disables the listener, such as
+    /// `set_remote_access` sent over this socket. Waiting for its reply to flush would then wait
+    /// for the very answer this owner has not yet given, so the drain finishes in the background
+    /// and is awaited before the next start and at shutdown.
+    async fn release(&mut self) {
+        self.reap_finished().await;
+        if let Some(running) = self.running.take() {
+            running.cancellation.cancel();
+            self.draining.push(running.task);
+        }
+    }
+
+    async fn reap_finished(&mut self) {
+        let (finished, pending) = std::mem::take(&mut self.draining)
+            .into_iter()
+            .partition(|task| task.is_finished());
+        self.draining = pending;
+        for task in finished {
+            join_stopped(task).await;
+        }
+    }
+
+    async fn finish_draining(&mut self) {
+        for task in std::mem::take(&mut self.draining) {
+            join_stopped(task).await;
         }
     }
 }
@@ -202,6 +239,7 @@ impl Actor for LocalSocketActor {
             endpoint_override: args.endpoint_override,
             routes: args.routes,
             running: None,
+            draining: Vec::new(),
             fault: None,
             generation: 0,
         })
@@ -228,12 +266,12 @@ impl Actor for LocalSocketActor {
             }
             Message::Configure { config, reply } => {
                 if !config.enabled {
-                    state.stop().await;
+                    state.release().await;
                     state.fault = None;
                 } else if state.running.is_some() {
                     state.fault = None;
                 } else {
-                    state.stop().await;
+                    state.finish_draining().await;
                     state.start(myself).await;
                 }
                 let _ = reply.send(state.status());
@@ -248,6 +286,7 @@ impl Actor for LocalSocketActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         state.stop().await;
+        state.finish_draining().await;
         Ok(())
     }
 }
@@ -547,6 +586,80 @@ mod tests {
             .unwrap();
         assert!(!disabled.enabled);
         assert!(disabled.fault.is_none());
+
+        socket.shutdown().await.unwrap();
+        fixture.shutdown().await;
+    }
+
+    /// `set_remote_access` over the socket can be the very call that disables it: the owner
+    /// must answer that call instead of waiting for its reply to flush.
+    #[tokio::test]
+    async fn disable_returns_while_a_call_is_in_flight_and_its_reply_still_flushes() {
+        let mut fixture = Fixture::new(false).await;
+        fixture
+            .rpc
+            .enable_local_test_command("audit_echo", Some(gated_echo));
+        let routes = Arc::new(RpcLocalRoutes::default());
+        routes.install(&fixture.rpc).unwrap();
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut events = fixture.rpc.dependencies.events.subscribe();
+
+        let socket = LocalSocketClient::spawn(data_dir.path().to_owned(), None, routes)
+            .await
+            .unwrap();
+        let endpoint_path = socket
+            .configure(&LocalSocketAccessConfig { enabled: true })
+            .await
+            .unwrap()
+            .endpoint
+            .unwrap();
+        let rpc_client = LocalClient::connect(Path::new(&endpoint_path), WATCHDOG)
+            .await
+            .unwrap();
+        let call_task = tokio::spawn(async move {
+            let reply = rpc_client.call("audit_echo", json!(null)).await;
+            rpc_client.close().await;
+            reply
+        });
+        tokio::time::timeout(WATCHDOG, async {
+            loop {
+                if events.recv().await.unwrap().0 == "in_flight_entered" {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        // The call is still waiting for `release`; the drain alone takes two seconds.
+        let disabled = tokio::time::timeout(
+            Duration::from_millis(500),
+            socket.configure(&LocalSocketAccessConfig { enabled: false }),
+        )
+        .await
+        .expect("disabling does not wait for in-flight calls")
+        .unwrap();
+        assert!(!disabled.enabled);
+        assert!(disabled.endpoint.is_none());
+
+        fixture
+            .rpc
+            .dependencies
+            .events
+            .publish("release", Value::Null);
+        let reply = tokio::time::timeout(WATCHDOG, call_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(matches!(reply, Reply::Result(v) if v == json!("drained")));
+
+        let reenabled = socket
+            .configure(&LocalSocketAccessConfig { enabled: true })
+            .await
+            .unwrap();
+        assert!(reenabled.enabled);
+        assert_eq!(reenabled.fault, None);
 
         socket.shutdown().await.unwrap();
         fixture.shutdown().await;

@@ -42,7 +42,9 @@ postcard = { version = '1.1.1', features = ['use-std'] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
-nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
+nyanpasu-os = { path = '../nyanpasu-os', default-features = false, features = [
+  'network-environment'
+] }
 nyanpasu-updater = { path = '../nyanpasu-updater', default-features = false }
 nyanpasu-observers = { path = '../nyanpasu-observers', default-features = false }
 nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }

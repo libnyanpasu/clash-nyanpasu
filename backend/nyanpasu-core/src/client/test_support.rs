@@ -928,6 +928,7 @@ pub fn test_adapters(
             })
         })),
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
+        network_environment: None,
         runtime_build,
         profile_files,
     }

@@ -854,6 +854,12 @@ mod tests {
                 owners: &[],
             },
             AppCase {
+                field: "network_automation",
+                mutate: |app| app.network_automation.enabled = true,
+                impact: RuntimeImpact::None,
+                owners: &[],
+            },
+            AppCase {
                 field: "traffic_retention",
                 mutate: |app| {
                     app.traffic_retention = nyanpasu_config::application::TrafficRetention::Forever

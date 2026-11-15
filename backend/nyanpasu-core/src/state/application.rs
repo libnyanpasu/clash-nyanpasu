@@ -148,6 +148,11 @@ impl ApplicationActor {
             .map_err(|reason| ConfigError::InvalidLatencyTimeout {
                 reason: reason.into(),
             })?;
+        next.network_automation.validate().map_err(|source| {
+            ConfigError::InvalidNetworkAutomation {
+                reason: source.to_string(),
+            }
+        })?;
         let (version, impact) = {
             let current = state.manager.snapshot_handle().load();
             let impact = impact::runtime_impact(&current.state, &next, &hints, class);

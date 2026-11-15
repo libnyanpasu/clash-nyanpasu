@@ -6,6 +6,8 @@ pub mod core_install;
 pub mod core_version;
 pub mod device_identity;
 pub mod elevation;
+#[cfg(feature = "network-environment")]
+pub mod network_environment;
 pub mod pac;
 pub mod service;
 pub mod system_dns;

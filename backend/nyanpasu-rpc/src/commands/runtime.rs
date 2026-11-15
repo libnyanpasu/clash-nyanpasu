@@ -12,6 +12,7 @@ use nyanpasu_config::{
 use nyanpasu_contracts::net::DirectEgress;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_runtime_values::network_automation::NetworkAutomationStatus;
 
 use super::types::GetSysProxyResponse;
 use crate::registry::RpcState;
@@ -100,6 +101,39 @@ pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_runtime_values::core_status::CoreStatusInfo> {
     Ok(client.core_status().into())
+}
+
+/// The network the host is on and what the network rules last did about it.
+/// Desktop-only: the status holds the live Wi-Fi name and gateway address.
+#[nyanpasu_macro::rpc]
+#[specta::specta]
+pub async fn get_network_automation_status(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<NetworkAutomationStatus> {
+    Ok(client.get_network_automation_status().await)
+}
+
+/// Applies the network rules to the current network again, overwriting
+/// capture switches changed by hand since. Switching the capture mechanisms
+/// reaches the same optional effects as a configuration patch.
+#[nyanpasu_macro::rpc(optional_capabilities(os_integration, presentation, elevation))]
+#[specta::specta]
+pub async fn apply_network_automation(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<NetworkAutomationStatus> {
+    Ok(client.apply_network_automation().await)
+}
+
+/// Reads the Wi-Fi name once, which the network rules do not until a rule
+/// matches on it. Where the platform gates the name behind location access,
+/// this asks the user for it. The status holds that reading, or why there is
+/// none. Desktop-only: the status holds the live Wi-Fi name and gateway.
+#[nyanpasu_macro::rpc]
+#[specta::specta]
+pub async fn request_wifi_name_access(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<NetworkAutomationStatus> {
+    Ok(client.request_wifi_name_access().await)
 }
 
 #[nyanpasu_macro::rpc(http)]

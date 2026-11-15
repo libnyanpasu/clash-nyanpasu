@@ -17,6 +17,7 @@ pub mod credentials;
 pub mod describe;
 pub mod endpoint;
 pub mod error;
+pub mod mcp;
 pub mod output;
 pub mod remote;
 pub mod target;
@@ -43,7 +44,9 @@ pub async fn run_process() -> ExitCode {
         connector: app::RealConnector,
     };
     let environment = target::Environment::from_process();
-    let (mut stdin, mut stdout, mut stderr) = (io::stdin(), io::stdout().lock(), io::stderr());
+    // Standard output stays unlocked: `mcp` writes it through tokio on another thread, which
+    // would wait forever on a lock this thread held for the whole process.
+    let (mut stdin, mut stdout, mut stderr) = (io::stdin(), io::stdout(), io::stderr());
     let status = app::execute(
         cli,
         &environment,

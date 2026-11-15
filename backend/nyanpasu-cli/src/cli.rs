@@ -80,6 +80,8 @@ pub enum Command {
     /// Manage named targets in `cli.toml`.
     #[command(subcommand)]
     Context(ContextCommand),
+    /// Serve the curated operations as an MCP server over standard input and output.
+    Mcp(McpArgs),
     /// Print a shell completion script.
     Completion(CompletionArgs),
 }
@@ -352,6 +354,20 @@ pub enum SessionCommand {
 
 /// A scope a token may hold: every scope except `remote_admin`.
 fn parse_token_scope(text: &str) -> Result<Scope, String> {
+    parse_scope_but_remote_admin(text, "a token cannot hold remote_admin")
+}
+
+/// A scope the MCP server may offer: every scope except `remote_admin`.
+fn parse_mcp_scope(text: &str) -> Result<Scope, String> {
+    parse_scope_but_remote_admin(
+        text,
+        "remote_admin is never offered over MCP; manage remote access from the app or \
+         `nyanpasu-cli remote`",
+    )
+}
+
+/// Parses a scope name, refusing `remote_admin` with `refusal`.
+fn parse_scope_but_remote_admin(text: &str, refusal: &str) -> Result<Scope, String> {
     let held = || {
         Scope::ALL
             .into_iter()
@@ -361,10 +377,7 @@ fn parse_token_scope(text: &str) -> Result<Scope, String> {
             .join(", ")
     };
     match serde_json::from_value::<Scope>(Value::String(text.to_owned())) {
-        Ok(Scope::RemoteAdmin) => Err(format!(
-            "a token cannot hold remote_admin; choose from {}",
-            held()
-        )),
+        Ok(Scope::RemoteAdmin) => Err(format!("{refusal}; choose from {}", held())),
         Ok(scope) => Ok(scope),
         Err(_) => Err(format!("unknown scope `{text}`; choose from {}", held())),
     }
@@ -436,6 +449,23 @@ pub struct ContextAdd {
     /// Take the token from `NYANPASU_TOKEN`.
     #[arg(long, requires = "url")]
     pub token_from_env: bool,
+}
+
+/// What the MCP server offers an agent. It always offers the read-only tools.
+#[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Also offer the tools of this scope; repeat for several. Limited to the scopes the
+    /// shell grants this caller, and `remote_admin` is never offered.
+    #[arg(
+        long = "scope",
+        value_name = "SCOPE",
+        value_parser = parse_mcp_scope
+    )]
+    pub scopes: Vec<Scope>,
+    /// Also offer a `call_method` tool for operations without a curated tool. It is bounded
+    /// by the same scopes and never reaches `remote_admin`.
+    #[arg(long)]
+    pub raw: bool,
 }
 
 #[derive(Debug, Args)]
@@ -567,6 +597,7 @@ impl Command {
             | Self::Methods
             | Self::Call(_)
             | Self::Context(_)
+            | Self::Mcp(_)
             | Self::Completion(_) => return Ok(None),
         };
         Ok(Some(plan))
@@ -644,6 +675,7 @@ mod tests {
             &["remote", "status"],
             &["call", "get_core_status"],
             &["context", "list"],
+            &["mcp"],
             &["completion", "bash"],
         ] {
             assert!(parse(arguments).command.plan().unwrap().is_none());
@@ -821,6 +853,36 @@ mod tests {
         };
         assert_eq!(create.scopes, [Scope::Read, Scope::System]);
         assert_eq!(create.expires_in, None);
+    }
+
+    #[test]
+    fn mcp_takes_extra_scopes_and_never_remote_admin() {
+        let Command::Mcp(args) =
+            parse(&["mcp", "--scope", "proxy", "--scope", "profile", "--raw"]).command
+        else {
+            panic!("an mcp command");
+        };
+        assert_eq!(args.scopes, [Scope::Proxy, Scope::Profile]);
+        assert!(args.raw);
+
+        let Command::Mcp(args) = parse(&["mcp"]).command else {
+            panic!("an mcp command");
+        };
+        assert!(args.scopes.is_empty() && !args.raw);
+
+        for arguments in [
+            &["mcp", "--scope", "remote_admin"][..],
+            &["mcp", "--scope", "everything"],
+            &["mcp", "--scope", "read", "--scope", "remote_admin", "--raw"],
+        ] {
+            assert!(
+                Cli::try_parse_from(
+                    std::iter::once("nyanpasu-cli").chain(arguments.iter().copied())
+                )
+                .is_err(),
+                "{arguments:?}"
+            );
+        }
     }
 
     #[test]

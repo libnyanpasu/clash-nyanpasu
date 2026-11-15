@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
     sync::{Arc, Mutex},
     thread,
 };
@@ -250,6 +250,118 @@ fn a_denied_scope_exits_four_before_anything_is_sent() {
         shell.received.lock().unwrap().len(),
         1,
         "only rpc_describe was sent"
+    );
+}
+
+/// Runs `nyanpasu-cli mcp` with `requests` on standard input, then closes it.
+fn mcp(config: &Path, url: &str, arguments: &[&str], requests: &[Value]) -> Output {
+    let mut child = cli(config)
+        .arg("mcp")
+        .args(arguments)
+        .env("NYANPASU_URL", url)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    for request in requests {
+        writeln!(stdin, "{request}").unwrap();
+    }
+    drop(stdin);
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn mcp_serves_stdio_with_nothing_but_protocol_on_standard_output() {
+    let shell = MockShell::start();
+    let directory = tempfile::tempdir().unwrap();
+    let output = mcp(
+        &directory.path().join("cli.toml"),
+        &shell.url(),
+        &[],
+        &[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                   "params": {"protocolVersion": "2025-06-18"}}),
+            json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                   "params": {"name": "status", "arguments": {}}}),
+            json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                   "params": {"name": "core_restart", "arguments": {}}}),
+        ],
+    );
+    assert_eq!(
+        code(&output),
+        0,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let replies: Vec<Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|_| panic!("not JSON-RPC: {line}")))
+        .collect();
+    assert_eq!(replies.len(), 4, "the notification gets no reply");
+    assert_eq!(replies[0]["result"]["serverInfo"]["name"], "nyanpasu-cli");
+    // The mock shell allows only the status method for a read-only token.
+    let tools: Vec<&str> = replies[1]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(tools, ["status", "conn_list"]);
+    assert_eq!(
+        replies[2]["result"]["content"][0]["text"],
+        r#"{"running":true,"core":"mihomo"}"#
+    );
+    assert!(
+        replies[3]["error"].is_object(),
+        "a tool outside the session is not callable"
+    );
+
+    // One process, one connection identity, and nothing but describe and the one call.
+    let received = shell.received.lock().unwrap().clone();
+    let methods: Vec<_> = received
+        .iter()
+        .map(|request| request.body["method"].as_str().unwrap())
+        .collect();
+    assert_eq!(methods, ["rpc_describe", "get_core_status_summary"]);
+}
+
+#[test]
+fn mcp_refuses_remote_admin_before_connecting_and_reports_an_unreachable_target() {
+    let shell = MockShell::start();
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("cli.toml");
+    for arguments in [
+        &["--scope", "remote_admin"][..],
+        &["--raw", "--scope", "read", "--scope", "remote_admin"],
+    ] {
+        let output = mcp(&config, &shell.url(), arguments, &[]);
+        assert_eq!(code(&output), 2, "{arguments:?}");
+        assert!(output.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("never offered over MCP"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(
+        shell.received.lock().unwrap().is_empty(),
+        "a usage error costs no connection"
+    );
+
+    let closed = {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap()
+    };
+    let output = mcp(&config, &format!("http://{closed}"), &[], &[]);
+    assert_eq!(code(&output), 3);
+    assert!(
+        output.stdout.is_empty(),
+        "no protocol output without a shell"
     );
 }
 

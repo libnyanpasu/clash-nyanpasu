@@ -46,4 +46,6 @@ nyanpasu-rpc = { path = '../nyanpasu-rpc', features = [
 ] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 tempfile = '3'
+# `start_paused` for the bounded waits of the MCP server.
+tokio = { workspace = true, features = ['test-util'] }
 tokio-util = '0.7'

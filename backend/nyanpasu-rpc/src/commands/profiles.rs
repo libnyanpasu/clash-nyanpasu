@@ -21,7 +21,7 @@ pub async fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Domain
 
 /// The profile structure without subscription URLs, request headers, external paths or
 /// descriptions. The full document is [`get_profiles`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub fn get_profiles_listing(client: RpcState<'_, NyanpasuClient>) -> ProfilesListing {
     client.get_profiles_listing()
@@ -42,7 +42,7 @@ pub async fn enhance_profiles(client: RpcState<'_, NyanpasuClient>) -> Result {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn import_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -197,7 +197,7 @@ pub async fn get_profile_sync_logs(
     Ok(client.profile_sync_logs(uid, run, after).await?)
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn update_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -220,7 +220,7 @@ pub async fn delete_profile(
     Ok(client.delete_profile(uid).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn activate_profile(
     client: RpcState<'_, NyanpasuClient>,

@@ -118,12 +118,12 @@ impl EventName {
         match self {
             Self::SchemeRequestReceived | Self::WindowMessage => DESKTOP_ONLY,
             Self::AppUpdateStateChanged
+            | Self::ClashWs
             | Self::ConfigurationStatusChanged
             | Self::CoreLogsChanged
             | Self::CoreStatusChanged
             | Self::ServiceStatusChanged => ALL_TARGETS,
-            Self::ClashWs
-            | Self::AppUpdateSummaryChanged
+            Self::AppUpdateSummaryChanged
             | Self::ConfigurationStatusSummaryChanged
             | Self::CoreLogsSummaryChanged
             | Self::CoreStatusSummaryChanged
@@ -220,6 +220,7 @@ mod tests {
             local,
             [
                 "app-update-state-changed",
+                "clash-ws-event",
                 "core-logs-changed",
                 "configuration-status-changed",
                 "core-status-changed-event",

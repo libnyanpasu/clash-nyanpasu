@@ -17,7 +17,7 @@ pub async fn get_clash_ws_snapshot(
     Ok(client.clash_ws_snapshot().await?)
 }
 
-#[nyanpasu_macro::rpc(http, result, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(local, http, result, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn query_core_logs(
     client: RpcState<'_, NyanpasuClient>,
@@ -70,7 +70,7 @@ pub async fn clear_core_logs(
     client.clear_core_logs().await.map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn get_traffic_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -129,7 +129,7 @@ pub async fn query_traffic_closed_connections(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn query_traffic_active_connection_ids(
     client: RpcState<'_, NyanpasuClient>,

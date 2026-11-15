@@ -126,7 +126,10 @@ fn current_contract_accepts_the_supported_previous_fixtures() {
         .filter(|command| command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)
         .collect();
-    assert_eq!(current_names, catalog);
+    assert!(
+        current_names.is_subset(&catalog),
+        "all contract-pinned typed operations must remain in the Local catalog"
+    );
     let added: BTreeSet<_> = current_names.difference(&previous_names).copied().collect();
     assert!(previous_names.is_subset(&current_names));
     assert_eq!(added, BTreeSet::from(["rpc_describe"]));

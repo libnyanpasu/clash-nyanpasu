@@ -101,10 +101,10 @@ HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
 embedded HTTP/local, uses interactive OS consent. The standalone server injects
 `RefuseElevation`; command metadata does not replace that execution policy.
-`patch_app_config` has no Local target, and neither dedicated command expands
-the fourteen-operation Local allowlist (the thirteen pre-authorization commands
-plus `rpc_describe`). `get_configuration_status` is a query;
-the two dedicated setters are mutations in the hand-maintained Specta metadata.
+`patch_app_config` has no Local target; the Local allowlist is listed under
+[Desktop local client and listener](#desktop-local-client-and-listener).
+`get_configuration_status` is a query; the two dedicated setters are mutations in
+the hand-maintained Specta metadata.
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, or `RpcAppUpdateOutcome`) and pass `privacy` on `#[nyanpasu_macro::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
@@ -536,7 +536,7 @@ Local dispatch and subscription admission enter the existing audit kernel at INF
 
 E2a moved the four shared HTTP response definitions with their commands before E2b extraction, and puts the shared `TrayIcon` value in protocol; shell asset operations become free functions. E1b completes the remaining downward projections and receiving closure. Runtime-values is an unconditional E2b policy member.
 
-E3 local subscriptions retain only full-value configuration, core and service status, app-update state when available, and core-log status, plus the separate connection-detail demand stream. Each retained event replaces the complete value it describes; subscription starts with a snapshot and local lag triggers a fresh reset. Tasks E3b lists the source evidence and payloads. Clash WS updates, state invalidations, storage changes/resync, deep links and window messages return the existing unknown-stream outcome and allocate no subscription. Their recovery requires a separately reviewed card; the deferred item records round-3 invalidation, storage mapping and watermark acceptance criteria. Connection-detail frames, negotiation, current-after-ack delivery, coalescing and demand release remain unchanged. Real local-connection reset tests cover only the five retained event identities, with no recovery queries or command-allowlist expansion. Tauri/SSE payloads and admission-only auditing are unchanged.
+E3 local subscriptions retain only full-value configuration, core and service status, app-update state when available, and core-log status, plus the separate connection-detail demand stream. Each retained event replaces the complete value it describes; subscription starts with a snapshot and local lag triggers a fresh reset. Tasks E3b lists the source evidence and payloads. State invalidations, storage changes/resync, deep links and window messages return the existing unknown-stream outcome and allocate no subscription. The Clash WS stream is the one packet stream the CLI follows: its subscription starts with a full `Reset` snapshot, forwards the published packets and resynchronizes from a fresh `Reset` after lag. Their recovery requires a separately reviewed card; the deferred item records round-3 invalidation, storage mapping and watermark acceptance criteria. Connection-detail frames, negotiation, current-after-ack delivery, coalescing and demand release remain unchanged. Real local-connection reset tests cover the five full-value identities and the Clash WS stream, with no recovery queries. Tauri/SSE payloads and admission-only auditing are unchanged.
 
 All E cards follow D2 → D3 → D4 → A2b, then E1a → E2 → E3 → E1b → E4. E4 installs a neutral process panic policy before any tasks start; HTTP/local/background-owner subprocess tests must demonstrate non-zero fatal exit with original panic evidence and no synthesized RPC error. E4's separately composed server supplies `RefuseElevation` to service, DNS and binary-install adapters and tests config-driven service changes, runtime retry, compensation and copy fallback. Embedded desktop WebUI policy is unchanged; per-call authority remains outside O-5's scope. E5/OpenWrt and ticket-based LAN login remain paused. Existing frontend transport code, command/event wire shapes and all three generated bindings remain unchanged by E1a–E4.
 
@@ -670,16 +670,28 @@ E4d's consecutive-process session acceptance remain separate work.
 
 The local command allowlist is exactly:
 
-- `get_profiles`, `create_profile`, `delete_profile`, `read_profile_file`
-- `get_configuration_status`, `get_core_status`
-- `get_storage_item`, `set_storage_item`, `remove_storage_item`
-- `list_log_files`, `open_log_session`, `query_logs`, `close_log_session`
+- profiles: `get_profiles`, `get_profiles_listing`, `create_profile`, `delete_profile`,
+  `activate_profile`, `update_profile`, `import_profile`, `read_profile_file`
+- status: `get_configuration_status`, `get_configuration_status_summary`,
+  `get_core_status`, `get_core_status_summary`
+- settings and core: `get_app_settings`, `get_clash_settings`, `set_proxy_mode`,
+  `patch_system_settings`, `patch_clash_system_config`, `change_clash_core`,
+  `restart_sidecar`, `get_sys_proxy`
+- proxies and connections: `get_proxies`, `select_proxy`, `clash_api_get_proxy_delay`,
+  `clash_api_get_group_delay`, `clash_api_delete_connections`, `clash_api_get_version`,
+  `query_traffic_active_connection_ids`, `get_traffic_summary`
+- logs and storage: `query_core_logs`, `list_log_files`, `open_log_session`,
+  `query_logs`, `close_log_session`, `get_storage_item`, `set_storage_item`,
+  `remove_storage_item`
 - `rpc_describe`
 
 These declarations reuse shared handlers and retain the existing HTTP exposure.
-Profile mutations retain optional runtime/service/elevation effects. Known commands
-outside this list return `unsupported`; expanding it requires a separate behavior
-card. Event/details subscriptions use control frames, not native Channel commands.
+The local principal holds every scope except `remote_admin`, which no Local command
+declares. Mutations retain their optional runtime/service/elevation effects. Known
+commands outside this list return `unsupported`; expanding it requires a separate
+behavior card. The CLI's `config patch` relies on `patch_app_config`, which stays
+HTTP and Desktop only, so over the socket it reports `unsupported`. Event/details
+subscriptions use control frames, not native Channel commands.
 
 `LocalClient::connect(path, timeout)` negotiates an explicit Unix socket or Windows
 pipe. One task owns its byte stream, incremental decoder and bounded request queue;

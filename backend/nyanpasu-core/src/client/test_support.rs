@@ -49,9 +49,25 @@ use nyanpasu_contracts::{
         MockSubscriptionFetcher, PreparedCleanup, PreparedMaterialization,
         ProfileMaterializationPort,
     },
-    system_proxy::MockOsProxyPort,
+    system_proxy::{MockOsProxyPort, OsProxyConfig},
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
+
+/// An OS proxy that reads as disabled. Reads are safe for a local caller to reach, so a
+/// test that dispatches one must not panic on a mock without expectations; writes stay
+/// unexpected.
+fn idle_os_proxy() -> MockOsProxyPort {
+    let mut os_proxy = MockOsProxyPort::new();
+    os_proxy.expect_get().returning(|| {
+        Ok(OsProxyConfig {
+            enable: false,
+            host: String::new(),
+            port: 0,
+            bypass: String::new(),
+        })
+    });
+    os_proxy
+}
 
 pub struct TestControlEndpoint {
     /// Which host this endpoint claims to be. A graph that moves the
@@ -802,7 +818,7 @@ pub async fn test_client_args_with_endpoint(
         system_dns: Arc::new(NoopSystemDnsCache),
         direct_egress: Arc::new(MockDirectEgressProbe::new()),
         geo_index: Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
-        os_proxy: Arc::new(MockOsProxyPort::new()),
+        os_proxy: Arc::new(idle_os_proxy()),
         binary_installer: Arc::new(Installer::succeeding()),
         core_versions: Arc::new(core_version::MockCoreVersionReader::new()),
         effects: Arc::new(effects::ports::NoopApplicationEffects),

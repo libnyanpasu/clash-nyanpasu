@@ -246,12 +246,54 @@ mod tests {
                 .unwrap();
             assert!(command.targets.contains(&RpcTarget::Http), "{name}");
         }
+        let mut local: Vec<_> = COMMAND_CATALOG
+            .iter()
+            .filter(|command| command.targets.contains(&RpcTarget::Local))
+            .map(|command| command.name)
+            .collect();
+        local.sort_unstable();
+        assert_eq!(local.len(), 37);
         assert_eq!(
-            COMMAND_CATALOG
-                .iter()
-                .filter(|command| command.targets.contains(&RpcTarget::Local))
-                .count(),
-            14
+            local,
+            [
+                "activate_profile",
+                "change_clash_core",
+                "clash_api_delete_connections",
+                "clash_api_get_group_delay",
+                "clash_api_get_proxy_delay",
+                "clash_api_get_version",
+                "close_log_session",
+                "create_profile",
+                "delete_profile",
+                "get_app_settings",
+                "get_clash_settings",
+                "get_configuration_status",
+                "get_configuration_status_summary",
+                "get_core_status",
+                "get_core_status_summary",
+                "get_profiles",
+                "get_profiles_listing",
+                "get_proxies",
+                "get_storage_item",
+                "get_sys_proxy",
+                "get_traffic_summary",
+                "import_profile",
+                "list_log_files",
+                "open_log_session",
+                "patch_clash_system_config",
+                "patch_system_settings",
+                "query_core_logs",
+                "query_logs",
+                "query_traffic_active_connection_ids",
+                "read_profile_file",
+                "remove_storage_item",
+                "restart_sidecar",
+                "rpc_describe",
+                "select_proxy",
+                "set_proxy_mode",
+                "set_storage_item",
+                "update_profile",
+            ]
         );
         let patch = COMMAND_CATALOG
             .iter()

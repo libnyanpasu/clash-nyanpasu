@@ -39,7 +39,7 @@ pub fn get_configuration_status(
 }
 
 /// Convergence health, retry state and operation and source IDs, without diagnostic text.
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub fn get_configuration_status_summary(
     client: RpcState<'_, NyanpasuClient>,

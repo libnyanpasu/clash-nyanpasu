@@ -925,6 +925,7 @@ fn local_session_bounds_streams_and_correlates_control_errors() {
                 | "service-status-changed-event"
                 | "app-update-state-changed"
                 | "core-logs-changed"
+                | "clash-ws-event"
         ) {
             assert!(result.is_none());
         } else {

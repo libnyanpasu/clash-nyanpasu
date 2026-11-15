@@ -120,6 +120,8 @@ impl Shell {
             home: None,
             executable: None,
             skill_dir: None,
+            appimage: None,
+            search_path: None,
         };
         let socket = self.socket.display().to_string();
         let mut full = vec!["nyanpasu-cli", "--config"];

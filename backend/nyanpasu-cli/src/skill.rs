@@ -7,11 +7,15 @@
 //! fallback when symlinks are not permitted.
 
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
 };
 
-use crate::{cli::Agent, error::CliError};
+use crate::{
+    cli::Agent,
+    error::CliError,
+    placement::{Placed, copy_directory, io_failure, place_link},
+};
 
 /// The skill's folder name, which is also the CLI's executable name.
 pub const SKILL_NAME: &str = "nyanpasu-cli";
@@ -94,30 +98,6 @@ pub enum InstallOutcome {
     Copied(PathBuf),
 }
 
-#[cfg(unix)]
-fn link(source: &Path, destination: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(source, destination)
-}
-
-#[cfg(windows)]
-fn link(source: &Path, destination: &Path) -> io::Result<()> {
-    std::os::windows::fs::symlink_dir(source, destination)
-}
-
-fn copy_directory(source: &Path, destination: &Path) -> io::Result<()> {
-    fs::create_dir_all(destination)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let target = destination.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_directory(&entry.path(), &target)?;
-        } else {
-            fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
-}
-
 /// Links `source` into `agent_directory` under the skill's name.
 ///
 /// An existing entry is never overwritten, except that `force` replaces a symlink.
@@ -129,57 +109,19 @@ pub fn install(
     agent_directory: &Path,
     force: bool,
 ) -> Result<InstallOutcome, CliError> {
-    let io_failure = |action: &str, path: &Path, error: io::Error| {
-        CliError::failed(format!("cannot {action} {}: {error}", path.display()))
-    };
     fs::create_dir_all(agent_directory)
         .map_err(|error| io_failure("create", agent_directory, error))?;
     let destination = agent_directory.join(SKILL_NAME);
-    match fs::symlink_metadata(&destination) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            if fs::read_link(&destination).is_ok_and(|current| current == source) {
-                return Ok(InstallOutcome::AlreadyLinked(destination));
-            }
-            // A link whose target is gone belongs to an app that was moved, updated or, for an
-            // AppImage, unmounted: it is stale rather than anyone's choice, so it is replaced.
-            if !force && destination.exists() {
-                return Err(CliError::failed(format!(
-                    "{} is a link to somewhere else; pass --force to replace it",
-                    destination.display()
-                )));
-            }
-            remove_link(&destination)
-                .map_err(|error| io_failure("replace", &destination, error))?;
-        }
-        Ok(_) => {
-            return Err(CliError::failed(format!(
-                "{} already exists and is not a link; remove it first",
-                destination.display()
-            )));
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(io_failure("inspect", &destination, error)),
-    }
-    match link(source, &destination) {
-        Ok(()) => Ok(InstallOutcome::Linked(destination)),
-        Err(_) if cfg!(windows) => {
+    match place_link(source, &destination, force)? {
+        Placed::Linked => Ok(InstallOutcome::Linked(destination)),
+        Placed::AlreadyLinked => Ok(InstallOutcome::AlreadyLinked(destination)),
+        Placed::Refused(_) if cfg!(windows) => {
             copy_directory(source, &destination)
                 .map_err(|error| io_failure("copy the skill to", &destination, error))?;
             Ok(InstallOutcome::Copied(destination))
         }
-        Err(error) => Err(io_failure("link", &destination, error)),
+        Placed::Refused(error) => Err(io_failure("link", &destination, error)),
     }
-}
-
-#[cfg(unix)]
-fn remove_link(path: &Path) -> io::Result<()> {
-    fs::remove_file(path)
-}
-
-#[cfg(windows)]
-fn remove_link(path: &Path) -> io::Result<()> {
-    // A directory symlink is removed as a directory on Windows.
-    fs::remove_dir(path).or_else(|_| fs::remove_file(path))
 }
 
 #[cfg(test)]
@@ -319,7 +261,10 @@ mod tests {
         let text: String = SKILL_FILES.iter().map(|(_, text)| *text).collect();
         for command in crate::cli::Cli::command().get_subcommands() {
             let name = command.get_name();
-            if matches!(name, "help" | "mcp" | "context" | "skill" | "completion") {
+            if matches!(
+                name,
+                "help" | "mcp" | "context" | "install" | "skill" | "completion"
+            ) {
                 continue;
             }
             assert!(

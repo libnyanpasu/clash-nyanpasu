@@ -17,12 +17,24 @@ pub mod credentials;
 pub mod describe;
 pub mod endpoint;
 pub mod error;
+pub mod install;
 pub mod mcp;
 pub mod output;
+pub mod placement;
 pub mod remote;
 pub mod skill;
 pub mod target;
 pub mod transport;
+
+/// The AppImage this process runs from, when it does and a stable directory exists to copy to.
+fn appimage() -> Option<install::AppImage> {
+    let set = |name| std::env::var_os(name).filter(|value| !value.is_empty());
+    set("APPIMAGE")?;
+    Some(install::AppImage {
+        mount: PathBuf::from(set("APPDIR")?),
+        standalone_dir: dirs::data_dir()?.join("nyanpasu-cli"),
+    })
+}
 
 /// Parses the process arguments, runs the command and returns its exit code.
 ///
@@ -45,6 +57,8 @@ pub async fn run_process() -> ExitCode {
         connector: app::RealConnector,
         home: dirs::home_dir(),
         executable: std::env::current_exe().ok(),
+        appimage: appimage(),
+        search_path: std::env::var_os("PATH"),
         skill_dir: std::env::var_os("NYANPASU_SKILL_DIR")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from),

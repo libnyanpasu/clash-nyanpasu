@@ -86,7 +86,11 @@ pub enum Command {
     Context(ContextCommand),
     /// Serve the curated operations as an MCP server over standard input and output.
     Mcp(McpArgs),
-    /// Find the agent skill or link it into an agent's skill directory.
+    /// Link this executable into a directory on your `PATH`. Needed for the macOS app and an
+    /// AppImage; the Windows installer and the Linux packages already put it there.
+    Install(InstallArgs),
+    /// Find the agent skill or link it into an agent's skill directory. In an AppImage the
+    /// skill is first copied out of the temporary mount, which disappears with the app.
     #[command(subcommand)]
     Skill(SkillCommand),
     /// Print a shell completion script.
@@ -475,6 +479,16 @@ pub struct McpArgs {
     pub raw: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct InstallArgs {
+    /// The directory to link into, which should be on `PATH` [default: ~/.local/bin].
+    #[arg(long, value_name = "DIR")]
+    pub dir: Option<PathBuf>,
+    /// Replace an existing link that points somewhere else.
+    #[arg(long)]
+    pub force: bool,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum SkillCommand {
     /// Print the folder that holds the agent skill.
@@ -631,6 +645,7 @@ impl Command {
             | Self::Call(_)
             | Self::Context(_)
             | Self::Mcp(_)
+            | Self::Install(_)
             | Self::Skill(_)
             | Self::Completion(_) => return Ok(None),
         };
@@ -710,6 +725,7 @@ mod tests {
             &["call", "get_core_status"],
             &["context", "list"],
             &["mcp"],
+            &["install"],
             &["skill", "path"],
             &["completion", "bash"],
         ] {

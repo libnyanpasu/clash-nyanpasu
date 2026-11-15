@@ -16,7 +16,6 @@ import ConfigurationStatus from './_modules/configuration-status'
 import CrashSimulation from './_modules/crash-simulation'
 import { useDebugContext } from './_modules/debug-provider'
 import ErrorReportingDebug from './_modules/error-reporting-debug'
-import HttpServer from './_modules/http-server'
 import KVStorage from './_modules/kv-storage'
 import MockConnectionsSwitch from './_modules/mock-connections-switch'
 import MockTrafficSwitch from './_modules/mock-traffic-switch'
@@ -68,7 +67,6 @@ const AdvanceToolsSettings = () => {
 
               <ChangelogPreview />
 
-              <HttpServer />
               {import.meta.env.DEV && <MockConnectionsSwitch />}
               {import.meta.env.DEV && <MockTrafficSwitch />}
             </>

@@ -130,3 +130,29 @@ test('a caller that may not read secrets is not offered the pages that need them
     expect(item(view, label).query()).toBeNull()
   }
 })
+
+test('Remote Access is offered to the desktop app alone', async () => {
+  const desktop = await renderAt('/main/settings/debug')
+  await expect
+    .element(item(desktop, m.settings_label_remote_access_description()))
+    .toBeInTheDocument()
+  await desktop.unmount()
+
+  // A browser token holding every scope still has no remote administration.
+  const browser = await renderAt(
+    '/main/settings/debug',
+    withScopes([
+      'read',
+      'sensitive_read',
+      'settings',
+      'system',
+      'remote_admin',
+    ]),
+  )
+  await expect
+    .element(item(browser, m.settings_label_proxy_description()))
+    .toBeInTheDocument()
+  expect(
+    item(browser, m.settings_label_remote_access_description()).query(),
+  ).toBeNull()
+})

@@ -10,6 +10,7 @@ import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import ReceiptLongRounded from '~icons/material-symbols/receipt-long-rounded'
+import RouterRounded from '~icons/material-symbols/router-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
@@ -242,6 +243,16 @@ export default function SettingsNavigate() {
           label={m.settings_label_updates()}
           description={m.settings_label_updates_description()}
         />
+
+        <RequireCapability scope="remote_admin">
+          <SettingsNavigationItem
+            to="/main/settings/nyanpasu/remote-access"
+            color="green"
+            icon={<RouterRounded />}
+            label={m.settings_label_remote_access()}
+            description={m.settings_label_remote_access_description()}
+          />
+        </RequireCapability>
 
         <SettingsNavigationItem
           to="/main/settings/debug"

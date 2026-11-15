@@ -1,4 +1,7 @@
-//! Desktop-only remote-access administration commands.
+//! Remote-access administration commands.
+//!
+//! They are reachable from the desktop shell and the same-user local socket, never over HTTP:
+//! `remote_admin` is not a scope any bearer token or browser session can hold.
 
 use nyanpasu_contracts::auth::{
     AccessTokenSummary, BrowserSessionSummary,
@@ -29,7 +32,7 @@ pub struct CreatedRemoteAccessToken {
     pub token: String,
 }
 
-#[nyanpasu_macro::rpc(query, scope = remote_admin)]
+#[nyanpasu_macro::rpc(local, query, scope = remote_admin)]
 #[specta::specta]
 pub async fn list_remote_access_tokens(
     client: RpcState<'_, NyanpasuClient>,
@@ -37,7 +40,7 @@ pub async fn list_remote_access_tokens(
     Ok(client.list_remote_access_tokens().await?)
 }
 
-#[nyanpasu_macro::rpc(scope = remote_admin)]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn create_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -56,7 +59,7 @@ pub async fn create_remote_access_token(
     })
 }
 
-#[nyanpasu_macro::rpc(scope = remote_admin)]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn revoke_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -65,7 +68,7 @@ pub async fn revoke_remote_access_token(
     Ok(client.revoke_remote_access_token(id).await?)
 }
 
-#[nyanpasu_macro::rpc(query, scope = remote_admin)]
+#[nyanpasu_macro::rpc(local, query, scope = remote_admin)]
 #[specta::specta]
 pub async fn list_remote_browser_sessions(
     client: RpcState<'_, NyanpasuClient>,
@@ -73,7 +76,7 @@ pub async fn list_remote_browser_sessions(
     Ok(client.list_remote_browser_sessions().await?)
 }
 
-#[nyanpasu_macro::rpc(scope = remote_admin)]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn revoke_remote_browser_session(
     client: RpcState<'_, NyanpasuClient>,

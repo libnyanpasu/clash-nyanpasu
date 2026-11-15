@@ -251,6 +251,15 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "query_logs",
         "close_log_session",
         "rpc_describe",
+        "patch_app_config",
+        "get_http_server_status",
+        "get_local_socket_status",
+        "set_remote_access",
+        "list_remote_access_tokens",
+        "create_remote_access_token",
+        "revoke_remote_access_token",
+        "list_remote_browser_sessions",
+        "revoke_remote_browser_session",
     ];
     expected.sort_unstable();
     let mut actual: Vec<_> = COMMAND_CATALOG
@@ -272,8 +281,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "get_all_storage_items",
         "subscribe_clash_connection_details",
         "quit_application",
-        "patch_app_config",
-        "set_remote_access",
+        "create_http_launch_url",
     ] {
         assert!(
             matches!(peer.client.call(name, Value::Null).await.unwrap(), Reply::Error(error) if error["kind"] == "unsupported"),

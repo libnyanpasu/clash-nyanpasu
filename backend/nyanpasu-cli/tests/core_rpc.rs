@@ -32,10 +32,6 @@ use nyanpasu_single_instance::endpoint::{Endpoint, EndpointListener};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-/// Curated operations the local allowlist deliberately does not expose. Each is still a
-/// valid HTTP command; over the socket the CLI reports `unsupported` instead of calling.
-const NOT_ON_THE_LOCAL_SOCKET: &[&str] = &["config_patch"];
-
 const WATCHDOG: Duration = Duration::from_secs(30);
 
 struct Shell {
@@ -135,17 +131,6 @@ async fn every_curated_command_reaches_a_real_local_handler() {
         let Invocation::Method(method) = command.invocation else {
             continue;
         };
-        if NOT_ON_THE_LOCAL_SOCKET.contains(&command.name) {
-            assert!(
-                matches!(
-                    capabilities.require(method),
-                    Err(CliError::Unsupported { .. })
-                ),
-                "{} is expected to be unsupported over the socket",
-                command.name
-            );
-            continue;
-        }
         capabilities
             .require(method)
             .unwrap_or_else(|error| panic!("{} ({method}): {error}", command.name));
@@ -175,7 +160,11 @@ async fn an_uncurated_command_outside_the_allowlist_is_refused_by_the_shell() {
     let transport = RealConnector.connect(&shell.target(), None).await.unwrap();
     let capabilities =
         Capabilities::from_json(transport.call(DESCRIBE_METHOD, json!({})).await.unwrap()).unwrap();
-    for method in ["set_remote_access", "patch_app_config", "get_app_config"] {
+    for method in [
+        "get_app_config",
+        "patch_clash_config",
+        "create_http_launch_url",
+    ] {
         assert!(
             matches!(
                 capabilities.require(method),
@@ -194,21 +183,34 @@ async fn an_uncurated_command_outside_the_allowlist_is_refused_by_the_shell() {
 }
 
 #[tokio::test]
-async fn the_local_principal_describes_itself_without_exposing_remote_admin() {
+async fn the_local_principal_holds_remote_admin_for_its_reviewed_commands_only() {
     let shell = Shell::start().await;
     let transport = RealConnector.connect(&shell.target(), None).await.unwrap();
     let described = transport.call(DESCRIBE_METHOD, json!({})).await.unwrap();
     assert_eq!(described["transport"], "local");
     assert_eq!(described["principal"]["kind"], "local_socket");
     let capabilities = Capabilities::from_json(described).unwrap();
-    for command in capabilities.commands() {
-        assert_ne!(
-            command.scope,
-            Scope::RemoteAdmin,
-            "{} is remote_admin and must stay off the local socket",
-            command.name
-        );
-    }
+    assert!(capabilities.holds(Scope::RemoteAdmin));
+    let mut administration: Vec<_> = capabilities
+        .commands()
+        .iter()
+        .filter(|command| command.scope == Scope::RemoteAdmin)
+        .map(|command| command.name.as_str())
+        .collect();
+    administration.sort_unstable();
+    assert_eq!(
+        administration,
+        [
+            "create_remote_access_token",
+            "get_local_socket_status",
+            "list_remote_access_tokens",
+            "list_remote_browser_sessions",
+            "revoke_remote_access_token",
+            "revoke_remote_browser_session",
+            "set_remote_access",
+        ],
+        "the launch URL is a browser credential and stays with the desktop"
+    );
     shell.stop().await;
 }
 

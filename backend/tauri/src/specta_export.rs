@@ -50,6 +50,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         schema_commands![
             commands::describe::rpc_describe,
             commands::status::get_http_server_status,
+            commands::status::get_local_socket_status,
             commands::status::get_configuration_status,
             commands::status::get_configuration_status_summary,
             commands::status::get_service_status_summary,

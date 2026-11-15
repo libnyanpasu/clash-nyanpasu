@@ -142,11 +142,22 @@ mod tests {
         );
     }
 
+    /// `remote_admin` belongs to the desktop shell and the same-user local socket. HTTP never
+    /// offers it, because no bearer token or browser session can hold the scope.
     #[test]
-    fn remote_administration_is_never_a_remote_command() {
+    fn remote_administration_is_never_an_http_command() {
         for command in COMMAND_CATALOG {
             if command.scope == Scope::RemoteAdmin {
-                assert_eq!(command.targets, &[RpcTarget::Desktop], "{}", command.name);
+                assert!(
+                    command.targets.contains(&RpcTarget::Desktop),
+                    "{}",
+                    command.name
+                );
+                assert!(
+                    !command.targets.contains(&RpcTarget::Http),
+                    "{} must not expose HTTP",
+                    command.name
+                );
             }
         }
         assert_eq!(
@@ -154,6 +165,21 @@ mod tests {
             [
                 "create_http_launch_url",
                 "create_remote_access_token",
+                "get_local_socket_status",
+                "list_remote_access_tokens",
+                "list_remote_browser_sessions",
+                "revoke_remote_access_token",
+                "revoke_remote_browser_session",
+                "set_remote_access",
+            ]
+        );
+        // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
+        assert_eq!(
+            names(|command| command.scope == Scope::RemoteAdmin
+                && command.targets.contains(&RpcTarget::Local)),
+            [
+                "create_remote_access_token",
+                "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
                 "revoke_remote_access_token",
@@ -252,7 +278,7 @@ mod tests {
             .map(|command| command.name)
             .collect();
         local.sort_unstable();
-        assert_eq!(local.len(), 37);
+        assert_eq!(local.len(), 46);
         assert_eq!(
             local,
             [
@@ -264,6 +290,7 @@ mod tests {
                 "clash_api_get_version",
                 "close_log_session",
                 "create_profile",
+                "create_remote_access_token",
                 "delete_profile",
                 "get_app_settings",
                 "get_clash_settings",
@@ -271,6 +298,8 @@ mod tests {
                 "get_configuration_status_summary",
                 "get_core_status",
                 "get_core_status_summary",
+                "get_http_server_status",
+                "get_local_socket_status",
                 "get_profiles",
                 "get_profiles_listing",
                 "get_proxies",
@@ -279,7 +308,10 @@ mod tests {
                 "get_traffic_summary",
                 "import_profile",
                 "list_log_files",
+                "list_remote_access_tokens",
+                "list_remote_browser_sessions",
                 "open_log_session",
+                "patch_app_config",
                 "patch_clash_system_config",
                 "patch_system_settings",
                 "query_core_logs",
@@ -288,9 +320,12 @@ mod tests {
                 "read_profile_file",
                 "remove_storage_item",
                 "restart_sidecar",
+                "revoke_remote_access_token",
+                "revoke_remote_browser_session",
                 "rpc_describe",
                 "select_proxy",
                 "set_proxy_mode",
+                "set_remote_access",
                 "set_storage_item",
                 "update_profile",
             ]
@@ -299,7 +334,7 @@ mod tests {
             .iter()
             .find(|command| command.name == "patch_app_config")
             .unwrap();
-        assert!(!patch.targets.contains(&RpcTarget::Local));
+        assert!(patch.targets.contains(&RpcTarget::Local));
         assert!(
             !patch
                 .optional_capabilities

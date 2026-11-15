@@ -26,6 +26,14 @@ export function createRpcClient(
       typedError<HttpServerStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_http_server_status'),
       ),
+    /**
+     *  The local socket's state. Its endpoint is a filesystem path, so only a remote administrator
+     *  reads it, and it is never offered over HTTP.
+     */
+    getLocalSocketStatus: () =>
+      typedError<LocalSocketStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_local_socket_status'),
+      ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
@@ -854,8 +862,9 @@ export function createRpcClient(
         __RPC_INVOKE('set_service_mode', { enabled }),
       ),
     /**
-     *  Remote access widens who can reach the application, so it has its own desktop-only command;
-     *  `patch_app_config` rejects the section.
+     *  Remote access widens who can reach the application, so it has its own command, reachable from
+     *  the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
+     *  section.
      */
     setRemoteAccess: (config: RemoteAccessConfig) =>
       typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
@@ -3709,6 +3718,19 @@ export type LocalSocketControlError =
   | { kind: 'read_status_unsupported' }
   | { kind: 'change_unsupported' }
   | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type LocalSocketFault =
+  /**  The listener could not be bound. */
+  'bind_failed'
+
+/**  The local-socket listener's state. */
+export type LocalSocketStatus = {
+  enabled: boolean
+  /**  The bound endpoint path or pipe name when running. */
+  endpoint: string | null
+  fault: LocalSocketFault | null
+}
 
 export type LogCursor = {
   generation: string

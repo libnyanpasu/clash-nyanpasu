@@ -62,10 +62,20 @@ pub fn retry_configuration_effect(
     Ok(client.retry_effect_now(kind)?)
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(http_server), query)]
+#[nyanpasu_macro::rpc(http, local, capabilities(http_server), query)]
 #[specta::specta]
 pub async fn get_http_server_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_core::client::http_server::HttpServerStatus> {
     Ok(client.http_server_status().await?)
+}
+
+/// The local socket's state. Its endpoint is a filesystem path, so only a remote administrator
+/// reads it, and it is never offered over HTTP.
+#[nyanpasu_macro::rpc(local, query, scope = remote_admin)]
+#[specta::specta]
+pub async fn get_local_socket_status(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_core::client::local_socket::LocalSocketStatus> {
+    Ok(client.local_socket_status().await?)
 }

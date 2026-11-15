@@ -151,7 +151,7 @@ pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<Nyan
 }
 
 /// Patch the ordinary application preferences.
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,

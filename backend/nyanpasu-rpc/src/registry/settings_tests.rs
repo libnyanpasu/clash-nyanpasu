@@ -185,9 +185,9 @@ async fn command_scope_is_identical_across_rpc_transports() {
         .rpc
         .call(
             RpcTransport::Local,
-            "patch_app_config",
+            "patch_clash_config",
             RpcCaller::desktop("scope"),
-            json!({"patch": {"proxy_layout_column": 7}}),
+            json!({"patch": {}}),
         )
         .await
         .unwrap_err();

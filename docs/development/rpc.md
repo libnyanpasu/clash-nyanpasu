@@ -71,7 +71,8 @@ fields. For an ordinary field `null` is a no-op; only the double-option fields
 schema is derived from the fields of the request type and never advertises a field of
 another class.
 
-`remote_access` is written only by `set_remote_access`, a Desktop-only (`scope = remote_admin`) mutation that
+`remote_access` is written only by `set_remote_access`, a `scope = remote_admin` mutation reachable
+from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
 them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
 `local_open_scopes` changes), and a listener that cannot follow is a
@@ -80,13 +81,15 @@ them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
 `local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
-scopes) before activating a listener. `get_http_server_status` is HTTP-exposed and
-never carries a credential; launch URLs, access tokens, and browser sessions are managed
-through desktop-only `scope = remote_admin` commands in
-`nyanpasu-rpc/src/commands/remote_access.rs` (`create_http_launch_url`,
-`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
-`list_remote_browser_sessions`, `revoke_remote_browser_session`). `create_http_launch_url`
-is a mutation so launch codes are not kept in a client cache.
+scopes) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
+`remote_admin` query on Desktop and Local only. Access tokens and browser sessions are managed
+through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
+(`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
+`list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
+socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
+`create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
+launch codes are not kept in a client cache.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
 `patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
@@ -101,7 +104,7 @@ HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
 embedded HTTP/local, uses interactive OS consent. The standalone server injects
 `RefuseElevation`; command metadata does not replace that execution policy.
-`patch_app_config` has no Local target; the Local allowlist is listed under
+The Local allowlist, which includes `patch_app_config`, is listed under
 [Desktop local client and listener](#desktop-local-client-and-listener).
 `get_configuration_status` is a query; the two dedicated setters are mutations in
 the hand-maintained Specta metadata.
@@ -265,9 +268,10 @@ Specta query/mutation groups that become the frontend bindings are checked again
   domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
 - Scope is independent of target. `scope = system` never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
-  capability admission still apply. `remote_admin` commands are Desktop-only.
+  capability admission still apply. `remote_admin` commands are never HTTP: only Desktop and
+  the same-user local socket, whose principal holds every scope, may call them.
 - The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
-  Desktop-only `remote_admin` set, so changing any of them is a reviewed change.
+  `remote_admin` set with its Local subset, so changing any of them is a reviewed change.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -675,8 +679,11 @@ The local command allowlist is exactly:
 - status: `get_configuration_status`, `get_configuration_status_summary`,
   `get_core_status`, `get_core_status_summary`
 - settings and core: `get_app_settings`, `get_clash_settings`, `set_proxy_mode`,
-  `patch_system_settings`, `patch_clash_system_config`, `change_clash_core`,
-  `restart_sidecar`, `get_sys_proxy`
+  `patch_app_config`, `patch_system_settings`, `patch_clash_system_config`,
+  `change_clash_core`, `restart_sidecar`, `get_sys_proxy`
+- remote access: `get_http_server_status`, `get_local_socket_status`, `set_remote_access`,
+  `list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
+  `list_remote_browser_sessions`, `revoke_remote_browser_session`
 - proxies and connections: `get_proxies`, `select_proxy`, `clash_api_get_proxy_delay`,
   `clash_api_get_group_delay`, `clash_api_delete_connections`, `clash_api_get_version`,
   `query_traffic_active_connection_ids`, `get_traffic_summary`
@@ -685,13 +692,17 @@ The local command allowlist is exactly:
   `remove_storage_item`
 - `rpc_describe`
 
-These declarations reuse shared handlers and retain the existing HTTP exposure.
-The local principal holds every scope except `remote_admin`, which no Local command
-declares. Mutations retain their optional runtime/service/elevation effects. Known
-commands outside this list return `unsupported`; expanding it requires a separate
-behavior card. The CLI's `config patch` relies on `patch_app_config`, which stays
-HTTP and Desktop only, so over the socket it reports `unsupported`. Event/details
-subscriptions use control frames, not native Channel commands.
+These declarations reuse shared handlers and retain the existing HTTP exposure, except
+that the `remote_admin` commands are never HTTP. The local principal is the same OS user
+that owns the application and holds every scope, `remote_admin` included; this is what lets
+`nyanpasu-cli remote` administer the HTTP server, the socket, tokens and sessions, while
+tokens and browser sessions can never hold it. Mutations retain their optional
+runtime/service/elevation effects. Known commands outside this list return `unsupported`;
+expanding it requires a separate behavior card. `patch_app_config` is Local, with the same
+`ApplicationPreferencesPatch` contract as on the other transports, so the CLI's `config patch`
+works over the socket. Disabling the socket through the socket itself stops admission at once
+and finishes the drain in the background, so the reply to that call is still delivered.
+Event/details subscriptions use control frames, not native Channel commands.
 
 `LocalClient::connect(path, timeout)` negotiates an explicit Unix socket or Windows
 pipe. One task owns its byte stream, incremental decoder and bounded request queue;

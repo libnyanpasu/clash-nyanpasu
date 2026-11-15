@@ -74,14 +74,14 @@ another class.
 `remote_access` is written only by `set_remote_access`, a `scope = remote_admin` mutation reachable
 from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
-them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
-`local_open_scopes` changes), and a listener that cannot follow is a
+them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, `lan_bind`, `tls`,
+`local_open_scopes` or certificate changes), and a listener that cannot follow is a
 `http_server_unavailable` degradation, never a rollback. A single serial owner
 (`RemoteAccessClient` in core) runs the whole operation, so concurrent edits cannot
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
 `local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
-scopes) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+scopes, and `lan_authenticated` without `tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
 `remote_admin` query on Desktop and Local only. Access tokens and browser sessions are managed
 through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
@@ -90,6 +90,27 @@ through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_acc
 socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
 `create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
 launch codes are not kept in a client cache.
+
+`tls: self_signed` serves HTTPS with the application's own certificate. The remote-access
+authentication owner generates it on first use (an `HttpTlsIdentitySource` port, installed late
+like the authenticator; `nyanpasu-os` implements the generator) and keeps it with the token hashes
+in `auth-secrets.json`; it is replaced only on expiry or by `reset_remote_access_tls`
+(`remote_admin`, Desktop and Local only), because a new certificate breaks every pinned client.
+A listener that must serve HTTPS and has no usable certificate, or one it cannot build a TLS
+configuration from, stops with the `tls_unavailable` fault; it never falls back to plain HTTP, and
+`reset_remote_access_tls` repairs it. A certificate is valid from one day before it was made, so a
+device whose clock runs behind does not reject it. The certificate keeps the addresses it covers,
+and the status reports `bind_outside_certificate` when `lan_bind` names one it does not. `get_http_server_status` carries the certificate's SHA-256
+fingerprint and expiry, which are public to every TLS client. `lan_authenticated` binds `lan_bind`
+(every IPv4 interface when unset), always serves HTTPS and requires a credential from every caller,
+loopback peers included. Its `Host` policy accepts an IP literal on the bound port or a name the
+certificate covers (`localhost`, the host name and `<host>.local`); a `Host` without a port names
+the scheme's default port (443 under TLS), as browsers send it; HTTP/2 carries the authority as
+`:authority` instead of `Host`, so the policy reads either and refuses a request in which they
+differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the fingerprint per context
+(`context add --fingerprint`, or an interactive trust on first use that prints it), sends nothing,
+not even the token, to a server with another certificate, and exits with status 4. `nyanpasu-server`
+keeps its plain loopback listener.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
 `patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
@@ -366,7 +387,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
 - Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given `ResponseVisibility::for_auth`) walks the source chain and preserves domain payloads and core retry metadata for `SensitiveRead` (`Full`) callers, while projecting non-`SensitiveRead` (`Public`) callers to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on settings-scoped core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
-- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
+- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback, except under `lan_authenticated`, which listens on the LAN over HTTPS only. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.

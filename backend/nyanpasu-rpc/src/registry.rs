@@ -637,6 +637,8 @@ pub enum SetupError {
     InstallRoutes,
     #[snafu(display("HTTP authenticator already installed"))]
     InstallAuthenticator,
+    #[snafu(display("HTTP TLS identity source already installed"))]
+    InstallTlsIdentity,
     #[snafu(display("duplicate RPC command: {name}"))]
     RegisterCommand { name: &'static str },
 }

@@ -817,6 +817,8 @@ function publicRemoteAccessErrorMessage(
       return m.error_config_remote_access_local_open_scope_forbidden()
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()
+    case 'lan_requires_tls':
+      return m.error_config_remote_access_lan_requires_tls()
   }
 }
 
@@ -907,6 +909,8 @@ function remoteAccessErrorMessage(error: RemoteAccessError): string {
       })
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()
+    case 'lan_requires_tls':
+      return m.error_config_remote_access_lan_requires_tls()
   }
 }
 

@@ -1633,6 +1633,7 @@
   "error_config_remote_access_local_open_scope_forbidden": "匿名のローカルアクセスに機密読み取り、システム制御、リモート管理スコープは付与できません",
   "error_config_remote_access_local_open_scope_forbidden_scope": "匿名のローカルアクセスにスコープ {scope} は付与できません",
   "error_config_remote_access_use_dedicated_command": "リモートアクセスは専用の設定からのみ変更できます",
+  "error_config_remote_access_lan_requires_tls": "ローカルネットワークでの共有には HTTPS が必要です",
   "error_config_version_conflict": "その間に設定が変更されました。もう一度お試しください",
   "error_config_persist_session_state": "ウィンドウの状態を保存できませんでした",
   "error_config_session_state_stopped": "ウィンドウ状態のサービスが実行されていません",

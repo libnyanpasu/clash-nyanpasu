@@ -61,6 +61,17 @@ pub async fn set_remote_access(
     Ok(client.set_remote_access(config).await?.into())
 }
 
+/// Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
+/// the old fingerprint refuse the server until they pin the new one, so it is a remote
+/// administration command, never reachable over HTTP.
+#[nyanpasu_macro::rpc(local, privacy, capabilities(http_server), scope = remote_admin)]
+#[specta::specta]
+pub async fn reset_remote_access_tls(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.reset_remote_access_tls().await?.into())
+}
+
 #[nyanpasu_macro::rpc(http, capabilities(accent_color), query)]
 #[specta::specta]
 pub fn get_system_accent_color(

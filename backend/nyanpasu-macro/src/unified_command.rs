@@ -974,6 +974,7 @@ mod tests {
                 "reorder_profile",
                 "reorder_profiles_by_list",
                 "replace_profile_definition",
+                "reset_remote_access_tls",
                 "save_profile_file",
                 "select_proxy",
                 "set_global_transforms",
@@ -1522,7 +1523,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 188, "{platform} command inventory");
+            assert_eq!(rows.len(), 189, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

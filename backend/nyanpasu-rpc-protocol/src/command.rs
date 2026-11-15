@@ -168,6 +168,7 @@ mod tests {
                 "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
@@ -182,6 +183,7 @@ mod tests {
                 "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
@@ -278,7 +280,7 @@ mod tests {
             .map(|command| command.name)
             .collect();
         local.sort_unstable();
-        assert_eq!(local.len(), 46);
+        assert_eq!(local.len(), 47);
         assert_eq!(
             local,
             [
@@ -319,6 +321,7 @@ mod tests {
                 "query_traffic_active_connection_ids",
                 "read_profile_file",
                 "remove_storage_item",
+                "reset_remote_access_tls",
                 "restart_sidecar",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",

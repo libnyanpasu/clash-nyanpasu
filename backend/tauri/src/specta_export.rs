@@ -214,6 +214,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::restart_service,
             commands::host::set_service_mode,
             commands::host::set_remote_access,
+            commands::host::reset_remote_access_tls,
             commands::remote_access::create_http_launch_url,
             commands::remote_access::create_remote_access_token,
             commands::remote_access::revoke_remote_access_token,

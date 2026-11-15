@@ -27,6 +27,9 @@ pub enum SetRemoteAccessError {
         #[snafu(source(from(ClientError, Box::new)))]
         source: Box<ClientError>,
     },
+    /// The certificate could not be replaced. The old one is still in use.
+    #[snafu(context(false), display("the TLS certificate was not replaced"))]
+    Tls { source: RemoteAuthError },
     /// The owner stopped, or the shutdown began, before it accepted the change.
     #[snafu(display("the remote access owner is stopped"))]
     OwnerStopped,

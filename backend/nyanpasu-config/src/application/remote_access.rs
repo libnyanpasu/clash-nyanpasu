@@ -4,6 +4,8 @@
 //! preferences patch: it widens who can reach the application, so it is written only
 //! through a dedicated command that is not exposed over HTTP.
 
+use std::net::IpAddr;
+
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use specta::Type;
@@ -11,9 +13,6 @@ use specta::Type;
 use super::Scope;
 
 /// How the HTTP listener decides who may call it.
-///
-/// Further strategies join this enum in the change that implements their complete
-/// request, scope and transport checks. Until then a stored value cannot name them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpAccessStrategy {
@@ -24,6 +23,20 @@ pub enum HttpAccessStrategy {
     /// [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
     /// reach it, because loopback TCP is not user-scoped.
     LocalOpen,
+    /// Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
+    /// one from a loopback peer: a reverse proxy makes every request look local.
+    LanAuthenticated,
+}
+
+/// Whether the listener speaks plain HTTP or HTTPS with the generated self-signed certificate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum HttpTls {
+    /// Plain HTTP. Only the loopback strategies may use it.
+    #[default]
+    Http,
+    /// HTTPS with the application's self-signed certificate, which clients pin by fingerprint.
+    SelfSigned,
 }
 
 /// HTTP listener settings.
@@ -42,6 +55,12 @@ pub struct HttpAccessConfig {
     /// What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
     /// another strategy is selected.
     pub local_open_scopes: Vec<Scope>,
+    /// The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
+    /// IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
+    pub lan_bind: Option<IpAddr>,
+    /// [`HttpAccessStrategy::LanAuthenticated`] requires [`HttpTls::SelfSigned`]; the loopback
+    /// strategies may opt into it.
+    pub tls: HttpTls,
 }
 
 impl Default for HttpAccessConfig {
@@ -52,6 +71,8 @@ impl Default for HttpAccessConfig {
             port: None,
             serve_webui: true,
             local_open_scopes: vec![Scope::Read],
+            lan_bind: None,
+            tls: HttpTls::default(),
         }
     }
 }
@@ -91,6 +112,9 @@ pub enum RemoteAccessError {
     /// The section is changed only by the dedicated remote-access command, never by a
     /// general application patch.
     UseDedicatedCommand,
+    /// Credentials would cross the LAN in the clear.
+    #[snafu(display("the lan_authenticated strategy requires tls: self_signed"))]
+    LanRequiresTls,
 }
 
 impl RemoteAccessConfig {
@@ -101,6 +125,11 @@ impl RemoteAccessConfig {
     pub fn validate(&self) -> Result<(), RemoteAccessError> {
         if self.http.port == Some(0) {
             return Err(RemoteAccessError::PortZero);
+        }
+        if self.http.strategy == HttpAccessStrategy::LanAuthenticated
+            && self.http.tls != HttpTls::SelfSigned
+        {
+            return Err(RemoteAccessError::LanRequiresTls);
         }
         if self.http.local_open_scopes.is_empty() {
             return Err(RemoteAccessError::LocalOpenScopesEmpty);
@@ -161,13 +190,59 @@ mod tests {
     }
 
     #[test]
-    fn local_open_is_stored_but_strategies_that_are_not_delivered_are_not() {
+    fn every_strategy_is_stored_and_unknown_ones_are_not() {
         let open: RemoteAccessConfig =
             serde_json::from_str(r#"{"http":{"strategy":"local_open"}}"#).unwrap();
         assert_eq!(open.http.strategy, HttpAccessStrategy::LocalOpen);
         assert_eq!(open.http.local_open_scopes, vec![Scope::Read]);
-        let lan = r#"{"http":{"strategy":"lan_authenticated"}}"#;
-        assert!(serde_json::from_str::<RemoteAccessConfig>(lan).is_err());
+        let lan: RemoteAccessConfig =
+            serde_json::from_str(r#"{"http":{"strategy":"lan_authenticated"}}"#).unwrap();
+        assert_eq!(lan.http.strategy, HttpAccessStrategy::LanAuthenticated);
+        let unknown = r#"{"http":{"strategy":"internet_open"}}"#;
+        assert!(serde_json::from_str::<RemoteAccessConfig>(unknown).is_err());
+    }
+
+    #[test]
+    fn a_fresh_install_listens_on_plain_http_without_a_lan_address() {
+        let http = RemoteAccessConfig::default().http;
+        assert_eq!(http.tls, HttpTls::Http);
+        assert_eq!(http.lan_bind, None);
+    }
+
+    #[test]
+    fn lan_settings_round_trip_through_serde() {
+        let mut config = RemoteAccessConfig::default();
+        config.http.strategy = HttpAccessStrategy::LanAuthenticated;
+        config.http.tls = HttpTls::SelfSigned;
+        config.http.lan_bind = Some("192.168.1.20".parse().unwrap());
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains(r#""lan_bind":"192.168.1.20""#), "{json}");
+        assert!(json.contains(r#""tls":"self_signed""#), "{json}");
+        assert_eq!(
+            serde_json::from_str::<RemoteAccessConfig>(&json).unwrap(),
+            config
+        );
+        let yaml = yaml_serde::to_string(&config).unwrap();
+        assert_eq!(
+            yaml_serde::from_str::<RemoteAccessConfig>(&yaml).unwrap(),
+            config
+        );
+    }
+
+    #[test]
+    fn the_lan_strategy_requires_tls_before_commit() {
+        let mut config = RemoteAccessConfig::default();
+        config.http.strategy = HttpAccessStrategy::LanAuthenticated;
+        assert_eq!(config.validate(), Err(RemoteAccessError::LanRequiresTls));
+
+        config.http.tls = HttpTls::SelfSigned;
+        assert_eq!(config.validate(), Ok(()));
+
+        // The loopback strategies may use either scheme.
+        config.http.strategy = HttpAccessStrategy::LocalAuthenticated;
+        assert_eq!(config.validate(), Ok(()));
+        config.http.tls = HttpTls::Http;
+        assert_eq!(config.validate(), Ok(()));
     }
 
     #[test]

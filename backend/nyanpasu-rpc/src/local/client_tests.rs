@@ -246,6 +246,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "get_storage_item",
         "set_storage_item",
         "remove_storage_item",
+        "reset_remote_access_tls",
         "list_log_files",
         "open_log_session",
         "query_logs",

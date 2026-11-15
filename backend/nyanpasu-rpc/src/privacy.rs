@@ -968,6 +968,7 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
                 RemoteAccessError::UseDedicatedCommand => {
                     PublicRemoteAccessErrorKind::UseDedicatedCommand
                 }
+                RemoteAccessError::LanRequiresTls => PublicRemoteAccessErrorKind::LanRequiresTls,
             },
         },
         ConfigError::ValidateHotkeyCapability => PublicConfigError::ValidateHotkeyCapability,

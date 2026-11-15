@@ -1579,6 +1579,7 @@
   "error_config_remote_access_local_open_scope_forbidden": "Анонимный локальный доступ не может включать области чтения секретов, системы или удалённого администрирования",
   "error_config_remote_access_local_open_scope_forbidden_scope": "Анонимный локальный доступ не может включать область: {scope}",
   "error_config_remote_access_use_dedicated_command": "Удалённый доступ меняется только через отдельную настройку",
+  "error_config_remote_access_lan_requires_tls": "Для доступа из локальной сети требуется HTTPS",
   "error_config_version_conflict": "Настройки изменились, попробуйте ещё раз",
   "error_config_persist_session_state": "Не удалось сохранить состояние окна",
   "error_config_session_state_stopped": "Служба состояния окна не запущена",

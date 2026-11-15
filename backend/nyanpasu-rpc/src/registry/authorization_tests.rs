@@ -1210,6 +1210,7 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
                 "config": RemoteAccessConfig::default(),
             }),
         ),
+        ("reset_remote_access_tls", json!({})),
     ];
 
     // 1. Even a full-scope HTTP caller gets `unsupported` (`501`), and `rpc_describe` omits the
@@ -1793,6 +1794,7 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
             "set_remote_access",
             json!({"config": RemoteAccessConfig::default()}),
         ),
+        ("reset_remote_access_tls", json!({})),
     ] {
         let denied = call(local(without_admin.clone()), method, params)
             .await
@@ -1810,6 +1812,7 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
         "list_remote_browser_sessions",
         "revoke_remote_browser_session",
         "set_remote_access",
+        "reset_remote_access_tls",
         "get_local_socket_status",
     ] {
         let (status, body) =

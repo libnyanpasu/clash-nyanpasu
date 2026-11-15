@@ -936,6 +936,54 @@ impl NyanpasuClient {
         self.inner.remote_access.set(config).await
     }
 
+    /// The certificate of the HTTPS listener, generated and saved on first use.
+    ///
+    /// The private key is in the result: only the HTTP transport's adapter may call this.
+    pub async fn remote_access_tls_identity(
+        &self,
+    ) -> std::result::Result<nyanpasu_contracts::auth::TlsIdentity, RemoteAuthError> {
+        self.inner
+            .remote_auth
+            .tls_identity(self.remote_access_lan_addresses())
+            .await
+    }
+
+    /// The fingerprint to pin and the expiry of the certificate, or `None` before the HTTPS
+    /// listener first needed one.
+    pub async fn remote_access_tls_summary(
+        &self,
+    ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsCertificateSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.tls_summary().await
+    }
+
+    /// Replaces the certificate, then makes the listener present the new one.
+    ///
+    /// Clients that pinned the old fingerprint refuse the server until they pin the new one.
+    pub async fn reset_remote_access_tls(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner
+            .remote_auth
+            .reset_tls(self.remote_access_lan_addresses())
+            .await?;
+        self.inner.remote_access.reconcile().await
+    }
+
+    /// The configured LAN address, which a new certificate must cover.
+    fn remote_access_lan_addresses(&self) -> Vec<std::net::IpAddr> {
+        self.inner
+            .remote_access
+            .config()
+            .http
+            .lan_bind
+            .into_iter()
+            .collect()
+    }
+
     /// Makes all configured listeners follow the committed settings, as at startup.
     pub async fn reconcile_remote_access(
         &self,

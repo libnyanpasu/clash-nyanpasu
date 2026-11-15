@@ -338,6 +338,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     app.manage(local_routes.clone());
     let http_authenticator = Arc::new(nyanpasu_rpc::http::auth::RpcHttpAuthenticator::default());
     app.manage(http_authenticator.clone());
+    let http_tls = Arc::new(nyanpasu_rpc::http::tls::RpcHttpTls::default());
+    app.manage(http_tls.clone());
     // Opened after the in-process migrations above, which open the same file.
     let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context(OpenStorageSnafu)?;
@@ -380,16 +382,18 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             http_server: Some({
                 let frontend = Some(http_server_frontend(&app_handle));
                 Arc::new(move || {
-                    let (frontend, routes, authenticator) = (
+                    let (frontend, routes, authenticator, tls) = (
                         frontend.clone(),
                         http_routes.clone(),
                         http_authenticator.clone(),
+                        http_tls.clone(),
                     );
                     Box::pin(async move {
-                        let server = nyanpasu_rpc::http::HttpServerClient::spawn(
+                        let server = nyanpasu_rpc::http::HttpServerClient::spawn_with_tls(
                             frontend,
                             routes,
                             authenticator,
+                            Some(tls),
                         )
                         .await?;
                         Ok(Arc::new(server) as Arc<dyn HttpServerControl>)
@@ -656,6 +660,10 @@ pub(crate) enum UnifiedRpcError {
     InstallHttpAuthenticator {
         source: nyanpasu_rpc::registry::SetupError,
     },
+    #[snafu(display("failed to install the HTTP TLS identity source"))]
+    InstallHttpTls {
+        source: nyanpasu_rpc::registry::SetupError,
+    },
     #[snafu(display("unified RPC state was already registered"))]
     RegisterState,
 }
@@ -696,6 +704,11 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
             ),
         ))
         .context(InstallHttpAuthenticatorSnafu)?;
+    app.state::<Arc<nyanpasu_rpc::http::tls::RpcHttpTls>>()
+        .install(Arc::new(
+            nyanpasu_rpc::http::tls::NyanpasuClientHttpTls::new(&rpc.dependencies().client),
+        ))
+        .context(InstallHttpTlsSnafu)?;
     app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;

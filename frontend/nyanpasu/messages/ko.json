@@ -1558,6 +1558,7 @@
   "error_config_remote_access_local_open_scope_forbidden": "익명 로컬 접근에는 민감 정보 읽기, 시스템 제어 또는 원격 관리 범위를 부여할 수 없습니다",
   "error_config_remote_access_local_open_scope_forbidden_scope": "익명 로컬 접근에는 범위 {scope}을(를) 부여할 수 없습니다",
   "error_config_remote_access_use_dedicated_command": "원격 접속은 전용 설정에서만 변경할 수 있습니다",
+  "error_config_remote_access_lan_requires_tls": "로컬 네트워크 공유에는 HTTPS가 필요합니다",
   "error_config_version_conflict": "그동안 설정이 변경되었습니다. 다시 시도하세요",
   "error_config_persist_session_state": "창 상태를 저장할 수 없습니다",
   "error_config_session_state_stopped": "창 상태 서비스가 실행 중이 아닙니다",

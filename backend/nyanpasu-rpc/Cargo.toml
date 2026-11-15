@@ -27,6 +27,8 @@ http = [
   'dep:futures',
   'dep:ractor',
   'dep:reqwest',
+  'dep:rustls',
+  'dep:tokio-rustls',
   'dep:tokio-tungstenite',
   'dep:tokio-util',
   'dep:percent-encoding',
@@ -35,6 +37,7 @@ http = [
 test-support = [
   'http',
   'local-server',
+  'dep:rcgen',
   'nyanpasu-core/test-support',
   'dep:tracing-subscriber',
   'dep:tower',
@@ -100,6 +103,11 @@ hyper-util = { optional = true, version = '0.1', features = [
 ] }
 ractor = { version = '0.16', optional = true }
 reqwest = { optional = true, workspace = true }
+rcgen = { optional = true, version = '0.14', default-features = false, features = [
+  'aws_lc_rs'
+] }
+rustls = { optional = true, version = '0.23' }
+tokio-rustls = { optional = true, version = '0.26' }
 tokio-tungstenite = { version = '0.30', optional = true }
 tokio-util = { optional = true, version = '0.7', features = ['full'] }
 url = '2'
@@ -114,6 +122,7 @@ tracing-subscriber = { optional = true, version = '0.3', features = [
 tower = { version = '0.5', features = ['util'], optional = true }
 
 [dev-dependencies]
+rcgen = { version = '0.14', default-features = false, features = ['aws_lc_rs'] }
 whoami = '2.0.0'
 atomicwrites = '0.4'
 redb = '4.0.0'

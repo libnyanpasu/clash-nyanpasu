@@ -1411,7 +1411,7 @@ async fn local_server_assigns_socket_user_principal_and_allows_the_reviewed_comm
                 .any(|meta| meta.name == command.name)
         })
         .collect();
-    assert_eq!(production_local.len(), 46);
+    assert_eq!(production_local.len(), 47);
     assert!(production_local.iter().all(|command| command.allowed));
 
     {

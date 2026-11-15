@@ -323,6 +323,7 @@ pub enum PublicRemoteAccessErrorKind {
     LocalOpenScopesEmpty,
     LocalOpenScopeForbidden,
     UseDedicatedCommand,
+    LanRequiresTls,
 }
 
 /// Safe public hotkey parse rejection discriminant without binding strings.

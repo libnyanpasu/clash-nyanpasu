@@ -871,6 +871,15 @@ export function createRpcClient(
         __RPC_INVOKE('set_remote_access', { config }),
       ),
     /**
+     *  Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
+     *  the old fingerprint refuse the server until they pin the new one, so it is a remote
+     *  administration command, never reachable over HTTP.
+     */
+    resetRemoteAccessTls: () =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('reset_remote_access_tls'),
+      ),
+    /**
      *  A URL that logs the caller into the running HTTP server. It is a credential, so it is a
      *  desktop-only mutation: a query would keep it in a client cache, and no remote transport may
      *  return it.
@@ -3441,14 +3450,19 @@ export type HttpAccessConfig = {
    *  another strategy is selected.
    */
   local_open_scopes?: Scope[]
+  /**
+   *  The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
+   *  IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
+   */
+  lan_bind?: string | null
+  /**
+   *  [`HttpAccessStrategy::LanAuthenticated`] requires [`HttpTls::SelfSigned`]; the loopback
+   *  strategies may opt into it.
+   */
+  tls?: HttpTls
 }
 
-/**
- *  How the HTTP listener decides who may call it.
- *
- *  Further strategies join this enum in the change that implements their complete
- *  request, scope and transport checks. Until then a stored value cannot name them.
- */
+/**  How the HTTP listener decides who may call it. */
 export type HttpAccessStrategy =
   /**  Loopback only; every request must carry a valid credential. */
   | 'local_authenticated'
@@ -3458,6 +3472,11 @@ export type HttpAccessStrategy =
    *  reach it, because loopback TCP is not user-scoped.
    */
   | 'local_open'
+  /**
+   *  Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
+   *  one from a loopback peer: a reverse proxy makes every request look local.
+   */
+  | 'lan_authenticated'
 
 /**  Why an HTTP server query or setting change could not be performed. */
 export type HttpServerControlError =
@@ -3471,6 +3490,11 @@ export type HttpServerFault =
   | 'port_in_use'
   /**  The listener could not be bound for another reason. */
   | 'bind_failed'
+  /**
+   *  HTTPS is configured but the certificate could not be made or read, so nothing listens
+   *  rather than serving credentials in the clear.
+   */
+  | 'tls_unavailable'
 
 /**
  *  The listener's state. It never carries a credential: the credential-bearing launch URL
@@ -3478,12 +3502,30 @@ export type HttpServerFault =
  */
 export type HttpServerStatus = {
   enabled: boolean
-  /**  The bound origin, for example `http://127.0.0.1:41234/`. */
+  /**  The bound origin, for example `http://127.0.0.1:41234/` or `https://192.168.1.20:41234/`. */
   url: string | null
   /**  The bound port, which the facade records when the settings leave it open. */
   port: number | null
+  /**
+   *  The certificate the listener presents, when it serves HTTPS. Its fingerprint is what a
+   *  client pins; it is public to every TLS client, so it is not a secret.
+   */
+  tls: TlsCertificateSummary | null
+  /**
+   *  The listener is bound to one address that its certificate does not cover, because the
+   *  certificate was made before that address was configured. A client that connects to it
+   *  fails the certificate's name check until the certificate is replaced.
+   */
+  bind_outside_certificate: boolean
   fault: HttpServerFault | null
 }
+
+/**  Whether the listener speaks plain HTTP or HTTPS with the generated self-signed certificate. */
+export type HttpTls =
+  /**  Plain HTTP. Only the loopback strategies may use it. */
+  | 'http'
+  /**  HTTPS with the application's self-signed certificate, which clients pin by fingerprint. */
+  | 'self_signed'
 
 /**
  *  UI language of the application.
@@ -6892,6 +6934,7 @@ export type PublicRemoteAccessErrorKind =
   | 'local_open_scopes_empty'
   | 'local_open_scope_forbidden'
   | 'use_dedicated_command'
+  | 'lan_requires_tls'
 
 /**  Public summary of what became of the runtime after an aborted commit. */
 export type PublicRuntimeAftermathKind =
@@ -7664,6 +7707,8 @@ export type RemoteAccessError =
    *  general application patch.
    */
   | { kind: 'use_dedicated_command' }
+  /**  Credentials would cross the LAN in the clear. */
+  | { kind: 'lan_requires_tls' }
 
 /**  The sync policy; the user agent is a request header value, so it is a flag. */
 export type RemoteListingOptions = {
@@ -8784,6 +8829,14 @@ export type SystemSettingsPatch_Serialize = {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+/**  What the settings page and the CLI may show of the certificate: nothing secret. */
+export type TlsCertificateSummary = {
+  /**  The value to compare in a browser warning or to pin in a CLI context. */
+  fingerprint: string
+  /**  When the certificate expires, in Unix epoch milliseconds. */
+  not_after_ms: number
+}
 
 export type Topology = {
   /**  By layer, heaviest first, the merged node last. */

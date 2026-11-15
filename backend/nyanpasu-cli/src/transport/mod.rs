@@ -13,9 +13,11 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use crate::error::CliError;
 
 pub mod http;
+mod pin;
 pub mod socket;
 
 pub use http::HttpTransport;
+pub use pin::probe_certificate;
 pub use socket::SocketTransport;
 
 /// Wire names of the shared events the CLI follows. The protocol crate's `EventName` owns

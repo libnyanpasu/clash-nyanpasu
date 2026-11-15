@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 
 use clap::ValueEnum;
+use nyanpasu_contracts::auth::TlsFingerprint;
 use reqwest::Url;
 
 use crate::{
@@ -35,6 +36,8 @@ pub struct Environment {
     pub url: Option<String>,
     /// `NYANPASU_TOKEN`.
     pub token: Option<String>,
+    /// `NYANPASU_FINGERPRINT`: the certificate a `NYANPASU_URL` target pins.
+    pub fingerprint: Option<String>,
 }
 
 impl Environment {
@@ -44,6 +47,7 @@ impl Environment {
         Self {
             url: read("NYANPASU_URL"),
             token: read("NYANPASU_TOKEN"),
+            fingerprint: read("NYANPASU_FINGERPRINT"),
         }
     }
 }
@@ -81,6 +85,8 @@ pub struct ResolvedTarget {
     pub context: Option<String>,
     /// Where that context stored its token.
     pub token_backend: Option<TokenBackend>,
+    /// The certificate an `https` target must present; without it the system trust store decides.
+    pub fingerprint: Option<TlsFingerprint>,
 }
 
 impl ResolvedTarget {
@@ -151,6 +157,7 @@ fn from_context(
         kind,
         context: Some(name.to_owned()),
         token_backend: context.token,
+        fingerprint: context.fingerprint,
     })
 }
 
@@ -175,6 +182,15 @@ pub fn resolve(
             },
             context: None,
             token_backend: None,
+            fingerprint: environment
+                .fingerprint
+                .as_deref()
+                .map(|text| {
+                    text.parse().map_err(|error| {
+                        CliError::usage(format!("NYANPASU_FINGERPRINT is invalid: {error}"))
+                    })
+                })
+                .transpose()?,
         }
     } else if let Some(name) = &config.current_context {
         from_context(config, name, TargetSource::CurrentContext(name.clone()))?
@@ -184,6 +200,7 @@ pub fn resolve(
             kind: TargetKind::LocalSocket { endpoint: None },
             context: None,
             token_backend: None,
+            fingerprint: None,
         }
     };
     match (transport, &target.kind) {
@@ -245,6 +262,7 @@ mod tests {
                     endpoint: None,
                     url: Some("https://work.example:9443".to_owned()),
                     token: Some(TokenBackend::File),
+                    fingerprint: None,
                 },
             )
             .unwrap();
@@ -256,6 +274,7 @@ mod tests {
                     endpoint: Some(PathBuf::from("/run/user/1000/box.sock")),
                     url: None,
                     token: None,
+                    fingerprint: None,
                 },
             )
             .unwrap();
@@ -266,6 +285,7 @@ mod tests {
         Environment {
             url: url.map(str::to_owned),
             token: None,
+            fingerprint: None,
         }
     }
 
@@ -437,6 +457,7 @@ mod tests {
         let environment = Environment {
             url: None,
             token: Some("t".to_owned()),
+            fingerprint: None,
         };
         assert_eq!(
             resolve_token(&target, &environment, &vault)

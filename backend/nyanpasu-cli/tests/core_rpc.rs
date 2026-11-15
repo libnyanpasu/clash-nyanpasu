@@ -79,6 +79,7 @@ impl Shell {
             },
             context: None,
             token_backend: None,
+            fingerprint: None,
         }
     }
 

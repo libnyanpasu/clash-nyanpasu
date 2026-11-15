@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use nyanpasu_contracts::auth::TlsFingerprint;
 use serde::{Deserialize, Serialize};
 
 use crate::error::CliError;
@@ -79,6 +80,10 @@ pub struct ContextConfig {
     /// Where the token of an `http` context was stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<TokenBackend>,
+    /// The SHA-256 fingerprint of the server certificate an `https` context pins. Without it
+    /// the system trust store verifies the server, as for a reverse proxy with a real certificate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<TlsFingerprint>,
 }
 
 /// The contents of `cli.toml`.
@@ -162,6 +167,14 @@ impl CliConfig {
     /// An invalid name or an inconsistent context is a usage error.
     pub fn add(&mut self, name: &str, context: ContextConfig) -> Result<(), CliError> {
         validate_context_name(name)?;
+        if context.fingerprint.is_some()
+            && !context
+                .url
+                .as_deref()
+                .is_some_and(|url| url.starts_with("https://"))
+        {
+            return Err(CliError::usage("only an https URL can pin a certificate"));
+        }
         match (context.kind, &context.url, &context.endpoint) {
             (ContextKind::Http, Some(_), None) | (ContextKind::LocalSocket, None, _) => {}
             (ContextKind::Http, None, _) => {
@@ -223,6 +236,7 @@ mod tests {
             endpoint: None,
             url: Some(url.to_owned()),
             token: Some(TokenBackend::File),
+            fingerprint: None,
         }
     }
 
@@ -232,6 +246,7 @@ mod tests {
             endpoint: None,
             url: None,
             token: None,
+            fingerprint: None,
         }
     }
 
@@ -306,5 +321,38 @@ mod tests {
         let mut no_url = http("http://h/");
         no_url.url = None;
         assert!(config.add("no-url", no_url).is_err());
+    }
+
+    #[test]
+    fn a_pinned_fingerprint_round_trips_and_needs_an_https_url() {
+        let fingerprint = TlsFingerprint::of_certificate(b"certificate");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("cli.toml");
+        let mut config = CliConfig::default();
+        let mut pinned = http("https://lan.example:9443/");
+        pinned.fingerprint = Some(fingerprint);
+        config.add("lan", pinned).unwrap();
+        config.save(&path).unwrap();
+
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains(&fingerprint.to_string()), "{text}");
+        assert_eq!(CliConfig::load(&path).unwrap(), config);
+
+        let mut plain = http("http://127.0.0.1:9090/");
+        plain.fingerprint = Some(fingerprint);
+        assert!(matches!(
+            config.add("plain", plain),
+            Err(CliError::Usage { .. })
+        ));
+        // Older files have no fingerprint and still load.
+        fs::write(
+            &path,
+            "[contexts.old]\nkind = \"http\"\nurl = \"https://h/\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            CliConfig::load(&path).unwrap().contexts["old"].fingerprint,
+            None
+        );
     }
 }

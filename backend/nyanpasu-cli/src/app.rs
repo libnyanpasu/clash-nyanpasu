@@ -10,6 +10,8 @@ use std::{
 };
 
 use clap::CommandFactory as _;
+use nyanpasu_contracts::auth::TlsFingerprint;
+use reqwest::Url;
 use serde_json::{Value, json};
 
 use crate::{
@@ -25,6 +27,7 @@ use crate::{
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
     transport::{
         Connection, EventFeed, HttpTransport, SocketTransport, StreamKind, Transport, event,
+        probe_certificate,
     },
 };
 
@@ -42,6 +45,16 @@ pub trait Connector {
         target: &ResolvedTarget,
         token: Option<String>,
     ) -> impl Future<Output = Result<Self::Transport, CliError>> + Send;
+
+    /// The fingerprint of the certificate the HTTPS server at `base` presents, which is not
+    /// trusted yet. `context add` shows it so the user can compare and pin it.
+    ///
+    /// # Errors
+    /// The server cannot be reached or does not speak TLS.
+    fn probe_certificate(
+        &self,
+        base: &Url,
+    ) -> impl Future<Output = Result<TlsFingerprint, CliError>> + Send;
 }
 
 /// The production connector: HTTP, or the validated local endpoint.
@@ -56,9 +69,11 @@ impl Connector for RealConnector {
         token: Option<String>,
     ) -> Result<Connection, CliError> {
         match &target.kind {
-            TargetKind::Http { url } => {
-                Ok(Connection::Http(HttpTransport::new(url.clone(), token)?))
-            }
+            TargetKind::Http { url } => Ok(Connection::Http(HttpTransport::new(
+                url.clone(),
+                token,
+                target.fingerprint,
+            )?)),
             TargetKind::LocalSocket { endpoint: location } => {
                 let endpoint = endpoint::locate(location.clone()).await?;
                 Ok(Connection::Socket(
@@ -66,6 +81,10 @@ impl Connector for RealConnector {
                 ))
             }
         }
+    }
+
+    async fn probe_certificate(&self, base: &Url) -> Result<TlsFingerprint, CliError> {
+        probe_certificate(base).await
     }
 }
 
@@ -115,7 +134,7 @@ async fn run<C: Connector>(
     let json = cli.json;
     match &cli.command {
         Command::Context(command) => {
-            return context(command, &cli, environment, services, io);
+            return context(command, &cli, environment, services, io).await;
         }
         Command::Completion(arguments) => {
             clap_complete::generate(
@@ -292,7 +311,7 @@ async fn follow(mut feed: EventFeed, output: &mut Output<'_>) -> Result<(), CliE
     }
 }
 
-fn context<C>(
+async fn context<C: Connector>(
     command: &ContextCommand,
     cli: &Cli,
     environment: &Environment,
@@ -303,7 +322,8 @@ fn context<C>(
     let mut config = CliConfig::load(path)?;
     match command {
         ContextCommand::Add(arguments) => {
-            let (context, token_backend) = build_context(arguments, environment, services, io)?;
+            let (context, token_backend) =
+                build_context(arguments, environment, services, io).await?;
             config.add(
                 &arguments.name,
                 ContextConfig {
@@ -341,6 +361,7 @@ fn context<C>(
                                 context.endpoint.as_ref().map(|path| path.display().to_string())
                             }).unwrap_or_else(|| "default".to_owned()),
                             "token": context.token,
+                            "pinned": if context.fingerprint.is_some() { "yes" } else { "" },
                         })
                     })
                     .collect();
@@ -362,7 +383,7 @@ fn context<C>(
 }
 
 /// Builds the context of `context add`, storing its token first when one was given.
-fn build_context<C>(
+async fn build_context<C: Connector>(
     arguments: &ContextAdd,
     environment: &Environment,
     services: &Services<C>,
@@ -379,12 +400,14 @@ fn build_context<C>(
                     endpoint: arguments.endpoint.clone(),
                     url: None,
                     token: None,
+                    fingerprint: None,
                 },
                 None,
             ))
         }
         Some(url) => {
             let url = parse_http_url(url)?;
+            let fingerprint = choose_pin(arguments, &url, services, io).await?;
             let token = if arguments.token_stdin {
                 let mut text = String::new();
                 io.stdin.read_to_string(&mut text)?;
@@ -411,11 +434,68 @@ fn build_context<C>(
                     endpoint: None,
                     url: Some(url.to_string()),
                     token: None,
+                    fingerprint,
                 },
                 backend,
             ))
         }
     }
+}
+
+/// The certificate an `https` context pins: the given fingerprint, none when the system trust
+/// store should decide, or the one the server presents once the user confirms it.
+async fn choose_pin<C: Connector>(
+    arguments: &ContextAdd,
+    url: &Url,
+    services: &Services<C>,
+    io: &mut Io<'_>,
+) -> Result<Option<TlsFingerprint>, CliError> {
+    if url.scheme() != "https" {
+        if arguments.fingerprint.is_some() || arguments.system_trust {
+            return Err(CliError::usage(
+                "--fingerprint and --system-trust apply to an https URL only",
+            ));
+        }
+        return Ok(None);
+    }
+    if arguments.fingerprint.is_some() || arguments.system_trust {
+        return Ok(arguments.fingerprint);
+    }
+    // Standard input would have to carry the token and the answer at once.
+    if arguments.token_stdin {
+        return Err(CliError::usage(
+            "pass --fingerprint (or --system-trust) when the token is read from standard input",
+        ));
+    }
+    let presented = services.connector.probe_certificate(url).await?;
+    write!(
+        io.stderr,
+        "{url} presents a certificate with the SHA-256 fingerprint\n  {presented}\n\
+         Compare it with the fingerprint in the app's remote access settings.\n\
+         Pin this certificate? [y/N] "
+    )?;
+    io.stderr.flush()?;
+    if !confirmed(io.stdin)? {
+        return Err(CliError::usage(
+            "the certificate was not pinned and nothing was saved; verify the fingerprint and \
+             pass it with --fingerprint",
+        ));
+    }
+    Ok(Some(presented))
+}
+
+/// Whether the first line of `input` is `y` or `yes`. End of input is a no.
+fn confirmed(input: &mut dyn Read) -> Result<bool, CliError> {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while line.len() < 16 && input.read(&mut byte)? == 1 && byte[0] != b'\n' {
+        line.push(byte[0]);
+    }
+    let answer = String::from_utf8_lossy(&line);
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 #[cfg(test)]
@@ -437,6 +517,10 @@ mod tests {
         outcome: Mutex<Option<Result<FakeTransport, CliError>>>,
         /// What the scripted transport was asked, kept after it moves into the command.
         calls: Arc<Mutex<Vec<(String, Value)>>>,
+        /// The certificate an HTTPS server presents, or `None` for an unreachable one.
+        presented: Mutex<Option<TlsFingerprint>>,
+        /// Every URL whose certificate was probed.
+        probed: Mutex<Vec<Url>>,
     }
 
     impl FakeConnector {
@@ -449,6 +533,8 @@ mod tests {
                 targets: Mutex::default(),
                 outcome: Mutex::new(Some(outcome)),
                 calls,
+                presented: Mutex::default(),
+                probed: Mutex::default(),
             }
         }
 
@@ -471,6 +557,14 @@ mod tests {
                 .unwrap()
                 .take()
                 .expect("one connection attempt per invocation")
+        }
+
+        async fn probe_certificate(&self, base: &Url) -> Result<TlsFingerprint, CliError> {
+            self.probed.lock().unwrap().push(base.clone());
+            (*self.presented.lock().unwrap()).ok_or_else(|| CliError::Unreachable {
+                target: base.to_string(),
+                detail: "refused".to_owned(),
+            })
         }
     }
 
@@ -581,6 +675,7 @@ mod tests {
         let environment = Environment {
             url: Some("http://127.0.0.1:9090".to_owned()),
             token: Some("npk_1_secret".to_owned()),
+            fingerprint: None,
         };
         let run = invoke(&harness, &environment, &["status"], "").await;
         assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
@@ -598,6 +693,7 @@ mod tests {
         let environment = Environment {
             url: Some("http://127.0.0.1:1".to_owned()),
             token: None,
+            fingerprint: None,
         };
         // A current context exists, and so does the default socket; neither is tried.
         invoke(
@@ -822,6 +918,7 @@ mod tests {
                 "work",
                 "--url",
                 "https://work.example:9443",
+                "--system-trust",
                 "--token-stdin",
             ],
             "npk_1_topsecret\n",
@@ -850,6 +947,167 @@ mod tests {
         assert_eq!(run.status, ExitStatus::Success);
         let run = invoke(&harness, &environment, &["context", "use", "work"], "").await;
         assert_eq!(run.status, ExitStatus::Usage);
+    }
+
+    fn pinned(text: &str) -> TlsFingerprint {
+        TlsFingerprint::of_certificate(text.as_bytes())
+    }
+
+    fn context_file(harness: &Harness) -> CliConfig {
+        CliConfig::load(&harness.services.paths.config_file).unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_https_context_pins_the_given_fingerprint_without_probing() {
+        let harness = harness(Err(CliError::failed("never connects")));
+        let fingerprint = pinned("lan certificate");
+        let text = fingerprint.to_string();
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &[
+                "context",
+                "add",
+                "lan",
+                "--url",
+                "https://192.168.1.20:9443",
+                "--fingerprint",
+                &text,
+            ],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        assert!(harness.services.connector.probed.lock().unwrap().is_empty());
+        assert_eq!(
+            context_file(&harness).contexts["lan"].fingerprint,
+            Some(fingerprint)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unpinned_https_context_shows_the_fingerprint_and_pins_it_on_confirmation() {
+        let harness = harness(Err(CliError::failed("never connects")));
+        let presented = pinned("what the server sent");
+        *harness.services.connector.presented.lock().unwrap() = Some(presented);
+        let add = [
+            "context",
+            "add",
+            "lan",
+            "--url",
+            "https://192.168.1.20:9443",
+        ];
+
+        let declined = invoke(&harness, &Environment::default(), &add, "n\n").await;
+        assert_eq!(declined.status, ExitStatus::Usage);
+        assert!(
+            declined.stderr.contains(&presented.to_string()),
+            "{}",
+            declined.stderr
+        );
+        assert!(
+            declined.stderr.contains("Pin this certificate?"),
+            "{}",
+            declined.stderr
+        );
+        assert!(
+            context_file(&harness).contexts.is_empty(),
+            "nothing is saved"
+        );
+
+        // End of input is not consent either.
+        let silent = invoke(&harness, &Environment::default(), &add, "").await;
+        assert_eq!(silent.status, ExitStatus::Usage);
+
+        let accepted = invoke(&harness, &Environment::default(), &add, "yes\n").await;
+        assert_eq!(accepted.status, ExitStatus::Success, "{}", accepted.stderr);
+        assert_eq!(
+            context_file(&harness).contexts["lan"].fingerprint,
+            Some(presented)
+        );
+    }
+
+    #[tokio::test]
+    async fn pinning_needs_a_decision_that_standard_input_cannot_make_twice() {
+        let harness = harness(Err(CliError::failed("never connects")));
+        let environment = Environment::default();
+        for arguments in [
+            // The token is on standard input, so the answer cannot be.
+            &[
+                "context",
+                "add",
+                "a",
+                "--url",
+                "https://h:1",
+                "--token-stdin",
+            ][..],
+            // Pinning and the system trust store exclude each other.
+            &[
+                "context",
+                "add",
+                "a",
+                "--url",
+                "https://h:1",
+                "--system-trust",
+                "--fingerprint",
+                &pinned("x").to_string(),
+            ],
+        ] {
+            let result = Cli::try_parse_from(
+                std::iter::once("nyanpasu-cli").chain(arguments.iter().copied()),
+            );
+            match result {
+                Err(_) => {}
+                Ok(_) => {
+                    let run = invoke(&harness, &environment, arguments, "npk_1_x\n").await;
+                    assert_eq!(run.status, ExitStatus::Usage, "{arguments:?}");
+                }
+            }
+        }
+        // A plain http URL has no certificate to pin or to trust.
+        let run = invoke(
+            &harness,
+            &environment,
+            &[
+                "context",
+                "add",
+                "a",
+                "--url",
+                "http://127.0.0.1:1",
+                "--system-trust",
+            ],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Usage);
+        assert!(context_file(&harness).contexts.is_empty());
+        assert!(harness.services.connector.probed.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_pin_of_a_context_reaches_the_connector() {
+        let transport = FakeTransport::new(vec![describe_all(), Ok(json!({}))]);
+        let harness = harness(Ok(transport));
+        let fingerprint = pinned("lan certificate");
+        invoke(
+            &harness,
+            &Environment::default(),
+            &[
+                "context",
+                "add",
+                "lan",
+                "--url",
+                "https://192.168.1.20:9443",
+                "--fingerprint",
+                &fingerprint.to_string(),
+            ],
+            "",
+        )
+        .await;
+        let run = invoke(&harness, &Environment::default(), &["status"], "").await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        let (target, _) = harness.services.connector.targets.lock().unwrap()[0].clone();
+        assert_eq!(target.fingerprint, Some(fingerprint));
     }
 
     #[tokio::test]
@@ -902,6 +1160,7 @@ mod tests {
         let environment = Environment {
             url: None,
             token: Some("npk_2_env".to_owned()),
+            fingerprint: None,
         };
         let run = invoke(
             &harness,
@@ -942,6 +1201,7 @@ mod tests {
             "get_http_server_status",
             "get_local_socket_status",
             "set_remote_access",
+            "reset_remote_access_tls",
             "list_remote_access_tokens",
             "create_remote_access_token",
             "revoke_remote_access_token",
@@ -957,7 +1217,8 @@ mod tests {
     fn committed_settings() -> Value {
         json!({"remote_access": {
             "http": {"enabled": false, "strategy": "local_authenticated", "port": null,
-                     "serve_webui": true, "local_open_scopes": ["read"]},
+                     "serve_webui": true, "local_open_scopes": ["read"],
+                     "lan_bind": null, "tls": "http"},
             "local_socket": {"enabled": true},
         }})
     }
@@ -1011,6 +1272,21 @@ mod tests {
                 "/local_socket/enabled",
                 json!(false),
             ),
+            (
+                &["remote", "http", "lan-bind", "192.168.1.20"],
+                "/http/lan_bind",
+                json!("192.168.1.20"),
+            ),
+            (
+                &["remote", "http", "lan-bind", "all"],
+                "/http/lan_bind",
+                Value::Null,
+            ),
+            (
+                &["remote", "http", "tls", "self_signed"],
+                "/http/tls",
+                json!("self_signed"),
+            ),
         ] {
             let transport = FakeTransport::new(vec![
                 describe_remote(),
@@ -1040,6 +1316,59 @@ mod tests {
             *original.pointer_mut(pointer).unwrap() = Value::Null;
             assert_eq!(sent, original, "{arguments:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn the_lan_strategy_brings_https_and_warns() {
+        let transport = FakeTransport::new(vec![
+            describe_remote(),
+            Ok(committed_settings()),
+            Ok(json!({"status": "committed", "value": null})),
+        ]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["remote", "http", "strategy", "lan_authenticated"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        assert!(
+            run.stderr.contains("compare the certificate fingerprint"),
+            "{}",
+            run.stderr
+        );
+        let calls = harness.services.connector.calls();
+        let sent = &calls[2].1["config"]["http"];
+        assert_eq!(sent["strategy"], "lan_authenticated");
+        assert_eq!(
+            sent["tls"], "self_signed",
+            "credentials never cross the LAN in the clear"
+        );
+    }
+
+    #[tokio::test]
+    async fn resetting_the_certificate_calls_its_command_and_reports_degradation() {
+        let transport = FakeTransport::new(vec![
+            describe_remote(),
+            Ok(json!({
+                "status": "committed_degraded", "value": null, "commits": [],
+                "notifications_pending": false,
+                "degradations": [{"phase": "system_effect", "message": "the HTTP server is not running"}]
+            })),
+        ]);
+        let harness = harness(Ok(transport));
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["remote", "reset-certificate"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Degraded, "{}", run.stderr);
+        let calls = harness.services.connector.calls();
+        assert_eq!(calls[1].0, "reset_remote_access_tls");
     }
 
     #[tokio::test]
@@ -1145,6 +1474,7 @@ mod tests {
         let environment = Environment {
             url: Some("http://127.0.0.1:9090".to_owned()),
             token: Some("npk_1_secret".to_owned()),
+            fingerprint: None,
         };
         for arguments in [
             &["remote", "status"][..],

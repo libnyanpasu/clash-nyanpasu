@@ -13,8 +13,8 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     cli::{
-        HttpCommand, HttpStrategy, RemoteCommand, SessionCommand, SwitchOnOff, TokenCommand,
-        TokenCreate,
+        HttpCommand, HttpStrategy, LanBind, RemoteCommand, SessionCommand, SwitchOnOff,
+        TokenCommand, TokenCreate,
     },
     describe::{Capabilities, Scope},
     error::{CliError, ExitStatus},
@@ -27,6 +27,7 @@ const APP_SETTINGS: &str = "get_app_settings";
 const HTTP_STATUS: &str = "get_http_server_status";
 const SOCKET_STATUS: &str = "get_local_socket_status";
 const SET_REMOTE_ACCESS: &str = "set_remote_access";
+const RESET_TLS: &str = "reset_remote_access_tls";
 const LIST_TOKENS: &str = "list_remote_access_tokens";
 const CREATE_TOKEN: &str = "create_remote_access_token";
 const REVOKE_TOKEN: &str = "revoke_remote_access_token";
@@ -90,10 +91,44 @@ pub async fn run<T: Transport>(
                      HTTP API with the configured open scopes"
                 )?;
             }
+            if *strategy == HttpStrategy::LanAuthenticated {
+                writeln!(
+                    output.stderr,
+                    "warning: lan_authenticated lets every device that can reach this \
+                     computer's network try to sign in over HTTPS; keep tokens narrow and \
+                     compare the certificate fingerprint before pinning it"
+                )?;
+            }
             change(transport, capabilities, output, |config| {
-                set(config, "/http/strategy", json!(strategy.as_str()))
+                set(config, "/http/strategy", json!(strategy.as_str()))?;
+                // Credentials must not cross the LAN in the clear, so this strategy brings TLS.
+                if *strategy == HttpStrategy::LanAuthenticated {
+                    set(config, "/http/tls", json!("self_signed"))?;
+                }
+                Ok(())
             })
             .await
+        }
+        RemoteCommand::Http(HttpCommand::LanBind { address }) => {
+            let value = match address {
+                LanBind::All => Value::Null,
+                LanBind::Address(address) => json!(address.to_string()),
+            };
+            change(transport, capabilities, output, |config| {
+                set(config, "/http/lan_bind", value)
+            })
+            .await
+        }
+        RemoteCommand::Http(HttpCommand::Tls { mode }) => {
+            change(transport, capabilities, output, |config| {
+                set(config, "/http/tls", json!(mode.as_str()))
+            })
+            .await
+        }
+        RemoteCommand::ResetCertificate => {
+            capabilities.require(RESET_TLS)?;
+            let value = call(transport, capabilities, RESET_TLS, json!({})).await?;
+            Ok(output.result(&value)?)
         }
         RemoteCommand::Socket(switch) => {
             let enabled = matches!(switch, SwitchOnOff::On);
@@ -294,6 +329,7 @@ mod tests {
             kind,
             context: None,
             token_backend: None,
+            fingerprint: None,
         }
     }
 

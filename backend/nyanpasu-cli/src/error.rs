@@ -46,6 +46,17 @@ pub enum CliError {
     /// The credential was rejected, or the principal lacks the command's scope.
     #[snafu(display("not authenticated or scope denied: {message}"))]
     Unauthenticated { message: String },
+    /// The server presented a certificate other than the one the context pinned. The
+    /// connection was refused before anything, including the token, was sent.
+    #[snafu(display(
+        "the certificate of {target} is {presented}, not the pinned {pinned}; compare it with \
+         the app's remote access settings, then pin it again with `context add`"
+    ))]
+    CertificateMismatch {
+        target: String,
+        pinned: String,
+        presented: String,
+    },
     /// The target or shell does not offer the command.
     #[snafu(display("unsupported on this target: {message}"))]
     Unsupported { message: String },
@@ -84,7 +95,9 @@ impl CliError {
         match self {
             Self::Usage { .. } => ExitStatus::Usage,
             Self::Unreachable { .. } => ExitStatus::Unreachable,
-            Self::Unauthenticated { .. } => ExitStatus::Unauthenticated,
+            Self::Unauthenticated { .. } | Self::CertificateMismatch { .. } => {
+                ExitStatus::Unauthenticated
+            }
             Self::Unsupported { .. } => ExitStatus::Unsupported,
             Self::Failed { .. } => ExitStatus::Application,
             Self::Remote { error } => remote_exit_status(error.error_kind()),
@@ -148,6 +161,15 @@ mod tests {
         assert_eq!(
             CliError::Unauthenticated {
                 message: "401".into()
+            }
+            .exit_status(),
+            ExitStatus::Unauthenticated
+        );
+        assert_eq!(
+            CliError::CertificateMismatch {
+                target: "https://h/".into(),
+                pinned: "AA".into(),
+                presented: "BB".into()
             }
             .exit_status(),
             ExitStatus::Unauthenticated

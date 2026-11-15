@@ -51,6 +51,7 @@ pub use self::{
 use super::{
     application::ApplicationClient,
     http_server::{HttpServerControl, HttpServerControlError, HttpServerStatus},
+    local_socket::{LocalSocketControl, LocalSocketControlError, LocalSocketStatus},
 };
 
 const REVOCATION_CHANNEL_CAPACITY: usize = 64;
@@ -66,17 +67,22 @@ pub(super) struct RemoteAccessClient {
     actor: ActorRef<Message>,
     application: ApplicationClient,
     http: Option<Arc<dyn HttpServerControl>>,
+    local_socket: Option<Arc<dyn LocalSocketControl>>,
 }
 
 impl RemoteAccessClient {
-    /// The actor stops the listener in `post_stop` once `args.shutdown` is cancelled, after
+    /// The actor stops the listeners in `post_stop` once `args.shutdown` is cancelled, after
     /// the changes already queued; `tasks` waits for that.
     pub(super) async fn spawn(
         args: RemoteAccessArgs,
         tasks: &TaskTracker,
     ) -> std::result::Result<Self, Error> {
         let shutdown = args.shutdown.clone();
-        let (application, http) = (args.application.clone(), args.http.clone());
+        let (application, http, local_socket) = (
+            args.application.clone(),
+            args.http.clone(),
+            args.local_socket.clone(),
+        );
         let (actor, _handle) = Actor::spawn(None, RemoteAccessActor, args)
             .await
             .map_err(|source| Error::SpawnActor { source })?;
@@ -85,6 +91,7 @@ impl RemoteAccessClient {
             actor,
             application,
             http,
+            local_socket,
         })
     }
 
@@ -93,7 +100,7 @@ impl RemoteAccessClient {
         self.application.snapshot().state.remote_access
     }
 
-    /// Commits `config`, then makes the listener follow it.
+    /// Commits `config`, then makes the listeners follow it.
     ///
     /// The owner runs the whole operation once it accepts it; dropping this future neither
     /// cancels it nor leaves the settings committed without a listener attempt.
@@ -107,10 +114,10 @@ impl RemoteAccessClient {
         self.call(|reply| Message::Set { config, reply }).await
     }
 
-    /// Makes the listener follow the committed settings, as at startup.
+    /// Makes the listeners follow the committed settings, as at startup.
     ///
     /// # Errors
-    /// Returns an error when the host has no HTTP server or the owner stopped.
+    /// Returns an error when the host has no listeners or the owner stopped.
     pub(super) async fn reconcile(&self) -> Result<MutationOutcome<()>, SetRemoteAccessError> {
         self.call(|reply| Message::Reconcile { reply }).await
     }
@@ -123,6 +130,19 @@ impl RemoteAccessClient {
         http.status()
             .await
             .map_err(|source| HttpServerControlError::ReadStatus { source })
+    }
+
+    pub(super) async fn local_socket_status(
+        &self,
+    ) -> Result<LocalSocketStatus, LocalSocketControlError> {
+        let local_socket = self
+            .local_socket
+            .as_ref()
+            .ok_or(LocalSocketControlError::ReadStatusUnsupported)?;
+        local_socket
+            .status()
+            .await
+            .map_err(|source| LocalSocketControlError::ReadStatus { source })
     }
 
     async fn call(

@@ -651,6 +651,7 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
                 enabled: true,
                 ..Default::default()
             },
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1292,6 +1293,7 @@ async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
             strategy: HttpAccessStrategy::LocalAuthenticated,
             ..Default::default()
         },
+        ..Default::default()
     };
     rpc.call(
         RpcTransport::TauriIpc,
@@ -1604,6 +1606,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                 local_open_scopes: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         })
         .await
         .unwrap_err();
@@ -1630,6 +1633,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                     local_open_scopes: vec![ConfigScope::Read, forbidden],
                     ..Default::default()
                 },
+                ..Default::default()
             })
             .await
             .unwrap_err();
@@ -1659,6 +1663,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                         local_open_scopes: vec![ConfigScope::System],
                         ..Default::default()
                     },
+                    ..Default::default()
                 }
             }),
         )

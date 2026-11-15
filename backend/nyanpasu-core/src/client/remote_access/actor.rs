@@ -21,6 +21,7 @@ use crate::{
     client::{
         application::ApplicationClient,
         http_server::{HttpServerControl, HttpServerControlError},
+        local_socket::{LocalSocketControl, LocalSocketControlError},
     },
     state::config_error::ConfigError,
 };
@@ -28,19 +29,20 @@ use crate::{
 type Reply = RpcReplyPort<Result<MutationOutcome<()>, SetRemoteAccessError>>;
 
 pub(super) enum Message {
-    /// Commit `config`, then make the listener follow it.
+    /// Commit `config`, then make the listeners follow it.
     Set {
         config: RemoteAccessConfig,
         reply: Reply,
     },
-    /// Make the listener follow the committed settings, as at startup.
+    /// Make the listeners follow the committed settings, as at startup.
     Reconcile { reply: Reply },
 }
 
 pub(in crate::client) struct Args {
     pub application: ApplicationClient,
     pub http: Option<Arc<dyn HttpServerControl>>,
-    /// Once cancelled, new changes are refused and `post_stop` stops the listener.
+    pub local_socket: Option<Arc<dyn LocalSocketControl>>,
+    /// Once cancelled, new changes are refused and `post_stop` stops the listeners.
     pub shutdown: CancellationToken,
 }
 
@@ -49,17 +51,16 @@ pub(super) struct RemoteAccessActor;
 pub(super) struct State {
     application: ApplicationClient,
     http: Option<Arc<dyn HttpServerControl>>,
+    local_socket: Option<Arc<dyn LocalSocketControl>>,
     shutdown: CancellationToken,
 }
 
 impl State {
-    fn http(&self) -> Result<&Arc<dyn HttpServerControl>, SetRemoteAccessError> {
+    fn ensure_open(&self) -> Result<(), SetRemoteAccessError> {
         if self.shutdown.is_cancelled() {
             return Err(SetRemoteAccessError::OwnerStopped);
         }
-        self.http
-            .as_ref()
-            .ok_or(HttpServerControlError::ChangeUnsupported.into())
+        Ok(())
     }
 
     /// Writes only this section. This actor is its sole writer: the facade's general patch
@@ -81,31 +82,58 @@ impl State {
         Ok(snapshot.outcome())
     }
 
-    /// Makes the listener follow the committed settings. Every failure after the commit is a
+    /// Makes the listeners follow the committed settings. Every failure after the commit is a
     /// degradation: the settings stay committed and the outcome says what did not follow.
     async fn follow(
         &self,
-        http: &Arc<dyn HttpServerControl>,
+        configure_http: bool,
+        configure_local: bool,
         mut outcome: MutationOutcome<()>,
     ) -> MutationOutcome<()> {
         let config = self.application.snapshot().state.remote_access;
         if let Err(error) = config.validate() {
             tracing::warn!(%error, "the saved remote access settings are invalid");
-            return outcome.extend_degradations(vec![degradation(
-                "the HTTP server cannot use the saved remote access settings",
-            )]);
+            let mut degradations = Vec::new();
+            if configure_http && self.http.is_some() {
+                degradations.push(http_degradation(
+                    "the HTTP server cannot use the saved remote access settings",
+                ));
+            }
+            if configure_local && self.local_socket.is_some() {
+                degradations.push(local_socket_degradation(
+                    "the local socket cannot use the saved remote access settings",
+                ));
+            }
+            return outcome.extend_degradations(degradations);
         }
+        if configure_http && let Some(http) = &self.http {
+            outcome = self.follow_http(http, &config, outcome).await;
+        }
+        if configure_local && let Some(local_socket) = &self.local_socket {
+            outcome = self
+                .follow_local_socket(local_socket, &config, outcome)
+                .await;
+        }
+        outcome
+    }
+
+    async fn follow_http(
+        &self,
+        http: &Arc<dyn HttpServerControl>,
+        config: &RemoteAccessConfig,
+        mut outcome: MutationOutcome<()>,
+    ) -> MutationOutcome<()> {
         let status = match http.configure(&config.http).await {
             Ok(status) => status,
             Err(error) => {
                 tracing::warn!(%error, "the HTTP server could not follow the remote access settings");
-                return outcome.extend_degradations(vec![degradation(
+                return outcome.extend_degradations(vec![http_degradation(
                     "the HTTP server could not follow the settings",
                 )]);
             }
         };
         if let Some(fault) = status.fault {
-            return outcome.extend_degradations(vec![degradation(format!(
+            return outcome.extend_degradations(vec![http_degradation(format!(
                 "the HTTP server is not running: {fault:?}"
             ))]);
         }
@@ -119,18 +147,51 @@ impl State {
             Ok(recorded) => outcome = outcome.append_commit_result(recorded),
             Err(error) => {
                 tracing::warn!(%error, "failed to record the HTTP port");
-                outcome = outcome
-                    .extend_degradations(vec![degradation("the HTTP port could not be recorded")]);
+                outcome = outcome.extend_degradations(vec![http_degradation(
+                    "the HTTP port could not be recorded",
+                )]);
             }
+        }
+        outcome
+    }
+
+    async fn follow_local_socket(
+        &self,
+        local_socket: &Arc<dyn LocalSocketControl>,
+        config: &RemoteAccessConfig,
+        outcome: MutationOutcome<()>,
+    ) -> MutationOutcome<()> {
+        let status = match local_socket.configure(&config.local_socket).await {
+            Ok(status) => status,
+            Err(error) => {
+                tracing::warn!(%error, "the local socket could not follow the remote access settings");
+                return outcome.extend_degradations(vec![local_socket_degradation(
+                    "the local socket could not follow the settings",
+                )]);
+            }
+        };
+        if let Some(fault) = status.fault {
+            return outcome.extend_degradations(vec![local_socket_degradation(format!(
+                "the local socket is not running: {fault:?}"
+            ))]);
         }
         outcome
     }
 }
 
-fn degradation(message: impl Into<String>) -> Degradation {
+fn http_degradation(message: impl Into<String>) -> Degradation {
     Degradation {
         phase: DegradationPhase::SystemEffect,
         reason: DegradationReason::HttpServerUnavailable,
+        message: message.into(),
+        retryable: true,
+    }
+}
+
+fn local_socket_degradation(message: impl Into<String>) -> Degradation {
+    Degradation {
+        phase: DegradationPhase::SystemEffect,
+        reason: DegradationReason::LocalSocketUnavailable,
         message: message.into(),
         retryable: true,
     }
@@ -149,6 +210,7 @@ impl Actor for RemoteAccessActor {
         Ok(State {
             application: args.application,
             http: args.http,
+            local_socket: args.local_socket,
             shutdown: args.shutdown,
         })
     }
@@ -162,18 +224,42 @@ impl Actor for RemoteAccessActor {
         match message {
             Message::Set { config, reply } => {
                 let result = async {
-                    let http = state.http()?;
+                    state.ensure_open()?;
+                    if state.http.is_none() && state.local_socket.is_none() {
+                        return Err(HttpServerControlError::ChangeUnsupported.into());
+                    }
+                    let current = state.application.snapshot().state.remote_access;
+                    let http_changed = config.http != current.http;
+                    let local_changed = config.local_socket != current.local_socket;
+                    if state.http.is_none() && http_changed {
+                        return Err(HttpServerControlError::ChangeUnsupported.into());
+                    }
+                    if state.local_socket.is_none() && local_changed {
+                        return Err(LocalSocketControlError::ChangeUnsupported.into());
+                    }
+                    let configure_http = state.http.is_some() && (http_changed || !local_changed);
+                    let configure_local =
+                        state.local_socket.is_some() && (local_changed || !http_changed);
                     let committed = state.commit(config).await?;
-                    Ok(state.follow(http, committed).await)
+                    Ok(state
+                        .follow(configure_http, configure_local, committed)
+                        .await)
                 }
                 .await;
                 let _ = reply.send(result);
             }
             Message::Reconcile { reply } => {
                 let result = async {
-                    let http = state.http()?;
+                    state.ensure_open()?;
+                    if state.http.is_none() && state.local_socket.is_none() {
+                        return Err(HttpServerControlError::ChangeUnsupported.into());
+                    }
                     Ok(state
-                        .follow(http, MutationOutcome::from_parts((), Vec::new()))
+                        .follow(
+                            state.http.is_some(),
+                            state.local_socket.is_some(),
+                            MutationOutcome::from_parts((), Vec::new()),
+                        )
                         .await)
                 }
                 .await;
@@ -192,6 +278,11 @@ impl Actor for RemoteAccessActor {
             && let Err(error) = http.shutdown().await
         {
             tracing::warn!(%error, "HTTP server shutdown failed");
+        }
+        if let Some(local_socket) = &state.local_socket
+            && let Err(error) = local_socket.shutdown().await
+        {
+            tracing::warn!(%error, "local socket shutdown failed");
         }
         Ok(())
     }

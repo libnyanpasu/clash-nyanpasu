@@ -49,6 +49,7 @@ use nyanpasu_core::{
         effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
         http_server::HttpServerControl,
+        local_socket::LocalSocketControl,
         system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::RedbHotkeyStoreOpener,
@@ -72,9 +73,6 @@ pub(crate) struct StartupOwners {
     shutdown: CancellationToken,
     tasks: TaskTracker,
     core: Option<nyanpasu_core::actor_v2::CoreClient>,
-    // StartupOwners clones share only the one-shot right to join the listener.
-    // The listener itself exclusively owns connections and resource state.
-    local_rpc: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl StartupOwners {
@@ -85,14 +83,6 @@ impl StartupOwners {
 
     pub(crate) async fn wait_shutdown(&self) {
         self.tasks.wait().await;
-        let local_rpc = self
-            .local_rpc
-            .lock()
-            .expect("listener join ownership is never panicked under lock")
-            .take();
-        if let Some(task) = local_rpc {
-            nyanpasu_owner_support::blocking::join(task.await);
-        }
         if let Some(core) = &self.core {
             core.finish_shutdown().await;
         }
@@ -344,6 +334,8 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let traffic_store = open_traffic_store(&paths);
     let http_routes = Arc::new(nyanpasu_rpc::http::routes::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
+    let local_routes = Arc::new(nyanpasu_rpc::local::control::RpcLocalRoutes::default());
+    app.manage(local_routes.clone());
     let http_authenticator = Arc::new(nyanpasu_rpc::http::auth::RpcHttpAuthenticator::default());
     app.manage(http_authenticator.clone());
     // Opened after the in-process migrations above, which open the same file.
@@ -401,6 +393,26 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
                         )
                         .await?;
                         Ok(Arc::new(server) as Arc<dyn HttpServerControl>)
+                    })
+                })
+            }),
+            local_socket: Some({
+                let data_directory = paths.app_data_dir().as_std_path().to_owned();
+                let endpoint_override = local_rpc::endpoint_override_from_environment();
+                Arc::new(move || {
+                    let (data_directory, endpoint_override, routes) = (
+                        data_directory.clone(),
+                        endpoint_override.clone(),
+                        local_routes.clone(),
+                    );
+                    Box::pin(async move {
+                        let server = nyanpasu_rpc::local::control::LocalSocketClient::spawn(
+                            data_directory,
+                            endpoint_override,
+                            routes,
+                        )
+                        .await?;
+                        Ok(Arc::new(server) as Arc<dyn LocalSocketControl>)
                     })
                 })
             }),
@@ -627,16 +639,16 @@ async fn start_runtime_owners(
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum UnifiedRpcError {
-    #[snafu(display("failed to start desktop local RPC listener"))]
-    StartLocalRpc {
-        source: nyanpasu_single_instance::endpoint::EndpointError,
-    },
     #[snafu(display("failed to build unified RPC"))]
     BuildRpc {
         source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("failed to install HTTP routes"))]
     InstallHttpRoutes {
+        source: nyanpasu_rpc::registry::SetupError,
+    },
+    #[snafu(display("failed to install local RPC routes"))]
+    InstallLocalRoutes {
         source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("failed to install HTTP authenticator"))]
@@ -686,22 +698,18 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
     app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
-    tauri::async_runtime::block_on(local_rpc::start(
-        local_rpc::LocalRpcConfig::from_environment(),
-        app.state::<PathResolver>().app_data_dir().as_std_path(),
-        rpc.clone(),
-        owners,
-    ))
-    .context(StartLocalRpcSnafu)?;
-    // The routes exist now, so the listener can follow the persisted remote-access settings.
+    app.state::<Arc<nyanpasu_rpc::local::control::RpcLocalRoutes>>()
+        .install(&rpc)
+        .context(InstallLocalRoutesSnafu)?;
+    // The routes exist now, so both listeners can follow the persisted remote-access settings.
     // A listener that cannot start degrades the feature, never the application's startup.
-    match tauri::async_runtime::block_on(app.state::<NyanpasuClient>().reconcile_http_server()) {
+    match tauri::async_runtime::block_on(app.state::<NyanpasuClient>().reconcile_remote_access()) {
         Ok(outcome) => {
             for degradation in outcome.degradations() {
-                tracing::warn!(message = %degradation.message, "HTTP server startup degraded");
+                tracing::warn!(message = %degradation.message, "remote-access listener startup degraded");
             }
         }
-        Err(error) => tracing::warn!(%error, "HTTP server startup failed"),
+        Err(error) => tracing::warn!(%error, "remote-access listener startup failed"),
     }
     let desktop = crate::unified_rpc::native::DesktopRpc::new(
         rpc,

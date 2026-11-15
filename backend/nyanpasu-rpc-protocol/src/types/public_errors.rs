@@ -33,6 +33,7 @@ pub enum PublicFailure {
     SystemProxy(PublicOsProxyError),
     Effects(PublicEffectsError),
     HttpServer(PublicHttpServerError),
+    LocalSocket(PublicLocalSocketError),
     ClashRead(PublicClashReadError),
     CoreLogRead(PublicCoreLogReadError),
     ProfileSyncRead(PublicProfileSyncReadError),
@@ -419,6 +420,15 @@ pub enum PublicHttpServerError {
     ReadStatus,
 }
 
+/// Safe public local-socket control error discriminant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PublicLocalSocketError {
+    ReadStatusUnsupported,
+    ChangeUnsupported,
+    ReadStatus,
+}
+
 /// Safe public Clash read error discriminant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -498,6 +508,7 @@ pub enum PublicDegradationReason {
         cause: PublicProfilesError,
     },
     HttpServerUnavailable,
+    LocalSocketUnavailable,
 }
 
 /// Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`.

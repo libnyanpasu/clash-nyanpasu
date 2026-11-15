@@ -622,11 +622,17 @@ and runs the endpoint crate's own tests.
 E3e delivers `nyanpasu-rpc-protocol/local-client`, default-off and dependent only
 on frame IO and Tokio OS/client facilities. It has no RPC adapter, core, server,
 GUI or implementation-crate dependency. The desktop explicitly compiles
-`nyanpasu-rpc/local-server`; starting a listener still requires
-`NYANPASU_LOCAL_RPC=1` in the launching process environment. An optional
-`NYANPASU_LOCAL_RPC_ENDPOINT` overrides the discovered endpoint under the same
-security rules. With no enable value, no endpoint is discovered or bound.
-There is no frontend control. The listener uses the desktop's existing client,
+`nyanpasu-rpc/local-server`. The listener follows the persisted
+`remote_access.local_socket.enabled` switch, off by default and independent of the
+HTTP switch. `LocalSocketClient` (an actor in `nyanpasu-rpc::local::control`,
+reached through the core `LocalSocketControl` port) binds and drains it, and
+`RemoteAccessClient` runs `set_remote_access` through the same serial owner as the
+HTTP listener: the settings commit first, and a listener that cannot follow is a
+`local_socket_unavailable` degradation, never a rollback. Disabling stops admission,
+flushes replies of in-flight calls up to a bounded drain and releases the endpoint.
+An optional `NYANPASU_LOCAL_RPC_ENDPOINT` overrides the discovered endpoint under the
+same security rules. While the switch is off, no endpoint is discovered or bound.
+The listener uses the desktop's existing client,
 capabilities and elevation policy; it makes no global refusal-of-elevation claim.
 The separately composed E4 server remains responsible for its refusal policy.
 E4a delivers its library composition: one client and registry, neutral event/audit

@@ -97,7 +97,19 @@ impl LocalServer {
                 accepted = listener.accept() => match accepted {
                     Ok(stream) => {
                         number = number.checked_add(1).expect("local connection IDs exhausted");
-                        connections.spawn(serve_stream(stream, RpcOwner::local_connection(&self.instance, number), auth.clone(), self.rpc.clone(), self.source.clone(), self.limits, shutdown.child_token()).with_current_subscriber());
+                        connections.spawn(
+                            serve_stream_with_drain(
+                                stream,
+                                RpcOwner::local_connection(&self.instance, number),
+                                auth.clone(),
+                                self.rpc.clone(),
+                                self.source.clone(),
+                                self.limits,
+                                shutdown.child_token(),
+                                CancellationToken::new(),
+                            )
+                            .with_current_subscriber(),
+                        );
                     }
                     Err(error) => break Err(error),
                 }
@@ -107,6 +119,67 @@ impl LocalServer {
         shutdown.cancel();
         while let Some(result) = connections.join_next().await {
             blocking::join(result);
+        }
+        result
+    }
+
+    /// Accept until shutdown, stop admitting new work immediately, and flush replies for
+    /// in-flight calls up to `drain_timeout` before force-closing remaining IO.
+    ///
+    /// # Errors
+    /// Reports an endpoint accept failure after draining already accepted connections.
+    pub async fn serve_with_drain(
+        self,
+        listener: EndpointListener,
+        shutdown: CancellationToken,
+        drain_timeout: std::time::Duration,
+    ) -> Result<(), EndpointError> {
+        let auth = AuthContext::local_socket(listener.user());
+        let drain = CancellationToken::new();
+        let force_stop = CancellationToken::new();
+        let mut connections = JoinSet::new();
+        let mut number = 0u64;
+        let result = loop {
+            tokio::select! {
+                biased;
+                () = shutdown.cancelled() => break Ok(()),
+                Some(result) = connections.join_next() => blocking::join(result),
+                accepted = listener.accept() => match accepted {
+                    Ok(stream) => {
+                        number = number.checked_add(1).expect("local connection IDs exhausted");
+                        connections.spawn(
+                            serve_stream_with_drain(
+                                stream,
+                                RpcOwner::local_connection(&self.instance, number),
+                                auth.clone(),
+                                self.rpc.clone(),
+                                self.source.clone(),
+                                self.limits,
+                                force_stop.child_token(),
+                                drain.child_token(),
+                            )
+                            .with_current_subscriber(),
+                        );
+                    }
+                    Err(error) => break Err(error),
+                }
+            }
+        };
+        drop(listener);
+        drain.cancel();
+        let drain_all = async {
+            while let Some(result) = connections.join_next().await {
+                blocking::join(result);
+            }
+        };
+        if tokio::time::timeout(drain_timeout, drain_all)
+            .await
+            .is_err()
+        {
+            force_stop.cancel();
+            while let Some(result) = connections.join_next().await {
+                blocking::join(result);
+            }
         }
         result
     }
@@ -714,7 +787,36 @@ fn subscription_id(frame: &Frame) -> Option<&str> {
     }
 }
 
+#[cfg(test)]
 pub(super) async fn serve_stream<S>(
+    stream: S,
+    owner: RpcOwner,
+    auth: AuthContext,
+    rpc: UnifiedRpc,
+    source: Arc<dyn SubscriptionSource>,
+    limits: ConnectionLimits,
+    stop: CancellationToken,
+) where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    serve_stream_with_drain(
+        stream,
+        owner,
+        auth,
+        rpc,
+        source,
+        limits,
+        stop,
+        CancellationToken::new(),
+    )
+    .await;
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit connection boundary wiring without a catch-all context struct"
+)]
+async fn serve_stream_with_drain<S>(
     mut stream: S,
     owner: RpcOwner,
     auth: AuthContext,
@@ -722,6 +824,7 @@ pub(super) async fn serve_stream<S>(
     source: Arc<dyn SubscriptionSource>,
     limits: ConnectionLimits,
     stop: CancellationToken,
+    drain: CancellationToken,
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -762,8 +865,13 @@ pub(super) async fn serve_stream<S>(
         session.send(&accept).ok()?;
         Some(())
     };
-    if tokio::select! { biased; () = stop.cancelled() => None, result = handshake => result }
-        .is_none()
+    if tokio::select! {
+        biased;
+        () = stop.cancelled() => None,
+        () = drain.cancelled() => None,
+        result = handshake => result,
+    }
+    .is_none()
     {
         return;
     }
@@ -772,10 +880,11 @@ pub(super) async fn serve_stream<S>(
     let admission = Arc::new(Semaphore::new(limits.in_flight));
     let (outgoing, mut output) = mpsc::channel::<Delivery>(limits.output);
     let (events, mut updates) = mpsc::channel(limits.output);
-    let mut io = JoinSet::new();
     let reader_stop = stop.clone();
-    io.spawn(async move {
-        let _cancel_on_exit = reader_stop.clone().drop_guard();
+    let reader_drain = drain.clone();
+    let reader_task = tokio::spawn(async move {
+        let mut cancel_on_exit = Some(reader_stop.clone().drop_guard());
+        let mut drained = false;
         let reading = async {
             loop {
                 match frame::read_frame(&mut reader).await {
@@ -793,18 +902,29 @@ pub(super) async fn serve_stream<S>(
                     Ok(None) => break,
                     Err(error) => {
                         if incoming.try_send(Err(error.reject_code())).is_ok() {
-                            reader_stop.cancelled().await;
+                            tokio::select! {
+                                () = reader_stop.cancelled() => (),
+                                () = reader_drain.cancelled() => { drained = true; },
+                            }
                         }
                         break;
                     }
                 }
             }
         };
-        tokio::select! { () = reader_stop.cancelled() => (), () = reading => () }
-        reader_stop.cancel();
+        tokio::select! {
+            () = reader_stop.cancelled() => (),
+            () = reader_drain.cancelled() => { drained = true; },
+            () = reading => (),
+        }
+        if drained && let Some(guard) = cancel_on_exit.take() {
+            guard.disarm();
+        } else {
+            reader_stop.cancel();
+        }
     });
     let writer_stop = stop.clone();
-    io.spawn(
+    let mut writer_task = Some(tokio::spawn(
         async move {
             let _cancel_on_exit = writer_stop.clone().drop_guard();
             let writing = async {
@@ -827,12 +947,13 @@ pub(super) async fn serve_stream<S>(
                         let _ = written.send(());
                     }
                 }
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
             };
             tokio::select! { () = writer_stop.cancelled() => (), () = writing => () }
             writer_stop.cancel();
         }
         .with_current_subscriber(),
-    );
+    ));
     let mut connection = Connection {
         rpc,
         source,
@@ -854,7 +975,7 @@ pub(super) async fn serve_stream<S>(
         tokio::select! {
             biased;
             () = stop.cancelled() => break,
-            Some(result) = io.join_next() => blocking::join(result),
+            () = drain.cancelled() => break,
             Some(result) = connection.calls.join_next() => connection.complete(blocking::join(result)).await,
             Some(result) = connection.forwarders.join_next() => blocking::join(result),
             Some(frame) = received.recv() => match frame {
@@ -869,26 +990,30 @@ pub(super) async fn serve_stream<S>(
             }
         }
     }
-    // Finish IO first so no admitted frame can race the final handoff drain.
-    while let Some(result) = io.join_next().await {
-        blocking::join(result);
+    // Always stop reading first so no admitted frame can race the final handoff drain.
+    blocking::join(reader_task.await);
+    if stop.is_cancelled()
+        && let Some(task) = writer_task.take()
+    {
+        blocking::join(task.await);
     }
     while let Ok(frame) = received.try_recv() {
         if let Ok((frame, permit)) = frame {
             connection.receive(frame, permit).await;
         }
     }
-    connection.session.close();
     let mut disconnected = Vec::new();
     for (_, task) in connection.subscriptions.drain() {
         task.stop.cancel();
         disconnected.push(task.audit);
     }
     connection.close_logs().await;
-    // Never abort accepted work: successful late resources are registered and closed.
+    // Never abort accepted work: successful late resources are registered and closed,
+    // and during graceful drain replies flush to the still-running writer task.
     while let Some(result) = connection.calls.join_next().await {
         connection.complete(blocking::join(result)).await;
     }
+    connection.session.close();
     connection.close_logs().await;
     while let Some(result) = connection.forwarders.join_next().await {
         blocking::join(result);
@@ -897,5 +1022,9 @@ pub(super) async fn serve_stream<S>(
         audit.record(AuditPhase::Subscription {
             outcome: SubscriptionOutcome::Disconnected,
         });
+    }
+    drop(connection);
+    if let Some(task) = writer_task.take() {
+        blocking::join(task.await);
     }
 }

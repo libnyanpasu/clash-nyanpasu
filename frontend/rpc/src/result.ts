@@ -41,6 +41,7 @@ const KNOWN_IPC_DOMAINS = new Set<string>([
   'system_proxy',
   'effects',
   'http_server',
+  'local_socket',
   'clash_read',
   'core_log_read',
   'profile_sync_read',

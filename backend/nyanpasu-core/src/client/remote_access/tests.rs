@@ -12,7 +12,11 @@ use super::{RemoteAccessArgs, RemoteAccessClient, SetRemoteAccessError};
 use crate::client::{
     application::ApplicationClient,
     http_server::{HttpServerControl, HttpServerControlError, HttpServerFault, HttpServerStatus},
+    local_socket::{
+        LocalSocketControl, LocalSocketControlError, LocalSocketFault, LocalSocketStatus,
+    },
 };
+use nyanpasu_config::application::LocalSocketAccessConfig;
 
 const OPEN_PORT: u16 = 40123;
 
@@ -91,6 +95,64 @@ impl HttpServerControl for FakeListener {
     }
 }
 
+#[derive(Default)]
+struct FakeLocalSocket {
+    configured: Mutex<Vec<LocalSocketAccessConfig>>,
+    fault: Mutex<Option<LocalSocketFault>>,
+    fail: Mutex<bool>,
+    shutdowns: Mutex<u32>,
+    enabled: Mutex<bool>,
+}
+
+impl FakeLocalSocket {
+    fn configurations(&self) -> Vec<LocalSocketAccessConfig> {
+        self.configured.lock().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl LocalSocketControl for FakeLocalSocket {
+    async fn status(&self) -> anyhow::Result<LocalSocketStatus> {
+        let enabled = *self.enabled.lock();
+        let fault = *self.fault.lock();
+        Ok(LocalSocketStatus {
+            enabled: enabled && fault.is_none(),
+            endpoint: (enabled && fault.is_none()).then(|| "/tmp/test-rpc.sock".into()),
+            fault,
+        })
+    }
+
+    async fn configure(
+        &self,
+        config: &LocalSocketAccessConfig,
+    ) -> anyhow::Result<LocalSocketStatus> {
+        self.configured.lock().push(config.clone());
+        anyhow::ensure!(!*self.fail.lock(), "local socket failure");
+        *self.enabled.lock() = config.enabled;
+        if !config.enabled {
+            return Ok(LocalSocketStatus::default());
+        }
+        if let Some(fault) = *self.fault.lock() {
+            return Ok(LocalSocketStatus {
+                enabled: false,
+                endpoint: None,
+                fault: Some(fault),
+            });
+        }
+        Ok(LocalSocketStatus {
+            enabled: true,
+            endpoint: Some("/tmp/test-rpc.sock".into()),
+            fault: None,
+        })
+    }
+
+    async fn shutdown(&self) -> anyhow::Result<()> {
+        *self.shutdowns.lock() += 1;
+        *self.enabled.lock() = false;
+        Ok(())
+    }
+}
+
 impl Fixture {
     /// Stops every owner the fixture started, so no test leaks a background actor.
     async fn finish(self) {
@@ -109,6 +171,7 @@ impl Fixture {
 struct Fixture {
     client: RemoteAccessClient,
     listener: Arc<FakeListener>,
+    local_socket: Arc<FakeLocalSocket>,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     config_path: camino::Utf8PathBuf,
@@ -116,6 +179,10 @@ struct Fixture {
 }
 
 async fn fixture(with_listener: bool) -> Fixture {
+    fixture_with_adapters(with_listener, false).await
+}
+
+async fn fixture_with_adapters(with_http: bool, with_local_socket: bool) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let shutdown = CancellationToken::new();
     let tasks = TaskTracker::new();
@@ -131,10 +198,13 @@ async fn fixture(with_listener: bool) -> Fixture {
     .await
     .unwrap();
     let listener = Arc::new(FakeListener::default());
+    let local_socket = Arc::new(FakeLocalSocket::default());
     let client = RemoteAccessClient::spawn(
         RemoteAccessArgs {
             application: application.clone(),
-            http: with_listener.then(|| listener.clone() as Arc<dyn HttpServerControl>),
+            http: with_http.then(|| listener.clone() as Arc<dyn HttpServerControl>),
+            local_socket: with_local_socket
+                .then(|| local_socket.clone() as Arc<dyn LocalSocketControl>),
             shutdown: shutdown.child_token(),
         },
         &tasks,
@@ -144,6 +214,7 @@ async fn fixture(with_listener: bool) -> Fixture {
     Fixture {
         client,
         listener,
+        local_socket,
         shutdown,
         tasks,
         config_path,
@@ -159,6 +230,14 @@ fn enabled(port: Option<u16>, serve_webui: bool) -> RemoteAccessConfig {
             serve_webui,
             ..Default::default()
         },
+        ..Default::default()
+    }
+}
+
+fn local_enabled() -> RemoteAccessConfig {
+    RemoteAccessConfig {
+        local_socket: LocalSocketAccessConfig { enabled: true },
+        ..Default::default()
     }
 }
 
@@ -166,6 +245,13 @@ fn is_degraded_by_listener(outcome: &MutationOutcome<()>) -> bool {
     matches!(
         outcome.degradations(),
         [degradation] if matches!(degradation.reason, DegradationReason::HttpServerUnavailable)
+    )
+}
+
+fn is_degraded_by_local_socket(outcome: &MutationOutcome<()>) -> bool {
+    matches!(
+        outcome.degradations(),
+        [degradation] if matches!(degradation.reason, DegradationReason::LocalSocketUnavailable)
     )
 }
 
@@ -317,6 +403,7 @@ async fn the_first_start_persists_the_port_and_later_starts_reuse_it() {
         RemoteAccessArgs {
             application: reloaded,
             http: Some(listener.clone() as Arc<dyn HttpServerControl>),
+            local_socket: None,
             shutdown: shutdown.child_token(),
         },
         &tasks,
@@ -366,6 +453,7 @@ async fn invalid_persisted_settings_never_reach_the_listener() {
         RemoteAccessArgs {
             application,
             http: Some(listener.clone() as Arc<dyn HttpServerControl>),
+            local_socket: None,
             shutdown: shutdown.child_token(),
         },
         &tasks,
@@ -422,4 +510,65 @@ async fn shutdown_refuses_new_changes_and_stops_the_listener() {
     ));
     assert_eq!(*fixture.listener.shutdowns.lock(), 1);
     assert_eq!(fixture.client.config().http.port, Some(8765));
+}
+
+#[tokio::test]
+async fn local_socket_can_be_configured_independently_and_degrades_without_rollback() {
+    let fixture = fixture_with_adapters(true, true).await;
+
+    let outcome = fixture.client.set(local_enabled()).await.unwrap();
+    assert!(outcome.degradations().is_empty());
+    assert!(fixture.client.config().local_socket.enabled);
+    assert!(fixture.listener.configurations().is_empty());
+    assert_eq!(
+        fixture.local_socket.configurations(),
+        vec![LocalSocketAccessConfig { enabled: true }]
+    );
+    let status = fixture.client.local_socket_status().await.unwrap();
+    assert!(status.enabled);
+    assert_eq!(status.endpoint.as_deref(), Some("/tmp/test-rpc.sock"));
+
+    *fixture.local_socket.fault.lock() = Some(LocalSocketFault::BindFailed);
+    let degraded = fixture
+        .client
+        .set(RemoteAccessConfig::default())
+        .await
+        .unwrap();
+    assert!(degraded.degradations().is_empty());
+    let degraded = fixture.client.set(local_enabled()).await.unwrap();
+    assert!(is_degraded_by_local_socket(&degraded));
+    assert!(fixture.client.config().local_socket.enabled);
+
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn missing_local_socket_adapter_rejects_local_socket_change_without_commit() {
+    let fixture = fixture_with_adapters(true, false).await;
+    let err = fixture.client.set(local_enabled()).await.unwrap_err();
+    assert!(matches!(
+        err,
+        SetRemoteAccessError::LocalSocket {
+            source: LocalSocketControlError::ChangeUnsupported
+        }
+    ));
+    assert_eq!(fixture.client.config(), RemoteAccessConfig::default());
+    assert!(matches!(
+        fixture.client.local_socket_status().await,
+        Err(LocalSocketControlError::ReadStatusUnsupported)
+    ));
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn shutdown_stops_both_http_and_local_socket_listeners() {
+    let fixture = fixture_with_adapters(false, true).await;
+    fixture.client.set(local_enabled()).await.unwrap();
+
+    fixture.shutdown.cancel();
+    fixture.tasks.close();
+    fixture.tasks.wait().await;
+
+    assert_eq!(*fixture.local_socket.shutdowns.lock(), 1);
+    assert!(fixture.client.config().local_socket.enabled);
 }

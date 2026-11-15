@@ -943,6 +943,7 @@ pub fn test_adapters(
                 Ok(Arc::new(DisabledHttpServer) as Arc<dyn super::http_server::HttpServerControl>)
             })
         })),
+        local_socket: None,
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
         runtime_build,
         profile_files,

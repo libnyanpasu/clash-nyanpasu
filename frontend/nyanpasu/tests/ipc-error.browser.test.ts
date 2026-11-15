@@ -1069,4 +1069,8 @@ test('public degradation reasons localize safely without raw host diagnostics', 
   expect(
     publicDegradationReasonMessage({ code: 'http_server_unavailable' }),
   ).toBe(m.mutation_degradation_reason_http_server_unavailable())
+
+  expect(
+    publicDegradationReasonMessage({ code: 'local_socket_unavailable' }),
+  ).toBe(m.mutation_degradation_reason_local_socket_unavailable())
 })

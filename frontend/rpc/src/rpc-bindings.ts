@@ -2953,6 +2953,8 @@ export type DegradationReason =
     }
   /**  The remote-access settings were saved but the HTTP listener could not follow them. */
   | { code: 'http_server_unavailable' }
+  /**  The remote-access settings were saved but the local socket listener could not follow them. */
+  | { code: 'local_socket_unavailable' }
 
 export type Delay = {
   delay: number
@@ -3600,6 +3602,7 @@ export type IpcErrorKind_Deserialize =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
@@ -3618,6 +3621,7 @@ export type IpcErrorKind_Serialize =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
@@ -3693,6 +3697,18 @@ export type LocalBinding_Serialize =
       target: ExternalProfilePath
       mode: ExternalMode
     }
+
+/**  Local socket listener settings. */
+export type LocalSocketAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+}
+
+/**  Why a local-socket query or setting change could not be performed. */
+export type LocalSocketControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
 
 export type LogCursor = {
   generation: string
@@ -6273,6 +6289,10 @@ export type PublicDegradationReason_Deserialize =
       cause?: never
       operation_id?: never
     })
+  | ({ code: 'local_socket_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
 
 /**  Safe public reason discriminant why a committed mutation degraded. */
 export type PublicDegradationReason_Serialize =
@@ -6322,6 +6342,10 @@ export type PublicDegradationReason_Serialize =
       cause?: never
       operation_id?: never
     })
+  | ({ code: 'local_socket_unavailable' } & {
+      cause?: never
+      operation_id?: never
+    })
 
 /**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
 export type PublicDegradation_Deserialize = {
@@ -6359,6 +6383,7 @@ export type PublicFailure_Deserialize =
   | { domain: 'system_proxy'; error: PublicOsProxyError }
   | { domain: 'effects'; error: PublicEffectsError }
   | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
   | { domain: 'clash_read'; error: PublicClashReadError }
   | { domain: 'core_log_read'; error: PublicCoreLogReadError }
   | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
@@ -6382,6 +6407,7 @@ export type PublicFailure_Serialize =
   | { domain: 'system_proxy'; error: PublicOsProxyError }
   | { domain: 'effects'; error: PublicEffectsError }
   | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
   | { domain: 'clash_read'; error: PublicClashReadError }
   | { domain: 'core_log_read'; error: PublicCoreLogReadError }
   | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
@@ -6441,6 +6467,12 @@ export type PublicInstallCoreBinaryKind_Serialize =
       exit_code: number | null
     }
   | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public local-socket control error discriminant. */
+export type PublicLocalSocketError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
 
 /**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
 export type PublicMutationOutcome<T> =
@@ -7590,6 +7622,7 @@ export type ReleaseChannelInfo = {
 /**  The persisted `remote_access` section. */
 export type RemoteAccessConfig = {
   http?: HttpAccessConfig
+  local_socket?: LocalSocketAccessConfig
 }
 
 /**  Why a remote-access value cannot be committed. */

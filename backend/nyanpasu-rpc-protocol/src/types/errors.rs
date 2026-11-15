@@ -337,6 +337,7 @@ pub enum DegradationReason {
         cause: Arc<ProfilesError>,
     },
     HttpServerUnavailable,
+    LocalSocketUnavailable,
 }
 
 /// Why a source transaction did not commit, classified once from the
@@ -797,6 +798,15 @@ pub enum HttpServerControlError {
     ReadStatus {},
 }
 
+/// Why a local-socket query or setting change could not be performed.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LocalSocketControlError {
+    ReadStatusUnsupported,
+    ChangeUnsupported,
+    ReadStatus {},
+}
+
 /// Why a Clash read a caller without `sensitive_read` made has no result.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -859,6 +869,7 @@ pub enum IpcErrorKind {
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
+    LocalSocket(Box<LocalSocketControlError>),
     ClashRead(Box<ClashReadError>),
     CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),

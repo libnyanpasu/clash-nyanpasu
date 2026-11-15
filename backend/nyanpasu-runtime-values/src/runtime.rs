@@ -176,6 +176,8 @@ pub enum DegradationReason {
     },
     /// The remote-access settings were saved but the HTTP listener could not follow them.
     HttpServerUnavailable,
+    /// The remote-access settings were saved but the local socket listener could not follow them.
+    LocalSocketUnavailable,
 }
 
 /// How closing the source instance's connections failed.

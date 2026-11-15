@@ -117,6 +117,9 @@ impl Shell {
             vault: TokenVault::new(directory.join("tokens"), false),
             paths,
             connector: RealConnector,
+            home: None,
+            executable: None,
+            skill_dir: None,
         };
         let socket = self.socket.display().to_string();
         let mut full = vec!["nyanpasu-cli", "--config"];

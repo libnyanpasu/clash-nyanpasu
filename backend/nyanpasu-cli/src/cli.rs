@@ -82,6 +82,9 @@ pub enum Command {
     Context(ContextCommand),
     /// Serve the curated operations as an MCP server over standard input and output.
     Mcp(McpArgs),
+    /// Find the agent skill or link it into an agent's skill directory.
+    #[command(subcommand)]
+    Skill(SkillCommand),
     /// Print a shell completion script.
     Completion(CompletionArgs),
 }
@@ -468,6 +471,32 @@ pub struct McpArgs {
     pub raw: bool,
 }
 
+#[derive(Debug, Subcommand)]
+pub enum SkillCommand {
+    /// Print the folder that holds the agent skill.
+    Path,
+    /// Link the skill into an agent's skill directory.
+    Install {
+        /// The agent to install it for.
+        #[arg(long, value_enum)]
+        agent: Agent,
+        /// Replace an existing link that points somewhere else.
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+/// An agent with a known skill directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Agent {
+    /// Claude Code: `~/.claude/skills`.
+    Claude,
+    /// Codex: `~/.codex/skills`.
+    Codex,
+    /// The shared `~/.agents/skills` directory.
+    Agents,
+}
+
 #[derive(Debug, Args)]
 pub struct CompletionArgs {
     /// The shell to generate for.
@@ -598,6 +627,7 @@ impl Command {
             | Self::Call(_)
             | Self::Context(_)
             | Self::Mcp(_)
+            | Self::Skill(_)
             | Self::Completion(_) => return Ok(None),
         };
         Ok(Some(plan))
@@ -676,6 +706,7 @@ mod tests {
             &["call", "get_core_status"],
             &["context", "list"],
             &["mcp"],
+            &["skill", "path"],
             &["completion", "bash"],
         ] {
             assert!(parse(arguments).command.plan().unwrap().is_none());

@@ -5,7 +5,7 @@
 //! transport layer; it never links the application core, so the binary stays small
 //! and `nyanpasu-core` appears only as a dev-dependency of the integration tests.
 
-use std::{io, process::ExitCode};
+use std::{io, path::PathBuf, process::ExitCode};
 
 use clap::Parser as _;
 
@@ -20,6 +20,7 @@ pub mod error;
 pub mod mcp;
 pub mod output;
 pub mod remote;
+pub mod skill;
 pub mod target;
 pub mod transport;
 
@@ -42,6 +43,11 @@ pub async fn run_process() -> ExitCode {
         ),
         paths,
         connector: app::RealConnector,
+        home: dirs::home_dir(),
+        executable: std::env::current_exe().ok(),
+        skill_dir: std::env::var_os("NYANPASU_SKILL_DIR")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from),
     };
     let environment = target::Environment::from_process();
     // Standard output stays unlocked: `mcp` writes it through tokio on another thread, which

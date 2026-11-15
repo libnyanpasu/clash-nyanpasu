@@ -17,6 +17,8 @@ import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -392,9 +394,15 @@ function KernelLogs() {
 
 function RouteComponent() {
   const { source = 'core' } = IndexRoute.useSearch()
-  return source === 'core' ? (
-    <KernelLogs />
-  ) : (
-    <FileLogs key={source} source={source} />
+
+  // Log lines and files hold URLs, hosts and paths: `sensitive_read`.
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      {source === 'core' ? (
+        <KernelLogs />
+      ) : (
+        <FileLogs key={source} source={source} />
+      )}
+    </RequireCapability>
   )
 }

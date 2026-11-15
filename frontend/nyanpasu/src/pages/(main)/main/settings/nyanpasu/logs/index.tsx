@@ -1,3 +1,4 @@
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -57,13 +58,15 @@ function RouteComponent() {
     <>
       <PageTitle backTo="/main/settings">{m.settings_label_logs()}</PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <AppLogSettings />
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <AppLogSettings />
 
-        <CoreLogSettings />
+          <CoreLogSettings />
 
-        <TrafficSettings />
-      </div>
+          <TrafficSettings />
+        </div>
+      </ReadOnlyScope>
     </>
   )
 }

@@ -9,6 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import SettingsNavigate from '../src/pages/(main)/main/settings/_modules/settings-navigate'
+import { AllScopes, withScopes } from './all-scopes'
 
 const state = vi.hoisted(() => ({ core: 'mihomo' }))
 
@@ -27,7 +28,10 @@ vi.mock('@nyanpasu/query', async (original) => ({
   useCoreAgentSkillsSummary: (core: string) => ({ data: agentSkills[core] }),
 }))
 
-const renderAt = async (path: string) => {
+const renderAt = async (
+  path: string,
+  wrapper: typeof AllScopes = AllScopes,
+) => {
   const rootRoute = createRootRoute({ component: SettingsNavigate })
   const pageRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -38,7 +42,7 @@ const renderAt = async (path: string) => {
     history: createMemoryHistory({ initialEntries: [path] }),
   })
 
-  return render(<RouterProvider router={router} />)
+  return render(<RouterProvider router={router} />, { wrapper })
 }
 
 const item = (
@@ -104,5 +108,25 @@ test('the AI item is listed only while the core ships agent skills', async () =>
     expect(ai !== null, core).toBe(listed)
 
     await view.unmount()
+  }
+})
+
+test('a caller that may not read secrets is not offered the pages that need them', async () => {
+  const view = await renderAt(
+    '/main/settings/debug',
+    withScopes(['read', 'settings']),
+  )
+
+  await expect
+    .element(item(view, m.settings_label_proxy_description()))
+    .toBeInTheDocument()
+  for (const label of [
+    m.settings_label_service_description(),
+    m.settings_label_core_manager_description(),
+    m.settings_label_network_description(),
+    m.settings_label_control_description(),
+    m.settings_label_runtime_description(),
+  ]) {
+    expect(item(view, label).query()).toBeNull()
   }
 })

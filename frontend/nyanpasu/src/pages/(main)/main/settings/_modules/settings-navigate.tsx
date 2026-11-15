@@ -25,6 +25,10 @@ import {
   type NavigationListItemColor,
 } from '@nyanpasu/ui/navigation-list'
 import LogoSvg from '@/assets/image/logo.svg?react'
+import {
+  RequireCapability,
+  useCapabilities,
+} from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { useCoreAgentSkillsSummary, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
@@ -89,11 +93,16 @@ function SettingsNavigationItem({
 }
 
 export default function SettingsNavigate() {
+  const { hasScope } = useCapabilities()
   const { value: currentCore } = useSetting('core')
   const { data: agentSkills } = useCoreAgentSkillsSummary(currentCore)
 
   // The AI page hands agents the skills the current core ships.
   const hasAgentSkills = !!agentSkills?.length
+
+  // These pages edit the core's control plane, the service and the runtime
+  // from full documents; a caller that may not read secrets has no use for them.
+  const canSensitiveRead = hasScope('sensitive_read')
 
   return (
     <NavigationList aria-label={m.settings_navigation()}>
@@ -106,23 +115,27 @@ export default function SettingsNavigate() {
           description={m.settings_label_proxy_description()}
         />
 
-        <SettingsNavigationItem
-          to="/main/settings/system/service"
-          color="green"
-          icon={<PowerSettingsNewRounded />}
-          label={m.settings_label_service()}
-          description={m.settings_label_service_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/system/service"
+            color="green"
+            icon={<PowerSettingsNewRounded />}
+            label={m.settings_label_service()}
+            description={m.settings_label_service_description()}
+          />
+        )}
       </NavigationListGroup>
 
       <NavigationListGroup label={m.settings_group_clash()}>
-        <SettingsNavigationItem
-          to="/main/settings/clash/core-manager"
-          color="purple"
-          icon={<DeployedCodeRounded />}
-          label={m.settings_label_core_manager()}
-          description={m.settings_label_core_manager_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/core-manager"
+            color="purple"
+            icon={<DeployedCodeRounded />}
+            label={m.settings_label_core_manager()}
+            description={m.settings_label_core_manager_description()}
+          />
+        )}
 
         <SettingsNavigationItem
           to="/main/settings/clash/core"
@@ -132,31 +145,37 @@ export default function SettingsNavigate() {
           description={m.settings_label_core_settings_description()}
         />
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/network"
-          color="cyan"
-          icon={<LanRounded />}
-          label={m.settings_label_network()}
-          description={m.settings_label_network_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/network"
+            color="cyan"
+            icon={<LanRounded />}
+            label={m.settings_label_network()}
+            description={m.settings_label_network_description()}
+          />
+        )}
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/control"
-          color="blue"
-          icon={<SwapHorizRounded />}
-          label={m.settings_label_control()}
-          description={m.settings_label_control_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/control"
+            color="blue"
+            icon={<SwapHorizRounded />}
+            label={m.settings_label_control()}
+            description={m.settings_label_control_description()}
+          />
+        )}
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/runtime"
-          color="yellow"
-          icon={<DataObjectRounded />}
-          label={m.settings_label_runtime()}
-          description={m.settings_label_runtime_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/runtime"
+            color="yellow"
+            icon={<DataObjectRounded />}
+            label={m.settings_label_runtime()}
+            description={m.settings_label_runtime_description()}
+          />
+        )}
 
-        {hasAgentSkills && (
+        {canSensitiveRead && hasAgentSkills && (
           <SettingsNavigationItem
             to="/main/settings/clash/ai"
             color="green"

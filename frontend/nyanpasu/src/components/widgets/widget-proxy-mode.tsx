@@ -8,6 +8,7 @@ import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { ExpressiveChoice } from '@nyanpasu/ui/expressive-choice'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import {
   MutationUnconfirmedError,
@@ -288,7 +289,10 @@ function ProxyModeLive({
 export function ProxyModeWidget(props: WidgetComponentProps) {
   const { sourceOnly, isOverlay, disabled } = useDndGridContext()
 
+  // Switching the routing mode changes the core: `proxy` scope.
+  const canProxy = useCapabilities().hasScope('proxy')
+
   if (sourceOnly || isOverlay) return <ProxyModePreview id={props.id} />
 
-  return <ProxyModeLive {...props} disabled={!disabled} />
+  return <ProxyModeLive {...props} disabled={!disabled || !canProxy} />
 }

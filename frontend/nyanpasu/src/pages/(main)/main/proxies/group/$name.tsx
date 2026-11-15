@@ -12,6 +12,7 @@ import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { DelayHistoryTooltip } from '@/components/proxies/delay-history'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
@@ -106,6 +107,8 @@ function RouteComponent() {
     updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
+  const { hasScope } = useCapabilities()
+
   const { value: proxyMode } = useProxyMode()
 
   const currentGroup = useMemo<ClashProxiesQueryGroupItem | undefined>(() => {
@@ -179,7 +182,10 @@ function RouteComponent() {
 
   const searchText = trimmedSearch.includes(' ') ? '' : trimmedSearch
 
-  const selectable = currentGroup?.capabilities.select ?? false
+  // Selecting, clearing a pin and latency tests change the core: `proxy` scope.
+  const canProxy = hasScope('proxy')
+
+  const selectable = (currentGroup?.capabilities.select ?? false) && canProxy
 
   const handleSelectProxy = useCallback(
     async (proxy: ClashProxiesQueryProxyItem) => {
@@ -396,6 +402,7 @@ function RouteComponent() {
           {currentGroup?.fixed && currentGroup.capabilities.clearFixed && (
             <Button
               variant="stroked"
+              disabled={!canProxy}
               className="flex h-8 shrink-0 items-center gap-1 px-3 text-sm"
               onClick={handleClearFixed}
               data-slot="proxies-group-clear-fixed-button"
@@ -496,7 +503,7 @@ function RouteComponent() {
         </DelayHistoryTooltip>
       )}
 
-      <DelayTestButton delayOptions={delayOptions} />
+      {canProxy && <DelayTestButton delayOptions={delayOptions} />}
     </>
   )
 }

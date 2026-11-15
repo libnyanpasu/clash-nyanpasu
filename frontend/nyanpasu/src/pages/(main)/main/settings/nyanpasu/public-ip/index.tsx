@@ -1,3 +1,4 @@
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -19,15 +20,17 @@ function RouteComponent() {
         {m.settings_label_public_ip()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4" data-slot="public-ip-settings">
-        <SettingsGroup>
-          <LocalIpProbeSwitch />
-        </SettingsGroup>
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4" data-slot="public-ip-settings">
+          <SettingsGroup>
+            <LocalIpProbeSwitch />
+          </SettingsGroup>
 
-        <StunServerList />
+          <StunServerList />
 
-        <IpLookupProviderList />
-      </div>
+          <IpLookupProviderList />
+        </div>
+      </ReadOnlyScope>
     </>
   )
 }

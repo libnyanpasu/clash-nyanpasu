@@ -63,6 +63,12 @@ impl NetworkAutomationClient {
         self.call(Message::ApplyNow).await
     }
 
+    /// Reads the Wi-Fi name now, starting the platform's consent request
+    /// where it needs one, and answers a status holding that reading.
+    pub(crate) async fn request_wifi_name(&self) -> NetworkAutomationStatus {
+        self.call(Message::RequestWifiName).await
+    }
+
     async fn call(
         &self,
         message: impl FnOnce(RpcReplyPort<NetworkAutomationStatus>) -> Message,
@@ -100,6 +106,17 @@ impl NyanpasuClient {
     pub async fn apply_network_automation(&self) -> NetworkAutomationStatus {
         match &self.inner.network_automation {
             Some(automation) => automation.apply_now().await,
+            None => NetworkAutomationStatus::unsupported(),
+        }
+    }
+
+    /// Reads the Wi-Fi name once, which the polling does not do until a rule
+    /// matches on it. Where the platform gates the name behind location
+    /// access, this is what asks the user for it. The status holds that
+    /// reading, or why there is none.
+    pub async fn request_wifi_name_access(&self) -> NetworkAutomationStatus {
+        match &self.inner.network_automation {
+            Some(automation) => automation.request_wifi_name().await,
             None => NetworkAutomationStatus::unsupported(),
         }
     }

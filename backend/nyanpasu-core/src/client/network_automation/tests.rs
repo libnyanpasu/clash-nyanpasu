@@ -9,11 +9,11 @@ use nyanpasu_config::{
     application::{
         InterfaceKind, MechanismAction, MechanismActions, NetworkAutomation, NetworkConditions,
         NetworkMatch, NetworkObservation, NetworkRule, NetworkState, NyanpasuAppConfigPatch,
-        WifiName,
+        WifiName, WifiUnavailable,
     },
     clash::config::{ClashConfig, TransparentProxyMode},
 };
-use nyanpasu_contracts::network_environment::NetworkEnvironmentPort;
+use nyanpasu_contracts::network_environment::{NetworkEnvironmentPort, WifiNameRead};
 use nyanpasu_runtime_values::network_automation::{
     MechanismOutcome, MechanismOutcomes, NetworkAutomationStatus,
 };
@@ -79,12 +79,38 @@ fn home() -> NetworkMatch {
     NetworkMatch::Rule { id: "home".into() }
 }
 
-/// The network the test says the machine is on.
-struct FakeEnvironment(Mutex<NetworkState>);
+/// The network the test says the machine is on. Like the real observer, it
+/// leaves a Wi-Fi name unread when the caller skips it, and it records how
+/// each reading was requested.
+struct FakeEnvironment {
+    network: Mutex<NetworkState>,
+    requests: Mutex<Vec<WifiNameRead>>,
+}
+
+impl FakeEnvironment {
+    fn new(network: NetworkState) -> Self {
+        Self {
+            network: Mutex::new(network),
+            requests: Mutex::default(),
+        }
+    }
+
+    fn requests(&self) -> Vec<WifiNameRead> {
+        self.requests.lock().unwrap().clone()
+    }
+}
 
 impl NetworkEnvironmentPort for FakeEnvironment {
-    fn current(&self) -> NetworkState {
-        self.0.lock().unwrap().clone()
+    fn current(&self, wifi_name: WifiNameRead) -> NetworkState {
+        self.requests.lock().unwrap().push(wifi_name);
+        let mut network = self.network.lock().unwrap().clone();
+        if let NetworkState::Online { network } = &mut network
+            && wifi_name == WifiNameRead::Skip
+            && matches!(network.wifi, WifiName::Known { .. })
+        {
+            network.wifi = WifiName::NotRead;
+        }
+        network
     }
 }
 
@@ -112,7 +138,7 @@ struct Fixture {
 
 impl Fixture {
     async fn spawn(policy: NetworkAutomation, network: NetworkState) -> Self {
-        let environment = Arc::new(FakeEnvironment(Mutex::new(network)));
+        let environment = Arc::new(FakeEnvironment::new(network));
         let switches = Arc::new(RecordingSwitches::default());
         let client = NetworkAutomationClient::spawn(
             NetworkAutomationArgs {
@@ -136,7 +162,7 @@ impl Fixture {
 
     /// Moves the machine and polls until the reading settles.
     async fn arrive(&self, network: NetworkState) {
-        *self.environment.0.lock().unwrap() = network;
+        *self.environment.network.lock().unwrap() = network;
         self.client.poll().await;
         self.client.poll().await;
     }
@@ -173,7 +199,7 @@ async fn readings_that_keep_changing_apply_nothing() {
     let fixture = Fixture::spawn(policy(), wifi("Home")).await;
 
     for network in [wifi("Cafe"), wifi("Home"), wifi("Cafe"), wifi("Home")] {
-        *fixture.environment.0.lock().unwrap() = network;
+        *fixture.environment.network.lock().unwrap() = network;
         fixture.client.poll().await;
     }
 
@@ -242,8 +268,14 @@ async fn a_disabled_policy_observes_without_writing() {
     assert_eq!(fixture.applied(), []);
     assert_eq!(
         status.network,
-        Some(wifi("Home")),
-        "the editor still sees it"
+        Some(NetworkState::Online {
+            network: NetworkObservation {
+                interface_kind: InterfaceKind::Wifi,
+                wifi: WifiName::NotRead,
+                gateway_mac: None,
+            }
+        }),
+        "the editor still sees the network, but nothing asked for its name"
     );
     assert_eq!(status.applied, None);
 
@@ -277,12 +309,115 @@ async fn apply_now_writes_the_same_answer_again() {
 async fn apply_now_reads_the_network_without_waiting_to_settle() {
     let fixture = Fixture::spawn(policy(), wifi("Home")).await;
     fixture.arrive(wifi("Home")).await;
-    *fixture.environment.0.lock().unwrap() = wifi("Cafe");
+    *fixture.environment.network.lock().unwrap() = wifi("Cafe");
 
     let status = fixture.client.apply_now().await;
 
     assert_eq!(fixture.applied(), [PROXY_OFF, PROXY_ON]);
     assert_eq!(status.applied.unwrap().matched, NetworkMatch::Default);
+}
+
+/// Applies to any Wi-Fi network, so it needs no Wi-Fi name.
+fn wifi_kind_policy() -> NetworkAutomation {
+    NetworkAutomation {
+        enabled: true,
+        default_actions: MechanismActions::default(),
+        rules: vec![NetworkRule {
+            id: "wifi".into(),
+            name: "Any Wi-Fi".into(),
+            enabled: true,
+            conditions: NetworkConditions {
+                interface_kind: Some(InterfaceKind::Wifi),
+                ..Default::default()
+            },
+            actions: PROXY_ON,
+        }],
+    }
+}
+
+#[tokio::test]
+async fn polls_read_the_wifi_name_only_for_a_rule_that_matches_on_it() {
+    let without = Fixture::spawn(wifi_kind_policy(), wifi("Home")).await;
+    without.arrive(wifi("Home")).await;
+    assert!(
+        without
+            .environment
+            .requests()
+            .iter()
+            .all(|request| *request == WifiNameRead::Skip)
+    );
+
+    let with = Fixture::spawn(policy(), wifi("Home")).await;
+    with.arrive(wifi("Home")).await;
+    assert!(
+        with.environment
+            .requests()
+            .iter()
+            .all(|request| *request == WifiNameRead::Read),
+        "a poll reads the name but never asks the user for it"
+    );
+}
+
+#[tokio::test]
+async fn a_policy_that_starts_matching_on_the_name_settles_before_it_applies() {
+    let fixture = Fixture::spawn(wifi_kind_policy(), wifi("Home")).await;
+    fixture.arrive(wifi("Home")).await;
+    assert_eq!(fixture.applied(), [PROXY_ON]);
+
+    // The settled reading holds no name. Evaluating it against the new rule
+    // would fall through to the default and write the wrong switches.
+    fixture.set_policy(policy()).await;
+    assert_eq!(fixture.applied(), [PROXY_ON]);
+
+    fixture.arrive(wifi("Home")).await;
+    assert_eq!(fixture.applied(), [PROXY_ON, PROXY_OFF]);
+}
+
+#[tokio::test]
+async fn requesting_the_wifi_name_asks_without_unsettling_the_network() {
+    let fixture = Fixture::spawn(wifi_kind_policy(), wifi("Home")).await;
+    fixture.arrive(wifi("Home")).await;
+
+    let status = fixture.client.request_wifi_name().await;
+
+    assert_eq!(status.network, Some(wifi("Home")));
+    assert_eq!(
+        fixture.environment.requests().last(),
+        Some(&WifiNameRead::ReadAndAsk)
+    );
+    assert_eq!(
+        fixture.applied(),
+        [PROXY_ON],
+        "asking for the name writes nothing"
+    );
+
+    // The poll that owns the reading is unaffected, so it still agrees with
+    // itself and nothing is applied again.
+    fixture.client.poll().await;
+    assert_eq!(fixture.applied(), [PROXY_ON]);
+}
+
+#[tokio::test]
+async fn a_refused_wifi_name_is_reported_and_matches_no_name_rule() {
+    let refused = NetworkState::Online {
+        network: NetworkObservation {
+            interface_kind: InterfaceKind::Wifi,
+            wifi: WifiName::Unavailable {
+                reason: WifiUnavailable::PermissionDenied,
+            },
+            gateway_mac: None,
+        },
+    };
+    let fixture = Fixture::spawn(policy(), refused.clone()).await;
+
+    fixture.arrive(refused.clone()).await;
+
+    assert_eq!(
+        fixture.applied(),
+        [PROXY_ON],
+        "the default, not the Home rule"
+    );
+    assert_eq!(fixture.client.status().await.network, Some(refused));
 }
 
 #[tokio::test]
@@ -410,6 +545,10 @@ async fn a_host_without_an_observer_rejects_enabling_and_saves_a_disabled_policy
     );
     assert_eq!(
         client.apply_network_automation().await,
+        NetworkAutomationStatus::unsupported()
+    );
+    assert_eq!(
+        client.request_wifi_name_access().await,
         NetworkAutomationStatus::unsupported()
     );
 

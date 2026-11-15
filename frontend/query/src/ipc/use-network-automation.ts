@@ -30,6 +30,7 @@ export const useNetworkAutomationStatus = () => {
   const queryClient = useQueryClient()
   const statusQuery = api.queries.getNetworkAutomationStatus()
   const applyMutation = api.mutations.applyNetworkAutomation
+  const requestMutation = api.mutations.requestWifiNameAccess
 
   const query = useQuery({
     ...unwrapQueryOptions(statusQuery, statusQuery.queryFn!),
@@ -53,5 +54,16 @@ export const useNetworkAutomationStatus = () => {
       ]),
   })
 
-  return { query, applyNow }
+  // Reads the Wi-Fi name once, which is what asks the system for the location
+  // access it gates the name behind. The status it returns carries that
+  // reading, so a caller can use the name without waiting for the next poll.
+  const requestWifiName = useMutation({
+    mutationKey: requestMutation.mutationKey,
+    mutationFn: async () =>
+      unwrapResult(await invokeMutation(requestMutation, [])),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: statusQuery.queryKey }),
+  })
+
+  return { query, applyNow, requestWifiName }
 }

@@ -149,6 +149,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::runtime::patch_app_config,
             commands::runtime::patch_clash_config,
             commands::runtime::apply_network_automation,
+            commands::runtime::request_wifi_name_access,
             commands::runtime::patch_runtime_overrides,
             commands::runtime::change_clash_core,
             commands::clash::clash_api_delete_connections,

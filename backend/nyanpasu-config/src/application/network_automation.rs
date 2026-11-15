@@ -48,11 +48,35 @@ pub enum InterfaceKind {
 pub enum WifiName {
     /// The primary interface is not Wi-Fi.
     NotWifi,
+    /// The interface is Wi-Fi, but the name was not read: no enabled rule
+    /// asks for it, and reading it is what makes macOS and Windows ask the
+    /// user for location access.
+    NotRead,
     Known {
         ssid: String,
     },
-    /// The interface is Wi-Fi, but this host cannot or may not read its name.
-    Unavailable,
+    /// The interface is Wi-Fi and its name was asked for, but could not be
+    /// read.
+    Unavailable {
+        reason: WifiUnavailable,
+    },
+}
+
+/// Why the name of a Wi-Fi network could not be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WifiUnavailable {
+    /// The platform gates the name behind location access the user has not
+    /// decided on yet. Asking can show the system prompt.
+    PermissionRequired,
+    /// The user, the device policy or a global location switch refused
+    /// location access. Only the system settings can change that.
+    PermissionDenied,
+    /// The platform answered without a name: the interface is not
+    /// associated, or the name service is missing or failed.
+    Unreadable,
+    /// This host has no way to read a Wi-Fi name.
+    Unsupported,
 }
 
 /// The primary network: the physical interface that carries the default
@@ -225,6 +249,18 @@ impl NetworkAutomation {
         Ok(())
     }
 
+    /// Whether the policy needs the Wi-Fi name: it is enabled and an enabled
+    /// rule matches on it. Nothing else justifies reading it, because the
+    /// platforms that gate the name ask the user for location access.
+    #[must_use]
+    pub fn reads_wifi_name(&self) -> bool {
+        self.enabled
+            && self
+                .rules
+                .iter()
+                .any(|rule| rule.enabled && rule.conditions.wifi_ssid.is_some())
+    }
+
     /// The actions for `network`: the first enabled rule whose conditions all
     /// hold, otherwise the default. The caller decides whether the policy is
     /// enabled and whether the answer is news.
@@ -371,11 +407,17 @@ mod tests {
     fn a_condition_over_a_missing_fact_never_holds() {
         let unnamed = NetworkObservation {
             interface_kind: InterfaceKind::Wifi,
-            wifi: WifiName::Unavailable,
+            wifi: WifiName::Unavailable {
+                reason: WifiUnavailable::PermissionDenied,
+            },
             gateway_mac: None,
         };
 
         assert!(!ssid("Home").holds(&unnamed));
+        assert!(!ssid("Home").holds(&NetworkObservation {
+            wifi: WifiName::NotRead,
+            ..unnamed.clone()
+        }));
         assert!(
             !NetworkConditions {
                 gateway_mac: Some(HOME_GATEWAY.into()),
@@ -488,6 +530,27 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<NetworkAutomation>(saved).unwrap(),
             policy
+        );
+    }
+
+    #[test]
+    fn only_an_enabled_policy_with_an_enabled_name_rule_reads_the_wifi_name() {
+        let gateway_only = NetworkConditions {
+            gateway_mac: Some(HOME_GATEWAY.into()),
+            ..Default::default()
+        };
+        let mut disabled_rule = rule("home", ssid("Home"), PROXY_OFF);
+        disabled_rule.enabled = false;
+
+        assert!(policy(vec![rule("home", ssid("Home"), PROXY_OFF)]).reads_wifi_name());
+        assert!(!policy(vec![rule("home", gateway_only, PROXY_OFF)]).reads_wifi_name());
+        assert!(!policy(vec![disabled_rule]).reads_wifi_name());
+        assert!(
+            !NetworkAutomation {
+                enabled: false,
+                ..policy(vec![rule("home", ssid("Home"), PROXY_OFF)])
+            }
+            .reads_wifi_name()
         );
     }
 

@@ -124,6 +124,18 @@ pub async fn apply_network_automation(
     Ok(client.apply_network_automation().await)
 }
 
+/// Reads the Wi-Fi name once, which the network rules do not until a rule
+/// matches on it. Where the platform gates the name behind location access,
+/// this asks the user for it. The status holds that reading, or why there is
+/// none. Desktop-only: the status holds the live Wi-Fi name and gateway.
+#[nyanpasu_macro::rpc]
+#[specta::specta]
+pub async fn request_wifi_name_access(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<NetworkAutomationStatus> {
+    Ok(client.request_wifi_name_access().await)
+}
+
 #[nyanpasu_macro::rpc(http)]
 #[specta::specta]
 pub async fn probe_direct_egress(client: RpcState<'_, NyanpasuClient>) -> Result<DirectEgress> {

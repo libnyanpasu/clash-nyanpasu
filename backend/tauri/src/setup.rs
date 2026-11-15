@@ -384,7 +384,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             icon_fetcher: network.clone(),
             network_diagnostics: network,
             network_environment: Some(Arc::new(
-                nyanpasu_os::network_environment::NetdevNetworkEnvironment,
+                nyanpasu_os::network_environment::NetdevNetworkEnvironment::new(),
             )),
             debug_http: Some({
                 let frontend = Some(debug_http_frontend(&app_handle));

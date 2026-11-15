@@ -8,7 +8,7 @@
 use std::{sync::Arc, time::Duration};
 
 use nyanpasu_config::application::{NetworkAutomation, NetworkEvaluation, NetworkState};
-use nyanpasu_contracts::network_environment::NetworkEnvironmentPort;
+use nyanpasu_contracts::network_environment::{NetworkEnvironmentPort, WifiNameRead};
 use nyanpasu_runtime_values::network_automation::{
     NetworkAutomationApplication, NetworkAutomationStatus,
 };
@@ -31,6 +31,9 @@ pub(super) enum Message {
     /// Reads the network now and applies its actions again, even when the
     /// match has not changed.
     ApplyNow(RpcReplyPort<NetworkAutomationStatus>),
+    /// Reads the Wi-Fi name once for the user, asking the platform for the
+    /// consent it needs, and answers a status that carries that reading.
+    RequestWifiName(RpcReplyPort<NetworkAutomationStatus>),
 }
 
 pub struct Args {
@@ -104,6 +107,9 @@ impl Actor for NetworkAutomationActor {
                 state.apply_now().await;
                 let _ = reply.send(state.status().await);
             }
+            Message::RequestWifiName(reply) => {
+                let _ = reply.send(state.request_wifi_name().await);
+            }
         }
         Ok(())
     }
@@ -123,8 +129,23 @@ impl State {
         if policy == self.policy {
             return;
         }
+        let read_wifi_name = self.policy.reads_wifi_name();
+        let was_polling = self.poll_job.is_some();
         self.policy = policy;
         self.refresh_polling(myself);
+
+        if self.policy.enabled && self.policy.reads_wifi_name() != read_wifi_name {
+            // What was read so far lacks the Wi-Fi name the rules now match
+            // on (or carries one they no longer need): evaluating it would
+            // let such a rule fall through to the default. Settle again from
+            // a reading that matches the policy.
+            self.latest = None;
+            self.settled = None;
+            if was_polling && self.schedule_polls {
+                let _ = myself.cast(Message::Poll);
+            }
+            return;
+        }
 
         if self.policy.enabled {
             // An edit takes effect on the network the machine is already on.
@@ -141,7 +162,7 @@ impl State {
         if !self.policy.enabled || self.shutdown.is_cancelled() {
             return;
         }
-        let reading = Some(self.read().await);
+        let reading = Some(self.read(self.policy_wifi_read()).await);
         let agrees = reading == self.latest;
         self.latest = reading;
         if agrees && self.settled != self.latest {
@@ -154,9 +175,20 @@ impl State {
         if !self.policy.enabled || self.shutdown.is_cancelled() {
             return;
         }
-        self.latest = Some(self.read().await);
+        self.latest = Some(self.read(self.policy_wifi_read()).await);
         self.settled = self.latest.clone();
         self.apply_settled(Trigger::Explicit).await;
+    }
+
+    /// Reads the network on the user's behalf. The reading is not kept: the
+    /// poll that owns `latest` reads the name only when a rule needs it, and
+    /// a reading with a name it did not ask for would unsettle the network.
+    async fn request_wifi_name(&mut self) -> NetworkAutomationStatus {
+        let reading = self.read(WifiNameRead::ReadAndAsk).await;
+        NetworkAutomationStatus {
+            network: Some(reading),
+            ..self.status().await
+        }
     }
 
     /// Applies the policy's answer for the settled network. Offline has no
@@ -189,7 +221,7 @@ impl State {
         let network = if self.policy.enabled {
             self.latest.clone()
         } else {
-            Some(self.read().await)
+            Some(self.read(WifiNameRead::Skip).await)
         };
 
         NetworkAutomationStatus {
@@ -202,12 +234,22 @@ impl State {
         }
     }
 
+    /// The Wi-Fi name is read only for a policy with a rule on it: reading it
+    /// is what makes macOS and Windows ask for location access.
+    fn policy_wifi_read(&self) -> WifiNameRead {
+        if self.policy.reads_wifi_name() {
+            WifiNameRead::Read
+        } else {
+            WifiNameRead::Skip
+        }
+    }
+
     /// The observer blocks on the platform's tables, so it runs off the
     /// mailbox turn's worker.
-    async fn read(&self) -> NetworkState {
+    async fn read(&self, wifi_name: WifiNameRead) -> NetworkState {
         let environment = self.environment.clone();
         nyanpasu_owner_support::blocking::join(
-            tokio::task::spawn_blocking(move || environment.current()).await,
+            tokio::task::spawn_blocking(move || environment.current(wifi_name)).await,
         )
     }
 

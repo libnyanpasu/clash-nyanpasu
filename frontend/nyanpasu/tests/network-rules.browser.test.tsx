@@ -12,6 +12,7 @@ const backend = vi.hoisted(() => ({
 
 vi.mock('@nyanpasu/platform/react', () => ({
   PlatformLinux: () => null,
+  usePlatform: () => ({ surface: 'desktop', clientOs: 'linux' }),
 }))
 vi.mock('@nyanpasu/query', () => ({
   useNetworkAutomation: () => ({
@@ -39,6 +40,7 @@ vi.mock('@nyanpasu/query', () => ({
     isPending: false,
   }),
   useNetworkAutomationStatus: () => ({
+    requestWifiName: { mutateAsync: vi.fn(), isPending: false },
     query: {
       data: {
         supported: true,
@@ -56,6 +58,9 @@ vi.mock('@nyanpasu/query', () => ({
   }),
 }))
 vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
+vi.mock('../src/pages/(main)/main/settings/_modules/open-external', () => ({
+  openExternal: vi.fn(),
+}))
 
 test('deleting a rule saves the policy without it, keeping the others in order', async ({
   onTestFinished,

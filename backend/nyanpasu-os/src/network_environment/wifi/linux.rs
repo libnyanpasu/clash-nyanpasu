@@ -1,25 +1,38 @@
-//! The Wi-Fi name of an interface, where the platform discloses it without a
-//! consent prompt. Every failure reads as `Unavailable`: a rule on the Wi-Fi
-//! name then does not match, and the other conditions keep working.
+//! Linux: NetworkManager answers the active connection's name to an
+//! unprivileged session, with no consent step.
 
-use nyanpasu_config::application::WifiName;
+use std::time::Duration;
 
-/// Asks NetworkManager, which answers the active connection's name to an
-/// unprivileged session. Hosts without it (iwd or wpa_supplicant alone)
-/// report `Unavailable`.
-#[cfg(target_os = "linux")]
-pub(super) fn name(interface: &str) -> WifiName {
-    match network_manager_ssid(interface) {
-        Ok(Some(ssid)) => WifiName::Known { ssid },
-        Ok(None) => WifiName::Unavailable,
-        Err(error) => {
-            tracing::debug!(%error, "NetworkManager did not report the Wi-Fi name");
-            WifiName::Unavailable
+use nyanpasu_config::application::{WifiName, WifiUnavailable};
+
+/// NetworkManager is a local D-Bus call, so every reading asks it.
+pub(super) const NAME_CACHE_TTL: Duration = Duration::ZERO;
+
+pub(super) struct Platform;
+
+impl Platform {
+    pub(super) fn new() -> Self {
+        Self
+    }
+
+    /// Hosts without NetworkManager (iwd or wpa_supplicant alone) report
+    /// `Unreadable`.
+    pub(super) fn read(&self, interface: &str, _ask: bool) -> WifiName {
+        match network_manager_ssid(interface) {
+            Ok(Some(ssid)) => WifiName::Known { ssid },
+            Ok(None) => WifiName::Unavailable {
+                reason: WifiUnavailable::Unreadable,
+            },
+            Err(error) => {
+                tracing::debug!(%error, "NetworkManager did not report the Wi-Fi name");
+                WifiName::Unavailable {
+                    reason: WifiUnavailable::Unreadable,
+                }
+            }
         }
     }
 }
 
-#[cfg(target_os = "linux")]
 fn network_manager_ssid(interface: &str) -> zbus::Result<Option<String>> {
     use zbus::{
         blocking::{Connection, Proxy},
@@ -58,11 +71,4 @@ fn network_manager_ssid(interface: &str) -> zbus::Result<Option<String>> {
     // An SSID is arbitrary octets; one that is not UTF-8 is matched by its
     // lossy rendering, which is also what the rule editor shows.
     Ok(Some(String::from_utf8_lossy(&ssid).into_owned()))
-}
-
-/// macOS and Windows 11 24H2 gate the Wi-Fi name behind location consent,
-/// which this adapter does not request.
-#[cfg(not(target_os = "linux"))]
-pub(super) fn name(_interface: &str) -> WifiName {
-    WifiName::Unavailable
 }

@@ -590,6 +590,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.applyNetworkAutomation>) =>
         commands.applyNetworkAutomation(...input),
     }),
+    requestWifiNameAccess: mutationOptions({
+      mutationKey: ['requestWifiNameAccess'],
+      mutationFn: (input: Parameters<typeof commands.requestWifiNameAccess>) =>
+        commands.requestWifiNameAccess(...input),
+    }),
     patchRuntimeOverrides: mutationOptions({
       mutationKey: ['patchRuntimeOverrides'],
       mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>

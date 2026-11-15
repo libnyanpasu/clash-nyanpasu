@@ -7207,6 +7207,7 @@ dependencies = [
  "async-trait",
  "auto-launch",
  "camino",
+ "dispatch2",
  "dunce",
  "futures",
  "hex",
@@ -7216,6 +7217,10 @@ dependencies = [
  "nyanpasu-contracts",
  "nyanpasu-paths",
  "nyanpasu-utils",
+ "objc2 0.6.5",
+ "objc2-core-location 0.3.2",
+ "objc2-core-wlan",
+ "objc2-foundation 0.3.2",
  "once_cell",
  "reqwest 0.13.5",
  "runas",
@@ -7946,6 +7951,16 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-io-surface",
+]
+
+[[package]]
+name = "objc2-core-wlan"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c71e34919aba0d701380d911702455038a8a3587467fe0141d6a71501e7ffe48"
+dependencies = [
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]

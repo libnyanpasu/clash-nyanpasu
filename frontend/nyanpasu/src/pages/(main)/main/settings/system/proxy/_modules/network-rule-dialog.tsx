@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'motion/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
@@ -20,18 +20,30 @@ import {
   SelectValue,
 } from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useNetworkAutomationStatus } from '@nyanpasu/query'
 import type {
   InterfaceKind,
   MechanismActions,
+  NetworkObservation,
   NetworkRule,
+  WifiName,
 } from '@nyanpasu/rpc/types'
 import AnimatedErrorItem from '../../../../_modules/error-item'
 import MechanismActionsFields from './mechanism-actions-fields'
+import WifiNameNotice from './wifi-name-notice'
 
 const MAC_ADDRESS = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
+
+/** Whether asking for the Wi-Fi name could still produce one. */
+const needsWifiNameRead = (network: NetworkObservation) =>
+  network.interface_kind === 'wifi' &&
+  (network.wifi.kind === 'not_read' ||
+    (network.wifi.kind === 'unavailable' &&
+      network.wifi.reason === 'permission_required'))
 
 const INTERFACE_KINDS = ['any', 'wifi', 'ethernet', 'other'] as const
 
@@ -108,7 +120,9 @@ export default function NetworkRuleDialog({
   onSubmit: (rule: NetworkRule) => Promise<void>
 }) {
   const { open, setOpen } = useModal()
-  const { query } = useNetworkAutomationStatus()
+  const { query, requestWifiName } = useNetworkAutomationStatus()
+  // The Wi-Fi name as last read for this dialog, kept to explain a missing one.
+  const [wifiReading, setWifiReading] = useState<WifiName>()
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -126,23 +140,45 @@ export default function NetworkRuleDialog({
       ? query.data.network.network
       : undefined
 
-  const handleUseCurrent = () => {
+  const fillFromNetwork = (network: NetworkObservation) => {
+    setWifiReading(network.wifi)
+
+    form.setValue(
+      'wifiSsid',
+      network.wifi.kind === 'known' ? network.wifi.ssid : '',
+      { shouldDirty: true },
+    )
+    form.setValue('gatewayMac', network.gateway_mac ?? '', {
+      shouldDirty: true,
+    })
+    form.setValue('interfaceKind', network.interface_kind, {
+      shouldDirty: true,
+    })
+  }
+
+  const handleUseCurrent = useLockFn(async () => {
     if (!current) {
       return
     }
 
-    form.setValue(
-      'wifiSsid',
-      current.wifi.kind === 'known' ? current.wifi.ssid : '',
-      { shouldDirty: true },
-    )
-    form.setValue('gatewayMac', current.gateway_mac ?? '', {
-      shouldDirty: true,
-    })
-    form.setValue('interfaceKind', current.interface_kind, {
-      shouldDirty: true,
-    })
-  }
+    // The status leaves the Wi-Fi name unread until a rule matches on it, and
+    // reading it is what asks the system for location access, so a rule that
+    // is being created is the moment to ask.
+    if (needsWifiNameRead(current)) {
+      try {
+        const status = await requestWifiName.mutateAsync()
+
+        if (status.network?.state === 'online') {
+          fillFromNetwork(status.network.network)
+          return
+        }
+      } catch (error) {
+        message(formatError(error), { title: 'Error', kind: 'error', error })
+      }
+    }
+
+    fillFromNetwork(current)
+  })
 
   const handleSubmit = useLockFn(
     form.handleSubmit(async (values) => {
@@ -273,10 +309,21 @@ export default function NetworkRuleDialog({
               )}
             </AnimatePresence>
 
+            {wifiReading && (
+              <WifiNameNotice
+                wifi={wifiReading}
+                onRequested={(status) =>
+                  status.network?.state === 'online' &&
+                  fillFromNetwork(status.network.network)
+                }
+              />
+            )}
+
             <Button
               type="button"
               onClick={handleUseCurrent}
               disabled={!current}
+              loading={requestWifiName.isPending}
             >
               {m.settings_system_proxy_network_automation_use_current()}
             </Button>

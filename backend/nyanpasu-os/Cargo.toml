@@ -8,7 +8,15 @@ authors.workspace = true
 
 [features]
 # The network automation observer; a shell that offers it enables this.
-network-environment = ['dep:netdev', 'dep:zbus']
+network-environment = [
+  'dep:netdev',
+  'dep:zbus',
+  'dep:dispatch2',
+  'dep:objc2',
+  'dep:objc2-core-location',
+  'dep:objc2-core-wlan',
+  'dep:objc2-foundation'
+]
 test-support = []
 verge-dev = []
 
@@ -44,11 +52,31 @@ whoami = '2.0.0'
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = { version = '5', optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = { version = '0.3', default-features = false, features = ['std'], optional = true }
+objc2 = { version = '0.6', optional = true }
+objc2-core-location = { version = '0.3', default-features = false, features = [
+  'std',
+  'CLLocationManager'
+], optional = true }
+objc2-core-wlan = { version = '0.3', default-features = false, features = [
+  'CWInterface',
+  'CWWiFiClient'
+], optional = true }
+objc2-foundation = { version = '0.3', default-features = false, features = [
+  'std',
+  'NSString'
+], optional = true }
+
 [target.'cfg(windows)'.dependencies]
 nyanpasu-utils = { path = '../nyanpasu-runtime/crates/nyanpasu-utils', default-features = false, features = [
   'os'
 ] }
-windows-sys = { version = '0.61', features = ['Win32_UI_WindowsAndMessaging'] }
+windows-sys = { version = '0.61', features = [
+  'Win32_Foundation',
+  'Win32_NetworkManagement_WiFi',
+  'Win32_UI_WindowsAndMessaging'
+] }
 winreg = { version = '0.56', features = ['transactions'] }
 
 [dev-dependencies]

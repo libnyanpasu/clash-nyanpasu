@@ -123,6 +123,7 @@ replace_profile_definition | desktop,http | - | elevation,os_integration,present
 report_frontend_events | desktop,http | - | -
 report_issue | desktop | opener | -
 report_window_ready | desktop | caller_webview | -
+request_wifi_name_access | desktop | - | -
 restart_application | desktop | lifecycle | -
 restart_service | desktop | elevation | presentation
 restart_sidecar | desktop,http | - | elevation,os_integration,presentation

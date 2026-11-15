@@ -478,6 +478,16 @@ export function createRpcClient(
       typedError<NetworkAutomationStatus, IpcError>(
         __RPC_INVOKE('apply_network_automation'),
       ),
+    /**
+     *  Reads the Wi-Fi name once, which the network rules do not until a rule
+     *  matches on it. Where the platform gates the name behind location access,
+     *  this asks the user for it. The status holds that reading, or why there is
+     *  none. Desktop-only: the status holds the live Wi-Fi name and gateway.
+     */
+    requestWifiNameAccess: () =>
+      typedError<NetworkAutomationStatus, IpcError>(
+        __RPC_INVOKE('request_wifi_name_access'),
+      ),
     /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
     patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
@@ -6066,9 +6076,38 @@ export type WebGpuAdapter = {
 export type WifiName =
   /**  The primary interface is not Wi-Fi. */
   | { kind: 'not_wifi' }
+  /**
+   *  The interface is Wi-Fi, but the name was not read: no enabled rule
+   *  asks for it, and reading it is what makes macOS and Windows ask the
+   *  user for location access.
+   */
+  | { kind: 'not_read' }
   | { kind: 'known'; ssid: string }
-  /**  The interface is Wi-Fi, but this host cannot or may not read its name. */
-  | { kind: 'unavailable' }
+  /**
+   *  The interface is Wi-Fi and its name was asked for, but could not be
+   *  read.
+   */
+  | { kind: 'unavailable'; reason: WifiUnavailable }
+
+/**  Why the name of a Wi-Fi network could not be read. */
+export type WifiUnavailable =
+  /**
+   *  The platform gates the name behind location access the user has not
+   *  decided on yet. Asking can show the system prompt.
+   */
+  | 'permission_required'
+  /**
+   *  The user, the device policy or a global location switch refused
+   *  location access. Only the system settings can change that.
+   */
+  | 'permission_denied'
+  /**
+   *  The platform answered without a name: the interface is not
+   *  associated, or the name service is missing or failed.
+   */
+  | 'unreadable'
+  /**  This host has no way to read a Wi-Fi name. */
+  | 'unsupported'
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =

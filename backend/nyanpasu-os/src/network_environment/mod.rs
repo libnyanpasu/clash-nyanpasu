@@ -1,18 +1,39 @@
 //! Network environment adapter: the primary network read from the platform's
 //! interface, route and neighbour tables through `netdev`, plus the Wi-Fi
-//! name where the platform gives it up without a consent prompt.
+//! name where the caller asks for it.
 
 mod wifi;
 
 use netdev::{Interface, interface::types::InterfaceType};
 use nyanpasu_config::application::{InterfaceKind, NetworkObservation, NetworkState, WifiName};
-use nyanpasu_contracts::network_environment::NetworkEnvironmentPort;
+use nyanpasu_contracts::network_environment::{NetworkEnvironmentPort, WifiNameRead};
 
-/// The host's network, read fresh on every call.
-pub struct NetdevNetworkEnvironment;
+use self::wifi::WifiNameReader;
+
+/// The host's network, read fresh on every call. It holds only what the
+/// platform's Wi-Fi name API needs between readings: a short-lived name cache
+/// and whether the user has been asked for location access.
+pub struct NetdevNetworkEnvironment {
+    wifi: WifiNameReader,
+}
+
+impl NetdevNetworkEnvironment {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            wifi: WifiNameReader::new(),
+        }
+    }
+}
+
+impl Default for NetdevNetworkEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl NetworkEnvironmentPort for NetdevNetworkEnvironment {
-    fn current(&self) -> NetworkState {
+    fn current(&self, wifi_name: WifiNameRead) -> NetworkState {
         let links: Vec<Link> = netdev::get_interfaces().iter().filter_map(link).collect();
         let Some(primary) = primary_link(&links) else {
             return NetworkState::Offline;
@@ -22,7 +43,10 @@ impl NetworkEnvironmentPort for NetdevNetworkEnvironment {
             network: NetworkObservation {
                 interface_kind: primary.kind,
                 wifi: match primary.kind {
-                    InterfaceKind::Wifi => wifi::name(&primary.name),
+                    InterfaceKind::Wifi => {
+                        self.wifi
+                            .name(&primary.name, primary.gateway_mac.as_deref(), wifi_name)
+                    }
                     InterfaceKind::Ethernet | InterfaceKind::Other => WifiName::NotWifi,
                 },
                 gateway_mac: primary.gateway_mac.clone(),

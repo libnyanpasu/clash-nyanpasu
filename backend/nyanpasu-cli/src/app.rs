@@ -722,7 +722,7 @@ mod tests {
         let run = invoke(
             &harness,
             &Environment::default(),
-            &["--json", "call", "get_profiles", r#"{"x":1}"#],
+            &["--json", "call", "get_proxies", r#"{"x":1}"#],
             "",
         )
         .await;

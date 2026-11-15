@@ -36,6 +36,14 @@ toml = '1'
 uuid = { version = '1', features = ['v4'] }
 
 [dev-dependencies]
-# Pins the CLI's wire names for shared events against their owner.
+# Pins the CLI's wire names for shared events against their owner. `nyanpasu-rpc` with
+# its test support serves a real core to `tests/core_rpc.rs` without entering the
+# production `[dependencies]`.
+nyanpasu-rpc = { path = '../nyanpasu-rpc', features = [
+  'http',
+  'local-server',
+  'test-support'
+] }
 nyanpasu-rpc-protocol = { path = '../nyanpasu-rpc-protocol', default-features = false }
 tempfile = '3'
+tokio-util = '0.7'

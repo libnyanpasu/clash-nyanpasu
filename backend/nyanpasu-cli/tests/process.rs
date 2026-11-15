@@ -19,7 +19,7 @@ struct Received {
     body: Value,
 }
 
-/// Serves `/bridge/rpc` for one test: `rpc_describe` and `get_core_status`.
+/// Serves `/bridge/rpc` for one test: `rpc_describe` and `get_core_status_summary`.
 struct MockShell {
     address: SocketAddr,
     received: Arc<Mutex<Vec<Received>>>,
@@ -78,11 +78,13 @@ impl MockShell {
                                 "principal": {"kind": "token", "id": "t", "name": "test"},
                                 "scopes": ["read"],
                                 "commands": [
-                                    {"name": "get_core_status", "effect": "query",
+                                    {"name": "get_core_status_summary", "effect": "query",
                                      "scope": "read", "allowed": true}
                                 ],
                             }),
-                            Some("get_core_status") => json!({"running": true, "core": "mihomo"}),
+                            Some("get_core_status_summary") => {
+                                json!({"running": true, "core": "mihomo"})
+                            }
                             _ => json!({"kind": "unknown_method", "message": "no"}),
                         };
                         log.lock().unwrap().push(request);
@@ -157,7 +159,7 @@ fn an_http_target_is_called_with_the_bearer_token_and_a_client_id() {
         .iter()
         .map(|request| request.body["method"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(methods, ["rpc_describe", "get_core_status"]);
+    assert_eq!(methods, ["rpc_describe", "get_core_status_summary"]);
     let client_ids: Vec<_> = received
         .iter()
         .map(|request| {

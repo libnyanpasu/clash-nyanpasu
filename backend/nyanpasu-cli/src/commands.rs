@@ -108,6 +108,7 @@ fn proxy_delay(input: &Value) -> Result<Value, CliError> {
     Ok(json!({
         "name": required_str(input, "name")?,
         "provider": optional_field(input, "provider"),
+        "group": optional_field(input, "group"),
         "url": optional_field(input, "url"),
         "expected": optional_field(input, "expected"),
     }))
@@ -132,7 +133,7 @@ fn set_mode(input: &Value) -> Result<Value, CliError> {
             "`mode` must be one of rule, global or direct",
         ));
     }
-    Ok(json!({ "patch": { "mode": mode } }))
+    Ok(json!({ "mode": mode }))
 }
 
 fn uid_only(input: &Value) -> Result<Value, CliError> {
@@ -186,7 +187,7 @@ fn patch_config(input: &Value) -> Result<Value, CliError> {
 pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "status",
-        invocation: Invocation::Method("get_core_status"),
+        invocation: Invocation::Method("get_core_status_summary"),
         scope: Scope::Read,
         effect: Effect::Query,
         description: "Show the Clash core status: running state, core name and version.",
@@ -222,16 +223,16 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "mode_get",
-        invocation: Invocation::Method("clash_api_get_configs"),
+        invocation: Invocation::Method("get_clash_settings"),
         scope: Scope::Read,
         effect: Effect::Query,
-        description: "Show the Clash configuration reported by the core, including the proxy mode.",
+        description: "Show the Clash settings, including the active proxy mode.",
         input_schema: r#"{"type":"object","properties":{}}"#,
         build: no_params,
     },
     CuratedCommand {
         name: "mode_set",
-        invocation: Invocation::Method("patch_runtime_overrides"),
+        invocation: Invocation::Method("set_proxy_mode"),
         scope: Scope::Proxy,
         effect: Effect::Mutation { destructive: false },
         description: "Switch the proxy mode to rule, global or direct.",
@@ -262,7 +263,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
         scope: Scope::Proxy,
         effect: Effect::Mutation { destructive: false },
         description: "Run a latency test against one proxy.",
-        input_schema: r#"{"type":"object","properties":{"name":{"type":"string"},"provider":{"type":"string"},"url":{"type":"string"},"expected":{"type":"string"}},"required":["name"]}"#,
+        input_schema: r#"{"type":"object","properties":{"name":{"type":"string"},"provider":{"type":"string"},"group":{"type":"string"},"url":{"type":"string"},"expected":{"type":"string"}},"required":["name"]}"#,
         build: proxy_delay,
     },
     CuratedCommand {
@@ -276,7 +277,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "profile_list",
-        invocation: Invocation::Method("get_profiles"),
+        invocation: Invocation::Method("get_profiles_listing"),
         scope: Scope::Read,
         effect: Effect::Query,
         description: "List profiles and which of them are active.",
@@ -330,7 +331,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "sysproxy_set",
-        invocation: Invocation::Method("patch_app_config"),
+        invocation: Invocation::Method("patch_system_settings"),
         scope: Scope::System,
         effect: Effect::Mutation { destructive: false },
         description: "Turn the operating system proxy on or off.",
@@ -339,7 +340,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "tun_status",
-        invocation: Invocation::Method("get_clash_config"),
+        invocation: Invocation::Method("get_clash_settings"),
         scope: Scope::Read,
         effect: Effect::Query,
         description: "Show the Clash settings, including whether TUN mode is enabled.",
@@ -348,7 +349,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "tun_set",
-        invocation: Invocation::Method("patch_clash_config"),
+        invocation: Invocation::Method("patch_clash_system_config"),
         scope: Scope::System,
         effect: Effect::Mutation { destructive: false },
         description: "Turn TUN mode on or off.",
@@ -376,7 +377,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "logs_tail",
         invocation: Invocation::Method("query_core_logs"),
-        scope: Scope::Read,
+        scope: Scope::SensitiveRead,
         effect: Effect::Query,
         description: "Show the latest core log rows.",
         input_schema: r#"{"type":"object","properties":{"level":{"type":"string"},"keyword":{"type":"string"},"limit":{"type":"integer","minimum":1}}}"#,
@@ -393,7 +394,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     },
     CuratedCommand {
         name: "config_get",
-        invocation: Invocation::Method("get_app_config"),
+        invocation: Invocation::Method("get_app_settings"),
         scope: Scope::Read,
         effect: Effect::Query,
         description: "Show the application settings.",
@@ -578,6 +579,33 @@ mod tests {
                 .params(&json!({"core": "mihomo"}))
                 .unwrap(),
             json!({"clashCore": "mihomo"})
+        );
+        assert_eq!(
+            find("mode_set")
+                .unwrap()
+                .params(&json!({"mode": "global"}))
+                .unwrap(),
+            json!({"mode": "global"})
+        );
+        assert_eq!(
+            find("tun_set")
+                .unwrap()
+                .params(&json!({"enabled": true}))
+                .unwrap(),
+            json!({"patch": {"enable_tun_mode": true}})
+        );
+        assert_eq!(
+            find("proxy_test")
+                .unwrap()
+                .params(&json!({"name": "NodeA", "group": "Proxy"}))
+                .unwrap(),
+            json!({
+                "name": "NodeA",
+                "provider": null,
+                "group": "Proxy",
+                "url": null,
+                "expected": null,
+            })
         );
         assert!(
             find("mode_set")

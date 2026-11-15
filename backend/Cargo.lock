@@ -6823,6 +6823,7 @@ dependencies = [
  "keyring",
  "nyanpasu-contracts",
  "nyanpasu-paths",
+ "nyanpasu-rpc",
  "nyanpasu-rpc-protocol",
  "nyanpasu-rpc-wire",
  "nyanpasu-single-instance",
@@ -6832,6 +6833,7 @@ dependencies = [
  "snafu 0.9.2",
  "tempfile",
  "tokio",
+ "tokio-util",
  "toml 1.2.1+spec-1.1.0",
  "uuid",
 ]

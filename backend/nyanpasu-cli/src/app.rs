@@ -22,7 +22,9 @@ use crate::{
     error::{CliError, ExitStatus},
     output::{Output, render_human},
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
-    transport::{Connection, EventFeed, HttpTransport, SocketTransport, StreamKind, Transport},
+    transport::{
+        Connection, EventFeed, HttpTransport, SocketTransport, StreamKind, Transport, event,
+    },
 };
 
 /// Opens the one connection of an invocation.
@@ -204,7 +206,7 @@ fn permit(command: &CuratedCommand, capabilities: &Capabilities) -> Result<(), C
         });
     }
     match command.invocation {
-        Invocation::Method(method) => capabilities.require(method),
+        Invocation::Method(method) => capabilities.require(method).map(drop),
         Invocation::ConnectionDetails => Ok(()),
     }
 }
@@ -257,16 +259,10 @@ async fn run_plan<T: Transport>(
         (Some(Follow::Connections), Some(feed)) => feed,
         (Some(Follow::Logs), _) => {
             transport
-                .events(StreamKind::Event(
-                    nyanpasu_rpc_protocol::EventName::CoreLogsChanged,
-                ))
+                .events(StreamKind::Event(event::CORE_LOGS_CHANGED))
                 .await?
         }
-        (Some(Follow::Traffic), _) => {
-            transport
-                .events(StreamKind::Event(nyanpasu_rpc_protocol::EventName::ClashWs))
-                .await?
-        }
+        (Some(Follow::Traffic), _) => transport.events(StreamKind::Event(event::CLASH_WS)).await?,
         (Some(Follow::Connections), None) => {
             transport.events(StreamKind::ConnectionDetails).await?
         }
@@ -423,7 +419,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        credentials::fakes::MemoryStore, describe::fixtures, transport::fakes::FakeTransport,
+        credentials::fakes::MemoryStore,
+        describe::{Scope, fixtures},
+        transport::fakes::FakeTransport,
     };
 
     /// Records every connect, then hands out one scripted transport or a failure.
@@ -458,7 +456,7 @@ mod tests {
         }
     }
 
-    fn describe_reply(scopes: &[&str], methods: &[(&str, &str)]) -> Result<Value, CliError> {
+    fn describe_reply(scopes: &[Scope], methods: &[(&str, Scope)]) -> Result<Value, CliError> {
         Ok(fixtures::describe_json(scopes, methods))
     }
 
@@ -519,25 +517,17 @@ mod tests {
         }
     }
 
-    fn all_scopes() -> Vec<&'static str> {
-        vec![
-            "read",
-            "sensitive_read",
-            "proxy",
-            "profile",
-            "settings",
-            "system",
-        ]
+    fn all_scopes() -> Vec<Scope> {
+        Scope::ALL
+            .into_iter()
+            .filter(|scope| *scope != Scope::RemoteAdmin)
+            .collect()
     }
 
     fn describe_all() -> Result<Value, CliError> {
-        let allowed: Vec<(&str, &str)> = commands::COMMANDS
+        let allowed: Vec<(&str, Scope)> = commands::COMMANDS
             .iter()
-            .filter_map(|command| {
-                command
-                    .method()
-                    .map(|method| (method, command.scope.as_str()))
-            })
+            .filter_map(|command| command.method().map(|method| (method, command.scope)))
             .collect();
         describe_reply(&all_scopes(), &allowed)
     }
@@ -671,21 +661,19 @@ mod tests {
     #[tokio::test]
     async fn shell_errors_map_to_their_exit_codes() {
         let remote = |kind: &str| {
-            Err(CliError::from_remote(
-                nyanpasu_rpc_protocol::types::RpcError {
-                    kind: kind.to_owned(),
-                    message: "nope".to_owned(),
-                    code: None,
-                    retryable: None,
-                    operation_id: None,
-                    domain_error: None,
-                },
-            ))
+            Err(CliError::from_remote(nyanpasu_rpc_wire::RpcError {
+                kind: kind.to_owned(),
+                message: "nope".to_owned(),
+                code: None,
+                retryable: None,
+                operation_id: None,
+                domain_error: None,
+            }))
         };
         for (kind, expected) in [
             ("application_error", ExitStatus::Application),
             ("unsupported", ExitStatus::Unsupported),
-            ("scope_denied", ExitStatus::Unauthenticated),
+            ("forbidden", ExitStatus::Unauthenticated),
         ] {
             let transport = FakeTransport::new(vec![describe_all(), remote(kind)]);
             let harness = harness(Ok(transport));
@@ -697,8 +685,11 @@ mod tests {
     #[tokio::test]
     async fn a_denied_scope_never_reaches_the_shell() {
         let transport = FakeTransport::new(vec![describe_reply(
-            &["read"],
-            &[("get_core_status", "read"), ("restart_sidecar", "system")],
+            &[Scope::Read],
+            &[
+                ("get_core_status", Scope::Read),
+                ("restart_sidecar", Scope::System),
+            ],
         )]);
         let harness = harness(Ok(transport));
         let run = invoke(&harness, &Environment::default(), &["core", "restart"], "").await;
@@ -708,8 +699,8 @@ mod tests {
     #[tokio::test]
     async fn a_method_the_transport_does_not_expose_is_unsupported() {
         let transport = FakeTransport::new(vec![describe_reply(
-            &["read", "system"],
-            &[("get_core_status", "read")],
+            &[Scope::Read, Scope::System],
+            &[("get_core_status", Scope::Read)],
         )]);
         let harness = harness(Ok(transport));
         let run = invoke(&harness, &Environment::default(), &["core", "restart"], "").await;

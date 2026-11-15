@@ -78,7 +78,7 @@ impl MockShell {
                                 "principal": {"kind": "token", "id": "t", "name": "test"},
                                 "scopes": ["read"],
                                 "commands": [
-                                    {"name": "get_core_status", "kind": "query",
+                                    {"name": "get_core_status", "effect": "query",
                                      "scope": "read", "allowed": true}
                                 ],
                             }),

@@ -2,12 +2,11 @@
 //!
 //! Both transports speak the same envelope. HTTP posts `{ "method", "params" }` to
 //! `/bridge/rpc`; the local socket sends length-prefixed JSON frames through the
-//! protocol crate's `LocalClient`. Neither retries, and neither falls back to the
+//! wire crate's `LocalClient`. Neither retries, and neither falls back to the
 //! other: the target and transport are decided before connecting.
 
 use std::future::Future;
 
-use nyanpasu_rpc_protocol::EventName;
 use serde_json::Value;
 use tokio::{sync::mpsc, task::JoinHandle};
 
@@ -19,11 +18,20 @@ pub mod socket;
 pub use http::HttpTransport;
 pub use socket::SocketTransport;
 
+/// Wire names of the shared events the CLI follows. The protocol crate's `EventName` owns
+/// them; a test pins these spellings against it.
+pub mod event {
+    /// Core log rows.
+    pub const CORE_LOGS_CHANGED: &str = "core-logs-changed";
+    /// Clash traffic and memory samples.
+    pub const CLASH_WS: &str = "clash-ws-event";
+}
+
 /// A server-pushed stream the CLI can follow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
-    /// A shared event, delivered as full values.
-    Event(EventName),
+    /// A shared event by its wire name, delivered as full values.
+    Event(&'static str),
     /// The connection-details demand stream.
     ConnectionDetails,
 }
@@ -167,5 +175,21 @@ pub(crate) mod fakes {
             }
             Ok(EventFeed::new(receiver, None))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nyanpasu_rpc_protocol::EventName;
+
+    use super::event;
+
+    #[test]
+    fn the_cli_event_names_are_the_protocols() {
+        assert_eq!(
+            event::CORE_LOGS_CHANGED,
+            EventName::CoreLogsChanged.as_str()
+        );
+        assert_eq!(event::CLASH_WS, EventName::ClashWs.as_str());
     }
 }

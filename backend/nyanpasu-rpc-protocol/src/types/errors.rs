@@ -28,30 +28,7 @@ use nyanpasu_runtime_values::{
     runtime_error::{CoreFailure, RestoreFailure},
 };
 
-/// An owned error envelope; the domain payload is decoded according to its command.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct RpcError {
-    pub kind: String,
-    pub message: String,
-    pub code: Option<String>,
-    pub retryable: Option<bool>,
-    pub operation_id: Option<String>,
-    pub domain_error: Option<serde_json::Value>,
-}
-
-impl RpcError {
-    /// Decode a present domain payload using the receiving type for its operation.
-    ///
-    /// Absence stays `None`; an incompatible payload returns the serde error.
-    pub fn decode_domain_error<T: serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<Option<T>, serde_json::Error> {
-        self.domain_error
-            .clone()
-            .map(serde_json::from_value)
-            .transpose()
-    }
-}
+pub use nyanpasu_rpc_wire::RpcError;
 
 /// A failure of an operation on the running core or the runtime workflow.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

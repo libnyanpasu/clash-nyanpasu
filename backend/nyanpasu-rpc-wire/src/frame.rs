@@ -386,4 +386,26 @@ pub async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn a_frame_round_trips_through_its_length_prefix() {
+        let frame = Frame::Request {
+            id: RequestId::new(1).unwrap(),
+            method: "get_core_status".into(),
+            params: json!({ "verbose": true }),
+        };
+        let bytes = encode(&frame).unwrap();
+        let length = u32::from_be_bytes(bytes[..HEADER_LEN].try_into().unwrap());
+        assert_eq!(length as usize, bytes.len() - HEADER_LEN);
+        assert_eq!(decode(&bytes[HEADER_LEN..]).unwrap(), frame);
+    }
+
+    #[test]
+    fn a_zero_request_id_is_not_an_id() {
+        assert!(RequestId::new(0).is_none());
+    }
+}

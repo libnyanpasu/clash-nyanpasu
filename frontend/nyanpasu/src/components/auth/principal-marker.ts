@@ -6,10 +6,24 @@ import { isCustomCssStyleId } from '@/utils/custom-css-items'
 import { CACHED_LANGUAGE_STORAGE_KEY } from '@/utils/language'
 import { clearKvStorageLocalCache } from '@nyanpasu/query'
 import type { QueryClient } from '@tanstack/react-query'
-import type { RpcDescribeSnapshot } from './capabilities'
+import type { RpcDescribeSnapshot, RpcPrincipal } from './capabilities'
 
 /** Records which principal and scopes the browser's persisted state belongs to. */
 export const PRINCIPAL_MARKER_KEY = 'nyanpasu-principal-marker'
+
+function principalIdentity(principal: RpcPrincipal): string {
+  switch (principal.kind) {
+    case 'desktop':
+      return 'desktop'
+    case 'local_socket':
+      return principal.user
+    case 'session':
+    case 'token':
+      return principal.id
+    case 'anonymous':
+      return 'anonymous'
+  }
+}
 
 /**
  * The non-secret identity of a page runtime: principal kind and id plus the
@@ -20,8 +34,11 @@ export function principalKey({
   principal,
   scopes,
 }: Pick<RpcDescribeSnapshot, 'principal' | 'scopes'>): string {
-  const id = principal.kind === 'desktop' ? 'desktop' : principal.id
-  return JSON.stringify([principal.kind, id, [...scopes].sort()])
+  return JSON.stringify([
+    principal.kind,
+    principalIdentity(principal),
+    [...scopes].sort(),
+  ])
 }
 
 export function readPrincipalMarker(): string | null {

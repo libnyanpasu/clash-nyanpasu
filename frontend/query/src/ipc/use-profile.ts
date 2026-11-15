@@ -150,7 +150,7 @@ const listingQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
  * `useProfile`.
  */
 export const useProfileListing = (
-  options: { refetchInterval?: number | false } = {},
+  options: { enabled?: boolean; refetchInterval?: number | false } = {},
 ) => {
   const api = useQueryApi()
 
@@ -158,7 +158,7 @@ export const useProfileListing = (
 }
 
 export const useProfile = (
-  options: { refetchInterval?: number | false } = {},
+  options: { enabled?: boolean; refetchInterval?: number | false } = {},
 ) => {
   const api = useQueryApi()
   const query = useQuery({ ...profilesQuery(api.queries), ...options })

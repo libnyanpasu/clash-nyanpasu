@@ -7,7 +7,11 @@ type Identity = Pick<RpcDescribeSnapshot, 'principal' | 'scopes'>
 beforeEach(() => localStorage.clear())
 
 test('scope order does not change the principal key', () => {
-  const principal = { kind: 'token', id: 'a1' }
+  const principal: Identity['principal'] = {
+    kind: 'token',
+    id: 'a1',
+    name: 'laptop',
+  }
 
   expect(principalKey({ principal, scopes: ['proxy', 'read'] })).toBe(
     principalKey({ principal, scopes: ['read', 'proxy'] }),
@@ -16,25 +20,35 @@ test('scope order does not change the principal key', () => {
 
 test('principal kind, id and scopes each distinguish the key', () => {
   const base: Identity = {
-    principal: { kind: 'token', id: 'a1' },
+    principal: { kind: 'token', id: 'a1', name: 'laptop' },
     scopes: ['read'],
   }
   const keys = new Set([
     principalKey(base),
     principalKey({ ...base, principal: { kind: 'session', id: 'a1' } }),
-    principalKey({ ...base, principal: { kind: 'token', id: 'a2' } }),
+    principalKey({
+      ...base,
+      principal: { kind: 'token', id: 'a2', name: 'phone' },
+    }),
+    principalKey({
+      ...base,
+      principal: { kind: 'local_socket', user: '1000' },
+    }),
+    principalKey({ ...base, principal: { kind: 'anonymous' } }),
     principalKey({ ...base, scopes: ['read', 'proxy'] }),
   ])
 
-  expect(keys.size).toBe(4)
+  expect(keys.size).toBe(6)
 })
 
 test('every desktop window is the same caller', () => {
   const scopes: Identity['scopes'] = ['read']
 
   expect(
-    principalKey({ principal: { kind: 'desktop', id: 'main' }, scopes }),
-  ).toBe(principalKey({ principal: { kind: 'desktop', id: 'tray' }, scopes }))
+    principalKey({ principal: { kind: 'desktop', window: 'main' }, scopes }),
+  ).toBe(
+    principalKey({ principal: { kind: 'desktop', window: 'tray' }, scopes }),
+  )
 })
 
 test('the key does not hold the display name', () => {

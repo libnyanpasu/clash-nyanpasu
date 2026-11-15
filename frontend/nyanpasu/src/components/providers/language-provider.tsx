@@ -33,18 +33,21 @@ export const useLanguage = () => {
  * mount before the settings query resolves; the backend stays authoritative and
  * corrects the cache whenever the two disagree.
  */
-export const LanguageProvider = ({ children }: PropsWithChildren) => {
-  const { query, upsert } = useSettings()
+export const LanguageProvider = ({
+  enabled = true,
+  children,
+}: PropsWithChildren<{ enabled?: boolean }>) => {
+  const { query, upsert } = useSettings({ enabled })
 
   const persisted = normalizeLanguage(query.data?.language)
-  const settled = query.isSuccess || query.isError
+  const settled = !enabled || query.isSuccess || query.isError
 
   // Deliberately compares against the cache rather than `getLocale()`: the
   // first `getLocale()` call writes whatever it resolved back into the cache,
   // so calling it here would mask a first launch (no cache at all) as a
   // deliberate choice of `baseLocale`.
   const [cached] = useState(getCachedLanguage)
-  const [applied, setApplied] = useState(cached !== null)
+  const [applied, setApplied] = useState(cached !== null || !enabled)
 
   useEffect(() => {
     if (applied || !settled) {

@@ -5,42 +5,26 @@ import {
   type PropsWithChildren,
   type ReactNode,
 } from 'react'
+import type {
+  DescribedCommand,
+  Principal,
+  RpcDescribeResponse,
+  Scope,
+} from '@nyanpasu/rpc/types'
 
-export type RpcScope =
-  | 'read'
-  | 'sensitive_read'
-  | 'proxy'
-  | 'profile'
-  | 'settings'
-  | 'system'
-  | 'remote_admin'
+export type RpcScope = Scope
+export type RpcDescribeCommand = DescribedCommand
+export type RpcDescribeSnapshot = RpcDescribeResponse
+export type RpcPrincipal = Principal
 
-export interface RpcDescribeCommand {
-  name: string
-  kind: 'query' | 'mutation'
-  scope: RpcScope
-  /** Whether this transport exposes the command and the principal's scope covers it. */
-  allowed: boolean
-}
-
-/** The `rpc_describe` result: what the resolved principal may do. */
-export interface RpcDescribeSnapshot {
-  protocol: number
-  server: { kind: string; version: string }
-  transport: string
-  principal: { kind: string; id: string; name?: string | null }
-  scopes: RpcScope[]
-  commands: RpcDescribeCommand[]
-}
-
-export const CapabilitiesContext = createContext<RpcDescribeSnapshot | null>(
+export const CapabilitiesContext = createContext<RpcDescribeResponse | null>(
   null,
 )
 
 export function CapabilitiesProvider({
   snapshot,
   children,
-}: PropsWithChildren<{ snapshot: RpcDescribeSnapshot }>) {
+}: PropsWithChildren<{ snapshot: RpcDescribeResponse }>) {
   return (
     <CapabilitiesContext.Provider value={snapshot}>
       {children}
@@ -60,7 +44,7 @@ export function useCapabilities() {
     // `remote_admin` controls exist only in the desktop app.
     const isDesktop = principal.kind === 'desktop'
     const granted = new Set(scopes)
-    const hasScope = (scope: RpcScope) =>
+    const hasScope = (scope: Scope) =>
       granted.has(scope) && (scope !== 'remote_admin' || isDesktop)
     const byName = new Map(commands.map((command) => [command.name, command]))
 
@@ -71,13 +55,13 @@ export function useCapabilities() {
       isDesktop,
       hasScope,
       /** Whether every scope in `required` is held. */
-      hasScopes: (required: readonly RpcScope[]) => required.every(hasScope),
+      hasScopes: (required: readonly Scope[]) => required.every(hasScope),
       canCall: (name: string) => {
         const command = byName.get(name)
         return !!command && command.allowed && hasScope(command.scope)
       },
       /** Whether mutation controls guarded by `scope` must be unavailable. */
-      isReadOnly: (scope: RpcScope) => !hasScope(scope),
+      isReadOnly: (scope: Scope) => !hasScope(scope),
     }
   }, [snapshot])
 }
@@ -86,13 +70,16 @@ export type Capabilities = ReturnType<typeof useCapabilities>
 
 type RequireCapabilityProps = PropsWithChildren<
   { fallback?: ReactNode } & (
-    { scope: RpcScope; command?: never } | { command: string; scope?: never }
+    | { scope: Scope; scopes?: never; command?: never }
+    | { scopes: readonly Scope[]; scope?: never; command?: never }
+    | { command: string; scope?: never; scopes?: never }
   )
 >
 
 /** Renders `children` only when the principal holds the scope or may call the command. */
 export function RequireCapability({
   scope,
+  scopes,
   command,
   fallback = null,
   children,
@@ -101,7 +88,9 @@ export function RequireCapability({
   const allowed =
     scope !== undefined
       ? capabilities.hasScope(scope)
-      : capabilities.canCall(command)
+      : scopes !== undefined
+        ? capabilities.hasScopes(scopes)
+        : capabilities.canCall(command)
 
   return <>{allowed ? children : fallback}</>
 }

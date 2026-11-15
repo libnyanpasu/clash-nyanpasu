@@ -111,13 +111,21 @@ export const ClashWSFreezeBoundary = ({
   )
 }
 
-export const ClashWSProvider = ({ children }: PropsWithChildren) => {
+export const ClashWSProvider = ({
+  enabled = true,
+  children,
+}: PropsWithChildren<{ enabled?: boolean }>) => {
   const api = useQueryApi()
   const [snapshot, setSnapshot] = useState<ClashWsSnapshot>()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(enabled)
   const [error, setError] = useState<unknown>(null)
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false)
+      setError(null)
+      return
+    }
     let disposed = false
     let current: ClashWsSnapshot | undefined
     let syncing = false
@@ -209,7 +217,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       disposed = true
       unlisten?.()
     }
-  }, [api])
+  }, [api, enabled])
 
   const clearHistory = useCallback(
     async (kind: ClashWsKind) => {

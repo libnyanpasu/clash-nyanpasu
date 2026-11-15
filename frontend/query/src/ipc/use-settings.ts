@@ -58,10 +58,14 @@ const useTypedConfig = <TConfig, TPatch>(
   configQuery: ConfigQuery<TConfig>,
   patchConfig: ConfigMutation<TPatch>,
   refreshKeys: readonly QueryKey[],
+  options?: { enabled?: boolean },
 ) => {
   const queryClient = useQueryClient()
 
-  const query = useQuery(unwrapQueryOptions(configQuery, configQuery.queryFn!))
+  const query = useQuery({
+    ...unwrapQueryOptions(configQuery, configQuery.queryFn!),
+    enabled: options?.enabled,
+  })
 
   const upsert = useMutation({
     mutationKey: patchConfig.mutationKey,
@@ -155,12 +159,13 @@ type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
  * upsert.mutate({ theme_mode: 'dark' })
  * ```
  */
-export const useSettings = () => {
+export const useSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ApplicationSettings_Serialize, AppConfigPatch>(
     api.queries.getAppSettings(),
     api.mutations.patchAppConfig,
     appSettingsKeys(api),
+    options,
   )
 }
 
@@ -174,8 +179,9 @@ export const useSettings = () => {
  */
 export const useSetting = <K extends keyof ApplicationSettings_Serialize>(
   key: K,
+  options?: { enabled?: boolean },
 ) => {
-  return useTypedConfigField(useSettings(), key)
+  return useTypedConfigField(useSettings(options), key)
 }
 
 /**
@@ -183,12 +189,13 @@ export const useSetting = <K extends keyof ApplicationSettings_Serialize>(
  * editors of a field the safe view reduces to a flag: the default latency test
  * URL and the PAC URL. Ordinary readers must use `useSettings`.
  */
-export const useFullSettings = () => {
+export const useFullSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<NyanpasuAppConfig_Serialize, AppConfigPatch>(
     api.queries.getAppConfig(),
     api.mutations.patchAppConfig,
     appSettingsKeys(api),
+    options,
   )
 }
 
@@ -203,8 +210,9 @@ export const useFullSettings = () => {
  */
 export const useFullSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
   key: K,
+  options?: { enabled?: boolean },
 ) => {
-  return useTypedConfigField(useFullSettings(), key)
+  return useTypedConfigField(useFullSettings(options), key)
 }
 
 /**
@@ -219,7 +227,7 @@ export const useFullSetting = <K extends keyof NyanpasuAppConfig_Serialize>(
  * upsert.mutate({ enable_system_proxy: true })
  * ```
  */
-export const useSystemSettings = () => {
+export const useSystemSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<
     ApplicationSettings_Serialize,
@@ -228,6 +236,7 @@ export const useSystemSettings = () => {
     api.queries.getAppSettings(),
     api.mutations.patchSystemSettings,
     appSettingsKeys(api),
+    options,
   )
 }
 
@@ -245,12 +254,13 @@ export const useSystemSetting = <
     keyof SystemSettingsPatch_Deserialize,
 >(
   key: K,
+  options?: { enabled?: boolean },
 ) => {
   return useTypedConfigField<
     ApplicationSettings_Serialize,
     SystemSettingsPatch_Deserialize,
     K
-  >(useSystemSettings(), key)
+  >(useSystemSettings(options), key)
 }
 
 /**
@@ -258,12 +268,13 @@ export const useSystemSetting = <
  * secret-free view, without the web UI templates. Writes only the ordinary
  * settings (`settings` scope); the control plane uses `useClashSystemSettings`.
  */
-export const useClashSettings = () => {
+export const useClashSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ClashSettings, ClashSettingsPatch_Deserialize>(
     api.queries.getClashSettings(),
     api.mutations.patchClashConfig,
     clashSettingsKeys(api),
+    options,
   )
 }
 
@@ -277,9 +288,12 @@ export const useClashSettings = () => {
  * const { value, upsert } = useClashSetting('expand_include_all')
  * ```
  */
-export const useClashSetting = <K extends keyof ClashSettings>(key: K) => {
+export const useClashSetting = <K extends keyof ClashSettings>(
+  key: K,
+  options?: { enabled?: boolean },
+) => {
   return useTypedConfigField<ClashSettings, ClashSettingsPatch_Deserialize, K>(
-    useClashSettings(),
+    useClashSettings(options),
     key,
   )
 }
@@ -290,12 +304,13 @@ export const useClashSetting = <K extends keyof ClashSettings>(key: K) => {
  * transparent capture, web UI templates and the field filter. It is the editor
  * of the control plane, so it keeps the web UI templates the safe view omits.
  */
-export const useClashSystemSettings = () => {
+export const useClashSystemSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ClashConfig, ClashSystemPatch_Deserialize>(
     api.queries.getClashConfig(),
     api.mutations.patchClashSystemConfig,
     clashSettingsKeys(api),
+    options,
   )
 }
 
@@ -319,11 +334,12 @@ export const useClashSystemSetting = <
   K extends keyof ClashConfig & keyof ClashSystemPatch_Deserialize,
 >(
   key: K,
+  options?: { enabled?: boolean },
 ) => {
   return useTypedConfigField<
     ClashConfig,
     ClashSystemPatch_Deserialize,
     K,
     ClearableClashField
-  >(useClashSystemSettings(), key)
+  >(useClashSystemSettings(options), key)
 }

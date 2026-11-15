@@ -122,11 +122,14 @@ export function useExperimentalThemeContext() {
   return context
 }
 
-export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
+export function ExperimentalThemeProvider({
+  enabled = true,
+  children,
+}: PropsWithChildren<{ enabled?: boolean }>) {
   const [appWindow] = useState(createWindowAdapter)
-  const themeMode = useSetting('theme_mode')
+  const themeMode = useSetting('theme_mode', { enabled })
 
-  const themeColor = useSetting('theme_color')
+  const themeColor = useSetting('theme_color', { enabled })
   const [resolvedThemeMode, setResolvedThemeMode] =
     useState<ResolvedThemeMode>(getSystemThemeMode())
 

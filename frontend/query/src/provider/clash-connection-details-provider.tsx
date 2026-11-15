@@ -161,6 +161,9 @@ export const ClashConnectionDetailsProvider = ({
           unsubscribe: (id) =>
             rpc.unsubscribeClashConnectionDetails(id as SubscriptionId),
         },
+        {
+          probeAuth: () => rpc.rpcDescribe(),
+        },
       )
     const stop = transport.listen({
       onOpen: () => {

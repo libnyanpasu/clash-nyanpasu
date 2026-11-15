@@ -17,7 +17,10 @@ import {
   ConfigurationStatusProvider,
   useConfigurationStatus,
 } from './configuration-status-provider'
-import { KvStorageProvider } from './kv-storage-provider'
+import {
+  KvStorageProvider,
+  type KvStoragePersistence,
+} from './kv-storage-provider'
 import { MutationProvider } from './mutation-provider'
 import { RpcProvider } from './rpc-provider'
 
@@ -44,12 +47,16 @@ export type NyanpasuQueryProviderProps = PropsWithChildren<{
   rpc: RpcClient
   queryClient: QueryClient
   onDegraded?: (degradations: AnyDegradation[]) => void
+  kvPersistence?: KvStoragePersistence
+  clashWsEnabled?: boolean
 }>
 
 export const NyanpasuQueryProvider = ({
   rpc,
   queryClient,
   onDegraded,
+  kvPersistence = 'backend',
+  clashWsEnabled = true,
   children,
 }: NyanpasuQueryProviderProps) => {
   useEffect(() => {
@@ -74,8 +81,8 @@ export const NyanpasuQueryProvider = ({
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={queryClient}>
         <MutationProvider>
-          <KvStorageProvider>
-            <ClashWSProvider>
+          <KvStorageProvider persistence={kvPersistence}>
+            <ClashWSProvider enabled={clashWsEnabled}>
               <ConnectionDetailsBridge>{children}</ConnectionDetailsBridge>
             </ClashWSProvider>
           </KvStorageProvider>

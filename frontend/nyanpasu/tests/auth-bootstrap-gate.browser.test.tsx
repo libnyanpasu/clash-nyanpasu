@@ -28,17 +28,22 @@ function snapshot(
     principal: { kind: 'token', id: 'a1b2', name: 'laptop' },
     scopes: ['read', 'proxy'],
     commands: [
-      { name: 'get_profiles', kind: 'query', scope: 'read', allowed: true },
-      { name: 'select_proxy', kind: 'mutation', scope: 'proxy', allowed: true },
+      { name: 'get_profiles', effect: 'query', scope: 'read', allowed: true },
+      {
+        name: 'select_proxy',
+        effect: 'mutation',
+        scope: 'proxy',
+        allowed: true,
+      },
       {
         name: 'restart_core',
-        kind: 'mutation',
+        effect: 'mutation',
         scope: 'system',
         allowed: false,
       },
       {
         name: 'get_secret',
-        kind: 'query',
+        effect: 'query',
         scope: 'sensitive_read',
         allowed: true,
       },
@@ -276,7 +281,7 @@ test('remote_admin is available only to the desktop principal', async () => {
   await remote.unmount()
 
   const desktop = await renderProbe(
-    snapshot({ scopes, principal: { kind: 'desktop', id: 'main' } }),
+    snapshot({ scopes, principal: { kind: 'desktop', window: 'main' } }),
     (c) =>
       `desktop:${c.isDesktop}:${c.hasScope('remote_admin')}:${c.isReadOnly('remote_admin')}`,
   )

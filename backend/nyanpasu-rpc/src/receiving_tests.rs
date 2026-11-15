@@ -926,6 +926,9 @@ cases!(
     InvalidLatencyTimeout {
         reason: "field-57/路徑\\file.yaml".to_owned(),
     },
+    InvalidNetworkAutomation {
+        reason: "field-58/路徑\\file.yaml".to_owned(),
+    },
     ValidateHotkeys {
         source: hotkey_parse_error_cases(present).remove(0),
     },

@@ -729,6 +729,9 @@ pub enum ConfigError {
     InvalidLatencyTimeout {
         reason: String,
     },
+    InvalidNetworkAutomation {
+        reason: String,
+    },
     ValidateHotkeys {
         source: HotkeyParseError,
     },

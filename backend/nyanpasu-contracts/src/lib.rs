@@ -5,6 +5,7 @@ pub mod core_install;
 pub mod core_version;
 pub mod elevation;
 pub mod logs;
+pub mod network_environment;
 pub mod service;
 pub mod system_dns;
 pub mod system_proxy;

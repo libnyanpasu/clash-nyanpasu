@@ -39,6 +39,8 @@ pub enum ConfigError {
     TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
+    #[snafu(display("invalid network automation: {reason}"))]
+    InvalidNetworkAutomation { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]

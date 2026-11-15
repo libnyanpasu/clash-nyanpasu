@@ -3,16 +3,15 @@
 
 use std::sync::{Arc, Mutex};
 
+#[cfg(target_os = "linux")]
+use nyanpasu_config::clash::config::clash_strategy::{PortStrategy, PortStrategyKind};
 use nyanpasu_config::{
     application::{
         InterfaceKind, MechanismAction, MechanismActions, NetworkAutomation, NetworkConditions,
         NetworkMatch, NetworkObservation, NetworkRule, NetworkState, NyanpasuAppConfigPatch,
         WifiName,
     },
-    clash::config::{
-        ClashConfig, TransparentProxyMode,
-        clash_strategy::{PortStrategy, PortStrategyKind},
-    },
+    clash::config::{ClashConfig, TransparentProxyMode},
 };
 use nyanpasu_contracts::network_environment::NetworkEnvironmentPort;
 use nyanpasu_runtime_values::network_automation::{
@@ -325,6 +324,7 @@ async fn system_proxy_action_writes_the_switch_once() {
     assert!(!switches.application.snapshot().state.enable_system_proxy);
 }
 
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn enabling_tun_turns_a_kept_transparent_proxy_off() {
     let dir = TempDir::new().unwrap();

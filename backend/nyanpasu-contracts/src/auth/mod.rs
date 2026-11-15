@@ -4,6 +4,7 @@ pub mod ports;
 pub mod secrets;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+pub mod tls;
 pub mod types;
 
 use std::collections::BTreeSet;
@@ -13,6 +14,10 @@ pub use ports::{AuthClock, EntropyError, EntropySource, SecretStore, SecretStore
 pub use secrets::{SecretHash, SecretString};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+pub use tls::{
+    TlsCertificateGenerator, TlsCertificateRequest, TlsCertificateSummary, TlsFingerprint,
+    TlsFingerprintError, TlsGenerateError, TlsIdentity,
+};
 pub use types::{
     AccessTokenStatus, AccessTokenSummary, AuthRevocation, AuthValidationError,
     AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest,

@@ -768,13 +768,14 @@ pub(crate) fn test_materialization_port() -> Arc<dyn ProfileMaterializationPort>
 pub fn test_remote_auth_ports() -> RemoteAccessAuthPorts {
     use nyanpasu_contracts::auth::{
         RemoteAuthPolicy,
-        test_support::{CountingEntropy, ManualAuthClock, MemorySecretStore},
+        test_support::{CountingEntropy, FakeTlsGenerator, ManualAuthClock, MemorySecretStore},
     };
 
     RemoteAccessAuthPorts {
         clock: Arc::new(ManualAuthClock::default()),
         entropy: Arc::new(CountingEntropy::default()),
         store: Arc::new(MemorySecretStore::default()),
+        tls_generator: Arc::new(FakeTlsGenerator::default()),
         policy: RemoteAuthPolicy::default(),
     }
 }

@@ -6,13 +6,14 @@
 //! Tokens are persisted through the injected [`SecretStore`]; launch codes and sessions are
 //! memory only and do not survive a restart.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, net::IpAddr, sync::Arc, time::Duration};
 
 use nyanpasu_contracts::auth::{
     AccessTokenStatus, AccessTokenSummary, AuthClock, AuthContext, AuthRevocation,
     AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest, EntropySource,
     EstablishedBrowserSession, IssuedAccessToken, IssuedLaunchCode, Principal, RemoteAuthPolicy,
-    Scope, ScopeSet, SecretHash, SecretStore, SecretString, SessionId, TokenId,
+    Scope, ScopeSet, SecretHash, SecretStore, SecretString, SessionId, TlsCertificateGenerator,
+    TlsCertificateRequest, TlsCertificateSummary, TlsIdentity, TokenId,
     is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, MessagingErr, RpcReplyPort};
@@ -22,13 +23,19 @@ use super::{
     auth_error::RemoteAuthError,
     auth_store::{
         TokenRecord, constant_time_hash_eq, mint_launch_code, mint_session_cookie, mint_token,
-        save_tokens, sha256_secret,
+        save_record, sha256_secret,
     },
 };
 
 /// Pending launch codes kept at once. They live 60 seconds, so this only bounds a flood.
 const MAX_LAUNCH_CODES: usize = 32;
 const MAX_WAKE_DELAY_MS: u64 = 24 * 60 * 60 * 1000;
+/// How long a generated certificate stays valid: two years, which stays inside the 825-day
+/// limit some platforms apply to server certificates.
+const TLS_VALIDITY_MS: i64 = 730 * 24 * 60 * 60 * 1000;
+/// A certificate is valid from this long before it was made. A device on the network whose clock
+/// runs behind this computer's would otherwise reject a certificate that is not yet valid for it.
+const TLS_CLOCK_SKEW_MS: i64 = 24 * 60 * 60 * 1000;
 
 pub(super) type Reply<T> = RpcReplyPort<Result<T, RemoteAuthError>>;
 
@@ -75,6 +82,20 @@ pub(super) enum Message {
         cookie: SecretString,
         reply: Reply<()>,
     },
+    /// The certificate of the HTTPS listener, generated on first use and when it has expired.
+    TlsIdentity {
+        addresses: Vec<IpAddr>,
+        reply: Reply<TlsIdentity>,
+    },
+    /// The public view of the certificate, or `None` while none was generated yet.
+    TlsSummary {
+        reply: Reply<Option<TlsCertificateSummary>>,
+    },
+    /// Replaces the certificate, which changes its fingerprint.
+    ResetTls {
+        addresses: Vec<IpAddr>,
+        reply: Reply<TlsCertificateSummary>,
+    },
     /// Sent by the expiry timer; pruning before every message does the work.
     ExpiryTick,
 }
@@ -83,8 +104,10 @@ pub(super) struct Args {
     pub(super) clock: Arc<dyn AuthClock>,
     pub(super) entropy: Arc<dyn EntropySource>,
     pub(super) store: Arc<dyn SecretStore>,
+    pub(super) tls_generator: Arc<dyn TlsCertificateGenerator>,
     pub(super) policy: RemoteAuthPolicy,
     pub(super) tokens: Vec<TokenRecord>,
+    pub(super) tls: Option<TlsIdentity>,
     pub(super) revocations: broadcast::Sender<AuthRevocation>,
 }
 
@@ -166,8 +189,10 @@ pub(super) struct State {
     clock: Arc<dyn AuthClock>,
     entropy: Arc<dyn EntropySource>,
     store: Arc<dyn SecretStore>,
+    tls_generator: Arc<dyn TlsCertificateGenerator>,
     revocations: broadcast::Sender<AuthRevocation>,
     tokens: BTreeMap<TokenId, LiveToken>,
+    tls: Option<TlsIdentity>,
     launch_codes: Vec<LaunchCode>,
     sessions: BTreeMap<SessionId, Session>,
     wake: Option<JoinHandle<Result<(), MessagingErr<Message>>>>,
@@ -204,8 +229,10 @@ impl Actor for RemoteAccessAuthActor {
             clock: args.clock,
             entropy: args.entropy,
             store: args.store,
+            tls_generator: args.tls_generator,
             revocations: args.revocations,
             tokens,
+            tls: args.tls,
             launch_codes: Vec::new(),
             sessions: BTreeMap::new(),
             wake: None,
@@ -237,6 +264,15 @@ impl Actor for RemoteAccessAuthActor {
         state.prune();
         match message {
             Message::ExpiryTick => {}
+            Message::TlsIdentity { addresses, reply } => {
+                let _ = reply.send(state.tls_identity(addresses).await);
+            }
+            Message::TlsSummary { reply } => {
+                let _ = reply.send(Ok(state.tls.as_ref().map(TlsIdentity::summary)));
+            }
+            Message::ResetTls { addresses, reply } => {
+                let _ = reply.send(state.reset_tls(addresses).await);
+            }
             Message::CreateAccessToken { request, reply } => {
                 let _ = reply.send(state.create_token(request).await);
             }
@@ -427,11 +463,61 @@ impl State {
     }
 
     async fn persist(&self) -> Result<(), RemoteAuthError> {
-        save_tokens(
+        save_record(
             self.store.as_ref(),
             self.tokens.values().map(|token| &token.record),
+            self.tls.as_ref(),
         )
         .await
+    }
+
+    /// The certificate in use. A missing or expired one is generated and made durable first; one
+    /// that is still valid is kept even when the listener's addresses changed, because a new
+    /// fingerprint would break every pinned client. An explicit reset replaces it.
+    async fn tls_identity(
+        &mut self,
+        addresses: Vec<IpAddr>,
+    ) -> Result<TlsIdentity, RemoteAuthError> {
+        let now = self.clock.now_unix_ms();
+        if let Some(identity) = self.tls.as_ref().filter(|tls| now < tls.not_after_ms()) {
+            return Ok(identity.clone());
+        }
+        self.replace_tls(addresses).await
+    }
+
+    async fn reset_tls(
+        &mut self,
+        addresses: Vec<IpAddr>,
+    ) -> Result<TlsCertificateSummary, RemoteAuthError> {
+        self.replace_tls(addresses)
+            .await
+            .map(|identity| identity.summary())
+    }
+
+    /// Generates a certificate and keeps it only once it is durable, so a restart never serves a
+    /// certificate that was not saved.
+    async fn replace_tls(
+        &mut self,
+        addresses: Vec<IpAddr>,
+    ) -> Result<TlsIdentity, RemoteAuthError> {
+        let now = self.clock.now_unix_ms();
+        let identity = self
+            .tls_generator
+            .generate(TlsCertificateRequest {
+                addresses,
+                not_before_ms: now.saturating_sub(TLS_CLOCK_SKEW_MS),
+                not_after_ms: now.saturating_add(TLS_VALIDITY_MS),
+            })
+            .await
+            .map_err(|error| RemoteAuthError::PersistenceFailed {
+                reason: error.to_string(),
+            })?;
+        let previous = self.tls.replace(identity.clone());
+        if let Err(error) = self.persist().await {
+            self.tls = previous;
+            return Err(error);
+        }
+        Ok(identity)
     }
 
     /// Looks up the token a raw credential names, doing the same hashing work for every

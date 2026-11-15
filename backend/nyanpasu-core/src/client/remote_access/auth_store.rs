@@ -1,14 +1,14 @@
 //! Credential hashing and minting, and the plain JSON secret record.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, net::IpAddr};
 
 use nyanpasu_contracts::auth::{
-    EntropySource, ScopeSet, SecretHash, SecretStore, SecretString, TokenId, TokenName,
+    EntropySource, ScopeSet, SecretHash, SecretStore, SecretString, TlsIdentity, TokenId, TokenName,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize as _, Zeroizing};
 
 use super::auth_error::RemoteAuthError;
 
@@ -36,10 +36,37 @@ struct StoredToken {
     expires_at_ms: Option<i64>,
 }
 
+/// The self-signed certificate and its private key. Absent until the HTTPS listener first needs
+/// one, so records written before TLS existed still decode.
+#[derive(Serialize, Deserialize)]
+struct StoredTls {
+    certificate_hex: String,
+    private_key_hex: String,
+    dns_names: Vec<String>,
+    /// The IP addresses the certificate covers; a record without them covers none.
+    #[serde(default)]
+    addresses: Vec<IpAddr>,
+    not_after_ms: i64,
+}
+
+impl Drop for StoredTls {
+    fn drop(&mut self) {
+        self.private_key_hex.zeroize();
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct StoredRecord {
     version: u32,
     tokens: Vec<StoredToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls: Option<StoredTls>,
+}
+
+/// What the secret record holds.
+pub(super) struct LoadedRecord {
+    pub(super) tokens: Vec<TokenRecord>,
+    pub(super) tls: Option<TlsIdentity>,
 }
 
 /// SHA-256 of a credential. Credentials carry 256 bits of entropy, so a fast hash is enough.
@@ -103,17 +130,21 @@ fn persistence_failed(reason: impl Into<String>) -> RemoteAuthError {
     }
 }
 
-/// Loads the persisted tokens, failing closed on a corrupt, oversized or inconsistent record.
-pub(super) async fn load_tokens(
+/// Loads the persisted tokens and certificate, failing closed on a corrupt, oversized or
+/// inconsistent record.
+pub(super) async fn load_record(
     store: &dyn SecretStore,
     max_tokens: usize,
-) -> Result<Vec<TokenRecord>, RemoteAuthError> {
+) -> Result<LoadedRecord, RemoteAuthError> {
     let Some(bytes) = store
         .load()
         .await
         .map_err(|error| persistence_failed(error.to_string()))?
     else {
-        return Ok(Vec::new());
+        return Ok(LoadedRecord {
+            tokens: Vec::new(),
+            tls: None,
+        });
     };
     let record: StoredRecord = serde_json::from_slice(&bytes).map_err(|error| {
         persistence_failed(format!("corrupt secret record ({:?})", error.classify()))
@@ -148,13 +179,41 @@ pub(super) async fn load_tokens(
             expires_at_ms: stored.expires_at_ms,
         });
     }
-    Ok(tokens)
+    let tls = record.tls.map(decode_tls).transpose()?;
+    Ok(LoadedRecord { tokens, tls })
 }
 
-/// Persists `tokens` as the whole record.
-pub(super) async fn save_tokens<'a>(
+fn decode_tls(mut stored: StoredTls) -> Result<TlsIdentity, RemoteAuthError> {
+    let malformed = || persistence_failed("secret record holds a malformed TLS identity");
+    let certificate = hex::decode(&stored.certificate_hex).map_err(|_| malformed())?;
+    let private_key = hex::decode(&stored.private_key_hex).map_err(|_| malformed())?;
+    if certificate.is_empty() || private_key.is_empty() {
+        return Err(malformed());
+    }
+    Ok(TlsIdentity::new(
+        certificate,
+        private_key,
+        std::mem::take(&mut stored.dns_names),
+        std::mem::take(&mut stored.addresses),
+        stored.not_after_ms,
+    ))
+}
+
+fn encode_tls(identity: &TlsIdentity) -> StoredTls {
+    StoredTls {
+        certificate_hex: hex::encode(identity.certificate_der()),
+        private_key_hex: hex::encode(identity.private_key_der()),
+        dns_names: identity.dns_names().to_vec(),
+        addresses: identity.addresses().to_vec(),
+        not_after_ms: identity.not_after_ms(),
+    }
+}
+
+/// Persists `tokens` and the certificate as the whole record.
+pub(super) async fn save_record<'a>(
     store: &dyn SecretStore,
     tokens: impl Iterator<Item = &'a TokenRecord>,
+    tls: Option<&TlsIdentity>,
 ) -> Result<(), RemoteAuthError> {
     let record = StoredRecord {
         version: STORE_VERSION,
@@ -168,6 +227,7 @@ pub(super) async fn save_tokens<'a>(
                 expires_at_ms: token.expires_at_ms,
             })
             .collect(),
+        tls: tls.map(encode_tls),
     };
     let bytes = Zeroizing::new(serde_json::to_vec(&record).map_err(|error| {
         persistence_failed(format!(

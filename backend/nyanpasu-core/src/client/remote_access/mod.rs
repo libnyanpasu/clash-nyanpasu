@@ -22,13 +22,14 @@ mod auth_tests;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_contracts::auth::{
     AccessTokenSummary, AuthClock, AuthRevocation, AuthenticatedCaller, BrowserSessionSummary,
     CreateAccessTokenRequest, EntropySource, EstablishedBrowserSession, IssuedAccessToken,
-    IssuedLaunchCode, RemoteAuthPolicy, ScopeSet, SecretStore, SecretString, SessionId, TokenId,
+    IssuedLaunchCode, RemoteAuthPolicy, ScopeSet, SecretStore, SecretString, SessionId,
+    TlsCertificateGenerator, TlsCertificateSummary, TlsIdentity, TokenId,
 };
 use nyanpasu_runtime_values::runtime::MutationOutcome;
 use ractor::{Actor, ActorRef, rpc::CallResult};
@@ -41,7 +42,7 @@ use self::{
     auth_actor::{
         Args as AuthArgs, Message as AuthMessage, RemoteAccessAuthActor, Reply as AuthReply,
     },
-    auth_store::load_tokens,
+    auth_store::load_record,
 };
 pub use self::{
     auth_error::RemoteAuthError,
@@ -165,8 +166,10 @@ pub struct RemoteAccessAuthPorts {
     pub clock: Arc<dyn AuthClock>,
     /// Cryptographic randomness.
     pub entropy: Arc<dyn EntropySource>,
-    /// Durable owner-only record of the token hashes.
+    /// Durable owner-only record of the token hashes and the TLS identity.
     pub store: Arc<dyn SecretStore>,
+    /// Makes the self-signed certificate of the HTTPS listener.
+    pub tls_generator: Arc<dyn TlsCertificateGenerator>,
     /// Bounds and lifetimes.
     pub policy: RemoteAuthPolicy,
 }
@@ -178,11 +181,13 @@ impl RemoteAccessAuthPorts {
         clock: impl AuthClock + 'static,
         entropy: impl EntropySource + 'static,
         store: impl SecretStore + 'static,
+        tls_generator: impl TlsCertificateGenerator + 'static,
     ) -> Self {
         Self {
             clock: Arc::new(clock),
             entropy: Arc::new(entropy),
             store: Arc::new(store),
+            tls_generator: Arc::new(tls_generator),
             policy: RemoteAuthPolicy::default(),
         }
     }
@@ -214,14 +219,16 @@ impl RemoteAccessAuthClient {
                 reason: "policy bounds and lifetimes must be at least 1",
             });
         }
-        let tokens = load_tokens(ports.store.as_ref(), ports.policy.max_tokens).await?;
+        let record = load_record(ports.store.as_ref(), ports.policy.max_tokens).await?;
         let (revocations, _) = broadcast::channel(REVOCATION_CHANNEL_CAPACITY);
         let args = AuthArgs {
             clock: ports.clock,
             entropy: ports.entropy,
             store: ports.store,
+            tls_generator: ports.tls_generator,
             policy: ports.policy,
-            tokens,
+            tokens: record.tokens,
+            tls: record.tls,
             revocations: revocations.clone(),
         };
         let (actor, _handle) = Actor::spawn(None, RemoteAccessAuthActor, args)
@@ -229,6 +236,37 @@ impl RemoteAccessAuthClient {
             .map_err(|_| RemoteAuthError::OwnerStopped)?;
         nyanpasu_owner_support::shutdown::drain_on_shutdown(tasks, shutdown, actor.get_cell());
         Ok(Self { actor, revocations })
+    }
+
+    /// The certificate of the HTTPS listener. The owner generates it on first use, or when the
+    /// saved one expired, and saves it before returning it. `addresses` are added to what a new
+    /// certificate covers; a valid saved certificate is returned as it is.
+    ///
+    /// # Errors
+    /// `PersistenceFailed` when no certificate could be generated or saved; nothing is kept.
+    pub async fn tls_identity(
+        &self,
+        addresses: Vec<IpAddr>,
+    ) -> Result<TlsIdentity, RemoteAuthError> {
+        self.call(|reply| AuthMessage::TlsIdentity { addresses, reply })
+            .await
+    }
+
+    /// The public view of the certificate, or `None` before the first one was generated.
+    pub async fn tls_summary(&self) -> Result<Option<TlsCertificateSummary>, RemoteAuthError> {
+        self.call(|reply| AuthMessage::TlsSummary { reply }).await
+    }
+
+    /// Replaces the certificate. Pinned clients must pin the new fingerprint.
+    ///
+    /// # Errors
+    /// `PersistenceFailed` when the new certificate could not be saved; the old one stays.
+    pub async fn reset_tls(
+        &self,
+        addresses: Vec<IpAddr>,
+    ) -> Result<TlsCertificateSummary, RemoteAuthError> {
+        self.call(|reply| AuthMessage::ResetTls { addresses, reply })
+            .await
     }
 
     /// Revocations and expiries of tokens and sessions, as they happen.

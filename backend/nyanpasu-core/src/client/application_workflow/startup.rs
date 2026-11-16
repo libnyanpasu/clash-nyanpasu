@@ -26,10 +26,9 @@ use super::{
     Output,
     attempt::{AttemptOrigin, AttemptStage, LiveAttempt},
     mutation::{
-        ApplyFailure, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState, MutationStage,
-        ReestablishCause, RefusalCause, RetryableCause, RuntimePrepareOutcome, TargetOrigin,
+        ApplyOutcome, DEFERRED_RETRY_BUDGET, DeferredTarget, KnownRuntimeState, MutationStage,
+        ReestablishCause, RetryableCause, TargetOrigin,
     },
-    policy::{CommandPolicy, TryCauseKind},
     tcc::{AttemptCharge, RestorableBaseline},
     workflow::ApplicationWorkflow,
 };
@@ -44,7 +43,7 @@ use crate::{
         runtime::ConfirmedRuntime,
         runtime_recovery::{ObservedRuntime, verify_recovery_target},
     },
-    state::mutation::{intent::CoreRunIntent, value::CheckRecord},
+    state::mutation::intent::CoreRunIntent,
 };
 use nyanpasu_runtime_values::{
     configuration::ConvergenceHealth,
@@ -746,7 +745,7 @@ impl ApplicationWorkflow {
     /// committed target: a target committed after it is still owed, and is
     /// applied from a stop rather than dropped.
     async fn verified_running_receipt(
-        &self,
+        &mut self,
         status: &CoreStatusProjection,
     ) -> Option<ConfirmedRuntime> {
         let recovering = matches!(
@@ -837,6 +836,7 @@ impl ApplicationWorkflow {
             );
         }
         let inputs = self.capture_committed().await;
+        let selection = super::committed::Selection::of(&inputs);
         let Some(identity) = inputs.target_key() else {
             return self.block("the committed configuration has no runtime identity".to_owned());
         };
@@ -851,13 +851,10 @@ impl ApplicationWorkflow {
         }
         let baseline = RestorableBaseline {
             settled: true,
-            observed: status.snapshot.as_ref().and_then(|s| s.state.clone()),
             host: status.host,
             expected: Some(status),
             state: KnownRuntimeState::Stopped,
             run_intent: CoreRunIntent::Running,
-            binding: None,
-            confirmed_build: None,
         };
         self.record_baseline(&baseline);
         // A recovery stays one: its stage is what says the attempt is
@@ -871,78 +868,36 @@ impl ApplicationWorkflow {
         }
         let charge = AttemptCharge::Target { automatic };
         let attempts = self.committed_target().attempts;
-        let mut check = CheckRecord::NotOwed;
-        let outcome = self
-            .try_critical(
-                CommandPolicy::AllowDeferredWhenSafe,
-                &baseline,
-                Some(identity),
-                Some(inputs),
-                &mut check,
-                charge,
-            )
-            .await;
-        let waiting = matches!(check, CheckRecord::Unserviceable(_))
-            || matches!(
-                outcome,
-                RuntimePrepareOutcome::Rejected {
-                    cause: ApplyFailure {
-                        cause: RefusalCause::Evidence(_),
-                        ..
-                    },
-                    ..
-                }
-            );
+        let outcome = match self.prepare_candidate(&baseline, inputs).await {
+            Ok(prepared) => self.apply_prepared(&baseline, prepared, charge).await,
+            Err(outcome) => outcome,
+        };
         // A Try that reached the runtime was charged before its first action
-        // was written; one that only built or checked pays here.
-        if !waiting && self.committed_target().attempts == attempts {
+        // was written; one that only built pays here.
+        if self.committed_target().attempts == attempts {
             self.charge_attempt(charge);
         }
-        if !matches!(
-            outcome,
-            RuntimePrepareOutcome::Applied(_) | RuntimePrepareOutcome::RecoveryRequired(_)
-        ) {
+        if !matches!(outcome, ApplyOutcome::Applied(_) | ApplyOutcome::Unknown(_)) {
             self.lifecycle.runtime.accept_transition();
         }
         match outcome {
-            RuntimePrepareOutcome::Applied(candidate) => {
+            ApplyOutcome::Applied(candidate) => {
+                self.applied_selection = Some(selection);
                 self.publish_committed_product(candidate.product).await;
                 self.lifecycle.runtime.accept_transition();
                 self.committed_target().waits = 0;
                 Reestablished::Applied(candidate.report)
             }
-            RuntimePrepareOutcome::RecoveryRequired(error) => {
+            ApplyOutcome::Unknown(error) => {
                 self.lifecycle.ownership = Ownership::Unproven;
                 Reestablished::RecoveryRequired(error.to_string())
             }
-            RuntimePrepareOutcome::Deferred { cause, .. } if waiting => {
-                self.wait_for_dependency(ConvergenceHealth::WaitingDependency, cause.message)
-            }
-            RuntimePrepareOutcome::Rejected {
-                cause:
-                    ApplyFailure {
-                        cause: RefusalCause::Evidence(_),
-                        error,
-                        ..
-                    },
-                ..
-            } => self.wait_for_dependency(ConvergenceHealth::WaitingDependency, error.to_string()),
-            RuntimePrepareOutcome::Deferred { cause, .. } => self.schedule_retry(cause.message),
-            RuntimePrepareOutcome::Rejected {
-                cause:
-                    ApplyFailure {
-                        cause: RefusalCause::Try(TryCauseKind::Transient),
-                        error,
-                        ..
-                    },
-                ..
-            } => self.schedule_retry(error.to_string()),
-            RuntimePrepareOutcome::Rejected {
-                cause: ApplyFailure { error, .. },
-                ..
-            } => self.block_applied(error.to_string()),
-            RuntimePrepareOutcome::SavedInactive { .. } => {
-                unreachable!("a reestablish attempt owes a Try")
+            ApplyOutcome::Waiting(error) | ApplyOutcome::Refused(error) => {
+                if super::tcc::retryable_apply(&error) {
+                    self.schedule_retry(error.to_string())
+                } else {
+                    self.block_applied(error.to_string())
+                }
             }
         }
     }
@@ -1022,7 +977,7 @@ impl ApplicationWorkflow {
         }
     }
 
-    /// What Confirm owes a save the stopped core never ran (§1.7). A
+    /// Bookkeeping for a committed target the stopped core never ran. A
     /// mutation's outstanding target is superseded by it. A reestablish
     /// target keeps its ownership obligation and is tried again now; only a
     /// different identity opens a fresh budget, and a spent one stays spent.

@@ -1,24 +1,7 @@
-use std::{error::Error as _, sync::Arc, time::Duration};
-
-use nyanpasu_core_manager::OperationId;
-use nyanpasu_state_engine::{
-    AckPolicy, AckStatus, ReplaceIfVersionError,
-    ack::{PrepareReport, SubscriberAck},
-    error::{PrepareAckError, StateChangedError},
-};
-
-use crate::{
-    client::runtime_error,
-    state::mutation::{
-        self,
-        value::{CheckRecord, MutationConclusion, MutationOutcomeKind, MutationReceipt},
-    },
-};
-use nyanpasu_runtime_values::{
-    mutation::{CommitAborted, ConfigDomain},
-    profiles::ProfilesError,
-    runtime_error::RuntimeError,
-};
+use crate::state::mutation;
+use nyanpasu_runtime_values::{mutation::CommitAborted, profiles::ProfilesError};
+use nyanpasu_state_engine::{ReplaceIfVersionError, error::StateChangedError};
+use std::error::Error as _;
 
 #[test]
 fn boxed_commit_cause_preserves_display_and_source_chain() {
@@ -33,7 +16,7 @@ fn boxed_commit_cause_preserves_display_and_source_chain() {
         let error = ProfilesError::Commit {
             uid: None,
             path: None,
-            source: mutation::classify_commit_aborted(cause, None),
+            source: mutation::classify_commit_aborted(cause),
             cleanup_failures: Vec::new(),
         };
         assert_eq!(error.to_string(), "the profiles change was not committed");
@@ -64,31 +47,17 @@ fn boxed_commit_cause_preserves_display_and_source_chain() {
         }
     }
 
-    let cancelled = MutationReceipt {
-        degradations: Vec::new(),
-        operation_id: OperationId::generate(),
-        domain: ConfigDomain::Profiles,
-        check: CheckRecord::NotOwed,
-        outcome: MutationOutcomeKind::Rejected,
-        conclusion: MutationConclusion::Cancelled,
-        detail: None,
-        cause: None,
-    };
-    let recovery = mutation::classify_commit_aborted(
-        ReplaceIfVersionError::ResourceRecovery {
-            cause: std::io::Error::other("write failed").into(),
-            recovery_error: std::io::Error::other("recovery failed").into(),
-        },
-        Some(&cancelled),
-    );
+    let recovery = mutation::classify_commit_aborted(ReplaceIfVersionError::ResourceRecovery {
+        cause: std::io::Error::other("write failed").into(),
+        recovery_error: std::io::Error::other("recovery failed").into(),
+    });
     assert!(matches!(
         recovery,
         CommitAborted::RecoverAfterWriteFailure { .. }
     ));
     assert_eq!(
         recovery.to_string(),
-        "failed to write the config and failed to recover afterwards; \
-         the runtime was rolled back to the previous configuration"
+        "failed to write the config and failed to recover afterwards"
     );
     let Some(ReplaceIfVersionError::ResourceRecovery {
         cause,
@@ -112,56 +81,9 @@ fn boxed_commit_cause_preserves_display_and_source_chain() {
         "recovery failed"
     );
 
-    let runtime = Arc::new(RuntimeError::ShuttingDown);
-    for status in [
-        AckStatus::Rejected {
-            reason: runtime_error::ack_of(runtime.clone()),
-        },
-        AckStatus::Failed {
-            error: runtime_error::ack_of(runtime.clone()),
-        },
-    ] {
-        let refused = matches!(status, AckStatus::Rejected { .. });
-        let cause = ReplaceIfVersionError::State(StateChangedError::PrepareAck(PrepareAckError {
-            report: PrepareReport {
-                subscriber_acks: vec![SubscriberAck {
-                    name: "runtime".into(),
-                    policy: AckPolicy::Required,
-                    elapsed: Duration::ZERO,
-                    status,
-                }],
-            },
-        }));
-        let display = cause.to_string();
-        let aborted = mutation::classify_commit_aborted(cause, None);
-        let (errors, expected_display) = match &aborted {
-            CommitAborted::RuntimeRefused { errors, .. } if refused => (
-                errors,
-                "the runtime refused the change: the application is shutting down",
-            ),
-            CommitAborted::RuntimeFailed { errors, .. } if !refused => (
-                errors,
-                "the runtime failed while applying the change: the application is shutting down",
-            ),
-            _ => panic!("{aborted:?}"),
-        };
-        assert_eq!(aborted.to_string(), expected_display);
-        assert_eq!(errors.len(), 1);
-        assert!(Arc::ptr_eq(&errors[0], &runtime));
-        assert_eq!(
-            aborted
-                .source()
-                .unwrap()
-                .downcast_ref::<ReplaceIfVersionError>()
-                .unwrap()
-                .to_string(),
-            display
-        );
-    }
-    let validation = mutation::classify_commit_aborted(
-        ReplaceIfVersionError::State(StateChangedError::Validation(anyhow::anyhow!("invalid"))),
-        None,
-    );
+    let validation = mutation::classify_commit_aborted(ReplaceIfVersionError::State(
+        StateChangedError::Validation(anyhow::anyhow!("invalid")),
+    ));
     assert!(matches!(validation, CommitAborted::ValidateState { .. }));
     assert_eq!(
         validation.to_string(),

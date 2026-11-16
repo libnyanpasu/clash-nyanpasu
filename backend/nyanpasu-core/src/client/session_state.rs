@@ -90,7 +90,7 @@ impl SessionStateClient {
     }
 
     /// The last committed session state. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// in-flight source write cannot delay them.
     pub fn snapshot(&self) -> SessionStateSnapshot {
         SessionStateSnapshot::from_versioned(&self.inner.snapshot.load())
     }

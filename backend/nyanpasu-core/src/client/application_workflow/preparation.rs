@@ -22,12 +22,12 @@ use nyanpasu_runtime_values::{
 };
 
 /// Builds runtime candidates from committed source config. It holds read-only
-/// state handles, never a domain client: the workflow is a state participant
-/// and must not be able to write a source domain it is applying for.
+/// state handles, never a domain client: build capture must not write the source
+/// domains it reads.
 pub(super) struct RuntimePreparation {
     application: StateSnapshot<NyanpasuAppConfig>,
     clash: StateSnapshot<ClashConfig>,
-    profiles: StateSnapshot<Profiles>,
+    profile_content: crate::state::mutation::ProfileContentReader,
     builder: Arc<dyn RuntimeBuildPort>,
     ports: Arc<SessionPortResolver>,
     revisions: runtime::RuntimeRevisionAllocator,
@@ -37,34 +37,34 @@ impl RuntimePreparation {
     pub fn new(
         application: StateSnapshot<NyanpasuAppConfig>,
         clash: StateSnapshot<ClashConfig>,
-        profiles: StateSnapshot<Profiles>,
+        profile_content: crate::state::mutation::ProfileContentReader,
         builder: Arc<dyn RuntimeBuildPort>,
         ports: Arc<SessionPortResolver>,
     ) -> Self {
         Self {
             application,
             clash,
-            profiles,
+            profile_content,
             builder,
             ports,
             revisions: runtime::RuntimeRevisionAllocator::new(),
         }
     }
 
+    pub(super) fn with_revisions(mut self, revisions: runtime::RuntimeRevisionAllocator) -> Self {
+        self.revisions = revisions;
+        self
+    }
+
+    #[cfg(test)]
     pub async fn prepare(
         &self,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
         app: NyanpasuAppConfig,
     ) -> Result<PreparedRuntime, RuntimeError> {
-        let content = self.builder.capture_content(&profiles).await;
-        self.prepare_inputs(super::inputs::RuntimeInputs {
-            app,
-            clash,
-            profiles,
-            content,
-        })
-        .await
+        let inputs = self.capture_inputs(app, clash, profiles).await;
+        self.prepare_inputs(inputs).await
     }
 
     pub async fn capture_inputs(
@@ -73,13 +73,37 @@ impl RuntimePreparation {
         clash: ClashConfig,
         profiles: Arc<Profiles>,
     ) -> super::inputs::RuntimeInputs {
-        let content = self.builder.capture_content(&profiles).await;
+        let content = self
+            .profile_content
+            .candidate(self.builder.capture_content(&profiles))
+            .await;
         super::inputs::RuntimeInputs {
             app,
             clash,
             profiles,
             content,
         }
+    }
+
+    pub async fn capture_committed_inputs(
+        &self,
+        app: NyanpasuAppConfig,
+        clash: ClashConfig,
+    ) -> (nyanpasu_state_engine::Version, super::inputs::RuntimeInputs) {
+        self.profile_content
+            .committed(|profiles| async move {
+                let content = self.builder.capture_content(&profiles.state).await;
+                (
+                    profiles.version,
+                    super::inputs::RuntimeInputs {
+                        app,
+                        clash,
+                        profiles: Arc::new(profiles.state.clone()),
+                        content,
+                    },
+                )
+            })
+            .await
     }
 
     pub async fn prepare_inputs(
@@ -145,6 +169,7 @@ impl RuntimePreparation {
         })
     }
 
+    #[cfg(test)]
     pub async fn prepare_committed(
         &self,
         profiles: Arc<Profiles>,
@@ -158,10 +183,13 @@ impl RuntimePreparation {
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
     async fn prepare_latest(&self) -> Result<PreparedRuntime, RuntimeError> {
-        // Independent committed snapshots, sampled when the build starts.
-        let profiles = Arc::new(self.profiles.load().state.clone());
-        let clash = self.clash.load().state.clone();
-        self.prepare_committed(profiles, clash).await
+        let (_, inputs) = self
+            .capture_committed_inputs(
+                self.application.load().state.clone(),
+                self.clash.load().state.clone(),
+            )
+            .await;
+        self.prepare_inputs(inputs).await
     }
 
     async fn publish(

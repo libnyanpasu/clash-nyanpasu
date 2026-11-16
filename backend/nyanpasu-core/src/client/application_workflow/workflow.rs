@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nyanpasu_config::{clash::config::ClashConfig, profile::Profiles};
+use nyanpasu_config::clash::config::ClashConfig;
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_state_engine::StateSnapshot;
 
@@ -17,17 +17,13 @@ use crate::client::{
 };
 use nyanpasu_runtime_values::runtime_error::RuntimeError;
 
-/// Applies already committed source config to the running core. The two state
-/// handles are read-only and are sampled only once the actor has admitted the
-/// command, so a candidate never fixes a domain it did not wait for.
+/// Applies already committed source config to the running core. Source handles
+/// are read-only; preparation captures committed Profiles and its content under
+/// one guard before building.
 pub(super) struct ApplicationWorkflow {
     pub notifications: Arc<dyn crate::client::effects::ports::CommitNotifications>,
-    pub profiles: StateSnapshot<Profiles>,
     pub clash: StateSnapshot<ClashConfig>,
     pub preparation: RuntimePreparation,
-    /// The core's own verdict on a candidate document, asked before the Try
-    /// submits it. An absent answer is never a passing one.
-    pub validator: Arc<dyn super::ports::RuntimeValidatorPort>,
     pub lifecycle: CoreLifecycleWorkflow,
     /// A committed desired value the core is not running.
     pub deferred: Option<DeferredTarget>,
@@ -35,6 +31,11 @@ pub(super) struct ApplicationWorkflow {
     /// The daemon a confirmed move off service mode still has to release,
     /// and why the last attempt failed. An explicit retry releases it.
     pub pending_release: Option<String>,
+    pub sampled: Option<super::EngineVersions>,
+    pub checked: Option<crate::client::core_lifecycle::ports::PreparedRuntime>,
+    pub applied_selection: Option<super::committed::Selection>,
+    pub service_preferred: bool,
+    pub release_owed: bool,
     /// The attempt running now, or the latest one that did not settle
     /// (T10 §1.11). With the facade's pending action it is all that an
     /// explicit recovery reads.
@@ -87,6 +88,40 @@ impl ApplicationWorkflow {
                 .retry_runtime(operation_id, explicit)
                 .await
                 .map(|_| Output::Unit),
+            Command::InterruptConnections => {
+                let failure = if self.clash.load().state.break_connection.on_mode_change {
+                    let context = self
+                        .lifecycle
+                        .prepare_apply(
+                            operation_id,
+                            super::super::core_lifecycle::apply::RuntimeApplyOptions {
+                                interrupt_connections: Some(
+                                    crate::connections::ConnectionScope::All,
+                                ),
+                            },
+                        )
+                        .await;
+                    CoreLifecycleWorkflow::finish_interruption(context, false).await
+                } else {
+                    None
+                };
+                Ok(Output::Interruption(failure))
+            }
+            Command::PrepareService => {
+                use snafu::IntoError as _;
+                self.lifecycle
+                    .core
+                    .prepare_service_host()
+                    .await
+                    .map_err(|error| {
+                        nyanpasu_runtime_values::runtime_error::MoveHostSnafu {
+                            host: nyanpasu_runtime_values::execution_host::ExecutionHost::Service,
+                        }
+                        .into_error(crate::client::runtime_error::core_failure(error))
+                    })?;
+                self.lifecycle.service_failed = None;
+                Ok(Output::Unit)
+            }
             Command::FollowService => {
                 self.follow_service(operation_id).await;
                 Ok(Output::Unit)

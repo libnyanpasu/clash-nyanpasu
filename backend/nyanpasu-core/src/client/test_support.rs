@@ -9,8 +9,6 @@ pub mod workflow;
 
 #[cfg(test)]
 use super::Result;
-#[cfg(test)]
-use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{ChangelogHttp, MockDirectEgressProbe, MockIconFetcher, MockNetworkDiagnostics},
@@ -27,8 +25,6 @@ use nyanpasu_config::{
     },
 };
 use nyanpasu_paths::PathResolver;
-#[cfg(test)]
-use struct_patch::Patch as _;
 use tempfile::TempDir;
 
 use super::{
@@ -690,6 +686,7 @@ pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfi
 
 pub(crate) async fn test_typed_config_clients(
     dir: &TempDir,
+    clash_mutations: crate::state::mutation::MutationCoordinator,
 ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
     let application = ApplicationClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
@@ -709,7 +706,7 @@ pub(crate) async fn test_typed_config_clients(
     .expect("session state client should be created");
     seed_test_clash_config(dir.path().join("clash-config.yaml"));
     let clash_config = ClashConfigClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        clash_mutations,
         temp_config_path(dir, "clash-config.yaml"),
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
@@ -805,9 +802,7 @@ pub(crate) async fn set_service_mode(
     client: &NyanpasuClient,
     enabled: bool,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    let mut patch = NyanpasuAppConfig::new_empty_patch();
-    patch.enable_service_mode = Some(enabled);
-    client.patch_app_config(patch).await
+    client.set_service_mode(enabled).await
 }
 
 pub fn minimal_file_profile_request() -> NewProfileRequest {

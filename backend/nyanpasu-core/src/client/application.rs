@@ -58,7 +58,7 @@ struct ApplicationClientInner {
 #[allow(dead_code)]
 impl ApplicationClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator<NyanpasuAppConfig>,
+        mutations: MutationCoordinator,
         build_channel: ReleaseChannel,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
@@ -102,7 +102,7 @@ impl ApplicationClient {
     /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
     /// so a caller can register state subscribers before the actor claims it.
     pub(crate) async fn from_manager(
-        mutations: MutationCoordinator<NyanpasuAppConfig>,
+        mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
         build_channel: ReleaseChannel,
         shutdown: CancellationToken,
@@ -147,8 +147,8 @@ impl ApplicationClient {
         })
     }
 
-    /// The last committed application config. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// The last committed application config. Reads bypass the mailbox, so
+    /// an independent check or a source write cannot delay them.
     pub fn snapshot(&self) -> ApplicationSnapshot {
         ApplicationSnapshot::from_versioned(&self.inner.snapshot.load())
     }
@@ -515,7 +515,7 @@ mod tests {
             WindowCloseOverride::Hide
         );
         // No runtime transaction was opened for it.
-        assert_eq!(snapshot.receipt.unwrap().operation_id, None);
+        assert_eq!(snapshot.operation_id, None);
     }
 
     #[tokio::test]

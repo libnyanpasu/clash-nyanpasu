@@ -182,8 +182,6 @@ pub(in crate::client) enum RuntimeSubmission {
         /// file is published separately, after the source commit (v2 §5.6).
         product: Arc<runtime::RuntimeSnapshot>,
         report: ReconcileReport,
-        /// The recovery baseline this apply established.
-        receipt: Arc<RuntimeApplyReceipt>,
     },
     RolledBack(RolledBackReport),
     Unknown(UncertainReconcile),
@@ -518,13 +516,8 @@ impl CoreLifecycleWorkflow {
 
     /// Moves ownership of the runtime to `host` and nothing else.
     ///
-    /// A completed handoff leaves the runtime stopped awaiting a reconcile, so
-    /// every caller owes one — with the candidate it is trying, or with the
-    /// baseline it is putting back. It never rebuilds the committed
-    /// configuration itself: a Try has a candidate that is not committed yet,
-    /// and a Cancel has a receipt rather than a configuration to rebuild
-    /// (v2 §5.3).
-    /// Moves the runtime to `host`. Only `converge` may install or start the
+    /// A completed handoff leaves the runtime stopped; its caller applies the
+    /// committed target afterward. Only `converge` may install or start the
     /// daemon to get there; without it, Service is adopted only if it is
     /// already `Ready`.
     pub(in crate::client) async fn move_execution_host(
@@ -598,12 +591,9 @@ impl CoreLifecycleWorkflow {
     /// Submits a candidate to the core and records what it confirmed, without
     /// publishing the derived product.
     ///
-    /// The public runtime YAML is a derived view of an *accepted* source
-    /// configuration, and a Try runs before its source is committed. Publishing
-    /// it here would announce a document the transaction may still abort, so the
-    /// Try path publishes after Confirm instead (v2 §5.6). The three answers
-    /// stay apart on the way out: only the caller knows whether a rolled-back
-    /// request or an unobserved one may be collapsed into an error.
+    /// The caller publishes the derived YAML after the core accepts the
+    /// application. A rollback and an unobserved result remain distinct so the
+    /// caller can report whether the committed configuration took effect.
     pub(in crate::client) async fn submit_runtime(
         &mut self,
         prepared: PreparedRuntime,
@@ -621,7 +611,7 @@ impl CoreLifecycleWorkflow {
             .context(ResolveCoreBinarySnafu)?;
         let result = self
             .core
-            .reconcile(&intent, spec.clone(), expected)
+            .reconcile(&intent, spec, expected)
             .await
             .map_err(runtime_error::core_failure)
             .context(ApplyRuntimeSnafu)?;
@@ -661,19 +651,15 @@ impl CoreLifecycleWorkflow {
         // inspection is diagnostic and may never arrive (C3).
         let receipt = Arc::new(RuntimeApplyReceipt {
             revision: snapshot.revision,
-            config_text: intent.config_text.clone(),
-            config_digest: intent.digest.clone(),
             target_core: snapshot.target_core,
-            core_spec: spec,
             host: report.applied.host,
             run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
-            local_ipc: intent.local_ipc,
             binding: report.applied.clone(),
             ports,
             target,
         });
         self.runtime
-            .record_confirmed_apply(Some(snapshot.clone()), receipt.clone());
+            .record_confirmed_apply(Some(snapshot.clone()), receipt);
         if let Some(effective) = report.effective_config.clone() {
             match snapshot.with_effective_config(
                 effective,
@@ -693,7 +679,6 @@ impl CoreLifecycleWorkflow {
         Ok(RuntimeSubmission::Applied {
             product: snapshot,
             report,
-            receipt,
         })
     }
 

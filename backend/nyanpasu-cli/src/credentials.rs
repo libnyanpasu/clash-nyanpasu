@@ -1061,6 +1061,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let tokens = directory.path().join("tokens");
         fs::create_dir_all(&tokens).unwrap();
+        grant_current_user_full_control(&tokens);
         let path = tokens.join("a.token");
         fs::write(&path, "old").unwrap();
         set_named_sddl(
@@ -1109,6 +1110,26 @@ mod tests {
             "the token directory must be owner-only"
         );
         assert!(tokens.parent().unwrap().is_dir());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_existing_token_directory_is_tightened_before_a_token_is_written() {
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = directory.path().join("tokens");
+        fs::create_dir(&tokens).unwrap();
+        set_named_sddl(
+            &tokens,
+            &format!("D:P(A;;FA;;;{})(A;;FR;;;WD)", current_user_sid().unwrap()),
+        );
+
+        let store = FileStore::new(tokens.clone());
+        store.set("a", "secret").unwrap();
+
+        let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
+        let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+        assert_eq!(comparable(file_sddl(&tokens)), expected);
+        assert_eq!(comparable(file_sddl(&store.path("a"))), expected);
     }
 
     #[cfg(windows)]
@@ -1303,6 +1324,7 @@ mod tests {
         let tokens = directory.path().join("tokens");
         let target = directory.path().join("target");
         fs::create_dir(&tokens).unwrap();
+        grant_current_user_full_control(&tokens);
         fs::create_dir(&target).unwrap();
         let token = tokens.join("a.token");
         if !create_directory_reparse(&token, &target) {
@@ -1341,6 +1363,16 @@ mod tests {
         let mut permissions = fs::metadata(path).unwrap().permissions();
         permissions.set_readonly(true);
         fs::set_permissions(path, permissions).unwrap();
+    }
+
+    /// Gives the test process the `WRITE_DAC` access that runner temporary directories
+    /// do not always inherit, so the store can harden the fixture's token leaf.
+    #[cfg(windows)]
+    fn grant_current_user_full_control(path: &Path) {
+        set_named_sddl(
+            path,
+            &format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()),
+        );
     }
 
     #[cfg(windows)]

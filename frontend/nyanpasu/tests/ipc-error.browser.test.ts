@@ -180,48 +180,43 @@ test('a storage failure tells an unsafe path from an unreadable file', () => {
   ).toBe(m.error_profiles_read_external_profile({ path: '/home/u/a.yaml' }))
 })
 
-test('an aborted commit says what became of the core', () => {
+test('an aborted commit localizes the write or validation failure', () => {
   const commit = (
     source: Extract<ProfilesError, { kind: 'commit' }>['source'],
   ) =>
     ipcErrorMessage(profiles({ kind: 'commit', uid: null, path: null, source }))
 
-  expect(commit({ kind: 'write_config', runtime: { kind: 'untouched' } })).toBe(
-    m.error_commit_write_config(),
-  )
-  expect(
-    commit({ kind: 'write_config', runtime: { kind: 'rolled_back' } }),
-  ).toBe(
-    `${m.error_commit_write_config()} (${m.error_commit_runtime_rolled_back()})`,
+  expect(commit({ kind: 'write_config' })).toBe(m.error_commit_write_config())
+  expect(commit({ kind: 'recover_after_write_failure' })).toBe(
+    m.error_commit_recover_after_write_failure(),
   )
   expect(
     commit({
       kind: 'runtime_refused',
       errors: [
-        { kind: 'unsettled_baseline', gap: 'core_transitioning' },
-        { kind: 'isolated' },
+        { kind: 'core_rejected_config', core_kind: null, message: 'invalid' },
       ],
-      runtime: { kind: 'untouched' },
     }),
   ).toBe(
-    m.error_commit_runtime_refused({
-      reason: `${m.error_runtime_unsettled_baseline_core_transitioning()}\n\n${m.error_runtime_isolated()}`,
-    }),
+    `The core rejected this configuration, so the change was not saved: ${m.error_runtime_core_rejected_config()}`,
   )
   expect(
     commit({
       kind: 'runtime_failed',
-      errors: [],
-      runtime: {
-        kind: 'unknown',
-        detail: { kind: 'owner_unresponsive', operation_id: 'op1' },
-      },
+      errors: [
+        {
+          kind: 'check_unavailable',
+          reason: {
+            cause: 'backend',
+            kind: null,
+            message: 'offline',
+            retryable: true,
+          },
+        },
+      ],
     }),
   ).toBe(
-    `${m.error_commit_runtime_failed({ reason: '' })} (${m.error_commit_runtime_unknown()})`,
-  )
-  expect(commit({ kind: 'validate_state' })).toBe(
-    m.error_commit_validate_state(),
+    `The change could not be checked against the core, so it was not saved: ${m.error_runtime_check_unavailable()}`,
   )
 })
 
@@ -349,21 +344,21 @@ test('unavailable native storage is explained for operations and refused mutatio
   ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
 })
 
-test('a refused admission is told apart from a failed operation', () => {
-  expect(ipcErrorMessage(runtime({ kind: 'isolated' }))).toBe(
-    m.error_runtime_isolated(),
-  )
+test('a committed configuration waiting for runtime has its own message', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'configuration_not_in_effect',
+        reason: 'waiting for a stable runtime',
+      }),
+    ),
+  ).toBe('The core is not ready to apply the configuration yet.')
   expect(ipcErrorMessage(runtime({ kind: 'shutting_down' }))).toBe(
     m.error_runtime_shutting_down(),
   )
 })
 
 test('a refused mutation says what the runtime lacked or rejected', () => {
-  expect(
-    ipcErrorMessage(
-      runtime({ kind: 'unsettled_baseline', gap: 'no_restorable_baseline' }),
-    ),
-  ).toBe(m.error_runtime_unsettled_baseline_no_restorable_baseline())
   expect(
     ipcErrorMessage(
       runtime({
@@ -486,20 +481,14 @@ test('a degradation localizes its reason, and a runtime cause through the runtim
   expect(
     degradationReasonMessage({
       code: 'runtime_deferred',
-      cause: { kind: 'isolated' },
+      cause: {
+        kind: 'configuration_not_in_effect',
+        reason: 'waiting for a stable runtime',
+      },
     }),
   ).toBe(
-    m.mutation_degradation_reason_runtime_deferred({
-      reason: m.error_runtime_isolated(),
-    }),
+    'The change was saved but is not in effect: The core is not ready to apply the configuration yet.',
   )
-  expect(
-    degradationReasonMessage({
-      code: 'runtime_recovery_required',
-      operation_id: 'op1',
-      cause: null,
-    }),
-  ).toBe(m.mutation_degradation_reason_runtime_recovery_required())
   expect(
     degradationReasonMessage({
       code: 'proxy_interruption_failed',
@@ -546,18 +535,16 @@ test('a rejected hotkey list names the shortcut that was wrong', () => {
   )
 })
 
-test('a configuration change that was not committed says what became of the core', () => {
+test('a configuration change that was not committed names its failure', () => {
   expect(
     ipcErrorMessage(
       config({
         kind: 'commit',
         domain: 'clash',
-        source: { kind: 'write_config', runtime: { kind: 'rolled_back' } },
+        source: { kind: 'write_config' },
       }),
     ),
-  ).toBe(
-    `${m.error_commit_write_config()} (${m.error_commit_runtime_rolled_back()})`,
-  )
+  ).toBe(m.error_commit_write_config())
   expect(
     ipcErrorMessage(
       config({
@@ -753,7 +740,6 @@ test.each(
     const source = {
       kind: 'runtime_refused' as const,
       errors: [error],
-      runtime: { kind: 'untouched' as const },
     }
     const expected = m.error_commit_runtime_refused({ reason: message })
     expect(

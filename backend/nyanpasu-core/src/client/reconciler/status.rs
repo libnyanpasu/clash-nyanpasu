@@ -43,7 +43,7 @@ impl Default for ReconcilerStatus {
             seen: EngineVersions::default(),
             conclusion: Conclusion::Unknown {
                 cause: Arc::new(
-                    nyanpasu_runtime_values::runtime_error::RecoveryUnresolvedSnafu {
+                    nyanpasu_runtime_values::runtime_error::ConfigurationNotInEffectSnafu {
                         reason: "runtime reconciliation has not started".to_owned(),
                     }
                     .build(),
@@ -87,18 +87,15 @@ pub(in crate::client) fn outcome(
                     Conclusion::Closed => {
                         Arc::new(nyanpasu_runtime_values::runtime_error::RuntimeError::ShuttingDown)
                     }
-                    _ => unreachable!("the remaining conclusions require recovery"),
+                    _ => unreachable!("only unknown and closed conclusions remain"),
                 };
                 degradations.push(Degradation {
                     phase: DegradationPhase::RuntimeApply,
                     message: cause.to_string(),
                     retryable: false,
-                    reason: DegradationReason::RuntimeRecoveryRequired {
-                        operation_id: receipt.operation_id.clone(),
-                        cause: Some(cause),
-                    },
+                    reason: DegradationReason::RuntimeDeferred { cause },
                 });
-                RuntimeCommitStatus::RecoveryRequired
+                RuntimeCommitStatus::Deferred
             }
         },
     };

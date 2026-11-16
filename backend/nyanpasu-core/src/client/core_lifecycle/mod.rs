@@ -1,4 +1,4 @@
-//! Core lifecycle execution owned by the application workflow actor.
+//! Core lifecycle execution owned by the runtime reconciler.
 pub(in crate::client) mod apply;
 pub mod ports;
 mod workflow;
@@ -30,5 +30,5 @@ pub(in crate::client) enum Output {
     Handoff(HandoffReport),
     Stop(StopReport),
     /// The cached result of the first startup round.
-    Startup(Box<super::application_workflow::startup::StartupReport>),
+    Startup(Box<super::reconciler::startup::StartupReport>),
 }

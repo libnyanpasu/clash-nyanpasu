@@ -7,7 +7,7 @@ use nyanpasu_runtime_values::{
     configuration::ConvergenceHealth,
     core_status::EndpointConnectivity,
     execution_host::ExecutionHost,
-    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+    runtime_error::{ConfigurationNotInEffectSnafu, RuntimeError},
 };
 
 use super::{
@@ -18,7 +18,7 @@ use super::{
         self, Attempt, AttemptOutcome, Conclusion, CoreFact, Facts, OwnerPlan, ServiceEvidence,
         Step, Trigger,
     },
-    workflow::ApplicationWorkflow,
+    workflow::RuntimeReconciler,
 };
 use crate::{
     actor_v2::{
@@ -92,10 +92,10 @@ pub(super) struct Round {
 }
 
 pub(super) fn cause(reason: String) -> Arc<RuntimeError> {
-    Arc::new(RecoveryUnresolvedSnafu { reason }.build())
+    Arc::new(ConfigurationNotInEffectSnafu { reason }.build())
 }
 
-impl ApplicationWorkflow {
+impl RuntimeReconciler {
     pub(super) async fn begin_round(&mut self) -> Round {
         let application = self.lifecycle.application.load();
         let clash = self.clash.load();

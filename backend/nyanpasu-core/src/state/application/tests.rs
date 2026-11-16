@@ -7,7 +7,7 @@ use nyanpasu_config::application::{
 };
 use nyanpasu_migration::modules::application::ApplicationFormat;
 use nyanpasu_runtime_values::{
-    mutation::{CommitAborted, ConfigDomain, RuntimeAftermath},
+    mutation::{CommitAborted, ConfigDomain},
     runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
 };
 use nyanpasu_state_engine::{PersistentStateManagerSetup, StateSnapshot, Version};
@@ -206,10 +206,7 @@ async fn rejected_check_preserves_bytes_version_and_notifications() {
     assert!(matches!(
         f.client.patch(runtime_patch(&f)).await,
         Err(ConfigError::Commit {
-            source: CommitAborted::RuntimeRefused {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::RuntimeRefused { .. },
             ..
         })
     ));
@@ -230,10 +227,7 @@ async fn failed_write_does_not_notify_runtime_or_effects() {
     assert!(matches!(
         result,
         Err(ConfigError::Commit {
-            source: CommitAborted::WriteConfig {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::WriteConfig { .. },
             ..
         })
     ));
@@ -283,10 +277,7 @@ async fn unavailable_check_is_failed_and_preserves_the_source() {
     assert!(matches!(
         f.client.patch(runtime_patch(&f)).await,
         Err(ConfigError::Commit {
-            source: CommitAborted::RuntimeFailed {
-                runtime: RuntimeAftermath::Untouched,
-                ..
-            },
+            source: CommitAborted::RuntimeFailed { .. },
             ..
         })
     ));

@@ -9,7 +9,7 @@ use crate::{audit::RpcTransport, test_support::Fixture};
 #[tokio::test]
 async fn current_failure_encoding_matches_the_contract_baseline() {
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json"
+        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     let fixture = Fixture::new(false).await;
@@ -61,7 +61,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
 
     let fixture = Fixture::new(false).await;
     let local_fixtures: Value = serde_json::from_str(include_str!(
-        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json"
+        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     for metadata in COMMAND_CATALOG

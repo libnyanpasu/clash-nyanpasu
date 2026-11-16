@@ -9,11 +9,11 @@ use tokio_util::sync::CancellationToken;
 use super::{barrier, stopped_endpoint, workflow_graph_with_clients};
 use crate::{
     actor_v2::{CoreClient, endpoint::ControlEndpoint as _, service_actor::ServiceClient},
-    client::{application_workflow::ApplicationWorkflowClient, test_support::TestControlEndpoint},
+    client::{reconciler::RuntimeReconcilerClient, test_support::TestControlEndpoint},
 };
 
 struct Fixture {
-    client: ApplicationWorkflowClient,
+    client: RuntimeReconcilerClient,
     builder: Arc<super::BlockingBuilder>,
     core: CoreClient,
     endpoint: Arc<TestControlEndpoint>,

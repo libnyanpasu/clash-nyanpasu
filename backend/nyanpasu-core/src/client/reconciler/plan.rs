@@ -9,7 +9,7 @@ use nyanpasu_ipc::{
 use nyanpasu_runtime_values::{
     core_status::{ServiceHostStatus, ServicePhase},
     execution_host::ExecutionHost,
-    runtime_error::{RecoveryUnresolvedSnafu, RuntimeError},
+    runtime_error::{ConfigurationNotInEffectSnafu, RuntimeError},
 };
 
 use crate::client::core_lifecycle::Ownership;
@@ -130,7 +130,7 @@ pub(super) enum Step {
 
 fn waiting(reason: String) -> Step {
     Step::Idle(Conclusion::Waiting {
-        cause: Arc::new(RecoveryUnresolvedSnafu { reason }.build()),
+        cause: Arc::new(ConfigurationNotInEffectSnafu { reason }.build()),
     })
 }
 
@@ -195,7 +195,7 @@ pub(super) fn plan(facts: &Facts) -> Step {
         let cause = match &attempt.outcome {
             AttemptOutcome::Refused(cause) | AttemptOutcome::Unknown(cause) => cause.clone(),
             AttemptOutcome::Applied => Arc::new(
-                RecoveryUnresolvedSnafu {
+                ConfigurationNotInEffectSnafu {
                     reason: "the core stopped with a failure for this target".to_owned(),
                 }
                 .build(),
@@ -657,7 +657,7 @@ mod tests {
     }
     fn refusal() -> Arc<RuntimeError> {
         Arc::new(
-            RecoveryUnresolvedSnafu {
+            ConfigurationNotInEffectSnafu {
                 reason: "application failed".to_owned(),
             }
             .build(),

@@ -1154,7 +1154,7 @@ dependencies = [
  "async-trait",
  "boa_engine",
  "boa_parser",
- "brotli 9.1.2",
+ "brotli 9.1.3",
  "futures-concurrency",
  "futures-util",
  "include_url_macro",
@@ -1314,9 +1314,9 @@ dependencies = [
 
 [[package]]
 name = "brotli"
-version = "9.1.2"
+version = "9.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05e0144f854f7cfbc157229554c4a9580b8a653448e2bab608022ee0398a07dc"
+checksum = "9071f285ed78f04f37d675abaaef5de7689e2f30a216c8dc6795465d81910a13"
 dependencies = [
  "alloc-no-stdlib 3.0.0",
  "alloc-stdlib 0.3.0",
@@ -11817,7 +11817,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb37631cf71dab5e8ab55e1bdd701e18a52653d90b78e71d0e5598b1e0a61316"
 dependencies = [
  "base64 0.23.1",
- "brotli 9.1.2",
+ "brotli 9.1.3",
  "ico",
  "json-patch 4.2.0",
  "plist",
@@ -12165,7 +12165,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "362ab21cd4cc713f2a02b1a9b5688198b1541cfb6907c4281e9190e0f0ef4aa3"
 dependencies = [
  "anyhow",
- "brotli 9.1.2",
+ "brotli 9.1.3",
  "cargo_metadata",
  "ctor 1.0.13",
  "dom_query",

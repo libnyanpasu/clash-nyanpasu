@@ -413,6 +413,7 @@ fn host_adapters(
         icon_fetcher: network.clone(),
         network_diagnostics: network,
         http_server: None,
+        local_socket: None,
         network_environment: None,
         changelog_http: Arc::new(move |ports| {
             Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(

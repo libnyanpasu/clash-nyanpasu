@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::{clash::ws::ClashConnectionDetails, client::NyanpasuClient};
+use nyanpasu_core::{
+    clash::ws::{ClashConnectionDetails, ClashWsPacket, ClashWsUpdate},
+    client::NyanpasuClient,
+};
 use nyanpasu_rpc_protocol::{
     EventName, RpcError,
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
@@ -147,6 +150,15 @@ impl SubscriptionSource for NyanpasuClient {
             EventName::ServiceStatusSummaryChanged => {
                 serde_json::to_value(ServiceStatusSummary::from(&self.service_status()))
             }
+            EventName::ClashWs => {
+                let snapshot = self.clash_ws_snapshot().await.map_err(|error| {
+                    error::application_error_for(visibility, error::IpcError::from(error))
+                })?;
+                serde_json::to_value(ClashWsPacket {
+                    sequence: snapshot.sequence,
+                    update: ClashWsUpdate::Reset(Box::new(snapshot)),
+                })
+            }
             _ => unreachable!("local subscription admission only permits full-value events"),
         };
         value.map_err(|error| error::application_error_for(visibility, error))
@@ -256,20 +268,28 @@ pub(super) async fn forward(
                 }
                 loop {
                     match receiver.recv().await {
-                        Ok((name, _)) if name == event.as_str() => {
-                            // A source forwarder may publish an older queued observation
-                            // after a reset overtook it. Read the authoritative full value
-                            // on each notification instead of replaying that old payload.
-                            let value = match source.snapshot(event, visibility).await {
-                                Ok(value) => value,
-                                Err(_) => {
-                                    failed(
-                                        &output,
-                                        &subscription,
-                                        SubscriptionErrorCode::SnapshotUnavailable,
-                                    )
-                                    .await;
-                                    return;
+                        Ok((name, payload)) if name == event.as_str() => {
+                            // `ClashWs` publishes `ClashWsPacket` deltas (state, traffic,
+                            // connections, memory, recording, history) rather than whole-value
+                            // snapshots, so forward the published packet directly; lag still
+                            // resynchronizes from a full `ClashWsUpdate::Reset` snapshot.
+                            let value = if event == EventName::ClashWs {
+                                payload
+                            } else {
+                                // A source forwarder may publish an older queued observation
+                                // after a reset overtook it. Read the authoritative full value
+                                // on each notification instead of replaying that old payload.
+                                match source.snapshot(event, visibility).await {
+                                    Ok(value) => value,
+                                    Err(_) => {
+                                        failed(
+                                            &output,
+                                            &subscription,
+                                            SubscriptionErrorCode::SnapshotUnavailable,
+                                        )
+                                        .await;
+                                        return;
+                                    }
                                 }
                             };
                             if output

@@ -42,6 +42,7 @@ pub mod host_adapters;
 pub mod hotkey;
 pub mod http_server;
 pub mod jobs;
+pub mod local_socket;
 pub mod logs;
 pub mod network_automation;
 #[cfg(test)]
@@ -74,6 +75,7 @@ use self::{
     clash_config::ClashConfigClient,
     host_adapters::ClientHostAdapters,
     http_server::{HttpServerControlError, HttpServerStatus},
+    local_socket::{LocalSocketControlError, LocalSocketStatus},
     remote_access::{RemoteAccessArgs, RemoteAccessClient},
     session_state::SessionStateClient,
 };
@@ -180,6 +182,8 @@ pub enum SetupError {
     CleanupCandidates { source: runtime::Error },
     #[snafu(display("failed to start http server"))]
     StartHttpServer { source: http_server::Error },
+    #[snafu(display("failed to start local socket"))]
+    StartLocalSocket { source: local_socket::Error },
     #[snafu(display("failed to start the remote access owner"))]
     StartRemoteAccess { source: RemoteAccessSpawnError },
     #[snafu(display("failed to start the remote authentication owner"))]
@@ -504,10 +508,15 @@ impl NyanpasuClient {
             Some(factory) => Some(factory().await.context(StartHttpServerSnafu)?),
             None => None,
         };
+        let local_socket = match host_adapters.local_socket {
+            Some(factory) => Some(factory().await.context(StartLocalSocketSnafu)?),
+            None => None,
+        };
         let remote_access = RemoteAccessClient::spawn(
             RemoteAccessArgs {
                 application: application.clone(),
                 http: http_server,
+                local_socket,
                 shutdown: shutdown.child_token(),
             },
             &tasks,
@@ -862,6 +871,12 @@ impl NyanpasuClient {
         self.inner.remote_access.status().await
     }
 
+    pub async fn local_socket_status(
+        &self,
+    ) -> std::result::Result<LocalSocketStatus, LocalSocketControlError> {
+        self.inner.remote_access.local_socket_status().await
+    }
+
     /// A URL that logs a browser into the running server, or `None` while it is off.
     ///
     /// The URL carries a single-use launch code that expires after 60 seconds, so it is a
@@ -1000,6 +1015,16 @@ impl NyanpasuClient {
         self.inner.remote_access.set(config).await
     }
 
+    /// Makes all configured listeners follow the committed settings, as at startup.
+    pub async fn reconcile_remote_access(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner.remote_access.reconcile().await
+    }
+
     /// Makes the listener follow the committed settings, as at startup.
     pub async fn reconcile_http_server(
         &self,
@@ -1007,7 +1032,7 @@ impl NyanpasuClient {
         nyanpasu_runtime_values::runtime::MutationOutcome<()>,
         SetRemoteAccessError,
     > {
-        self.inner.remote_access.reconcile().await
+        self.reconcile_remote_access().await
     }
 
     pub async fn release_channel(&self) -> Result<ReleaseChannel> {

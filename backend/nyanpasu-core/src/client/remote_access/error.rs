@@ -6,13 +6,18 @@
 use snafu::Snafu;
 
 use super::auth_error::RemoteAuthError;
-use crate::client::{ClientError, http_server::HttpServerControlError};
+use crate::client::{
+    ClientError, http_server::HttpServerControlError, local_socket::LocalSocketControlError,
+};
 
 #[derive(Debug, Snafu)]
 pub enum SetRemoteAccessError {
     /// The host has no HTTP server. Nothing was committed.
     #[snafu(context(false), display("the HTTP server cannot be changed"))]
     Server { source: HttpServerControlError },
+    /// The host has no local socket listener. Nothing was committed.
+    #[snafu(context(false), display("the local socket cannot be changed"))]
+    LocalSocket { source: LocalSocketControlError },
     /// The value was invalid or its commit failed. Nothing was committed.
     #[snafu(
         context(false),

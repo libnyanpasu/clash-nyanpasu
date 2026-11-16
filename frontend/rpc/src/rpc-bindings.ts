@@ -26,6 +26,14 @@ export function createRpcClient(
       typedError<HttpServerStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_http_server_status'),
       ),
+    /**
+     *  The local socket's state. Its endpoint is a filesystem path, so only a remote administrator
+     *  reads it, and it is never offered over HTTP.
+     */
+    getLocalSocketStatus: () =>
+      typedError<LocalSocketStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_local_socket_status'),
+      ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
@@ -883,8 +891,9 @@ export function createRpcClient(
         __RPC_INVOKE('set_service_mode', { enabled }),
       ),
     /**
-     *  Remote access widens who can reach the application, so it has its own desktop-only command;
-     *  `patch_app_config` rejects the section.
+     *  Remote access widens who can reach the application, so it has its own command, reachable from
+     *  the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
+     *  section.
      */
     setRemoteAccess: (config: RemoteAccessConfig) =>
       typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
@@ -2958,6 +2967,8 @@ export type DegradationReason =
     }
   /**  The remote-access settings were saved but the HTTP listener could not follow them. */
   | { code: 'http_server_unavailable' }
+  /**  The remote-access settings were saved but the local socket listener could not follow them. */
+  | { code: 'local_socket_unavailable' }
 
 export type Delay = {
   delay: number
@@ -3578,6 +3589,7 @@ export type IpcErrorKind_Deserialize =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
@@ -3596,6 +3608,7 @@ export type IpcErrorKind_Serialize =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
   | { domain: 'clash_read'; error: ClashReadError }
   | { domain: 'core_log_read'; error: CoreLogReadError }
   | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
@@ -3671,6 +3684,31 @@ export type LocalBinding_Serialize =
       target: ExternalProfilePath
       mode: ExternalMode
     }
+
+/**  Local socket listener settings. */
+export type LocalSocketAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+}
+
+/**  Why a local-socket query or setting change could not be performed. */
+export type LocalSocketControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type LocalSocketFault =
+  /**  The listener could not be bound. */
+  'bind_failed'
+
+/**  The local-socket listener's state. */
+export type LocalSocketStatus = {
+  enabled: boolean
+  /**  The bound endpoint path or pipe name when running. */
+  endpoint: string | null
+  fault: LocalSocketFault | null
+}
 
 export type LogCursor = {
   generation: string
@@ -6385,6 +6423,7 @@ export type PublicDegradationReason_Deserialize =
       cause: PublicProfilesError_Deserialize
     }
   | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
 
 /**  Safe public reason discriminant why a committed mutation degraded. */
 export type PublicDegradationReason_Serialize =
@@ -6407,6 +6446,7 @@ export type PublicDegradationReason_Serialize =
       cause: PublicProfilesError_Serialize
     }
   | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
 
 /**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
 export type PublicDegradation_Deserialize = {
@@ -6444,6 +6484,7 @@ export type PublicFailure_Deserialize =
   | { domain: 'system_proxy'; error: PublicOsProxyError }
   | { domain: 'effects'; error: PublicEffectsError }
   | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
   | { domain: 'clash_read'; error: PublicClashReadError }
   | { domain: 'core_log_read'; error: PublicCoreLogReadError }
   | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
@@ -6467,6 +6508,7 @@ export type PublicFailure_Serialize =
   | { domain: 'system_proxy'; error: PublicOsProxyError }
   | { domain: 'effects'; error: PublicEffectsError }
   | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
   | { domain: 'clash_read'; error: PublicClashReadError }
   | { domain: 'core_log_read'; error: PublicCoreLogReadError }
   | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
@@ -6526,6 +6568,12 @@ export type PublicInstallCoreBinaryKind_Serialize =
       exit_code: number | null
     }
   | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public local-socket control error discriminant. */
+export type PublicLocalSocketError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
 
 /**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
 export type PublicMutationOutcome<T> =
@@ -7448,6 +7496,7 @@ export type ReleaseChannelInfo = {
 /**  The persisted `remote_access` section. */
 export type RemoteAccessConfig = {
   http?: HttpAccessConfig
+  local_socket?: LocalSocketAccessConfig
 }
 
 /**  Why a remote-access value cannot be committed. */

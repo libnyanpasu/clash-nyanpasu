@@ -12,14 +12,17 @@ async fn current_failure_encoding_matches_the_contract_baseline() {
     ))
     .unwrap();
     let fixture = Fixture::new(false).await;
-    for command in nyanpasu_rpc_protocol::COMMAND_CATALOG
-        .iter()
-        .filter(|command| {
+    for command_name in fixtures.as_object().unwrap().keys() {
+        let command = nyanpasu_rpc_protocol::COMMAND_CATALOG
+            .iter()
+            .find(|command| command.name == command_name)
+            .unwrap_or_else(|| panic!("missing catalog entry for {command_name}"));
+        assert!(
             command
                 .targets
-                .contains(&nyanpasu_rpc_protocol::RpcTarget::Local)
-        })
-    {
+                .contains(&nyanpasu_rpc_protocol::RpcTarget::Local),
+            "{command_name} must be on Local"
+        );
         let error = fixture
             .rpc
             .call(
@@ -182,9 +185,9 @@ async fn command_scope_is_identical_across_rpc_transports() {
         .rpc
         .call(
             RpcTransport::Local,
-            "patch_app_config",
+            "patch_clash_config",
             RpcCaller::desktop("scope"),
-            json!({"patch": {"proxy_layout_column": 7}}),
+            json!({"patch": {}}),
         )
         .await
         .unwrap_err();

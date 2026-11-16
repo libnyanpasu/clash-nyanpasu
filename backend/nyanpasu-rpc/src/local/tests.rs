@@ -1197,6 +1197,7 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
             EventName::ServiceStatusChanged => &mut fresh["restart_attempts"],
             EventName::AppUpdateStateChanged => &mut fresh["revision"],
             EventName::CoreLogsChanged => &mut fresh["status"]["version"],
+            EventName::ClashWs => &mut fresh["sequence"],
             _ => unreachable!(),
         };
         *marker = json!(marker.as_u64().unwrap() + 1);
@@ -1367,7 +1368,8 @@ async fn safe_status_snapshots_match_their_queries() {
 }
 
 #[tokio::test]
-async fn local_server_assigns_socket_user_principal_and_allows_14_commands_via_rpc_describe() {
+async fn local_server_assigns_socket_user_principal_and_allows_the_reviewed_commands_via_rpc_describe()
+ {
     let fixture = Fixture::new(false).await;
     let directory = tempfile::tempdir().unwrap();
     let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
@@ -1409,7 +1411,7 @@ async fn local_server_assigns_socket_user_principal_and_allows_14_commands_via_r
                 .any(|meta| meta.name == command.name)
         })
         .collect();
-    assert_eq!(production_local.len(), 14);
+    assert_eq!(production_local.len(), 46);
     assert!(production_local.iter().all(|command| command.allowed));
 
     {

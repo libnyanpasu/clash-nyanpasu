@@ -16,6 +16,7 @@ import type {
   HttpServerControlError,
   InstallCoreBinaryError,
   IpcError,
+  LocalSocketControlError,
   OsProxyError,
   PickPortError,
   PortField,
@@ -75,6 +76,8 @@ export function ipcErrorMessage(
       return storageErrorMessage(error.kind.error)
     case 'http_server':
       return httpServerErrorMessage(error.kind.error)
+    case 'local_socket':
+      return localSocketErrorMessage(error.kind.error)
     case 'clash_read':
       return clashReadErrorMessage(error.kind.error)
     case 'core_log_read':
@@ -366,6 +369,8 @@ function publicFailureMessage(failure: PublicFailure): string {
       return effectsErrorMessage(failure.error)
     case 'http_server':
       return httpServerErrorMessage(failure.error)
+    case 'local_socket':
+      return localSocketErrorMessage(failure.error)
     case 'clash_read':
       return clashReadErrorMessage(failure.error)
     case 'core_log_read':
@@ -846,6 +851,17 @@ function httpServerErrorMessage(error: HttpServerControlError): string {
       return m.error_http_server_change_unsupported()
     case 'read_status':
       return m.error_http_server_read_status()
+  }
+}
+
+function localSocketErrorMessage(error: LocalSocketControlError): string {
+  switch (error.kind) {
+    case 'read_status_unsupported':
+      return m.error_local_socket_read_status_unsupported()
+    case 'change_unsupported':
+      return m.error_local_socket_change_unsupported()
+    case 'read_status':
+      return m.error_local_socket_read_status()
   }
 }
 
@@ -1373,6 +1389,8 @@ function sharedDegradationReasonMessage(
       return m.mutation_degradation_reason_cleanup_deferred()
     case 'http_server_unavailable':
       return m.mutation_degradation_reason_http_server_unavailable()
+    case 'local_socket_unavailable':
+      return m.mutation_degradation_reason_local_socket_unavailable()
     default: {
       const _exhaustive: never = reason
       return String(_exhaustive)

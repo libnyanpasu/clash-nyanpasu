@@ -914,7 +914,9 @@ mod tests {
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_contracts::system_dns::SystemDnsError;
     use nyanpasu_core::{
-        client::{ClientError, http_server::HttpServerControlError},
+        client::{
+            ClientError, http_server::HttpServerControlError, local_socket::LocalSocketControlError,
+        },
         state::config_error::ConfigError,
     };
     use nyanpasu_runtime_values::profiles::ProfilesError;
@@ -1061,6 +1063,21 @@ mod tests {
                 json!({ "domain": "http_server", "error": { "kind": kind } })
             );
         }
+        for (error, kind) in [
+            (
+                LocalSocketControlError::ReadStatusUnsupported,
+                "read_status_unsupported",
+            ),
+            (
+                LocalSocketControlError::ChangeUnsupported,
+                "change_unsupported",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
+                json!({ "domain": "local_socket", "error": { "kind": kind } })
+            );
+        }
         assert_eq!(
             wire(ProfilesError::ShuttingDown)["kind"],
             json!({ "domain": "profiles", "error": { "kind": "shutting_down" } })
@@ -1082,6 +1099,20 @@ mod tests {
             json!({ "domain": "http_server", "error": { "kind": "read_status" } })
         );
         assert!(http_server["detail"].as_str().unwrap().contains("cause"));
+        let local_error = LocalSocketControlError::ReadStatus {
+            source: anyhow::anyhow!("socket read cause"),
+        };
+        let local_socket = serde_json::to_value(IpcError::from(local_error)).unwrap();
+        assert_eq!(
+            local_socket["kind"],
+            json!({ "domain": "local_socket", "error": { "kind": "read_status" } })
+        );
+        assert!(
+            local_socket["detail"]
+                .as_str()
+                .unwrap()
+                .contains("socket read cause")
+        );
         let fetch = wire(ProfilesError::FetchSubscription {
             url: "https://sub.example/x".parse().unwrap(),
             source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },

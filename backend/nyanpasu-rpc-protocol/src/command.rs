@@ -1,36 +1,6 @@
 //! Declaration metadata, independent of linked command implementations.
 
-use serde::{Deserialize, Serialize};
-use specta::Type;
-
-use crate::Scope;
-
-/// A command's explicitly enabled transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum RpcTarget {
-    /// The complete desktop command surface.
-    Desktop,
-    /// Browser access, explicitly opted into by the declaration.
-    Http,
-    /// Local socket access, independently opted into by the declaration.
-    Local,
-}
-
-/// What a command does, independent of how a transport dispatches it.
-///
-/// Queries observe application or network state; refreshing a read model or measuring latency
-/// does not change application configuration. Mutations perform application operations, including
-/// allocating caller-owned resources. Scope independently controls who may request either effect.
-/// The declaration is the source of truth; the generated frontend's split is checked against it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum CommandEffect {
-    /// Returns data and changes nothing.
-    Query,
-    /// Everything else.
-    Mutation,
-}
+use crate::{CommandEffect, RpcTarget, Scope};
 
 /// Whether desktop dispatch needs a native wrapper or a shared handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,11 +143,22 @@ mod tests {
         );
     }
 
+    /// `remote_admin` belongs to the desktop shell and the same-user local socket. HTTP never
+    /// offers it, because no bearer token or browser session can hold the scope.
     #[test]
-    fn remote_administration_is_never_a_remote_command() {
+    fn remote_administration_is_never_an_http_command() {
         for command in COMMAND_CATALOG {
             if command.scope == Scope::RemoteAdmin {
-                assert_eq!(command.targets, &[RpcTarget::Desktop], "{}", command.name);
+                assert!(
+                    command.targets.contains(&RpcTarget::Desktop),
+                    "{}",
+                    command.name
+                );
+                assert!(
+                    !command.targets.contains(&RpcTarget::Http),
+                    "{} must not expose HTTP",
+                    command.name
+                );
             }
         }
         assert_eq!(
@@ -185,6 +166,21 @@ mod tests {
             [
                 "create_http_launch_url",
                 "create_remote_access_token",
+                "get_local_socket_status",
+                "list_remote_access_tokens",
+                "list_remote_browser_sessions",
+                "revoke_remote_access_token",
+                "revoke_remote_browser_session",
+                "set_remote_access",
+            ]
+        );
+        // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
+        assert_eq!(
+            names(|command| command.scope == Scope::RemoteAdmin
+                && command.targets.contains(&RpcTarget::Local)),
+            [
+                "create_remote_access_token",
+                "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
                 "revoke_remote_access_token",
@@ -277,18 +273,69 @@ mod tests {
                 .unwrap();
             assert!(command.targets.contains(&RpcTarget::Http), "{name}");
         }
+        let mut local: Vec<_> = COMMAND_CATALOG
+            .iter()
+            .filter(|command| command.targets.contains(&RpcTarget::Local))
+            .map(|command| command.name)
+            .collect();
+        local.sort_unstable();
+        assert_eq!(local.len(), 46);
         assert_eq!(
-            COMMAND_CATALOG
-                .iter()
-                .filter(|command| command.targets.contains(&RpcTarget::Local))
-                .count(),
-            14
+            local,
+            [
+                "activate_profile",
+                "change_clash_core",
+                "clash_api_delete_connections",
+                "clash_api_get_group_delay",
+                "clash_api_get_proxy_delay",
+                "clash_api_get_version",
+                "close_log_session",
+                "create_profile",
+                "create_remote_access_token",
+                "delete_profile",
+                "get_app_settings",
+                "get_clash_settings",
+                "get_configuration_status",
+                "get_configuration_status_summary",
+                "get_core_status",
+                "get_core_status_summary",
+                "get_http_server_status",
+                "get_local_socket_status",
+                "get_profiles",
+                "get_profiles_listing",
+                "get_proxies",
+                "get_storage_item",
+                "get_sys_proxy",
+                "get_traffic_summary",
+                "import_profile",
+                "list_log_files",
+                "list_remote_access_tokens",
+                "list_remote_browser_sessions",
+                "open_log_session",
+                "patch_app_config",
+                "patch_clash_system_config",
+                "patch_system_settings",
+                "query_core_logs",
+                "query_logs",
+                "query_traffic_active_connection_ids",
+                "read_profile_file",
+                "remove_storage_item",
+                "restart_sidecar",
+                "revoke_remote_access_token",
+                "revoke_remote_browser_session",
+                "rpc_describe",
+                "select_proxy",
+                "set_proxy_mode",
+                "set_remote_access",
+                "set_storage_item",
+                "update_profile",
+            ]
         );
         let patch = COMMAND_CATALOG
             .iter()
             .find(|command| command.name == "patch_app_config")
             .unwrap();
-        assert!(!patch.targets.contains(&RpcTarget::Local));
+        assert!(patch.targets.contains(&RpcTarget::Local));
         assert!(
             !patch
                 .optional_capabilities

@@ -1507,6 +1507,7 @@ fn enabled_http_server_joins_application_shutdown() {
                     enabled: true,
                     ..Default::default()
                 },
+                ..Default::default()
             })
             .await
             .unwrap();

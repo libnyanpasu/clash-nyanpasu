@@ -43,9 +43,10 @@ pub async fn set_service_mode(
     Ok(client.set_service_mode(enabled).await?.into())
 }
 
-/// Remote access widens who can reach the application, so it has its own desktop-only command;
-/// `patch_app_config` rejects the section.
-#[nyanpasu_macro::rpc(privacy, capabilities(http_server), scope = remote_admin)]
+/// Remote access widens who can reach the application, so it has its own command, reachable from
+/// the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
+/// section.
+#[nyanpasu_macro::rpc(local, privacy, capabilities(http_server), scope = remote_admin)]
 #[specta::specta]
 pub async fn set_remote_access(
     client: RpcState<'_, NyanpasuClient>,

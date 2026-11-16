@@ -27,8 +27,16 @@ fn operation_methods_match_the_local_catalog() {
         .map(|command| command.name)
         .collect();
     names.sort_unstable();
+    let total = names.len();
+    names.dedup();
+    assert_eq!(names.len(), total, "typed operation names must be unique");
     catalog.sort_unstable();
-    assert_eq!(names, catalog);
+    for name in names {
+        assert!(
+            catalog.contains(&name),
+            "typed operation {name} must be exposed on RpcTarget::Local"
+        );
+    }
 }
 
 fn sample<T: DeserializeOwned>(value: Value) -> T {

@@ -188,3 +188,85 @@ async fn local_endpoint_cleanup_cannot_remove_a_replacement() {
         "stale probing must not unlink a replacement"
     );
 }
+
+#[tokio::test]
+async fn unix_verify_peer_accepts_same_user_stream() {
+    let (_directory, endpoint) = location();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    let (mut client, mut server) = connect(&listener, &endpoint).await;
+    assert!(super::verify_peer(&server).is_ok());
+    exchange(&mut client, &mut server, 17).await;
+}
+
+#[tokio::test]
+async fn unix_accept_rejects_unauthorized_peers_and_continues() {
+    use std::time::Duration;
+
+    use tokio::io::AsyncReadExt as _;
+
+    use crate::endpoint::{PeerMismatch, PeerRejection, accept_verified};
+
+    let (_directory, endpoint) = location();
+    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    let mut attempt = 0usize;
+    let accept_task = tokio::spawn({
+        let endpoint = endpoint.clone();
+        async move {
+            let mut client_1 = tokio::time::timeout(Duration::from_secs(10), endpoint.connect())
+                .await
+                .unwrap()
+                .unwrap();
+            let mut byte = [0u8; 1];
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(10), client_1.read(&mut byte))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                0,
+                "rejected mismatch peer must be closed"
+            );
+
+            let mut client_2 = tokio::time::timeout(Duration::from_secs(10), endpoint.connect())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(10), client_2.read(&mut byte))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                0,
+                "rejected credential-error peer must be closed"
+            );
+
+            tokio::time::timeout(Duration::from_secs(10), endpoint.connect())
+                .await
+                .unwrap()
+                .unwrap()
+        }
+    });
+
+    let mut server = tokio::time::timeout(
+        Duration::from_secs(10),
+        accept_verified(&listener.listener, |stream| {
+            attempt += 1;
+            match attempt {
+                1 => Err(PeerRejection::Mismatch(PeerMismatch::Uid {
+                    peer: uid().wrapping_add(1),
+                    expected: uid(),
+                })),
+                2 => Err(PeerRejection::Credentials(io::Error::from(
+                    io::ErrorKind::PermissionDenied,
+                ))),
+                _ => super::verify_peer(stream),
+            }
+        }),
+    )
+    .await
+    .expect("accept loop must continue past rejected peers")
+    .unwrap();
+
+    assert_eq!(attempt, 3);
+    let mut client = accept_task.await.unwrap();
+    exchange(&mut client, &mut server, 42).await;
+}

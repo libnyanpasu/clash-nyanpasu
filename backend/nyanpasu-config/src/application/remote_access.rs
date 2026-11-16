@@ -56,11 +56,20 @@ impl Default for HttpAccessConfig {
     }
 }
 
+/// Local socket listener settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(default)]
+pub struct LocalSocketAccessConfig {
+    /// Master switch. Off by default.
+    pub enabled: bool,
+}
+
 /// The persisted `remote_access` section.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(default)]
 pub struct RemoteAccessConfig {
     pub http: HttpAccessConfig,
+    pub local_socket: LocalSocketAccessConfig,
 }
 
 /// Why a remote-access value cannot be committed.
@@ -120,6 +129,7 @@ mod tests {
         assert_eq!(config.http.port, None);
         assert!(config.http.serve_webui);
         assert_eq!(config.http.local_open_scopes, vec![Scope::Read]);
+        assert!(!config.local_socket.enabled);
     }
 
     #[test]
@@ -130,6 +140,24 @@ mod tests {
             serde_json::from_str(r#"{"http":{"enabled":true}}"#).unwrap();
         assert!(partial.http.enabled);
         assert!(partial.http.serve_webui);
+        assert!(!partial.local_socket.enabled);
+    }
+
+    #[test]
+    fn local_socket_round_trips_through_serde() {
+        for enabled in [false, true] {
+            let config = RemoteAccessConfig {
+                local_socket: LocalSocketAccessConfig { enabled },
+                ..Default::default()
+            };
+            let json = serde_json::to_string(&config).unwrap();
+            let decoded: RemoteAccessConfig = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, config);
+
+            let yaml = yaml_serde::to_string(&config).unwrap();
+            let decoded_yaml: RemoteAccessConfig = yaml_serde::from_str(&yaml).unwrap();
+            assert_eq!(decoded_yaml, config);
+        }
     }
 
     #[test]

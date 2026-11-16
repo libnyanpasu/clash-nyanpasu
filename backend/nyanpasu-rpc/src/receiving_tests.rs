@@ -19,7 +19,8 @@ use nyanpasu_contracts::{
 };
 use nyanpasu_core::{
     client::{
-        ClashReadError, CoreLogReadError, ProfileSyncReadError, http_server::HttpServerControlError,
+        ClashReadError, CoreLogReadError, ProfileSyncReadError,
+        http_server::HttpServerControlError, local_socket::LocalSocketControlError,
     },
     state::config_error::ConfigError,
     storage::StorageOperationError,
@@ -384,6 +385,7 @@ cases!(
         cause: Arc::new(profiles_error_cases(present).remove(0)),
     },
     HttpServerUnavailable,
+    LocalSocketUnavailable,
 );
 
 cases!(
@@ -1002,6 +1004,18 @@ cases!(
 );
 
 cases!(
+    local_socket_control_error_cases,
+    LocalSocketControlError,
+    received::LocalSocketControlError,
+    present;
+    ReadStatusUnsupported,
+    ChangeUnsupported,
+    ReadStatus {
+        source: anyhow::Error::new(io_source()),
+    },
+);
+
+cases!(
     clash_read_error_cases,
     ClashReadError,
     received::ClashReadError,
@@ -1233,6 +1247,7 @@ fn ipc_domains_and_envelope(present: bool) {
         SystemProxy => os_proxy_error_cases,
         Effects => effects_error_cases,
         HttpServer => http_server_control_error_cases,
+        LocalSocket => local_socket_control_error_cases,
         ClashRead => clash_read_error_cases,
         CoreLogRead => core_log_read_error_cases,
         ProfileSyncRead => profile_sync_read_error_cases,

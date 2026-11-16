@@ -84,7 +84,8 @@ fields. For an ordinary field `null` is a no-op; only the double-option fields
 schema is derived from the fields of the request type and never advertises a field of
 another class.
 
-`remote_access` is written only by `set_remote_access`, a Desktop-only (`scope = remote_admin`) mutation that
+`remote_access` is written only by `set_remote_access`, a `scope = remote_admin` mutation reachable
+from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
 them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
 `local_open_scopes` changes), and a listener that cannot follow is a
@@ -93,13 +94,15 @@ them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
 `local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
-scopes) before activating a listener. `get_http_server_status` is HTTP-exposed and
-never carries a credential; launch URLs, access tokens, and browser sessions are managed
-through desktop-only `scope = remote_admin` commands in
-`nyanpasu-rpc/src/commands/remote_access.rs` (`create_http_launch_url`,
-`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
-`list_remote_browser_sessions`, `revoke_remote_browser_session`). `create_http_launch_url`
-is a mutation so launch codes are not kept in a client cache.
+scopes) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
+`remote_admin` query on Desktop and Local only. Access tokens and browser sessions are managed
+through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
+(`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
+`list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
+socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
+`create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
+launch codes are not kept in a client cache.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
 `patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
@@ -114,10 +117,10 @@ HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
 embedded HTTP/local, uses interactive OS consent. The standalone server injects
 `RefuseElevation`; command metadata does not replace that execution policy.
-`patch_app_config` has no Local target, and neither dedicated command expands
-the fourteen-operation Local allowlist (the thirteen pre-authorization commands
-plus `rpc_describe`). `get_configuration_status` is a query;
-the two dedicated setters are mutations in the hand-maintained Specta metadata.
+The Local allowlist, which includes `patch_app_config`, is listed under
+[Desktop local client and listener](#desktop-local-client-and-listener).
+`get_configuration_status` is a query; the two dedicated setters are mutations in
+the hand-maintained Specta metadata.
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
 - Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, `RpcAppUpdateOutcome`, or `RpcNetworkAutomationStatus`) and pass `privacy` on `#[nyanpasu_macro::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
@@ -278,9 +281,10 @@ Specta query/mutation groups that become the frontend bindings are checked again
   domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
 - Scope is independent of target. `scope = system` never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
-  capability admission still apply. `remote_admin` commands are Desktop-only.
+  capability admission still apply. `remote_admin` commands are never HTTP: only Desktop and
+  the same-user local socket, whose principal holds every scope, may call them.
 - The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
-  Desktop-only `remote_admin` set, so changing any of them is a reviewed change.
+  `remote_admin` set with its Local subset, so changing any of them is a reviewed change.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -549,7 +553,7 @@ Local dispatch and subscription admission enter the existing audit kernel at INF
 
 E2a moved the four shared HTTP response definitions with their commands before E2b extraction, and puts the shared `TrayIcon` value in protocol; shell asset operations become free functions. E1b completes the remaining downward projections and receiving closure. Runtime-values is an unconditional E2b policy member.
 
-E3 local subscriptions retain only full-value configuration, core and service status, app-update state when available, and core-log status, plus the separate connection-detail demand stream. Each retained event replaces the complete value it describes; subscription starts with a snapshot and local lag triggers a fresh reset. Tasks E3b lists the source evidence and payloads. Clash WS updates, state invalidations, storage changes/resync, deep links and window messages return the existing unknown-stream outcome and allocate no subscription. Their recovery requires a separately reviewed card; the deferred item records round-3 invalidation, storage mapping and watermark acceptance criteria. Connection-detail frames, negotiation, current-after-ack delivery, coalescing and demand release remain unchanged. Real local-connection reset tests cover only the five retained event identities, with no recovery queries or command-allowlist expansion. Tauri/SSE payloads and admission-only auditing are unchanged.
+E3 local subscriptions retain only full-value configuration, core and service status, app-update state when available, and core-log status, plus the separate connection-detail demand stream. Each retained event replaces the complete value it describes; subscription starts with a snapshot and local lag triggers a fresh reset. Tasks E3b lists the source evidence and payloads. State invalidations, storage changes/resync, deep links and window messages return the existing unknown-stream outcome and allocate no subscription. The Clash WS stream is the one packet stream the CLI follows: its subscription starts with a full `Reset` snapshot, forwards the published packets and resynchronizes from a fresh `Reset` after lag. Their recovery requires a separately reviewed card; the deferred item records round-3 invalidation, storage mapping and watermark acceptance criteria. Connection-detail frames, negotiation, current-after-ack delivery, coalescing and demand release remain unchanged. Real local-connection reset tests cover the five full-value identities and the Clash WS stream, with no recovery queries. Tauri/SSE payloads and admission-only auditing are unchanged.
 
 All E cards follow D2 → D3 → D4 → A2b, then E1a → E2 → E3 → E1b → E4. E4 installs a neutral process panic policy before any tasks start; HTTP/local/background-owner subprocess tests must demonstrate non-zero fatal exit with original panic evidence and no synthesized RPC error. E4's separately composed server supplies `RefuseElevation` to service, DNS and binary-install adapters and tests config-driven service changes, runtime retry, compensation and copy fallback. Embedded desktop WebUI policy is unchanged; per-call authority remains outside O-5's scope. E5/OpenWrt and ticket-based LAN login remain paused. Existing frontend transport code, command/event wire shapes and all three generated bindings remain unchanged by E1a–E4.
 
@@ -635,11 +639,17 @@ and runs the endpoint crate's own tests.
 E3e delivers `nyanpasu-rpc-protocol/local-client`, default-off and dependent only
 on frame IO and Tokio OS/client facilities. It has no RPC adapter, core, server,
 GUI or implementation-crate dependency. The desktop explicitly compiles
-`nyanpasu-rpc/local-server`; starting a listener still requires
-`NYANPASU_LOCAL_RPC=1` in the launching process environment. An optional
-`NYANPASU_LOCAL_RPC_ENDPOINT` overrides the discovered endpoint under the same
-security rules. With no enable value, no endpoint is discovered or bound.
-There is no frontend control. The listener uses the desktop's existing client,
+`nyanpasu-rpc/local-server`. The listener follows the persisted
+`remote_access.local_socket.enabled` switch, off by default and independent of the
+HTTP switch. `LocalSocketClient` (an actor in `nyanpasu-rpc::local::control`,
+reached through the core `LocalSocketControl` port) binds and drains it, and
+`RemoteAccessClient` runs `set_remote_access` through the same serial owner as the
+HTTP listener: the settings commit first, and a listener that cannot follow is a
+`local_socket_unavailable` degradation, never a rollback. Disabling stops admission,
+flushes replies of in-flight calls up to a bounded drain and releases the endpoint.
+An optional `NYANPASU_LOCAL_RPC_ENDPOINT` overrides the discovered endpoint under the
+same security rules. While the switch is off, no endpoint is discovered or bound.
+The listener uses the desktop's existing client,
 capabilities and elevation policy; it makes no global refusal-of-elevation claim.
 The separately composed E4 server remains responsible for its refusal policy.
 E4a delivers its library composition: one client and registry, neutral event/audit
@@ -677,16 +687,35 @@ E4d's consecutive-process session acceptance remain separate work.
 
 The local command allowlist is exactly:
 
-- `get_profiles`, `create_profile`, `delete_profile`, `read_profile_file`
-- `get_configuration_status`, `get_core_status`
-- `get_storage_item`, `set_storage_item`, `remove_storage_item`
-- `list_log_files`, `open_log_session`, `query_logs`, `close_log_session`
+- profiles: `get_profiles`, `get_profiles_listing`, `create_profile`, `delete_profile`,
+  `activate_profile`, `update_profile`, `import_profile`, `read_profile_file`
+- status: `get_configuration_status`, `get_configuration_status_summary`,
+  `get_core_status`, `get_core_status_summary`
+- settings and core: `get_app_settings`, `get_clash_settings`, `set_proxy_mode`,
+  `patch_app_config`, `patch_system_settings`, `patch_clash_system_config`,
+  `change_clash_core`, `restart_sidecar`, `get_sys_proxy`
+- remote access: `get_http_server_status`, `get_local_socket_status`, `set_remote_access`,
+  `list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
+  `list_remote_browser_sessions`, `revoke_remote_browser_session`
+- proxies and connections: `get_proxies`, `select_proxy`, `clash_api_get_proxy_delay`,
+  `clash_api_get_group_delay`, `clash_api_delete_connections`, `clash_api_get_version`,
+  `query_traffic_active_connection_ids`, `get_traffic_summary`
+- logs and storage: `query_core_logs`, `list_log_files`, `open_log_session`,
+  `query_logs`, `close_log_session`, `get_storage_item`, `set_storage_item`,
+  `remove_storage_item`
 - `rpc_describe`
 
-These declarations reuse shared handlers and retain the existing HTTP exposure.
-Profile mutations retain optional runtime/service/elevation effects. Known commands
-outside this list return `unsupported`; expanding it requires a separate behavior
-card. Event/details subscriptions use control frames, not native Channel commands.
+These declarations reuse shared handlers and retain the existing HTTP exposure, except
+that the `remote_admin` commands are never HTTP. The local principal is the same OS user
+that owns the application and holds every scope, `remote_admin` included; this is what lets
+`nyanpasu-cli remote` administer the HTTP server, the socket, tokens and sessions, while
+tokens and browser sessions can never hold it. Mutations retain their optional
+runtime/service/elevation effects. Known commands outside this list return `unsupported`;
+expanding it requires a separate behavior card. `patch_app_config` is Local, with the same
+`ApplicationPreferencesPatch` contract as on the other transports, so the CLI's `config patch`
+works over the socket. Disabling the socket through the socket itself stops admission at once
+and finishes the drain in the background, so the reply to that call is still delivered.
+Event/details subscriptions use control frames, not native Channel commands.
 
 `LocalClient::connect(path, timeout)` negotiates an explicit Unix socket or Windows
 pipe. One task owns its byte stream, incremental decoder and bounded request queue;

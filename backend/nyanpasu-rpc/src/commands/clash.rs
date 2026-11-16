@@ -5,7 +5,7 @@ use nyanpasu_core::client::NyanpasuClient;
 
 use crate::{error::Result, registry::RpcState};
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), query, scope = proxy)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(presentation), query, scope = proxy)]
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
     client: RpcState<'_, NyanpasuClient>,
@@ -38,7 +38,7 @@ pub async fn clash_api_get_configs(
     Ok(client.clash_configs().await?)
 }
 
-#[nyanpasu_macro::rpc(http, scope = proxy)]
+#[nyanpasu_macro::rpc(local, http, scope = proxy)]
 #[specta::specta]
 pub async fn clash_api_delete_connections(
     client: RpcState<'_, NyanpasuClient>,
@@ -47,7 +47,7 @@ pub async fn clash_api_delete_connections(
     Ok(client.close_clash_connections(id).await?)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn clash_api_get_version(
     client: RpcState<'_, NyanpasuClient>,
@@ -80,7 +80,7 @@ pub async fn clash_api_update_providers_rules(
     Ok(client.update_clash_rule_provider(name).await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), query, scope = proxy)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(presentation), query, scope = proxy)]
 #[specta::specta]
 pub async fn clash_api_get_group_delay(
     client: RpcState<'_, NyanpasuClient>,
@@ -110,7 +110,7 @@ pub async fn get_proxy_group_icons(
     Ok(client.proxy_group_icons().await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), query)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(presentation), query)]
 #[specta::specta]
 pub async fn get_proxies(
     client: RpcState<'_, NyanpasuClient>,
@@ -126,7 +126,7 @@ pub async fn mutate_proxies(
     Ok(client.refresh_proxies().await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), privacy, scope = proxy)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(presentation), privacy, scope = proxy)]
 #[specta::specta]
 pub async fn select_proxy(
     client: RpcState<'_, NyanpasuClient>,

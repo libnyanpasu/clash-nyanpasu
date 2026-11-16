@@ -651,6 +651,7 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
                 enabled: true,
                 ..Default::default()
             },
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1134,7 +1135,7 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
 }
 
 #[tokio::test]
-async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
+async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
     use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig};
     use nyanpasu_rpc_protocol::RpcOwner;
 
@@ -1211,8 +1212,11 @@ async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
         ),
     ];
 
-    // 1. Even a full-scope HTTP caller or Local socket caller gets `unsupported` (`501`),
-    //    and `rpc_describe` reports `allowed: false` on Http & Local, `allowed: true` on Desktop.
+    // 1. Even a full-scope HTTP caller gets `unsupported` (`501`), and `rpc_describe` omits the
+    //    commands there and reports `allowed: true` on Desktop. The local socket offers the same
+    //    commands except the launch URL, a browser credential that stays with the desktop; the
+    //    local socket's own behavior is covered by
+    //    `the_local_socket_administers_remote_access_and_http_never_does`.
     let full_http = AuthContext::session("sess_full_check");
     let http_desc = rpc.describe(RpcTarget::Http, &full_http);
     let local_ctx = AuthContext::local_socket("1000");
@@ -1225,9 +1229,10 @@ async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
             http_desc.commands.iter().all(|c| c.name != *method),
             "HTTP describe must omit desktop-only {method}"
         );
-        assert!(
-            local_desc.commands.iter().all(|c| c.name != *method),
-            "Local describe must omit desktop-only {method}"
+        assert_eq!(
+            local_desc.commands.iter().any(|c| c.name == *method),
+            *method != "create_http_launch_url",
+            "Local describe of {method}"
         );
         assert!(
             desktop_desc
@@ -1250,16 +1255,18 @@ async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
         assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method}: {body}");
         assert_eq!(body["kind"], "unsupported", "{method}: {body}");
 
-        let local_err = rpc
-            .call(
-                RpcTransport::Local,
-                method,
-                RpcCaller::new(local_ctx.clone(), RpcOwner::local_connection("test", 1)),
-                params.clone(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(local_err.kind, "unsupported", "{method}: {local_err:?}");
+        if *method == "create_http_launch_url" {
+            let local_err = rpc
+                .call(
+                    RpcTransport::Local,
+                    method,
+                    RpcCaller::new(local_ctx.clone(), RpcOwner::local_connection("test", 1)),
+                    params.clone(),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(local_err.kind, "unsupported", "{method}: {local_err:?}");
+        }
 
         let empty_desktop = AuthContext::new(
             Principal::Desktop {
@@ -1292,6 +1299,7 @@ async fn remote_admin_commands_are_desktop_only_and_work_on_desktop() {
             strategy: HttpAccessStrategy::LocalAuthenticated,
             ..Default::default()
         },
+        ..Default::default()
     };
     rpc.call(
         RpcTransport::TauriIpc,
@@ -1604,6 +1612,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                 local_open_scopes: vec![],
                 ..Default::default()
             },
+            ..Default::default()
         })
         .await
         .unwrap_err();
@@ -1630,6 +1639,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                     local_open_scopes: vec![ConfigScope::Read, forbidden],
                     ..Default::default()
                 },
+                ..Default::default()
             })
             .await
             .unwrap_err();
@@ -1659,6 +1669,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
                         local_open_scopes: vec![ConfigScope::System],
                         ..Default::default()
                     },
+                    ..Default::default()
                 }
             }),
         )
@@ -1666,6 +1677,147 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
         .unwrap_err();
     assert_eq!(rpc_err.kind, "application_error", "{rpc_err:?}");
     assert_eq!(client.remote_access_config(), initial);
+
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_local_socket_administers_remote_access_and_http_never_does() {
+    use nyanpasu_config::application::{HttpAccessConfig, RemoteAccessConfig};
+    use nyanpasu_rpc_protocol::RpcOwner;
+
+    let fixture = Fixture::new(false).await;
+    let local = |scopes: ScopeSet| {
+        RpcCaller::new(
+            AuthContext::new(
+                Principal::LocalSocket {
+                    user: "1000".to_owned(),
+                },
+                scopes,
+            ),
+            RpcOwner::local_connection("test", 1),
+        )
+    };
+    let call = |caller: RpcCaller, method: &'static str, params: serde_json::Value| {
+        fixture
+            .rpc
+            .call(RpcTransport::Local, method, caller, params)
+    };
+
+    // The same-user principal holds every scope, `remote_admin` included.
+    let owner = || local(ScopeSet::full());
+    let listed: Vec<nyanpasu_contracts::auth::AccessTokenSummary> = serde_json::from_value(
+        call(owner(), "list_remote_access_tokens", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(listed.is_empty());
+
+    let created = call(
+        owner(),
+        "create_remote_access_token",
+        json!({"request": {"name": "cli-made", "scopes": [Scope::Read]}}),
+    )
+    .await
+    .unwrap();
+    let secret = created["token"].as_str().unwrap().to_owned();
+    let summary: nyanpasu_contracts::auth::AccessTokenSummary =
+        serde_json::from_value(created["summary"].clone()).unwrap();
+    let listed: Vec<nyanpasu_contracts::auth::AccessTokenSummary> = serde_json::from_value(
+        call(owner(), "list_remote_access_tokens", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(!format!("{listed:?}").contains(&secret));
+
+    // No bearer token may hold the scope that administers remote access.
+    let refused = call(
+        owner(),
+        "create_remote_access_token",
+        json!({"request": {"name": "wide", "scopes": [Scope::RemoteAdmin]}}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused.kind, "application_error", "{refused:?}");
+
+    let sessions: Vec<nyanpasu_contracts::auth::BrowserSessionSummary> = serde_json::from_value(
+        call(owner(), "list_remote_browser_sessions", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(sessions.is_empty());
+
+    // A change the HTTP listener cannot follow is committed with a degradation, as on desktop.
+    let degraded = call(
+        owner(),
+        "set_remote_access",
+        json!({"config": RemoteAccessConfig {
+            http: HttpAccessConfig { enabled: true, ..Default::default() },
+            ..Default::default()
+        }}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(degraded["status"], "committed_degraded", "{degraded}");
+    let status = call(owner(), "get_http_server_status", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(status["enabled"], false, "{status}");
+    // This fixture has no local-socket listener, which the status reports as an error.
+    let unsupported = call(owner(), "get_local_socket_status", json!({}))
+        .await
+        .unwrap_err();
+    assert_eq!(unsupported.kind, "application_error", "{unsupported:?}");
+
+    call(
+        owner(),
+        "revoke_remote_access_token",
+        json!({"id": summary.id}),
+    )
+    .await
+    .unwrap();
+
+    // Without the scope, the same commands are forbidden, whatever the transport exposes.
+    let without_admin: ScopeSet = Scope::ALL
+        .into_iter()
+        .filter(|scope| *scope != Scope::RemoteAdmin)
+        .collect();
+    for (method, params) in [
+        ("list_remote_access_tokens", json!({})),
+        ("get_local_socket_status", json!({})),
+        (
+            "set_remote_access",
+            json!({"config": RemoteAccessConfig::default()}),
+        ),
+    ] {
+        let denied = call(local(without_admin.clone()), method, params)
+            .await
+            .unwrap_err();
+        assert_eq!(denied.kind, "forbidden", "{method}: {denied:?}");
+    }
+
+    // Over HTTP the commands are not offered at all, even to a principal that holds every scope.
+    let session = AuthContext::session("sess_full_check");
+    let router = fixture.rpc.clone().router();
+    for method in [
+        "list_remote_access_tokens",
+        "create_remote_access_token",
+        "revoke_remote_access_token",
+        "list_remote_browser_sessions",
+        "revoke_remote_browser_session",
+        "set_remote_access",
+        "get_local_socket_status",
+    ] {
+        let (status, body) =
+            rpc_for_test_call_with_auth(&router, method, json!({}), None, Some(session.clone()))
+                .await;
+        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{method}: {body}");
+        assert_eq!(body["kind"], "unsupported", "{method}: {body}");
+    }
 
     fixture.shutdown().await;
 }

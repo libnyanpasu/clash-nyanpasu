@@ -14,6 +14,7 @@ nesting = [
 ]
 local-server = [
   'nyanpasu-rpc-protocol/frame-io',
+  'dep:ractor',
   'dep:tokio-util',
   'dep:uuid',
   'dep:interprocess',
@@ -33,6 +34,7 @@ http = [
 ]
 test-support = [
   'http',
+  'local-server',
   'nyanpasu-core/test-support',
   'dep:tracing-subscriber',
   'dep:tower',

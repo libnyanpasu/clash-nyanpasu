@@ -111,7 +111,7 @@ pub async fn get_core_status(
 }
 
 /// Which core is running and in what state, without controller endpoints or failure text.
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn get_core_status_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -174,7 +174,7 @@ pub async fn get_ip_lookup_providers(
 
 /// The application settings without the URLs that can carry credentials. The full config is
 /// [`get_app_config`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn get_app_settings(client: RpcState<'_, NyanpasuClient>) -> Result<ApplicationSettings> {
     Ok(client.get_app_settings().await?)
@@ -187,7 +187,7 @@ pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<Nyan
 }
 
 /// Patch the ordinary application preferences.
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,
@@ -200,7 +200,7 @@ pub async fn patch_app_config(
 
 /// Patch the application settings that change how the host behaves: autostart, the system proxy
 /// and its guard, the bypass list and the PAC URL.
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = system)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = system)]
 #[specta::specta]
 pub async fn patch_system_settings(
     client: RpcState<'_, NyanpasuClient>,
@@ -211,7 +211,7 @@ pub async fn patch_system_settings(
 
 /// The persistent Clash settings without the controller secret and the web UI URL templates. The
 /// full config is [`get_clash_config`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(local, http, query)]
 #[specta::specta]
 pub async fn get_clash_settings(client: RpcState<'_, NyanpasuClient>) -> Result<ClashSettings> {
     Ok(client.get_clash_settings().await?)
@@ -241,7 +241,7 @@ pub async fn patch_clash_config(
 
 /// Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
 /// the web UI templates and the field filter.
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn patch_clash_system_config(
     client: RpcState<'_, NyanpasuClient>,
@@ -287,7 +287,7 @@ pub async fn patch_runtime_access(
 }
 
 /// Switch the proxy mode (rule, global, direct).
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
+#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
 #[specta::specta]
 pub async fn set_proxy_mode(
     client: RpcState<'_, NyanpasuClient>,
@@ -314,7 +314,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
         .collect()
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn change_clash_core(
     client: RpcState<'_, NyanpasuClient>,
@@ -325,7 +325,7 @@ pub async fn change_clash_core(
 }
 
 /// restart the sidecar
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(local, http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn restart_sidecar(client: RpcState<'_, NyanpasuClient>) -> Result {
     client.reconcile_core().await?;
@@ -334,7 +334,7 @@ pub async fn restart_sidecar(client: RpcState<'_, NyanpasuClient>) -> Result {
 
 /// get the system proxy
 /// server field is the combination of host and port
-#[nyanpasu_macro::rpc(http, capabilities(os_integration), query)]
+#[nyanpasu_macro::rpc(local, http, capabilities(os_integration), query)]
 #[specta::specta]
 pub async fn get_sys_proxy(client: RpcState<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
     let current = client.get_os_proxy().await?;

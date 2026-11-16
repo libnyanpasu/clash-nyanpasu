@@ -19,7 +19,8 @@ use nyanpasu_contracts::{
 };
 use nyanpasu_core::{
     client::{
-        ClashReadError, CoreLogReadError, ProfileSyncReadError, http_server::HttpServerControlError,
+        ClashReadError, CoreLogReadError, ProfileSyncReadError,
+        http_server::HttpServerControlError, local_socket::LocalSocketControlError,
     },
     state::config_error::ConfigError,
     storage::StorageOperationError,
@@ -33,13 +34,14 @@ use nyanpasu_rpc_protocol::{
         PublicClashReadError, PublicCommitAborted, PublicCommitAbortedKind, PublicConfigError,
         PublicCoreLogReadError, PublicDegradation, PublicDegradationReason, PublicEffectsError,
         PublicFailure, PublicHotkeyErrorKind, PublicHttpServerError, PublicInstallCoreBinaryKind,
-        PublicMutationOutcome, PublicOsProxyError, PublicPortResolveKind, PublicProfileContentKind,
-        PublicProfileSyncReadError, PublicProfilesError, PublicRemoteAccessErrorKind,
-        PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind, PublicRuntimeError,
-        PublicRuntimePipelineKind, PublicStorageError, PublicSubscriptionFetchKind,
-        PublicSystemDnsError, PublicTransparentProxyMode, PublicTransparentProxyValidationKind,
-        RpcAppUpdateOutcome, RpcFolderMutationOutcome, RpcMutationOutcome,
-        RpcNetworkAutomationStatus, RpcProfileMutationOutcome, RpcUnitMutationOutcome,
+        PublicLocalSocketError, PublicMutationOutcome, PublicOsProxyError, PublicPortResolveKind,
+        PublicProfileContentKind, PublicProfileSyncReadError, PublicProfilesError,
+        PublicRemoteAccessErrorKind, PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind,
+        PublicRuntimeError, PublicRuntimePipelineKind, PublicStorageError,
+        PublicSubscriptionFetchKind, PublicSystemDnsError, PublicTransparentProxyMode,
+        PublicTransparentProxyValidationKind, RpcAppUpdateOutcome, RpcFolderMutationOutcome,
+        RpcMutationOutcome, RpcNetworkAutomationStatus, RpcProfileMutationOutcome,
+        RpcUnitMutationOutcome,
     },
 };
 use nyanpasu_runtime_values::{
@@ -301,6 +303,9 @@ fn project_degradation_reason(reason: &DegradationReason) -> PublicDegradationRe
             }
         }
         DegradationReason::HttpServerUnavailable => PublicDegradationReason::HttpServerUnavailable,
+        DegradationReason::LocalSocketUnavailable => {
+            PublicDegradationReason::LocalSocketUnavailable
+        }
     }
 }
 
@@ -474,6 +479,11 @@ fn project_public_ipc_error(ipc: &IpcError) -> IpcError {
             let message = public_failure_message(&projected).to_owned();
             IpcError::public(projected, message)
         }
+        IpcErrorKind::LocalSocket(error) => {
+            let projected = PublicFailure::LocalSocket(project_local_socket_error(error));
+            let message = public_failure_message(&projected).to_owned();
+            IpcError::public(projected, message)
+        }
         IpcErrorKind::ClashRead(error) => {
             let projected = PublicFailure::ClashRead(project_clash_read_error(error));
             let message = public_failure_message(&projected).to_owned();
@@ -502,6 +512,7 @@ fn public_failure_message(failure: &PublicFailure) -> &'static str {
         PublicFailure::SystemProxy(_) => "system proxy operation failed",
         PublicFailure::Effects(_) => "effect application failed",
         PublicFailure::HttpServer(_) => "HTTP server operation failed",
+        PublicFailure::LocalSocket(_) => "local socket operation failed",
         PublicFailure::ClashRead(_) => "Clash API read failed",
         PublicFailure::CoreLogRead(error) => public_core_log_message(*error),
         PublicFailure::ProfileSyncRead(_) => "profile sync read failed",
@@ -986,6 +997,16 @@ fn project_http_server_error(error: &HttpServerControlError) -> PublicHttpServer
         }
         HttpServerControlError::ChangeUnsupported => PublicHttpServerError::ChangeUnsupported,
         HttpServerControlError::ReadStatus { .. } => PublicHttpServerError::ReadStatus,
+    }
+}
+
+fn project_local_socket_error(error: &LocalSocketControlError) -> PublicLocalSocketError {
+    match error {
+        LocalSocketControlError::ReadStatusUnsupported => {
+            PublicLocalSocketError::ReadStatusUnsupported
+        }
+        LocalSocketControlError::ChangeUnsupported => PublicLocalSocketError::ChangeUnsupported,
+        LocalSocketControlError::ReadStatus { .. } => PublicLocalSocketError::ReadStatus,
     }
 }
 

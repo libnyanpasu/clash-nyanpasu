@@ -236,6 +236,7 @@ fn browser_debug_page_and_real_rpc() {
                     enabled: true,
                     ..Default::default()
                 },
+                ..Default::default()
             })
             .await
             .unwrap();

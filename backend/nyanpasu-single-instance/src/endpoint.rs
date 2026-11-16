@@ -187,12 +187,121 @@ impl EndpointListener {
         &self.user
     }
 
-    /// Accepts the next stream, retaining the listener for further connections.
+    /// Accepts the next verified same-user stream, retaining the listener for further connections.
+    ///
+    /// Unauthorized or unverifiable peers are logged and skipped without failing the listener.
     ///
     /// # Errors
     /// Reports the OS accept error without treating the endpoint as stale.
     pub async fn accept(&self) -> Result<Stream, EndpointError> {
-        self.listener.accept().await.context(AcceptSnafu)
+        accept_verified(&self.listener, platform::verify_peer).await
+    }
+}
+
+async fn accept_verified(
+    listener: &Listener,
+    mut verify: impl FnMut(&Stream) -> Result<(), PeerRejection>,
+) -> Result<Stream, EndpointError> {
+    loop {
+        let stream = listener.accept().await.context(AcceptSnafu)?;
+        match verify(&stream) {
+            Ok(()) => return Ok(stream),
+            Err(rejection) => {
+                tracing::warn!(%rejection, "rejected unauthorized local endpoint peer");
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum PeerMismatch {
+    MissingIdentity,
+    #[cfg(any(unix, test))]
+    Uid {
+        peer: u32,
+        expected: u32,
+    },
+    #[cfg(any(windows, test))]
+    Sid {
+        peer: String,
+        expected: String,
+    },
+}
+
+impl std::fmt::Display for PeerMismatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingIdentity => {
+                formatter.write_str("OS peer credentials did not include a peer identity")
+            }
+            #[cfg(any(unix, test))]
+            Self::Uid { peer, expected } => {
+                write!(
+                    formatter,
+                    "peer UID {peer} does not match expected UID {expected}"
+                )
+            }
+            #[cfg(any(windows, test))]
+            Self::Sid { peer, expected } => {
+                write!(
+                    formatter,
+                    "peer SID {peer} does not match expected SID {expected}"
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) enum PeerRejection {
+    Credentials(io::Error),
+    #[cfg(windows)]
+    Process(io::Error),
+    #[cfg(windows)]
+    CurrentUser(io::Error),
+    Mismatch(PeerMismatch),
+}
+
+impl std::fmt::Display for PeerRejection {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Credentials(error) => {
+                write!(formatter, "failed to read peer credentials: {error}")
+            }
+            #[cfg(windows)]
+            Self::Process(error) => {
+                write!(formatter, "failed to inspect peer process token: {error}")
+            }
+            #[cfg(windows)]
+            Self::CurrentUser(error) => {
+                write!(formatter, "failed to read current user SID: {error}")
+            }
+            Self::Mismatch(mismatch) => std::fmt::Display::fmt(mismatch, formatter),
+        }
+    }
+}
+
+#[cfg(any(unix, test))]
+pub(super) fn verify_uid(peer: Option<u32>, expected: u32) -> Result<(), PeerMismatch> {
+    match peer {
+        Some(uid) if uid == expected => Ok(()),
+        Some(uid) => Err(PeerMismatch::Uid {
+            peer: uid,
+            expected,
+        }),
+        None => Err(PeerMismatch::MissingIdentity),
+    }
+}
+
+#[cfg(any(windows, test))]
+pub(super) fn verify_sid(peer: Option<&str>, expected: &str) -> Result<(), PeerMismatch> {
+    match peer {
+        Some(sid) if !expected.is_empty() && sid == expected => Ok(()),
+        Some(sid) => Err(PeerMismatch::Sid {
+            peer: sid.to_owned(),
+            expected: expected.to_owned(),
+        }),
+        None => Err(PeerMismatch::MissingIdentity),
     }
 }
 

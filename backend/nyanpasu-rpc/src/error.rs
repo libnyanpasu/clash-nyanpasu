@@ -5,6 +5,7 @@ use nyanpasu_core::{
     client::{
         ClashReadError, ClientError, CoreLogReadError, LaunchUrlError, ProfileSyncReadError,
         RemoteAuthError, SetRemoteAccessError, http_server::HttpServerControlError,
+        local_socket::LocalSocketControlError,
     },
     state::config_error::ConfigError,
     storage::StorageOperationError,
@@ -49,6 +50,7 @@ pub enum IpcErrorKind {
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
+    LocalSocket(Box<LocalSocketControlError>),
     ClashRead(Box<ClashReadError>),
     CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),
@@ -59,6 +61,12 @@ pub enum IpcErrorKind {
 impl From<HttpServerControlError> for IpcErrorKind {
     fn from(error: HttpServerControlError) -> Self {
         Self::HttpServer(Box::new(error))
+    }
+}
+
+impl From<LocalSocketControlError> for IpcErrorKind {
+    fn from(error: LocalSocketControlError) -> Self {
+        Self::LocalSocket(Box::new(error))
     }
 }
 
@@ -84,6 +92,7 @@ impl From<SetRemoteAccessError> for IpcErrorKind {
     fn from(error: SetRemoteAccessError) -> Self {
         match error {
             SetRemoteAccessError::Server { source } => source.into(),
+            SetRemoteAccessError::LocalSocket { source } => source.into(),
             SetRemoteAccessError::Client { source } => (*source).into(),
             SetRemoteAccessError::OwnerStopped => Self::Unknown,
         }

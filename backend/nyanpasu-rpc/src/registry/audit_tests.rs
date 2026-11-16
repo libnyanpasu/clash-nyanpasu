@@ -668,7 +668,10 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
     );
     // Optional effects never imply local exposure, even for a compatible signature.
     assert_eq!(
-        command.neutral_handler(RpcTarget::Local).unwrap_err().kind,
+        fixture.rpc.commands["patch_clash_config"]
+            .neutral_handler(RpcTarget::Local)
+            .unwrap_err()
+            .kind,
         "unsupported"
     );
     fixture.shutdown().await;

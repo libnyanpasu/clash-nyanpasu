@@ -16,13 +16,14 @@ use crate::{
     },
 };
 
-/// Only these five identities have complete values suitable for initial/lag reset.
-pub const RECOVERABLE_EVENTS: [EventName; 5] = [
+/// Only these six identities have complete or reset-backed values suitable for initial/lag reset.
+pub const RECOVERABLE_EVENTS: [EventName; 6] = [
     EventName::ConfigurationStatusChanged,
     EventName::CoreStatusChanged,
     EventName::ServiceStatusChanged,
     EventName::AppUpdateStateChanged,
     EventName::CoreLogsChanged,
+    EventName::ClashWs,
 ];
 
 #[derive(Debug)]

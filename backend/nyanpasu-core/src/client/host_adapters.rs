@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
-use super::{http_server::HttpServerControl, reconciler::ports::RuntimeBuildPort};
+use super::{
+    http_server::HttpServerControl, local_socket::LocalSocketControl,
+    reconciler::ports::RuntimeBuildPort,
+};
 use nyanpasu_contracts::{
     net::{ChangelogHttp, IconFetcher, NetworkDiagnostics, SelfProxyPortSource},
     network_environment::NetworkEnvironmentPort,
@@ -34,6 +37,11 @@ pub type HttpServerFactory = dyn Fn() -> BoxFuture<'static, Result<Arc<dyn HttpS
     + Send
     + Sync;
 
+/// Starts the host local-socket owner after profiles and before logs, returning its lifecycle control.
+pub type LocalSocketFactory = dyn Fn() -> BoxFuture<'static, Result<Arc<dyn LocalSocketControl>, super::local_socket::Error>>
+    + Send
+    + Sync;
+
 /// Host-built capabilities and factories consumed during facade assembly.
 pub struct ClientHostAdapters {
     /// Downloads icon bytes using the current port passed by the facade.
@@ -48,6 +56,8 @@ pub struct ClientHostAdapters {
     pub changelog_http: Arc<ChangelogHttpFactory>,
     /// Supplies HTTP lifecycle control whose shutdown must drain the owner before returning.
     pub http_server: Option<Arc<HttpServerFactory>>,
+    /// Supplies local-socket lifecycle control whose shutdown must drain the owner before returning.
+    pub local_socket: Option<Arc<LocalSocketFactory>>,
     /// Reads the host's network for network automation; `None` leaves the feature unsupported.
     pub network_environment: Option<Arc<dyn NetworkEnvironmentPort>>,
 }

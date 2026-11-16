@@ -28,30 +28,7 @@ use nyanpasu_runtime_values::{
     runtime_error::CoreFailure,
 };
 
-/// An owned error envelope; the domain payload is decoded according to its command.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct RpcError {
-    pub kind: String,
-    pub message: String,
-    pub code: Option<String>,
-    pub retryable: Option<bool>,
-    pub operation_id: Option<String>,
-    pub domain_error: Option<serde_json::Value>,
-}
-
-impl RpcError {
-    /// Decode a present domain payload using the receiving type for its operation.
-    ///
-    /// Absence stays `None`; an incompatible payload returns the serde error.
-    pub fn decode_domain_error<T: serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<Option<T>, serde_json::Error> {
-        self.domain_error
-            .clone()
-            .map(serde_json::from_value)
-            .transpose()
-    }
-}
+pub use nyanpasu_rpc_wire::RpcError;
 
 /// A failure of an operation on the running core or the runtime workflow.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -320,6 +297,7 @@ pub enum DegradationReason {
         cause: Arc<ProfilesError>,
     },
     HttpServerUnavailable,
+    LocalSocketUnavailable,
 }
 
 /// Why a source transaction did not commit. A source wraps this in its domain error.
@@ -756,6 +734,15 @@ pub enum HttpServerControlError {
     ReadStatus {},
 }
 
+/// Why a local-socket query or setting change could not be performed.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LocalSocketControlError {
+    ReadStatusUnsupported,
+    ChangeUnsupported,
+    ReadStatus {},
+}
+
 /// Why a Clash read a caller without `sensitive_read` made has no result.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -818,6 +805,7 @@ pub enum IpcErrorKind {
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
     HttpServer(Box<HttpServerControlError>),
+    LocalSocket(Box<LocalSocketControlError>),
     ClashRead(Box<ClashReadError>),
     CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),

@@ -1,9 +1,7 @@
 //! Independent candidate validation; only successful checks and commits reach the workflow.
 use std::sync::Arc;
 
-use nyanpasu_config::{
-    application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
-};
+use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
 use nyanpasu_runtime_values::{
     mutation::ConfigDomain,
     runtime_error::{
@@ -40,8 +38,7 @@ pub(in crate::client) struct CandidateCheck {
 pub(in crate::client) struct Args {
     pub application: StateSnapshot<NyanpasuAppConfig>,
     pub clash: StateSnapshot<ClashConfig>,
-    pub profiles: StateSnapshot<Profiles>,
-    pub content_lock: crate::state::mutation::ProfileContentLock,
+    pub profile_content: crate::state::mutation::ProfileContentReader,
     pub builder: Arc<dyn RuntimeBuildPort>,
     pub ports: Arc<SessionPortResolver>,
     pub revisions: RuntimeRevisionAllocator,
@@ -54,8 +51,7 @@ impl CandidateCheck {
         let Args {
             application,
             clash,
-            profiles,
-            content_lock,
+            profile_content,
             builder,
             ports,
             revisions,
@@ -65,8 +61,7 @@ impl CandidateCheck {
         let preparation = RuntimePreparation::new(
             application.clone(),
             clash.clone(),
-            profiles.clone(),
-            content_lock,
+            profile_content,
             builder,
             ports,
         )

@@ -344,15 +344,16 @@ pub(super) async fn fixture_from(
     );
     let notifications = Arc::new(RecordingNotifications::default());
     let revisions = runtime::RuntimeRevisionAllocator::new();
-    let content_lock = crate::state::mutation::ProfileContentLock::default();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
-            profiles: profiles.snapshot_handle(),
-            content_lock: content_lock.clone(),
+            profile_content: crate::state::mutation::ProfileContentReader::new(
+                profiles.snapshot_handle(),
+                Default::default(),
+            ),
             core: core.clone(),
             service,
             builder: builder.clone(),
@@ -371,8 +372,10 @@ pub(super) async fn fixture_from(
         super::super::check::CandidateCheck::new(super::super::check::Args {
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
-            profiles: profiles.snapshot_handle(),
-            content_lock: content_lock.clone(),
+            profile_content: crate::state::mutation::ProfileContentReader::new(
+                profiles.snapshot_handle(),
+                Default::default(),
+            ),
             builder: builder.clone(),
             ports: ports.clone(),
             revisions: revisions.clone(),

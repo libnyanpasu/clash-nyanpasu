@@ -107,8 +107,7 @@ async fn capture_during_document_write(outcome: DocumentWrite) {
     let preparation = RuntimePreparation::new(
         application.snapshot_handle(),
         clash.snapshot_handle(),
-        client.snapshot_handle(),
-        client.content_lock(),
+        client.content_reader(),
         Arc::new(TestRuntimeBuildPort::from_directory(
             paths.app_profiles_dir().into_std_path_buf(),
             RuntimePaths::from_resolver(&paths),

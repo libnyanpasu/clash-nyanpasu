@@ -1,7 +1,7 @@
 //! Typed client for the ProfilesActor. Committed reads come from the state
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
-use crate::state::mutation::{MutationCoordinator, ProfileContentLock};
+use crate::state::mutation::{MutationCoordinator, ProfileContentLock, ProfileContentReader};
 use nyanpasu_config::profile::NewProfileRequest;
 
 use std::{sync::Arc, time::Duration};
@@ -292,8 +292,10 @@ impl ProfilesClient {
         Arc::new(self.inner.snapshot.load().state.clone())
     }
 
-    pub(crate) fn content_lock(&self) -> ProfileContentLock {
-        self.inner.content_lock.clone()
+    /// The read side for anything that needs the committed document together
+    /// with its files.
+    pub(crate) fn content_reader(&self) -> ProfileContentReader {
+        ProfileContentReader::new(self.inner.snapshot.clone(), self.inner.content_lock.clone())
     }
 
     /// Read-only handle for collaborators that must observe committed state

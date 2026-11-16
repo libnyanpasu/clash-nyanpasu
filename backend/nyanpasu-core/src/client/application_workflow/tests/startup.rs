@@ -407,15 +407,16 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let shutdown = tokio_util::sync::CancellationToken::new();
     let tasks = tokio_util::task::TaskTracker::new();
     let revisions = crate::client::runtime::RuntimeRevisionAllocator::new();
-    let content_lock = crate::state::mutation::ProfileContentLock::default();
     let client = ApplicationWorkflowClient::spawn_with_ticks(
         ApplicationWorkflowArgs {
             revisions: revisions.clone(),
             notifications: notifications.clone(),
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
-            profiles: profiles.snapshot_handle(),
-            content_lock: content_lock.clone(),
+            profile_content: crate::state::mutation::ProfileContentReader::new(
+                profiles.snapshot_handle(),
+                Default::default(),
+            ),
             core: match setup.handoff_budget {
                 Some(budget) => core.clone().impatient(budget),
                 None => core.clone(),
@@ -437,8 +438,10 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         super::super::check::CandidateCheck::new(super::super::check::Args {
             application: application.snapshot_handle(),
             clash: clash.snapshot_handle(),
-            profiles: profiles.snapshot_handle(),
-            content_lock,
+            profile_content: crate::state::mutation::ProfileContentReader::new(
+                profiles.snapshot_handle(),
+                Default::default(),
+            ),
             builder,
             ports: ports.clone(),
             revisions,

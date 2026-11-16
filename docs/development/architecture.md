@@ -201,8 +201,10 @@ control; control must not import `client`. Source owners must not directly impor
 ports defined in `state/mutation/ports.rs`. All three source owners use `RuntimeGate` for
 independent candidate checks and post-commit notifications. Profiles checks staged
 bytes before preparing resources. A composition-root-injected `ProfileContentLock`
-covers its file promotion, document publication and compensation; build capture
-reads the committed Profiles snapshot and its files under one read guard.
+covers its file promotion, document publication and compensation. A reader that
+needs the committed Profiles document together with its files goes through
+`ProfileContentReader`, which loads both under one read guard; the lock has no
+other read access. Build capture is such a reader.
 `RuntimeApplyReceipt`, the internal evidence of a confirmed runtime application,
 stays under `state/mutation/`; public wire values live in runtime-values. Recent
 operation history records reconcile rounds rather than individual source commits. The

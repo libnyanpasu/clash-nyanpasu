@@ -1029,8 +1029,7 @@ async fn committed_runtime_inputs_survive_newer_profile_and_channel_state() {
         let preparation = super::RuntimePreparation::new(
             f.client.inner.application.snapshot_handle(),
             f.client.inner.clash_config.snapshot_handle(),
-            f.client.inner.profiles.snapshot_handle(),
-            f.client.inner.profiles.content_lock(),
+            f.client.inner.profiles.content_reader(),
             builder.clone(),
             f.client.inner.ports.clone(),
         );

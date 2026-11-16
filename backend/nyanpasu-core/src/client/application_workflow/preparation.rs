@@ -27,8 +27,7 @@ use nyanpasu_runtime_values::{
 pub(super) struct RuntimePreparation {
     application: StateSnapshot<NyanpasuAppConfig>,
     clash: StateSnapshot<ClashConfig>,
-    profiles: StateSnapshot<Profiles>,
-    content_lock: crate::state::mutation::ProfileContentLock,
+    profile_content: crate::state::mutation::ProfileContentReader,
     builder: Arc<dyn RuntimeBuildPort>,
     ports: Arc<SessionPortResolver>,
     revisions: runtime::RuntimeRevisionAllocator,
@@ -38,16 +37,14 @@ impl RuntimePreparation {
     pub fn new(
         application: StateSnapshot<NyanpasuAppConfig>,
         clash: StateSnapshot<ClashConfig>,
-        profiles: StateSnapshot<Profiles>,
-        content_lock: crate::state::mutation::ProfileContentLock,
+        profile_content: crate::state::mutation::ProfileContentReader,
         builder: Arc<dyn RuntimeBuildPort>,
         ports: Arc<SessionPortResolver>,
     ) -> Self {
         Self {
             application,
             clash,
-            profiles,
-            content_lock,
+            profile_content,
             builder,
             ports,
             revisions: runtime::RuntimeRevisionAllocator::new(),
@@ -76,8 +73,10 @@ impl RuntimePreparation {
         clash: ClashConfig,
         profiles: Arc<Profiles>,
     ) -> super::inputs::RuntimeInputs {
-        let _guard = self.content_lock.read().await;
-        let content = self.builder.capture_content(&profiles).await;
+        let content = self
+            .profile_content
+            .candidate(self.builder.capture_content(&profiles))
+            .await;
         super::inputs::RuntimeInputs {
             app,
             clash,
@@ -91,18 +90,20 @@ impl RuntimePreparation {
         app: NyanpasuAppConfig,
         clash: ClashConfig,
     ) -> (nyanpasu_state_engine::Version, super::inputs::RuntimeInputs) {
-        let _guard = self.content_lock.read().await;
-        let profiles = self.profiles.load();
-        let content = self.builder.capture_content(&profiles.state).await;
-        (
-            profiles.version,
-            super::inputs::RuntimeInputs {
-                app,
-                clash,
-                profiles: Arc::new(profiles.state.clone()),
-                content,
-            },
-        )
+        self.profile_content
+            .committed(|profiles| async move {
+                let content = self.builder.capture_content(&profiles.state).await;
+                (
+                    profiles.version,
+                    super::inputs::RuntimeInputs {
+                        app,
+                        clash,
+                        profiles: Arc::new(profiles.state.clone()),
+                        content,
+                    },
+                )
+            })
+            .await
     }
 
     pub async fn prepare_inputs(

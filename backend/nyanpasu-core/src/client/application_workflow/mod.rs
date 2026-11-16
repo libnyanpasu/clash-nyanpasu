@@ -188,8 +188,7 @@ pub(super) struct ApplicationWorkflowArgs {
     /// and writes none of them.
     pub application: StateSnapshot<nyanpasu_config::application::NyanpasuAppConfig>,
     pub clash: StateSnapshot<nyanpasu_config::clash::config::ClashConfig>,
-    pub profiles: StateSnapshot<nyanpasu_config::profile::Profiles>,
-    pub content_lock: crate::state::mutation::ProfileContentLock,
+    pub profile_content: crate::state::mutation::ProfileContentReader,
     pub core: CoreClient,
     pub service: ServiceClient,
     pub builder: Arc<dyn RuntimeBuildPort>,
@@ -658,8 +657,7 @@ impl ApplicationWorkflowClient {
         let preparation = RuntimePreparation::new(
             args.application.clone(),
             args.clash.clone(),
-            args.profiles.clone(),
-            args.content_lock,
+            args.profile_content,
             args.builder,
             args.ports.clone(),
         )

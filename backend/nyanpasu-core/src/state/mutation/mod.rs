@@ -2,7 +2,7 @@
 mod change;
 mod profile_content;
 pub(crate) use change::DomainChange;
-pub use profile_content::ProfileContentLock;
+pub use profile_content::{ProfileContentLock, ProfileContentReader};
 pub(crate) mod impact;
 pub(crate) mod intent;
 pub(crate) mod ports;

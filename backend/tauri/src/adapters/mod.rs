@@ -1,6 +1,7 @@
 //! GUI-specific adapters implementing core-owned ports and delivering frontend events.
 
 pub(crate) mod app_update;
+pub(crate) mod cli_install;
 pub(crate) mod connection_details;
 pub(crate) mod core_version;
 pub(crate) mod elevation;

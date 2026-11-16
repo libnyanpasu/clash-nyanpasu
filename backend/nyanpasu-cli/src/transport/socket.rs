@@ -52,6 +52,11 @@ impl SocketTransport {
     pub fn new(client: LocalClient, target: String) -> Self {
         Self { client, target }
     }
+
+    /// Resolves when the local peer closes the connection for good.
+    pub(crate) async fn closed(&self) {
+        self.client.closed().await;
+    }
 }
 
 /// Maps a local client failure to a CLI failure.

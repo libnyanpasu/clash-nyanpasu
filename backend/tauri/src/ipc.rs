@@ -1,4 +1,5 @@
 use crate::{
+    adapters::cli_install::{self, CliInstallation},
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
         WindowManager, kinds,
@@ -384,6 +385,16 @@ pub fn open_core_dir() -> Result<()> {
         .ok_or("failed to get core dir".to_string())?;
     (crate::utils::open::that(core_dir))?;
     Ok(())
+}
+
+/// Links the bundled `nyanpasu-cli` onto the user's `PATH`, for the macOS app and the AppImage.
+#[nyanpasu_macro::rpc(capabilities(os_integration), scope = system)]
+#[tauri::command]
+#[specta::specta]
+pub async fn install_cli(paths: State<'_, PathResolver>) -> Result<CliInstallation> {
+    cli_install::install_cli(&paths)
+        .await
+        .map_err(IpcError::unknown)
 }
 
 #[nyanpasu_macro::rpc(capabilities(opener), scope = system)]

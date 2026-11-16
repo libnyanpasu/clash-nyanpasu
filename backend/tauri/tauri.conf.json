@@ -39,7 +39,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources"],
+    "resources": {
+      "resources": "resources",
+      "../../skills/nyanpasu-cli": "skills/nyanpasu-cli",
+      "completions": "completions"
+    },
     "externalBin": [
       "sidecar/mihomo",
       "sidecar/mihomo-alpha",
@@ -47,7 +51,8 @@
       "sidecar/clash-rs-alpha",
       "sidecar/meow",
       "sidecar/meow-alpha",
-      "sidecar/nyanpasu-service"
+      "sidecar/nyanpasu-service",
+      "sidecar/nyanpasu-cli"
     ],
     "copyright": "Copyright © 2024-2026 LibNyanpasu",
     "category": "DeveloperTool",
@@ -77,7 +82,19 @@
     },
     "linux": {
       "deb": {
-        "depends": []
+        "depends": [],
+        "files": {
+          "/usr/share/bash-completion/completions/nyanpasu-cli": "completions/nyanpasu-cli.bash",
+          "/usr/share/zsh/vendor-completions/_nyanpasu-cli": "completions/_nyanpasu-cli",
+          "/usr/share/fish/vendor_completions.d/nyanpasu-cli.fish": "completions/nyanpasu-cli.fish"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/bash-completion/completions/nyanpasu-cli": "completions/nyanpasu-cli.bash",
+          "/usr/share/zsh/site-functions/_nyanpasu-cli": "completions/_nyanpasu-cli",
+          "/usr/share/fish/vendor_completions.d/nyanpasu-cli.fish": "completions/nyanpasu-cli.fish"
+        }
       }
     },
     "licenseFile": "../../LICENSE",

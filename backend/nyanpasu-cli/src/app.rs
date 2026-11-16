@@ -5,23 +5,30 @@
 //! invocation: a failure ends the command and never selects another target.
 
 use std::{
+    ffi::OsString,
     future::Future,
     io::{Read, Write},
+    path::PathBuf,
 };
 
 use clap::CommandFactory as _;
 use serde_json::{Value, json};
 
 use crate::{
-    cli::{Cli, Command, ContextAdd, ContextCommand, Follow, Plan, parse_json_object},
+    cli::{
+        Cli, Command, ContextAdd, ContextCommand, Follow, InstallArgs, Plan, SkillCommand,
+        parse_json_object,
+    },
     commands::{self, CuratedCommand, Invocation},
     config::{CliConfig, CliPaths, ContextConfig, ContextKind, validate_context_name},
     credentials::{TokenVault, clean_token},
     describe::{Capabilities, DESCRIBE_METHOD},
     endpoint,
     error::{CliError, ExitStatus},
+    install::{self, AppImage},
+    mcp::{self, McpOptions},
     output::{Output, render_human},
-    remote,
+    remote, skill,
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
     transport::{
         Connection, EventFeed, HttpTransport, SocketTransport, StreamKind, Transport, event,
@@ -77,6 +84,16 @@ pub struct Services<C> {
     pub vault: TokenVault,
     /// Opens connections.
     pub connector: C,
+    /// The user's home directory, for `skill install`.
+    pub home: Option<PathBuf>,
+    /// This executable, to find the skill folder shipped beside it.
+    pub executable: Option<PathBuf>,
+    /// An explicit skill folder, which wins over the shipped one.
+    pub skill_dir: Option<PathBuf>,
+    /// The AppImage this process runs from, whose temporary mount must not be linked to.
+    pub appimage: Option<AppImage>,
+    /// The `PATH` of this process, to tell whether `install` linked into it.
+    pub search_path: Option<OsString>,
 }
 
 /// The standard streams of one invocation.
@@ -117,6 +134,8 @@ async fn run<C: Connector>(
         Command::Context(command) => {
             return context(command, &cli, environment, services, io);
         }
+        Command::Install(arguments) => return install_command(arguments, json, services, io),
+        Command::Skill(command) => return skill_command(command, json, services, io),
         Command::Completion(arguments) => {
             clap_complete::generate(
                 arguments.shell,
@@ -151,6 +170,24 @@ async fn run<C: Connector>(
     let transport = services.connector.connect(&target, token).await?;
     let (raw, capabilities) = describe(&transport).await?;
 
+    if let Command::Mcp(arguments) = &cli.command {
+        // Standard input and output belong to the protocol from here on: nothing else may
+        // be printed to standard output, and `Io` is not used.
+        let options = McpOptions {
+            scopes: arguments.scopes.clone(),
+            raw: arguments.raw,
+        };
+        mcp::serve(
+            &transport,
+            &capabilities,
+            &options,
+            tokio::io::BufReader::new(tokio::io::stdin()),
+            tokio::io::stdout(),
+        )
+        .await?;
+        return Ok(ExitStatus::Success);
+    }
+
     let mut output = Output {
         json,
         stdout: &mut *io.stdout,
@@ -169,7 +206,9 @@ async fn run<C: Connector>(
     }
     match plan {
         Some(plan) => run_plan(&transport, &capabilities, &plan, &mut output).await,
-        None => unreachable!("every connected subcommand has a plan, a call, `remote` or methods"),
+        None => unreachable!(
+            "every connected subcommand has a plan, a call, `remote`, `mcp` or methods"
+        ),
     }
 }
 
@@ -361,6 +400,145 @@ fn context<C>(
     Ok(ExitStatus::Success)
 }
 
+/// The AppImage this invocation runs from, if it does.
+fn running_appimage<C>(services: &Services<C>) -> Option<&AppImage> {
+    let executable = services.executable.as_deref()?;
+    services
+        .appimage
+        .as_ref()
+        .filter(|appimage| appimage.runs(executable))
+}
+
+fn install_command<C>(
+    arguments: &InstallArgs,
+    json: bool,
+    services: &Services<C>,
+    io: &mut Io<'_>,
+) -> Result<ExitStatus, CliError> {
+    if cfg!(windows) {
+        return Err(CliError::Unsupported {
+            message: "the Windows installer puts nyanpasu-cli on PATH".to_owned(),
+        });
+    }
+    let executable = services
+        .executable
+        .as_deref()
+        .ok_or_else(|| CliError::failed("the path of this executable is unknown"))?;
+    let mut target = executable
+        .canonicalize()
+        .unwrap_or_else(|_| executable.to_owned());
+    if let Some(appimage) = running_appimage(services) {
+        // The mount is gone once the app exits, so link a copy that stays.
+        let skill = skill::locate(services.skill_dir.as_deref(), Some(&target)).ok();
+        target = appimage.standalone_executable(&target)?;
+        if let Some(skill) = skill {
+            appimage.standalone_skill(&skill)?;
+        }
+    }
+    let directory = match &arguments.dir {
+        Some(directory) => directory.clone(),
+        None => services
+            .home
+            .as_deref()
+            .ok_or_else(|| CliError::failed("the home directory is unknown"))?
+            .join(".local")
+            .join("bin"),
+    };
+    let installed = install::install(
+        &target,
+        &directory,
+        services.search_path.as_deref(),
+        arguments.force,
+    )?;
+    if json {
+        let text = serde_json::to_string(&installed)
+            .map_err(|error| CliError::failed(format!("cannot encode the result: {error}")))?;
+        writeln!(io.stdout, "{text}")?;
+        return Ok(ExitStatus::Success);
+    }
+    let verb = if installed.already_linked {
+        "already links"
+    } else {
+        "now links"
+    };
+    writeln!(
+        io.stdout,
+        "{} {verb} {}",
+        installed.link.display(),
+        installed.target.display()
+    )?;
+    if !installed.on_path {
+        writeln!(
+            io.stdout,
+            "{} is not on your PATH. Add it to your shell profile, for example: \
+             export PATH=\"{}:$PATH\"",
+            directory.display(),
+            directory.display()
+        )?;
+    }
+    writeln!(
+        io.stdout,
+        "To install it for every user instead, run: {}",
+        installed.system_command
+    )?;
+    Ok(ExitStatus::Success)
+}
+
+fn skill_command<C>(
+    command: &SkillCommand,
+    json: bool,
+    services: &Services<C>,
+    io: &mut Io<'_>,
+) -> Result<ExitStatus, CliError> {
+    let mut folder = skill::locate(
+        services.skill_dir.as_deref(),
+        services.executable.as_deref(),
+    )?;
+    if let Some(appimage) = running_appimage(services) {
+        // Agents link the folder, so it must outlive the mount.
+        folder = appimage.standalone_skill(&folder)?;
+    }
+    match command {
+        SkillCommand::Path => {
+            if json {
+                writeln!(io.stdout, "{}", json!({"path": folder}))?;
+            } else {
+                writeln!(io.stdout, "{}", folder.display())?;
+            }
+        }
+        SkillCommand::Install { agent, force } => {
+            let home = services
+                .home
+                .as_deref()
+                .ok_or_else(|| CliError::failed("the home directory is unknown"))?;
+            let directory = skill::agent_directory(home, *agent);
+            match skill::install(&folder, &directory, *force)? {
+                skill::InstallOutcome::Linked(path) => {
+                    writeln!(
+                        io.stdout,
+                        "linked {} -> {}",
+                        path.display(),
+                        folder.display()
+                    )?;
+                }
+                skill::InstallOutcome::AlreadyLinked(path) => {
+                    writeln!(io.stdout, "{} already links the skill", path.display())?;
+                }
+                skill::InstallOutcome::Copied(path) => {
+                    writeln!(
+                        io.stdout,
+                        "copied the skill to {}; symlinks are not permitted here, so the copy does \
+                         not follow app updates: delete that folder and rerun this command \
+                         after updating",
+                        path.display()
+                    )?;
+                }
+            }
+        }
+    }
+    Ok(ExitStatus::Success)
+}
+
 /// Builds the context of `context add`, storing its token first when one was given.
 fn build_context<C>(
     arguments: &ContextAdd,
@@ -493,6 +671,11 @@ mod tests {
             ),
             paths,
             connector: FakeConnector::new(outcome),
+            home: None,
+            executable: None,
+            skill_dir: None,
+            appimage: None,
+            search_path: None,
         };
         Harness {
             directory,
@@ -1179,6 +1362,242 @@ mod tests {
         )
         .await;
         assert_eq!(run.status, ExitStatus::Unsupported, "{}", run.stderr);
+    }
+
+    /// A skill folder and a home directory, with no connection to any shell.
+    fn skill_harness() -> Harness {
+        let mut harness = harness(Err(CliError::failed("the skill commands never connect")));
+        let folder = harness.directory.path().join("bundle/skills/nyanpasu-cli");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("SKILL.md"), "skill").unwrap();
+        harness.services.skill_dir = Some(folder);
+        harness.services.home = Some(harness.directory.path().join("home"));
+        harness
+    }
+
+    #[tokio::test]
+    async fn skill_path_prints_the_folder_without_connecting() {
+        let harness = skill_harness();
+        let folder = harness.services.skill_dir.clone().unwrap();
+        let plain = invoke(&harness, &Environment::default(), &["skill", "path"], "").await;
+        assert_eq!(plain.status, ExitStatus::Success, "{}", plain.stderr);
+        assert_eq!(
+            plain.stdout.trim_end(),
+            folder.canonicalize().unwrap().display().to_string()
+        );
+        let json = invoke(
+            &harness,
+            &Environment::default(),
+            &["--json", "skill", "path"],
+            "",
+        )
+        .await;
+        assert_eq!(
+            serde_json::from_str::<Value>(json.stdout.trim()).unwrap()["path"],
+            json!(folder.canonicalize().unwrap())
+        );
+        assert!(
+            harness
+                .services
+                .connector
+                .targets
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn skill_install_links_into_the_agents_directory_once() {
+        let harness = skill_harness();
+        let home = harness.services.home.clone().unwrap();
+        for expected in ["linked", "already links"] {
+            let run = invoke(
+                &harness,
+                &Environment::default(),
+                &["skill", "install", "--agent", "claude"],
+                "",
+            )
+            .await;
+            assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+            assert!(run.stdout.contains(expected), "{}", run.stdout);
+        }
+        let link = home.join(".claude/skills/nyanpasu-cli");
+        assert!(link.join("SKILL.md").is_file(), "the link resolves");
+
+        std::fs::remove_file(&link).unwrap();
+        std::fs::create_dir(&link).unwrap();
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["skill", "install", "--agent", "claude", "--force"],
+            "",
+        )
+        .await;
+        assert_eq!(
+            run.status,
+            ExitStatus::Application,
+            "never replaces real data"
+        );
+    }
+
+    /// A macOS-style bundle: the executable and its skill, with no connection to any shell.
+    #[cfg(unix)]
+    fn bundle_harness() -> (Harness, PathBuf) {
+        let mut harness = skill_harness();
+        let executable = harness.directory.path().join("bundle/nyanpasu-cli");
+        std::fs::write(&executable, "binary").unwrap();
+        harness.services.executable = Some(executable.clone());
+        (harness, executable)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn install_links_the_bundled_executable_and_prints_the_result_as_json() {
+        let (mut harness, executable) = bundle_harness();
+        let bin = harness.directory.path().join("home/.local/bin");
+        harness.services.home = Some(harness.directory.path().join("home"));
+        harness.services.search_path = Some(bin.clone().into_os_string());
+
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["--json", "install"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        let result: Value = serde_json::from_str(run.stdout.trim()).unwrap();
+        let target = executable.canonicalize().unwrap();
+        assert_eq!(result["link"], json!(bin.join("nyanpasu-cli")));
+        assert_eq!(result["target"], json!(target));
+        assert_eq!(result["already_linked"], json!(false));
+        assert_eq!(result["on_path"], json!(true));
+        assert!(
+            result["system_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("/usr/local/bin/nyanpasu-cli"))
+        );
+        assert_eq!(
+            std::fs::read_link(bin.join("nyanpasu-cli")).unwrap(),
+            target
+        );
+
+        let again = invoke(&harness, &Environment::default(), &["install"], "").await;
+        assert_eq!(again.status, ExitStatus::Success, "{}", again.stderr);
+        assert!(again.stdout.contains("already links"), "{}", again.stdout);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn install_says_when_the_directory_is_not_on_path() {
+        let (harness, _) = bundle_harness();
+        let dir = harness.directory.path().join("elsewhere");
+        let argument = dir.display().to_string();
+
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["install", "--dir", &argument],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        assert!(run.stdout.contains("is not on your PATH"), "{}", run.stdout);
+        assert!(dir.join("nyanpasu-cli").exists());
+    }
+
+    /// An AppImage whose executable and skill sit in a mount that is about to vanish.
+    #[cfg(unix)]
+    fn appimage_harness() -> (Harness, AppImage) {
+        let mut harness = skill_harness();
+        let root = harness.directory.path().to_owned();
+        let mount = root.join("mount");
+        let skill = mount.join("usr/lib/Clash Nyanpasu/skills/nyanpasu-cli");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "skill").unwrap();
+        let executable = mount.join("usr/bin/nyanpasu-cli");
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::write(&executable, "binary").unwrap();
+        let appimage = AppImage {
+            mount,
+            standalone_dir: root.join("data/nyanpasu-cli"),
+        };
+        harness.services.executable = Some(executable);
+        harness.services.skill_dir = None;
+        harness.services.appimage = Some(appimage.clone());
+        (harness, appimage)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_appimage_links_a_copy_that_outlives_its_mount() {
+        let (harness, appimage) = appimage_harness();
+        let home = harness.services.home.clone().unwrap();
+
+        let run = invoke(&harness, &Environment::default(), &["install"], "").await;
+        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
+        let link = home.join(".local/bin/nyanpasu-cli");
+        let copy = appimage.standalone_dir.join("nyanpasu-cli");
+        assert_eq!(
+            std::fs::read_link(&link).unwrap().canonicalize().unwrap(),
+            copy.canonicalize().unwrap()
+        );
+        std::fs::remove_dir_all(&appimage.mount).unwrap();
+        assert!(link.exists(), "the link survives the unmounted app");
+        assert!(
+            appimage
+                .standalone_dir
+                .join("skills/nyanpasu-cli/SKILL.md")
+                .is_file(),
+            "the copy keeps its skill beside it"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_appimage_skill_is_linked_from_a_copy_not_from_the_mount() {
+        let (harness, appimage) = appimage_harness();
+        let home = harness.services.home.clone().unwrap();
+
+        let path = invoke(&harness, &Environment::default(), &["skill", "path"], "").await;
+        assert_eq!(path.status, ExitStatus::Success, "{}", path.stderr);
+        let copy = appimage.standalone_dir.join("skills/nyanpasu-cli");
+        assert_eq!(
+            std::fs::canonicalize(path.stdout.trim_end()).unwrap(),
+            copy.canonicalize().unwrap()
+        );
+
+        let install = invoke(
+            &harness,
+            &Environment::default(),
+            &["skill", "install", "--agent", "claude"],
+            "",
+        )
+        .await;
+        assert_eq!(install.status, ExitStatus::Success, "{}", install.stderr);
+        std::fs::remove_dir_all(&appimage.mount).unwrap();
+        let link = home.join(".claude/skills/nyanpasu-cli");
+        assert!(
+            link.join("SKILL.md").is_file(),
+            "the agent still finds the skill"
+        );
+    }
+
+    #[tokio::test]
+    async fn skill_install_needs_a_home_directory() {
+        let mut harness = skill_harness();
+        harness.services.home = None;
+        let run = invoke(
+            &harness,
+            &Environment::default(),
+            &["skill", "install", "--agent", "codex"],
+            "",
+        )
+        .await;
+        assert_eq!(run.status, ExitStatus::Application);
+        assert!(run.stderr.contains("home directory"), "{}", run.stderr);
     }
 
     #[test]

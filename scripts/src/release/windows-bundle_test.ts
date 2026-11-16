@@ -145,11 +145,16 @@ test('portable archives reuse the application and differ only by bundled runtime
     await addRuntime(directory)
     const buildDir = path.join(directory, 'target/release')
     await mkdir(path.join(buildDir, 'resources'), { recursive: true })
+    await mkdir(path.join(buildDir, 'skills/nyanpasu-cli'), {
+      recursive: true,
+    })
+    await mkdir(path.join(buildDir, 'completions'), { recursive: true })
     const binaryNames = [
       'Clash Nyanpasu.exe',
       'mihomo.exe',
       'mihomo-alpha.exe',
       'nyanpasu-service.exe',
+      'nyanpasu-cli.exe',
       'clash-rs.exe',
       'clash-rs-alpha.exe',
     ]
@@ -157,6 +162,14 @@ test('portable archives reuse the application and differ only by bundled runtime
       await writeFile(path.join(buildDir, name), `binary:${name}`)
     }
     await writeFile(path.join(buildDir, 'resources/geoip.dat'), 'geoip')
+    await writeFile(
+      path.join(buildDir, 'skills/nyanpasu-cli/SKILL.md'),
+      'skill',
+    )
+    await writeFile(
+      path.join(buildDir, 'completions/_nyanpasu-cli.ps1'),
+      'ps-completion',
+    )
     for (const variant of [
       'fixed-webview',
       'standard',
@@ -168,7 +181,9 @@ test('portable archives reuse the application and differ only by bundled runtime
       const expectedFiles = [
         ...binaryNames,
         '.config/PORTABLE',
+        'completions/_nyanpasu-cli.ps1',
         'resources/geoip.dat',
+        'skills/nyanpasu-cli/SKILL.md',
       ]
       if (variant === 'fixed-webview') {
         expectedFiles.push(
@@ -186,6 +201,14 @@ test('portable archives reuse the application and differ only by bundled runtime
       )
       assert(zip.getEntry('.config/PORTABLE'))
       assert.deepStrictEqual(zip.readAsText('resources/geoip.dat'), 'geoip')
+      assert.deepStrictEqual(
+        zip.readAsText('skills/nyanpasu-cli/SKILL.md'),
+        'skill',
+      )
+      assert.deepStrictEqual(
+        zip.readAsText('completions/_nyanpasu-cli.ps1'),
+        'ps-completion',
+      )
       for (const name of binaryNames) {
         assert.deepStrictEqual(zip.readAsText(name), `binary:${name}`)
       }

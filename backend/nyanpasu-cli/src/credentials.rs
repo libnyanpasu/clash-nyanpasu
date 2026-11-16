@@ -1,5 +1,7 @@
 //! CLI token storage: the OS keychain when available, otherwise an owner-only file
 //! (`0600` on Unix and a current-user-only, protected DACL on Windows).
+//! On Windows only the token directory is owner-only; existing parent permissions are
+//! left unchanged, and an existing reparse point anywhere above it is refused.
 //!
 //! A token is never accepted as a command-line argument, so it cannot reach shell
 //! history or the process list. It comes from standard input, from `NYANPASU_TOKEN`
@@ -104,14 +106,20 @@ fn private_directory(directory: &std::path::Path) -> io::Result<()> {
         .create(directory)
 }
 
+/// Creates the owner-only token directory, creating missing parents with inherited security.
+/// Existing ancestors are validated but never re-secured.
 #[cfg(windows)]
 fn private_directory(directory: &Path) -> io::Result<()> {
+    validate_existing_directory_chain(directory)?;
     let security = PrivateSecurity::new()?;
     let mut missing = Vec::new();
     let mut current = directory;
     loop {
         match fs::symlink_metadata(current) {
-            Ok(_) => break,
+            Ok(metadata) => {
+                validate_directory_metadata(current, &metadata)?;
+                break;
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 missing.push(current.to_owned());
                 current = match current.parent() {
@@ -122,10 +130,62 @@ fn private_directory(directory: &Path) -> io::Result<()> {
             Err(error) => return Err(error),
         }
     }
-    for path in missing.iter().rev() {
-        create_private_directory(path, &security)?;
+    if let Some((leaf, ancestors)) = missing.split_first() {
+        // Only the token directory itself is owner-only. Its missing parents use the
+        // inherited security, and existing parents are never re-secured here.
+        for path in ancestors.iter().rev() {
+            create_inherited_directory(path)?;
+        }
+        create_private_directory(leaf, &security)?;
     }
+    validate_existing_directory_chain(directory)?;
     secure_existing_directory(directory, &security)
+}
+
+#[cfg(windows)]
+fn validate_existing_directory_chain(directory: &Path) -> io::Result<()> {
+    let absolute = std::path::absolute(directory)?;
+    let ancestors: Vec<_> = absolute.ancestors().collect();
+    for path in ancestors.into_iter().rev() {
+        if path.as_os_str().is_empty() {
+            continue;
+        }
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => validate_directory_metadata(path, &metadata)?,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn validate_directory_metadata(path: &Path, metadata: &fs::Metadata) -> io::Result<()> {
+    if is_reparse_point(metadata) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "the token storage path {} is a reparse point",
+                path.display()
+            ),
+        ));
+    }
+    if !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "the token storage path {} is not a directory",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn validate_existing_directory(path: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    validate_directory_metadata(path, &metadata)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -177,20 +237,9 @@ fn write_private(path: &Path, secret: &str) -> io::Result<()> {
         return Err(error);
     }
 
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if !metadata.is_file() || is_reparse_point(&metadata) => {
-            let _ = fs::remove_file(&temporary);
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "the token target is not a regular file",
-            ));
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => {
-            let _ = fs::remove_file(&temporary);
-            return Err(error);
-        }
+    if let Err(error) = prepare_token_replacement(path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
     }
 
     let source = wide(temporary.as_os_str());
@@ -380,9 +429,20 @@ fn create_private_directory(path: &Path, security: &PrivateSecurity) -> io::Resu
     }
     let error = io::Error::last_os_error();
     if error.raw_os_error() == Some(ERROR_ALREADY_EXISTS as i32) {
-        return secure_existing_directory(path, security);
+        return validate_existing_directory(path);
     }
     Err(error)
+}
+
+#[cfg(windows)]
+fn create_inherited_directory(path: &Path) -> io::Result<()> {
+    match fs::create_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            validate_existing_directory(path)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(windows)]
@@ -563,6 +623,102 @@ fn file_attributes(handle: &std::os::windows::io::OwnedHandle) -> io::Result<u32
 }
 
 #[cfg(windows)]
+fn open_regular_token_file(
+    path: &Path,
+    access: u32,
+) -> io::Result<Option<std::os::windows::io::OwnedHandle>> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+    };
+
+    let Some(handle) = open_existing_handle(
+        path,
+        access | FILE_READ_ATTRIBUTES,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )?
+    else {
+        return Ok(None);
+    };
+    let attributes = file_attributes(&handle)?;
+    if attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the token target is not a regular file",
+        ));
+    }
+    Ok(Some(handle))
+}
+
+/// Clears the read-only attribute on an already validated token file.
+///
+/// The attribute is not an access-control boundary, and a token that another tool marked
+/// read-only must still be replaceable or removable by the CLI that owns it.
+#[cfg(windows)]
+fn clear_read_only(handle: &std::os::windows::io::OwnedHandle) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_READONLY, FILE_BASIC_INFO, FileBasicInfo,
+        GetFileInformationByHandleEx, SetFileInformationByHandle,
+    };
+
+    let mut information = FILE_BASIC_INFO::default();
+    let size = size_of::<FILE_BASIC_INFO>() as u32;
+    // SAFETY: the handle is valid and `information` is a correctly sized out-parameter.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            handle.as_raw_handle(),
+            FileBasicInfo,
+            (&mut information as *mut FILE_BASIC_INFO).cast(),
+            size,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    if information.FileAttributes & FILE_ATTRIBUTE_READONLY == 0 {
+        return Ok(());
+    }
+    information.FileAttributes &= !FILE_ATTRIBUTE_READONLY;
+    if information.FileAttributes == 0 {
+        information.FileAttributes = FILE_ATTRIBUTE_NORMAL;
+    }
+    // SAFETY: the handle is valid and `information` remains alive for the call.
+    if unsafe {
+        SetFileInformationByHandle(
+            handle.as_raw_handle(),
+            FileBasicInfo,
+            (&information as *const FILE_BASIC_INFO).cast(),
+            size,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn prepare_token_replacement(path: &Path) -> io::Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::FILE_WRITE_ATTRIBUTES;
+
+    validate_token_parent(path)?;
+    if let Some(handle) = open_regular_token_file(path, FILE_WRITE_ATTRIBUTES)? {
+        clear_read_only(&handle)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn validate_token_parent(path: &Path) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "token path has no parent"))?;
+    validate_existing_directory_chain(parent)
+}
+
+#[cfg(windows)]
 fn is_reparse_point(metadata: &fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt as _;
 
@@ -589,28 +745,52 @@ fn temporary_token_name(file_name: &std::ffi::OsStr) -> std::ffi::OsString {
 fn read_private(path: &Path) -> io::Result<Option<String>> {
     use std::io::Read as _;
 
-    use windows_sys::Win32::{
-        Foundation::GENERIC_READ,
-        Storage::FileSystem::{
-            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
-        },
-    };
+    use windows_sys::Win32::Foundation::GENERIC_READ;
 
-    let Some(handle) = open_existing_handle(path, GENERIC_READ, FILE_FLAG_OPEN_REPARSE_POINT)?
-    else {
+    validate_token_parent(path)?;
+    let Some(handle) = open_regular_token_file(path, GENERIC_READ)? else {
         return Ok(None);
     };
-    let attributes = file_attributes(&handle)?;
-    if attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "the token file is not a regular file",
-        ));
-    }
     let mut file = fs::File::from(handle);
     let mut secret = String::new();
     file.read_to_string(&mut secret)?;
     Ok(Some(secret.trim().to_owned()))
+}
+
+#[cfg(windows)]
+fn delete_private(path: &Path) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_DISPOSITION_INFO, FILE_WRITE_ATTRIBUTES, FileDispositionInfo,
+        SetFileInformationByHandle,
+    };
+
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            validate_token_parent(path)?;
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    let Some(handle) = open_regular_token_file(path, DELETE | FILE_WRITE_ATTRIBUTES)? else {
+        return Ok(());
+    };
+    clear_read_only(&handle)?;
+    let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
+    // SAFETY: the handle is valid and `disposition` remains alive for the call.
+    if unsafe {
+        SetFileInformationByHandle(
+            handle.as_raw_handle(),
+            FileDispositionInfo,
+            (&disposition as *const FILE_DISPOSITION_INFO).cast(),
+            size_of::<FILE_DISPOSITION_INFO>() as u32,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[cfg(not(windows))]
@@ -620,6 +800,11 @@ fn read_private(path: &Path) -> io::Result<Option<String>> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+#[cfg(not(windows))]
+fn delete_private(path: &Path) -> io::Result<()> {
+    fs::remove_file(path)
 }
 
 impl SecretStore for FileStore {
@@ -635,7 +820,7 @@ impl SecretStore for FileStore {
     }
 
     fn delete(&self, name: &str) -> Result<(), CliError> {
-        match fs::remove_file(self.path(name)) {
+        match delete_private(&self.path(name)) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(CliError::failed(format!(
@@ -892,7 +1077,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn every_created_token_directory_is_owner_only() {
+    fn the_created_token_directory_is_owner_only() {
         let directory = tempfile::tempdir().unwrap();
         let tokens = directory.path().join("nyanpasu-cli").join("tokens");
         let store = FileStore::new(tokens.clone());
@@ -900,14 +1085,38 @@ mod tests {
 
         let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
         let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
-        for path in [directory.path().join("nyanpasu-cli"), tokens] {
-            assert_eq!(
-                comparable(file_sddl(&path)),
-                expected,
-                "{} must be owner-only",
-                path.display()
-            );
-        }
+        assert_eq!(
+            comparable(file_sddl(&tokens)),
+            expected,
+            "the token directory must be owner-only"
+        );
+        assert!(tokens.parent().unwrap().is_dir());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_existing_parent_directory_keeps_its_acl() {
+        let directory = tempfile::tempdir().unwrap();
+        let parent = directory.path().join("nyanpasu-cli");
+        fs::create_dir(&parent).unwrap();
+        set_named_sddl(
+            &parent,
+            &format!("D:P(A;;FA;;;{})(A;;FR;;;WD)", current_user_sid().unwrap()),
+        );
+        let before = file_sddl(&parent);
+
+        let tokens = parent.join("tokens");
+        let store = FileStore::new(tokens.clone());
+        store.set("a", "secret").unwrap();
+
+        assert_eq!(
+            file_sddl(&parent),
+            before,
+            "an existing parent ACL must not be rewritten"
+        );
+        let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
+        let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+        assert_eq!(comparable(file_sddl(&tokens)), expected);
     }
 
     #[cfg(windows)]
@@ -951,11 +1160,120 @@ mod tests {
         fs::set_permissions(path, permissions).unwrap();
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn a_read_only_token_file_can_be_replaced_and_deleted() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = FileStore::new(directory.path().join("tokens"));
+        store.set("a", "old").unwrap();
+        mark_read_only(&store.path("a"));
+
+        store.set("a", "new").unwrap();
+        assert_eq!(store.get("a").unwrap().as_deref(), Some("new"));
+        let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+        assert_eq!(
+            comparable(file_sddl(&store.path("a"))),
+            canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap())),
+            "replacing a read-only token must keep the owner-only DACL"
+        );
+
+        mark_read_only(&store.path("a"));
+        store.delete("a").unwrap();
+        assert_eq!(store.get("a").unwrap(), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_read_only_file_does_not_block_a_vault_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = directory.path().join("tokens");
+        let vault = TokenVault::with_stores(
+            Box::new(MemoryStore::new(false)),
+            Box::new(FileStore::new(tokens.clone())),
+        );
+        assert_eq!(vault.save("a", "old").unwrap(), TokenBackend::File);
+        let path = tokens.join("a.token");
+        mark_read_only(&path);
+
+        assert_eq!(vault.save("a", "new").unwrap(), TokenBackend::File);
+        assert_eq!(
+            vault.load("a", TokenBackend::File).unwrap().as_deref(),
+            Some("new")
+        );
+
+        mark_read_only(&path);
+        vault.delete("a").unwrap();
+        assert_eq!(vault.load("a", TokenBackend::File).unwrap(), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_file_above_the_token_directory_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let parent = directory.path().join("parent");
+        fs::write(&parent, "not a directory").unwrap();
+        let store = FileStore::new(parent.join("tokens"));
+
+        let error = store.set("a", "secret").unwrap_err();
+        assert!(error.to_string().contains("not a directory"), "{error}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_reparse_point_ancestor_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target");
+        let link = directory.path().join("link");
+        fs::create_dir(&target).unwrap();
+        if !create_directory_reparse(&link, &target) {
+            eprintln!("SKIPPED reparse-point fixture: reparse creation unavailable");
+            return;
+        }
+
+        let store = FileStore::new(link.join("nyanpasu-cli").join("tokens"));
+        let error = store.set("a", "secret").unwrap_err();
+        assert!(error.to_string().contains("reparse point"), "{error}");
+        assert!(
+            !target.join("nyanpasu-cli").exists(),
+            "the token directory must not be created through the reparse point"
+        );
+
+        let outside = target.join("nyanpasu-cli").join("tokens");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("a.token"), "do not delete").unwrap();
+        let error = store.get("a").unwrap_err();
+        assert!(error.to_string().contains("reparse point"), "{error}");
+        let error = store.delete("a").unwrap_err();
+        assert!(error.to_string().contains("reparse point"), "{error}");
+        assert!(outside.join("a.token").exists());
+    }
+
     #[test]
     fn clean_token_rejects_whitespace_and_empty_input() {
         assert_eq!(clean_token(" npk_1_x\n").unwrap(), "npk_1_x");
         assert!(clean_token("").is_err());
         assert!(clean_token("two words").is_err());
+    }
+
+    #[cfg(windows)]
+    fn mark_read_only(path: &Path) {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn create_directory_reparse(link: &Path, target: &Path) -> bool {
+        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+            return fs::symlink_metadata(link).is_ok_and(|metadata| is_reparse_point(&metadata));
+        }
+        let created = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .is_ok_and(|output| output.status.success());
+        created && fs::symlink_metadata(link).is_ok_and(|metadata| is_reparse_point(&metadata))
     }
 
     #[cfg(windows)]

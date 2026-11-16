@@ -1,7 +1,7 @@
 //! The application settings that change how the host system behaves, as one request contract.
 //!
 //! They start with the OS integration the application manages for the user (autostart, the
-//! system proxy, its guard and bypass list, the PAC URL). Ordinary preferences are
+//! system proxy, its guard and bypass list, the PAC URL) and the network rules that switch it. Ordinary preferences are
 //! [`super::ApplicationPreferencesPatch`]; hotkeys, service mode, remote access and core
 //! selection have dedicated commands.
 
@@ -11,9 +11,13 @@ use url::Url;
 
 use crate::request::{FieldsRejected, reject_present};
 
-use super::NyanpasuAppConfigPatch;
+use super::{NetworkAutomation, NyanpasuAppConfigPatch};
 
 /// A patch of the system-affecting application settings.
+///
+/// `network_automation` is a system setting because a rule applies by writing the system proxy,
+/// TUN and transparent proxy switches, which this request owns: a principal that may not change
+/// those directly must not be able to change them through a rule.
 ///
 /// An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
 /// an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
@@ -31,6 +35,7 @@ pub struct SystemSettingsPatch {
     #[serde(with = "::serde_with::rust::double_option")]
     #[specta(type = Option<Option<Url>>)]
     pub pac_url: Option<Option<Url>>,
+    pub network_automation: Option<NetworkAutomation>,
 }
 
 impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
@@ -82,6 +87,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             enable_local_ip_probe,
             stun_servers,
             ip_lookup_providers,
+            network_automation,
             pac_url,
             enable_tray_text,
             enable_tray_traffic,
@@ -140,6 +146,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             system_proxy_bypass,
             proxy_guard_interval,
             pac_url,
+            network_automation,
         })
     }
 }
@@ -155,6 +162,7 @@ impl From<SystemSettingsPatch> for NyanpasuAppConfigPatch {
             system_proxy_bypass,
             proxy_guard_interval,
             pac_url,
+            network_automation,
         } = system;
 
         Self {
@@ -164,6 +172,7 @@ impl From<SystemSettingsPatch> for NyanpasuAppConfigPatch {
             system_proxy_bypass,
             proxy_guard_interval,
             pac_url,
+            network_automation,
             ..Self::default()
         }
     }
@@ -336,6 +345,7 @@ mod tests {
             "enable_auto_launch": false, "enable_system_proxy": false, "enable_proxy_guard": false,
             "system_proxy_bypass": "", "proxy_guard_interval": 0,
             "pac_url": "http://127.0.0.1/proxy.pac",
+            "network_automation": {"enabled": false},
         }))
         .unwrap();
         let full = serde_json::to_value(NyanpasuAppConfigPatch::from(patch)).unwrap();
@@ -350,6 +360,7 @@ mod tests {
                 "enable_auto_launch",
                 "enable_proxy_guard",
                 "enable_system_proxy",
+                "network_automation",
                 "pac_url",
                 "proxy_guard_interval",
                 "system_proxy_bypass"

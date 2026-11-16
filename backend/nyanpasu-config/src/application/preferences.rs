@@ -4,7 +4,8 @@
 //! privilege classes, and each class is written by its own command:
 //!
 //! - ordinary preferences (`settings`): [`ApplicationPreferencesPatch`], this module;
-//! - system-affecting settings (`system`): [`super::SystemSettingsPatch`];
+//! - system-affecting settings (`system`): [`super::SystemSettingsPatch`], including the network
+//!   rules that write them;
 //! - dedicated settings with their own command: `hotkeys` (`set_hotkeys`), `enable_service_mode`
 //!   (`set_service_mode`), `remote_access` (`set_remote_access`) and `core`
 //!   (`change_clash_core`).
@@ -129,6 +130,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             enable_local_ip_probe,
             stun_servers,
             ip_lookup_providers,
+            network_automation,
             pac_url,
             enable_tray_text,
             enable_tray_traffic,
@@ -148,6 +150,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             enable_proxy_guard,
             system_proxy_bypass,
             proxy_guard_interval,
+            network_automation,
             pac_url,
         )?;
 
@@ -275,6 +278,7 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             enable_proxy_guard: None,
             system_proxy_bypass: None,
             proxy_guard_interval: None,
+            network_automation: None,
             core: None,
             hotkeys: None,
             remote_access: None,
@@ -330,6 +334,10 @@ mod tests {
                 vec![json!(""), json!("localhost;127.*")],
             ),
             ("proxy_guard_interval", vec![json!(0), json!(10)]),
+            (
+                "network_automation",
+                vec![json!({}), json!({"enabled": true})],
+            ),
             (
                 "pac_url",
                 vec![json!("http://127.0.0.1/proxy.pac"), json!(null)],

@@ -17,7 +17,9 @@ fn transparent_proxy_action_patches_mode_and_listener_without_changing_scope() {
     let mut config = ClashConfig::default();
     config.transparent_proxy.local = false;
     config.transparent_proxy.interfaces = vec!["eth0".into()];
-    config.apply(super::transparent_proxy_patch(&config, true));
+    config.apply(crate::client::transparent_proxy::switch_patch(
+        &config, true,
+    ));
     assert_eq!(config.transparent_proxy.mode, TransparentProxyMode::Tproxy);
     assert_eq!(
         config.tproxy_port.as_ref().unwrap().kind,
@@ -26,7 +28,9 @@ fn transparent_proxy_action_patches_mode_and_listener_without_changing_scope() {
     assert_eq!(config.tproxy_port.as_ref().unwrap().start_port, 7894);
     assert!(!config.transparent_proxy.local);
     assert_eq!(config.transparent_proxy.interfaces, ["eth0"]);
-    config.apply(super::transparent_proxy_patch(&config, false));
+    config.apply(crate::client::transparent_proxy::switch_patch(
+        &config, false,
+    ));
     assert_eq!(
         config.transparent_proxy.mode,
         TransparentProxyMode::Disabled

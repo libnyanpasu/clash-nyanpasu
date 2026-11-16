@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use nyanpasu_config::application::{NyanpasuAppConfig, RemoteAccessConfig};
 use nyanpasu_runtime_values::runtime::{
-    Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+    CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+    RuntimeCommitStatus,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use struct_patch::Patch as _;
@@ -22,6 +23,7 @@ use crate::{
         application::ApplicationClient,
         http_server::{HttpServerControl, HttpServerControlError},
         local_socket::{LocalSocketControl, LocalSocketControlError},
+        reconciler,
     },
     state::config_error::ConfigError,
 };
@@ -79,7 +81,17 @@ impl State {
             .patch(patch)
             .await
             .map_err(crate::client::ClientError::from)?;
-        Ok(snapshot.outcome())
+        // The section is no runtime input (pinned by the impact tests), so no reconciler round
+        // has to settle before the outcome is reported.
+        Ok(reconciler::status::outcome(
+            CommitReceipt {
+                operation_id: snapshot.operation_id.map(|id| id.to_string()),
+                domain: "application".into(),
+                source_version: *snapshot.version.as_ref(),
+                runtime: RuntimeCommitStatus::Unchanged,
+            },
+            None,
+        ))
     }
 
     /// Makes the listeners follow the committed settings. Every failure after the commit is a

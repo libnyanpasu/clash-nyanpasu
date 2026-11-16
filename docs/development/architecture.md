@@ -64,7 +64,7 @@ nyanpasu-config             domain models and pure runtime executor
 backend/nyanpasu-rpc/src/          shared commands, registry, audit, event bus and optional HTTP adapter
 backend/nyanpasu-rpc-protocol/src/ RPC owner values, request/error envelopes, JSON values and shared event names
 backend/nyanpasu-rpc-wire/src/     local framing, raw local client, error envelope and describe response (CLI base)
-backend/nyanpasu-state-engine/src/ generic state coordination, persistence and transaction settlement
+backend/nyanpasu-state-engine/src/ atomic document persistence and versioned snapshots
 backend/nyanpasu-observers/src/    log capture owner and storage ports
 backend/nyanpasu-updater/src/      core update owner, HTTP backend, downloads and unpacking
 backend/nyanpasu-migration/src/    configuration upgrades, backups and session document reads
@@ -198,10 +198,17 @@ The delivered Phase D module boundary (tasks §4) classifies
 `actor_v2/`, `clash/`, `proxies.rs` and `connections.rs` as control, `client/`
 as application/facade, and `state/` as source ownership. Application may import
 control; control must not import `client`. Source owners must not directly import
-`client::application_workflow` or `ApplicationWorkflowClient`. They consume the
-factory defined in `state/mutation/ports.rs`; `client/application_workflow/participant.rs`
-implements it. Both internal receipts, `MutationReceipt` and `RuntimeApplyReceipt`,
-stay under `state/mutation/`; public wire values live in runtime-values. The
+`client::reconciler` or `RuntimeReconcilerClient`. They consume the
+ports defined in `state/mutation/ports.rs`. All three source owners use `RuntimeGate` for
+independent candidate checks and post-commit notifications. Profiles checks staged
+bytes before preparing resources. A composition-root-injected `ProfileContentLock`
+covers its file promotion, document publication and compensation. A reader that
+needs the committed Profiles document together with its files goes through
+`ProfileContentReader`, which loads both under one read guard; the lock has no
+other read access. Build capture is such a reader.
+`RuntimeApplyReceipt`, the internal evidence of a confirmed runtime application,
+stays under `state/mutation/`; public wire values live in runtime-values. Recent
+operation history records reconcile rounds rather than individual source commits. The
 notification contract remains in `client/effects`; `EffectKind` lives in
 `nyanpasu-runtime-values::configuration`. The policy
 allows source dependencies on effects, jobs and value/validation contracts. It
@@ -217,8 +224,8 @@ independence of `state` and `client`. D2f supplies fixtures for these exact rule
 where Cargo cannot enforce an intra-crate direction. No control/application crates are
 created; a future independent consumer requires its own extraction inventory.
 
-D2c makes `RecoveryRequired` wait for the source's authoritative decision before
-terminal receipt and journal settlement. A2b delivers shell-injected script
+Source commits are independent of runtime application; the facade waits on the
+reconciler status for their committed versions. A2b delivers shell-injected script
 extensions and explicit JavaScript/Lua features. An engine is available only
 when scripts compiles it and the shell supplies its extensions; the factory's
 default methods decline with typed `StartEngine`. Pipeline and wire errors
@@ -476,7 +483,22 @@ State changes follow this order:
 1. Keep state ownership in `StateActor` or a state manager owned by `StateActor`.
 2. Keep schema and patch operations in pure services or domain types.
 3. Generate runtime config from snapshots rather than mutating runtime globals.
-4. Commit state first, then trigger side effects through actor messages. A Required participant (the runtime) is a vote before the commit, not a side effect; this rule covers ordinary side effects.
+4. Commit state first, then trigger side effects through actor messages. Pre-commit
+   validation changes nothing in the running core; the reconciler brings it to the
+   committed configuration afterwards.
+   Application, Clash and Profiles check candidates independently before persistence, publish
+   their snapshots and effects notifications, then notify the runtime workflow. The facade
+   waits on the workflow status watch for the committed engine version; an apply
+   failure leaves the source committed and is reported as degradation.
+   Every committed-target apply uses `reconciler::apply::apply_prepared`,
+   including lifecycle starts, retries, service recovery and binary-replacement
+   restarts. It acquires any connection-interruption source before submission,
+   publishes products only after confirmed success and closes known port transitions,
+   and records the applied selection even when interruption fails. Rollback keeps
+   the previous confirmed ports; an unknown result invalidates them. Receipt
+   matching compares host, core revision, source hash and running epoch; router
+   generations do not identify a core process and are excluded. Shared round
+   maintenance releases an owed daemon after any handler moves ownership locally.
 5. Report post-commit side-effect failures as degraded results instead of silently rolling back persisted state.
 
 Prefer a migratable breaking change that updates callers over preserving an old configuration API.

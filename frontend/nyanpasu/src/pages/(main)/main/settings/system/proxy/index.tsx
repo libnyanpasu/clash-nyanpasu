@@ -6,8 +6,8 @@ import {
   TunModeButton,
 } from '@/components/settings/system-proxy'
 import { m } from '@/paraglide/messages'
-import { PlatformLinux } from '@nyanpasu/platform/react'
-import { useSetting } from '@nyanpasu/query'
+import { PlatformDesktop, PlatformLinux } from '@nyanpasu/platform/react'
+import { useNetworkAutomation, useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
@@ -17,6 +17,10 @@ import {
   SettingsLabel,
 } from '../../../_modules/settings-card'
 import CurrentSystemProxy from './_modules/current-system-proxy'
+import NetworkAutomationStatus from './_modules/network-automation-status'
+import NetworkAutomationSwitch from './_modules/network-automation-switch'
+import NetworkDefaultActions from './_modules/network-default-actions'
+import NetworkRuleList from './_modules/network-rule-list'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
@@ -89,6 +93,42 @@ const ProxyGuard = () => {
   )
 }
 
+const NetworkRules = () => {
+  const { policy } = useNetworkAutomation()
+
+  return (
+    <div data-slot="network-automation-container">
+      <SettingsLabel>
+        {m.settings_system_proxy_network_automation_label()}
+      </SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsCard>
+          <SettingsCardContent>
+            <NetworkAutomationSwitch />
+          </SettingsCardContent>
+        </SettingsCard>
+
+        <AnimatePresence initial={false}>
+          {policy?.enabled && (
+            <SettingsCard asChild>
+              <SettingsCardAnimatedItem>
+                <SettingsCardContent>
+                  <NetworkAutomationStatus />
+
+                  <NetworkRuleList />
+
+                  <NetworkDefaultActions />
+                </SettingsCardContent>
+              </SettingsCardAnimatedItem>
+            </SettingsCard>
+          )}
+        </AnimatePresence>
+      </SettingsGroup>
+    </div>
+  )
+}
+
 const CurrentProxy = () => {
   return (
     <div data-slot="current-system-proxy-container">
@@ -116,6 +156,10 @@ function RouteComponent() {
         <ProxyMode />
 
         <ProxyGuard />
+
+        <PlatformDesktop>
+          <NetworkRules />
+        </PlatformDesktop>
 
         <CurrentProxy />
       </div>

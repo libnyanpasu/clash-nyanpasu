@@ -356,6 +356,14 @@ export function createRpcClient(
       typedError<CoreStatusInfo, IpcError_Serialize>(
         __RPC_INVOKE('get_core_status'),
       ),
+    /**
+     *  The network the host is on and what the network rules last did about it.
+     *  Desktop-only: the status holds the live Wi-Fi name and gateway address.
+     */
+    getNetworkAutomationStatus: () =>
+      typedError<NetworkAutomationStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_network_automation_status'),
+      ),
     urlDelayTest: (url: string, expectedStatus: number) =>
       typedError<number | null, IpcError_Serialize>(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
@@ -670,6 +678,27 @@ export function createRpcClient(
     patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
       typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_system_config', { patch }),
+      ),
+    /**
+     *  Applies the network rules to the current network again, overwriting
+     *  capture switches changed by hand since. Switching the capture mechanisms
+     *  reaches the same optional effects as a configuration patch. A caller without
+     *  `sensitive_read` gets the status without the network reading and the matched rule.
+     */
+    applyNetworkAutomation: () =>
+      typedError<RpcNetworkAutomationStatus, IpcError_Serialize>(
+        __RPC_INVOKE('apply_network_automation'),
+      ),
+    /**
+     *  Reads the Wi-Fi name once, which the network rules do not until a rule
+     *  matches on it. Where the platform gates the name behind location access,
+     *  this asks the user for it. The status holds that reading, or why there is
+     *  none, except that a caller without `sensitive_read` gets neither the name nor the gateway.
+     *  Desktop-only: the status holds the live Wi-Fi name and gateway.
+     */
+    requestWifiNameAccess: () =>
+      typedError<RpcNetworkAutomationStatus, IpcError_Serialize>(
+        __RPC_INVOKE('request_wifi_name_access'),
       ),
     /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
     patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
@@ -1341,6 +1370,11 @@ export type ApplicationSettings_Deserialize = {
   ip_lookup_providers: IpLookupProvider[]
   /**  Whether a PAC URL is set. The URL itself is only in the full config. */
   pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
@@ -1398,6 +1432,11 @@ export type ApplicationSettings_Serialize = {
   ip_lookup_providers: IpLookupProvider[]
   /**  Whether a PAC URL is set. The URL itself is only in the full config. */
   pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
@@ -1980,33 +2019,16 @@ export type CommandEffect =
   /**  Everything else. */
   | 'mutation'
 
-/**
- *  Why a source transaction did not commit, classified once from the
- *  persistence error and, when the Runtime took part, the receipt it settled
- *  (U7). A source wraps it in its own domain error.
- */
+/**  Why a source transaction did not commit. A source wraps this in its domain error. */
 export type CommitAborted =
   /**  The yaml write failed; nothing committed. */
-  | { kind: 'write_config'; runtime: RuntimeAftermath }
+  | { kind: 'write_config' }
   /**  The write failed and so did the recovery of what the transaction staged. */
-  | { kind: 'recover_after_write_failure'; runtime: RuntimeAftermath }
-  /**  A required participant refused the candidate. */
-  | {
-      kind: 'runtime_refused'
-      errors: RuntimeError[]
-      runtime: RuntimeAftermath
-    }
-  /**  A required participant could not decide. */
-  | {
-      kind: 'runtime_failed'
-      errors: RuntimeError[]
-      runtime: RuntimeAftermath
-    }
-  /**
-   *  The coordinator refused before persisting: builder validation, or a CAS
-   *  mismatch the caller did not classify as its own version conflict.
-   */
-  | { kind: 'validate_state' }
+  | { kind: 'recover_after_write_failure' }
+  /**  Candidate validation refused the change. */
+  | { kind: 'runtime_refused'; errors: RuntimeError[] }
+  /**  Candidate validation could not return a verdict. */
+  | { kind: 'runtime_failed'; errors: RuntimeError[] }
 
 /**  A source commit and its critical runtime result. Peripheral owners settle separately. */
 export type CommitReceipt = {
@@ -2117,6 +2139,7 @@ export type ConfigError =
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
+  | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'validate_hotkey_capability' }
   | { kind: 'workflow_not_ready' }
@@ -2401,12 +2424,7 @@ export type Connection_Serialize = {
 export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
 
 export type ConvergenceHealth =
-  | 'healthy'
-  | 'pending'
-  | 'retry_scheduled'
-  | 'waiting_dependency'
-  | 'blocked'
-  | 'recovery_required'
+  'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
@@ -2943,25 +2961,12 @@ export type Degradation = {
 export type DegradationPhase =
   | 'profile_materialization'
   | 'runtime_build'
-  | 'runtime_check'
-  | 'runtime_promote'
-  | 'runtime_publish'
   | 'runtime_apply'
-  | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
 
 /**  Why a committed mutation is degraded. The frontend localizes each variant. */
 export type DegradationReason =
-  /**
-   *  The runtime owner stopped before the mutation settled, or settled it as
-   *  needing recovery.
-   */
-  | {
-      code: 'runtime_recovery_required'
-      operation_id: string | null
-      cause: RuntimeError | null
-    }
   /**  The runtime will apply the committed mutation later. */
   | { code: 'runtime_deferred'; cause: RuntimeError }
   | { code: 'runtime_product_publish_failed'; cause: RuntimeError }
@@ -3223,36 +3228,6 @@ export type EndpointConnectivitySummary =
  *  serializable when the path is not valid UTF-8.
  */
 export type ErrorPath = string
-
-/**
- *  Evidence a mutation needed and did not have, before anything was tried.
- *
- *  Not a Try outcome. Nothing was submitted, so there is no result to classify
- *  and this attempt made nothing less certain than it already was — which is
- *  why it is a plain refusal the caller may retry (v2 §2.4, first row) and
- *  never the isolated state §11.4 reserves for "结果可能已经执行".
- */
-export type EvidenceGap =
-  /**
-   *  The core is mid-transition — starting, restarting, switching or
-   *  stopping. That is an answer, but not one that says what a candidate
-   *  would be applied on top of.
-   */
-  | 'core_transitioning'
-  /**
-   *  The host published no runtime state, or the read failed, and no stop
-   *  this workflow recorded settles the question either.
-   */
-  | 'baseline_unconfirmed'
-  /**
-   *  A core is running that this session never applied to, so no receipt
-   *  describes what it is running. The Try could be submitted, but its Cancel
-   *  would have nothing to put back — and a mutation that cannot be undone
-   *  must not be attempted (R10). The gap is known before anything is
-   *  submitted, which is what keeps it a refusal rather than the isolated
-   *  state a post-submission unknown earns.
-   */
-  | 'no_restorable_baseline'
 
 /**
  *  Which controller owns the runtime. The app perceives the difference in
@@ -3592,6 +3567,9 @@ export type InstallCoreBinaryError =
       exit_code: number | null
     }
   | { kind: 'path_not_utf8'; path: ErrorPath }
+
+/**  The link type of the primary network interface. */
+export type InterfaceKind = 'wifi' | 'ethernet' | 'other'
 
 /**  How closing the source instance's connections failed. */
 export type InterruptFailure =
@@ -3994,6 +3972,49 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+/**  What a rule does to one capture mechanism when it starts to apply. */
+export type MechanismAction =
+  /**  Leaves the switch as the user set it. */
+  'keep' | 'enable' | 'disable'
+
+/**  One action per capture mechanism. */
+export type MechanismActions = {
+  system_proxy?: MechanismAction
+  tun?: MechanismAction
+  transparent_proxy?: MechanismAction
+}
+
+/**  What applying one action did to its mechanism's switch. */
+export type MechanismOutcome =
+  /**  The action was `keep`, or the switch already had the requested value. */
+  | { kind: 'unchanged' }
+  | { kind: 'enabled' }
+  /**
+   *  Switched off, by its own action or because the rule enabled the
+   *  mechanism that excludes it.
+   */
+  | { kind: 'disabled' }
+  /**  The switch was not written; `message` is the refusal. */
+  | { kind: 'failed'; message: string }
+
+/**  What applying one action did to its mechanism's switch, without the refusal text. */
+export type MechanismOutcomeKind =
+  'unchanged' | 'enabled' | 'disabled' | 'failed'
+
+/**  One outcome kind per capture mechanism. */
+export type MechanismOutcomeKinds = {
+  system_proxy: MechanismOutcomeKind
+  tun: MechanismOutcomeKind
+  transparent_proxy: MechanismOutcomeKind
+}
+
+/**  One outcome per capture mechanism. */
+export type MechanismOutcomes = {
+  system_proxy: MechanismOutcome
+  tun: MechanismOutcome
+  transparent_proxy: MechanismOutcome
+}
+
 /**  What a topology orders and merges its nodes by. */
 export type Metric = 'bytes' | 'connections'
 
@@ -4045,6 +4066,105 @@ export type NativeDialogButtons =
   | { type: 'yes_no_cancel_custom'; yes: string; no: string; cancel: string }
 
 export type NativeDialogKind = 'info' | 'warning' | 'error'
+
+/**
+ *  The persisted policy. Disabled and empty by default, so an installation
+ *  that never opens the feature behaves as before.
+ */
+export type NetworkAutomation = {
+  enabled?: boolean
+  /**  Applied on a network no rule matches. */
+  default_actions?: MechanismActions
+  /**  Tested in order; the first enabled match decides. */
+  rules?: NetworkRule[]
+}
+
+/**  The last time the policy wrote the switches, and for which match. */
+export type NetworkAutomationApplication = {
+  matched: NetworkMatch
+  outcomes: MechanismOutcomes
+}
+
+/**  The last application without the rule's identity. */
+export type NetworkAutomationApplicationSummary = {
+  /**
+   *  Whether a rule decided, rather than the default actions. The rule's id is the user's
+   *  own label for a network, so it stays with `sensitive_read`.
+   */
+  matched_rule: boolean
+  outcomes: MechanismOutcomeKinds
+}
+
+/**  A full value: the receiver replaces what it held. */
+export type NetworkAutomationStatus = {
+  /**  Whether this host can observe its network at all. */
+  supported: boolean
+  /**
+   *  The latest reading; `None` before the first one and on an unsupported
+   *  host.
+   */
+  network: NetworkState | null
+  /**  `None` until the enabled policy has applied once. */
+  applied: NetworkAutomationApplication | null
+}
+
+/**
+ *  Safe network automation summary for callers without `Scope::SensitiveRead`.
+ *
+ *  The network reading holds the Wi-Fi name and the gateway's MAC address, and the matched rule
+ *  names one of the user's networks, so none of them is part of this view.
+ */
+export type NetworkAutomationSummary = {
+  supported: boolean
+  applied: NetworkAutomationApplicationSummary | null
+}
+
+/**
+ *  The facts a rule requires of the primary network. Every present field must
+ *  hold, and a field whose fact the observation lacks never holds.
+ */
+export type NetworkConditions = {
+  /**  Exact Wi-Fi name. */
+  wifi_ssid?: string | null
+  /**  Default gateway MAC address, `aa:bb:cc:dd:ee:ff`. */
+  gateway_mac?: string | null
+  interface_kind?: InterfaceKind | null
+}
+
+/**  Which part of the policy decided the actions. */
+export type NetworkMatch =
+  | { kind: 'rule'; id: string }
+  /**  No rule matched; the default actions apply. */
+  | { kind: 'default' }
+
+/**
+ *  The primary network: the physical interface that carries the default
+ *  route, never this application's own TUN device.
+ */
+export type NetworkObservation = {
+  interface_kind: InterfaceKind
+  wifi: WifiName
+  /**
+   *  The default gateway's link-layer address, as lowercase
+   *  `aa:bb:cc:dd:ee:ff`, when the neighbour table has it.
+   */
+  gateway_mac: string | null
+}
+
+/**  A named network and what arriving on it does to each mechanism. */
+export type NetworkRule = {
+  /**  Stable identity, so renaming or reordering a rule is not a new match. */
+  id: string
+  name: string
+  enabled?: boolean
+  conditions: NetworkConditions
+  actions?: MechanismActions
+}
+
+/**  What the host reports about its network right now. */
+export type NetworkState =
+  /**  No physical interface has a default gateway. */
+  { state: 'offline' } | { state: 'online'; network: NetworkObservation }
 
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
@@ -4204,6 +4324,11 @@ export type NyanpasuAppConfig_Deserialize = {
    */
   ip_lookup_providers?: IpLookupProvider[]
   /**
+   *  Rules that switch system proxy, TUN and transparent proxy when the
+   *  machine arrives on a network. Replaced as a whole by a patch.
+   */
+  network_automation?: NetworkAutomation
+  /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
    */
@@ -4331,6 +4456,11 @@ export type NyanpasuAppConfig_Serialize = {
    */
   ip_lookup_providers: IpLookupProvider[]
   /**
+   *  Rules that switch system proxy, TUN and transparent proxy when the
+   *  machine arrives on a network. Replaced as a whole by a patch.
+   */
+  network_automation: NetworkAutomation
+  /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
    */
@@ -4362,16 +4492,14 @@ export type OperationStatus = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   message: string | null
 }
 
-/**  One settled mutation. `domain`, `outcome` and `conclusion` name variants of closed enums. */
+/**  One settled mutation. `domain` and `outcome` name variants of closed enums. */
 export type OperationSummary = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   has_diagnostic: boolean
 }
 
@@ -6168,22 +6296,17 @@ export type PublicCommitAbortedKind =
   | 'recover_after_write_failure'
   | 'runtime_refused'
   | 'runtime_failed'
-  | 'validate_state'
 
 /**  Safe public commit-aborted decision metadata. */
 export type PublicCommitAborted_Deserialize = {
   kind: PublicCommitAbortedKind
-  runtime?: PublicRuntimeAftermathKind | null
   runtime_causes?: PublicRuntimeError_Deserialize[]
-  aftermath_cause?: PublicRuntimeError_Deserialize | null
 }
 
 /**  Safe public commit-aborted decision metadata. */
 export type PublicCommitAborted_Serialize = {
   kind: PublicCommitAbortedKind
-  runtime?: PublicRuntimeAftermathKind | null
   runtime_causes?: PublicRuntimeError_Serialize[]
-  aftermath_cause?: PublicRuntimeError_Serialize | null
 }
 
 /**  Safe public configuration error for callers without `SensitiveRead`. */
@@ -6201,6 +6324,14 @@ export type PublicConfigError_Deserialize =
     })
   | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
   | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  /**
+   *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
+   *  a caller without `SensitiveRead` learns only that the policy was invalid.
+   */
+  | ({ kind: 'invalid_network_automation' } & {
+      reason?: never
       source?: never
     })
   | ({ kind: 'validate_hotkey_capability' } & {
@@ -6239,6 +6370,14 @@ export type PublicConfigError_Serialize =
     })
   | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
   | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  /**
+   *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
+   *  a caller without `SensitiveRead` learns only that the policy was invalid.
+   */
+  | ({ kind: 'invalid_network_automation' } & {
+      reason?: never
       source?: never
     })
   | ({ kind: 'validate_hotkey_capability' } & {
@@ -6284,109 +6423,49 @@ export type PublicDegradationReason =
 
 /**  Safe public reason discriminant why a committed mutation degraded. */
 export type PublicDegradationReason_Deserialize =
+  | { code: 'runtime_deferred'; cause: PublicRuntimeError_Deserialize }
   | {
-      code: 'runtime_recovery_required'
-      operation_id: string | null
-      cause: PublicRuntimeError_Deserialize | null
-    }
-  | ({ code: 'runtime_deferred'; cause: PublicRuntimeError_Deserialize } & {
-      operation_id?: never
-    })
-  | ({
       code: 'runtime_product_publish_failed'
       cause: PublicRuntimeError_Deserialize
-    } & { operation_id?: never })
-  | ({ code: 'service_stop_failed'; cause: PublicRuntimeError_Deserialize } & {
-      operation_id?: never
-    })
-  | ({ code: 'mode_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'profile_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'proxy_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'proxy_cache_refresh_failed' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'journal_invalid' } & { cause?: never; operation_id?: never })
-  | ({ code: 'jobs_journal_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'materialization_deferred' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'cleanup_deferred' } & { cause?: never; operation_id?: never })
-  | ({
+    }
+  | { code: 'service_stop_failed'; cause: PublicRuntimeError_Deserialize }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | ({ code: 'proxy_cache_refresh_failed' } & { cause?: never })
+  | ({ code: 'journal_invalid' } & { cause?: never })
+  | ({ code: 'jobs_journal_unavailable' } & { cause?: never })
+  | ({ code: 'materialization_deferred' } & { cause?: never })
+  | ({ code: 'cleanup_deferred' } & { cause?: never })
+  | {
       code: 'profile_auto_activation_failed'
       cause: PublicProfilesError_Deserialize
-    } & { operation_id?: never })
-  | ({ code: 'http_server_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'local_socket_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
+    }
+  | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
 
 /**  Safe public reason discriminant why a committed mutation degraded. */
 export type PublicDegradationReason_Serialize =
+  | { code: 'runtime_deferred'; cause: PublicRuntimeError_Serialize }
   | {
-      code: 'runtime_recovery_required'
-      operation_id: string | null
-      cause: PublicRuntimeError_Serialize | null
-    }
-  | ({ code: 'runtime_deferred'; cause: PublicRuntimeError_Serialize } & {
-      operation_id?: never
-    })
-  | ({
       code: 'runtime_product_publish_failed'
       cause: PublicRuntimeError_Serialize
-    } & { operation_id?: never })
-  | ({ code: 'service_stop_failed'; cause: PublicRuntimeError_Serialize } & {
-      operation_id?: never
-    })
-  | ({ code: 'mode_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'profile_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'proxy_interruption_failed'; cause: InterruptFailure } & {
-      operation_id?: never
-    })
-  | ({ code: 'proxy_cache_refresh_failed' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'journal_invalid' } & { cause?: never; operation_id?: never })
-  | ({ code: 'jobs_journal_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'materialization_deferred' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'cleanup_deferred' } & { cause?: never; operation_id?: never })
-  | ({
+    }
+  | { code: 'service_stop_failed'; cause: PublicRuntimeError_Serialize }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | ({ code: 'proxy_cache_refresh_failed' } & { cause?: never })
+  | ({ code: 'journal_invalid' } & { cause?: never })
+  | ({ code: 'jobs_journal_unavailable' } & { cause?: never })
+  | ({ code: 'materialization_deferred' } & { cause?: never })
+  | ({ code: 'cleanup_deferred' } & { cause?: never })
+  | {
       code: 'profile_auto_activation_failed'
       cause: PublicProfilesError_Serialize
-    } & { operation_id?: never })
-  | ({ code: 'http_server_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
-  | ({ code: 'local_socket_unavailable' } & {
-      cause?: never
-      operation_id?: never
-    })
+    }
+  | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
 
 /**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
 export type PublicDegradation_Deserialize = {
@@ -6912,10 +6991,6 @@ export type PublicRemoteAccessErrorKind =
   | 'local_open_scope_forbidden'
   | 'use_dedicated_command'
 
-/**  Public summary of what became of the runtime after an aborted commit. */
-export type PublicRuntimeAftermathKind =
-  'untouched' | 'rolled_back' | 'rollback_failed' | 'unknown'
-
 /**  Safe public runtime build failure discriminant without script output logs. */
 export type PublicRuntimeBuildKind =
   | { kind: 'start_script_runner' }
@@ -6932,11 +7007,10 @@ export type PublicRuntimeBuildKind =
   | { kind: 'unsupported_config_values' }
 
 /**  Safe public runtime check unavailability discriminant without raw messages. */
-export type PublicRuntimeCheckUnavailableKind =
-  | { kind: 'no_endpoint' }
-  | { kind: 'host_unsupported'; host: ExecutionHost }
-  | { kind: 'candidate_unavailable' }
-  | { kind: 'backend'; core_kind: CoreErrorKind | null }
+export type PublicRuntimeCheckUnavailableKind = {
+  kind: 'backend'
+  core_kind: CoreErrorKind | null
+}
 
 /**  Safe public runtime error for callers without `SensitiveRead`. */
 export type PublicRuntimeError =
@@ -6947,15 +7021,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'shutting_down' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'isolated' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -6963,93 +7028,66 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'owner_unresponsive' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'owner_unavailable' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'source_settled' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7058,10 +7096,9 @@ export type PublicRuntimeError_Deserialize =
       kind: 'move_host'
       host: ExecutionHost
       core_kind: CoreErrorKind | null
-    } & { core?: never; gap?: never; reason?: never; source?: never })
+    } & { core?: never; reason?: never; source?: never })
   | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7069,23 +7106,13 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'service_hosts_core' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
-  | ({ kind: 'core_not_started' } & {
+  | ({ kind: 'configuration_not_in_effect' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'recovery_unresolved' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7093,14 +7120,12 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
     })
   | ({ kind: 'publish_runtime' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7108,13 +7133,11 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
     })
   | ({ kind: 'resolve_core_binary'; core: ClashCore_Deserialize } & {
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7122,30 +7145,15 @@ export type PublicRuntimeError_Deserialize =
   | ({
       kind: 'install_core_binary'
       source: PublicInstallCoreBinaryKind_Deserialize
-    } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-    })
+    } & { core?: never; core_kind?: never; host?: never; reason?: never })
   | ({ kind: 'prepare_service_install_prompt' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'read_core_version'; core: ClashCore_Deserialize } & {
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'unsettled_baseline'; gap: EvidenceGap } & {
-      core?: never
       core_kind?: never
       host?: never
       reason?: never
@@ -7153,7 +7161,6 @@ export type PublicRuntimeError_Deserialize =
     })
   | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7161,49 +7168,10 @@ export type PublicRuntimeError_Deserialize =
   | ({
       kind: 'check_unavailable'
       reason: PublicRuntimeCheckUnavailableKind
-    } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      source?: never
-    })
+    } & { core?: never; core_kind?: never; host?: never; source?: never })
   | ({ kind: 'core_rolled_back' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'handoff_owner_mismatch' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'handoff_not_restored' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'restore_failed' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'committed_after_refusal' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7211,7 +7179,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'no_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7219,7 +7186,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'serialize_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7227,7 +7193,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'convert_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7235,7 +7200,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'runtime_snapshot_changed' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7243,7 +7207,6 @@ export type PublicRuntimeError_Deserialize =
   | ({ kind: 'runtime_node_not_found' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7254,15 +7217,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'shutting_down' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'isolated' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7270,93 +7224,66 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'owner_unresponsive' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'owner_unavailable' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'source_settled' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7365,10 +7292,9 @@ export type PublicRuntimeError_Serialize =
       kind: 'move_host'
       host: ExecutionHost
       core_kind: CoreErrorKind | null
-    } & { core?: never; gap?: never; reason?: never; source?: never })
+    } & { core?: never; reason?: never; source?: never })
   | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7376,23 +7302,13 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'service_hosts_core' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
-  | ({ kind: 'core_not_started' } & {
+  | ({ kind: 'configuration_not_in_effect' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'recovery_unresolved' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7400,14 +7316,12 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
     })
   | ({ kind: 'publish_runtime' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7415,13 +7329,11 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
     })
   | ({ kind: 'resolve_core_binary'; core: ClashCore_Serialize } & {
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7429,30 +7341,15 @@ export type PublicRuntimeError_Serialize =
   | ({
       kind: 'install_core_binary'
       source: PublicInstallCoreBinaryKind_Serialize
-    } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-    })
+    } & { core?: never; core_kind?: never; host?: never; reason?: never })
   | ({ kind: 'prepare_service_install_prompt' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
     })
   | ({ kind: 'read_core_version'; core: ClashCore_Serialize } & {
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'unsettled_baseline'; gap: EvidenceGap } & {
-      core?: never
       core_kind?: never
       host?: never
       reason?: never
@@ -7460,7 +7357,6 @@ export type PublicRuntimeError_Serialize =
     })
   | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
       core?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7468,49 +7364,10 @@ export type PublicRuntimeError_Serialize =
   | ({
       kind: 'check_unavailable'
       reason: PublicRuntimeCheckUnavailableKind
-    } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      source?: never
-    })
+    } & { core?: never; core_kind?: never; host?: never; source?: never })
   | ({ kind: 'core_rolled_back' } & {
       core?: never
       core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'handoff_owner_mismatch' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'handoff_not_restored' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'restore_failed' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
-      host?: never
-      reason?: never
-      source?: never
-    })
-  | ({ kind: 'committed_after_refusal' } & {
-      core?: never
-      core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7518,7 +7375,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'no_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7526,7 +7382,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'serialize_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7534,7 +7389,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'convert_runtime_config' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7542,7 +7396,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'runtime_snapshot_changed' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7550,7 +7403,6 @@ export type PublicRuntimeError_Serialize =
   | ({ kind: 'runtime_node_not_found' } & {
       core?: never
       core_kind?: never
-      gap?: never
       host?: never
       reason?: never
       source?: never
@@ -7728,19 +7580,6 @@ export type ReportRequest = {
   topology: TopologyRequest | null
 }
 
-/**  Why the runtime baseline could not be put back. */
-export type RestoreFailure =
-  | { kind: 'move_host_back'; host: ExecutionHost; failure: CoreFailure }
-  | { kind: 'read_status'; failure: CoreFailure }
-  /**
-   *  The runtime could not be read once the restore request had answered;
-   *  `failure` is that request's own failure, if it had one.
-   */
-  | { kind: 'unobserved'; failure: CoreFailure | null }
-  | { kind: 'unverified'; failure: CoreFailure | null }
-  /**  The configuration the core ran before was never recorded. */
-  | { kind: 'not_recorded' }
-
 /**
  *  The compare-and-swap identity of a config revision.
  *
@@ -7831,6 +7670,16 @@ export type RpcMutationOutcome_Deserialize<T> =
  */
 export type RpcMutationOutcome_Serialize<T> =
   MutationOutcome<T> | PublicMutationOutcome_Serialize<T>
+
+/**
+ *  Canonical command reply union for the network automation commands.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`NetworkAutomationStatus`], which holds the
+ *  live Wi-Fi name and gateway MAC address; all other callers receive
+ *  [`NetworkAutomationSummary`].
+ */
+export type RpcNetworkAutomationStatus =
+  NetworkAutomationStatus | NetworkAutomationSummary
 
 /**
  *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
@@ -7945,21 +7794,6 @@ export type RunStateDto =
   | { kind: 'finalizing' }
   | { kind: 'finished'; completion: CompletionDto }
 
-/**
- *  What became of the runtime after an aborted commit, from the receipt's
- *  structured fields. `detail` is the receipt's operator diagnostics, never an
- *  input to a decision.
- */
-export type RuntimeAftermath =
-  /**  The runtime took no part, or the transaction withdrew before it did. */
-  | { kind: 'untouched' }
-  /**  The runtime went back to the previous configuration. */
-  | { kind: 'rolled_back' }
-  /**  Rolling the runtime back failed; recovery is required. */
-  | { kind: 'rollback_failed'; detail: RuntimeError }
-  /**  What the runtime is running is unknown and needs recovery. */
-  | { kind: 'unknown'; detail: RuntimeError }
-
 /**  A failure of building a runtime candidate from source config. */
 export type RuntimeBuildError =
   | { kind: 'start_script_runner' }
@@ -7985,41 +7819,28 @@ export type RuntimeBuildLog = {
   entries: StepLogEntry[]
 }
 
-/**
- *  Why no check ran. Every variant is a reason, never a verdict: an absent
- *  check must not be reported as a passing one (v2 §2.4).
- */
+/**  Why candidate validation could not return a verdict. */
 export type RuntimeCheckUnavailable =
-  /**  No host owns the runtime, so there is nothing to check against. */
-  | { cause: 'no_endpoint'; reason: string }
-  /**  The host owning the runtime exposes no check for this request. */
-  | { cause: 'host_unsupported'; host: ExecutionHost; reason: string }
-  /**  The host reads the candidate from disk and it could not be staged. */
-  | { cause: 'candidate_unavailable'; reason: string }
   /**  The host has the capability but could not serve it. */
-  | {
-      cause: 'backend'
-      kind: CoreErrorKind | null
-      message: string
-      retryable: boolean
-    }
+  {
+    cause: 'backend'
+    kind: CoreErrorKind | null
+    message: string
+    retryable: boolean
+  }
 
 export type RuntimeCommitStatus =
-  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   message: string | null
 }
 
 export type RuntimeConvergenceSummary = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   /**  The owner reported diagnostic text, available to protected callers. */
   has_diagnostic: boolean
 }
@@ -8028,14 +7849,8 @@ export type RuntimeConvergenceSummary = {
 export type RuntimeError =
   /**  Refused at admission: nothing ran. */
   | { kind: 'shutting_down' }
-  /**  Refused at admission: nothing ran. */
-  | { kind: 'isolated' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  /**  Refused at admission: the runtime owner is gone, so nothing ran. */
-  | { kind: 'owner_unavailable' }
-  /**  Refused at admission: the source transaction had already been decided. */
-  | { kind: 'source_settled' }
   | { kind: 'apply_runtime'; failure: CoreFailure }
   | { kind: 'stop_core'; failure: CoreFailure }
   | { kind: 'recover_runtime'; failure: CoreFailure }
@@ -8049,13 +7864,8 @@ export type RuntimeError =
   | { kind: 'move_host'; host: ExecutionHost; failure: CoreFailure }
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
-  /**
-   *  An explicit start that could not put the core on its host; `reason` is
-   *  the diagnostic text of the convergence that gave up.
-   */
-  | { kind: 'core_not_started'; reason: string; retryable: boolean }
-  /**  An explicit recovery that could not settle the runtime. */
-  | { kind: 'recovery_unresolved'; reason: string }
+  /**  The committed configuration is waiting or has not taken effect. */
+  | { kind: 'configuration_not_in_effect'; reason: string }
   | { kind: 'build_runtime'; source: RuntimeBuildError }
   | { kind: 'publish_runtime'; source: PublishRuntimeError }
   | { kind: 'resolve_port'; source: PortResolveError }
@@ -8063,11 +7873,6 @@ export type RuntimeError =
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError }
   | { kind: 'prepare_service_install_prompt'; source: ServiceCommandError }
   | { kind: 'read_core_version'; source: CoreVersionError }
-  /**
-   *  A candidate was refused before anything was submitted, for want of a
-   *  baseline to apply against.
-   */
-  | { kind: 'unsettled_baseline'; gap: EvidenceGap }
   | {
       kind: 'core_rejected_config'
       core_kind: CoreErrorKind | null
@@ -8078,19 +7883,6 @@ export type RuntimeError =
   | { kind: 'core_rolled_back'; reason: string | null }
   /**  The submission ended unobserved, so it may have taken effect. */
   | { kind: 'submission_unobserved'; failure: CoreFailure }
-  | { kind: 'handoff_owner_mismatch'; expected: ExecutionHost }
-  /**
-   *  A mutation that moved the runtime to the other host and failed there
-   *  could not put it back.
-   */
-  | { kind: 'handoff_not_restored'; failure: RestoreFailure }
-  /**  A cancelled mutation could not put the runtime back. */
-  | { kind: 'restore_failed'; failure: RestoreFailure }
-  /**
-   *  The store committed a mutation whose runtime target the workflow had
-   *  refused.
-   */
-  | { kind: 'committed_after_refusal'; operation_id: string }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }
@@ -8760,6 +8552,10 @@ export type SystemDnsError =
 /**
  *  A patch of the system-affecting application settings.
  *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
  *  aliases behave as before, and a field of another class refuses the whole patch instead of being
@@ -8770,6 +8566,10 @@ export type SystemSettingsPatch =
 
 /**
  *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
@@ -8783,10 +8583,15 @@ export type SystemSettingsPatch_Deserialize = {
   system_proxy_bypass?: string | null
   proxy_guard_interval?: number | null
   pac_url?: string | null
+  network_automation?: NetworkAutomation | null
 }
 
 /**
  *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
@@ -8800,6 +8605,7 @@ export type SystemSettingsPatch_Serialize = {
   system_proxy_bypass?: string | null
   proxy_guard_interval?: number | null
   pac_url?: string | null
+  network_automation?: NetworkAutomation | null
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -9090,6 +8896,43 @@ export type WebGpuAdapter = {
   device?: string | null
   description?: string | null
 }
+
+/**  The name of the Wi-Fi network behind the primary interface. */
+export type WifiName =
+  /**  The primary interface is not Wi-Fi. */
+  | { kind: 'not_wifi' }
+  /**
+   *  The interface is Wi-Fi, but the name was not read: no enabled rule
+   *  asks for it, and reading it is what makes macOS and Windows ask the
+   *  user for location access.
+   */
+  | { kind: 'not_read' }
+  | { kind: 'known'; ssid: string }
+  /**
+   *  The interface is Wi-Fi and its name was asked for, but could not be
+   *  read.
+   */
+  | { kind: 'unavailable'; reason: WifiUnavailable }
+
+/**  Why the name of a Wi-Fi network could not be read. */
+export type WifiUnavailable =
+  /**
+   *  The platform gates the name behind location access the user has not
+   *  decided on yet. Asking can show the system prompt.
+   */
+  | 'permission_required'
+  /**
+   *  The user, the device policy or a global location switch refused
+   *  location access. Only the system settings can change that.
+   */
+  | 'permission_denied'
+  /**
+   *  The platform answered without a name: the interface is not
+   *  associated, or the name service is missing or failed.
+   */
+  | 'unreadable'
+  /**  This host has no way to read a Wi-Fi name. */
+  | 'unsupported'
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =

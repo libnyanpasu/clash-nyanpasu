@@ -446,10 +446,16 @@ impl CoreFacade {
                 false,
             )));
         }
-        let expected_applied = expected
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.revision.clone());
+        let expected_applied = expected.snapshot.as_ref().and_then(|snapshot| {
+            if matches!(
+                snapshot.state,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+            ) {
+                None
+            } else {
+                snapshot.revision.clone()
+            }
+        });
         // `expected_applied` is the optimistic-concurrency guard: apply only if
         // the manager is still on this revision. The wire carries the epoch as a
         // plain `u64`, and `Epoch` rejects zero. Dropping the guard on a zero
@@ -712,6 +718,17 @@ impl CoreFacade {
         self.service.command_settled().await
     }
 
+    /// Ensures the daemon is installed, running, and through its version gate.
+    /// The runtime's owner is unchanged, including when preparation fails.
+    pub async fn prepare_service_host(&mut self) -> Result<(), CoreError> {
+        let service = self.service.clone();
+        self.service_command(ServiceCommandKind::EnsureReady, async move {
+            service.ensure_ready().await
+        })
+        .await
+        .map(|_| ())
+    }
+
     pub async fn install_service(&mut self) -> Result<(), CoreError> {
         let service = self.service.clone();
         self.service_command(ServiceCommandKind::Install, async move {
@@ -947,6 +964,7 @@ mod tests {
             Arc::new(Self {
                 host,
                 status: CoreStatusSnapshot {
+                    instance_id: None,
                     controller: None,
                     state: Some(CoreStateDetail::Running { pid: 7, epoch: 1 }),
                     state_changed_at: 1,

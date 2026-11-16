@@ -264,6 +264,46 @@ export const useSystemSetting = <
 }
 
 /**
+ * The full application config (`sensitive_read`) written under the `system`
+ * scope, for the editor of a system setting the safe view reduces to a flag:
+ * the network rules, which name the user's Wi-Fi networks and gateway MAC
+ * addresses. Ordinary readers must use `useSystemSettings`.
+ */
+export const useFullSystemSettings = () => {
+  const api = useQueryApi()
+  return useTypedConfig<
+    NyanpasuAppConfig_Serialize,
+    SystemSettingsPatch_Deserialize
+  >(
+    api.queries.getAppConfig(),
+    api.mutations.patchSystemSettings,
+    appSettingsKeys(api),
+  )
+}
+
+/**
+ * One system-affecting setting of the full application config, for an editor
+ * of a field the safe view omits.
+ *
+ * @example
+ * ```tsx
+ * const { value, upsert } = useFullSystemSetting('network_automation')
+ * ```
+ */
+export const useFullSystemSetting = <
+  K extends keyof NyanpasuAppConfig_Serialize &
+    keyof SystemSettingsPatch_Deserialize,
+>(
+  key: K,
+) => {
+  return useTypedConfigField<
+    NyanpasuAppConfig_Serialize,
+    SystemSettingsPatch_Deserialize,
+    K
+  >(useFullSystemSettings(), key)
+}
+
+/**
  * The persistent clash settings the interface reads (`ClashSettings`): the
  * secret-free view, without the web UI templates. Writes only the ordinary
  * settings (`settings` scope); the control plane uses `useClashSystemSettings`.

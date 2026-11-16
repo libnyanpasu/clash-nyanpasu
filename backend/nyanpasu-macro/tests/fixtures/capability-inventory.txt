@@ -98,6 +98,7 @@ inspect_runtime_node | desktop,http | - | - | query | sensitive_read
 inspect_updater | desktop,http | - | - | query | sensitive_read
 inspect_updater_summary | desktop,http | - | - | query | read
 install_app_update | desktop | app_update | - | mutation | system
+install_cli | desktop | os_integration | - | mutation | system
 install_service | desktop | elevation | presentation | mutation | system
 invoke_uwp_tool | desktop | - | - | mutation | system
 is_appimage | desktop,http | - | - | query | read

@@ -89,6 +89,11 @@ impl Lan {
             paths: CliPaths::discover(Some(self.directory.path().join("cli.toml"))).unwrap(),
             vault: TokenVault::new(self.directory.path().join("tokens"), false),
             connector: RealConnector,
+            home: None,
+            executable: None,
+            skill_dir: None,
+            appimage: None,
+            search_path: None,
         }
     }
 

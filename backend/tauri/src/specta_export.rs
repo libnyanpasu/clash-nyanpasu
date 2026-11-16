@@ -169,6 +169,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_logs_dir,
             ipc::open_web_url,
             ipc::open_core_dir,
+            ipc::install_cli,
             commands::runtime::restart_sidecar,
             commands::runtime::patch_app_config,
             commands::runtime::patch_system_settings,

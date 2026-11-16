@@ -8,6 +8,7 @@
 ;   - CheckNyanpasuProcess / CheckAllNyanpasuProcesses: stop core processes (clash, mihomo, ...)
 ;   - StopAndRemoveServiceDirectory: uninstall nyanpasu-service and wipe its data dir
 ;   - RemoveRegs: clean autostart entries and clash / clash-nyanpasu protocol handlers
+;   - PageCliOptions / UpdateCliPath: optional user/machine PATH toggle for nyanpasu-cli
 ;
 ; The nyanpasu-service, autostart entry and protocol handlers are system integration /
 ; persistence points: they are cleaned up on every real (non-update) uninstall so a
@@ -93,6 +94,9 @@ Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
 Var ProgramDataPathVar ; Clash Nyanpasu: ProgramData path for nyanpasu-service
+Var AddToPath ; Clash Nyanpasu: add install dir (nyanpasu-cli) to PATH
+Var CliPathCheckbox
+Var CliPathCheckboxState
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -426,6 +430,44 @@ Var AppStartMenuFolder
 !endif
 !insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
 
+; 6.5. Clash Nyanpasu: optional CLI PATH integration page
+Page custom PageCliOptions PageLeaveCliOptions
+Function PageCliOptions
+  ${If} $PassiveMode = 1
+  ${OrIf} $UpdateMode = 1
+    Abort
+  ${EndIf}
+
+  !insertmacro MUI_HEADER_TEXT "$(cliOptionsTitle)" "$(cliOptionsSubtitle)"
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+    Abort
+  ${EndIf}
+  ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
+
+  ${NSD_CreateLabel} 0 0 100% 28u "$(cliOptionsDescription)"
+  Pop $0
+
+  ${NSD_CreateCheckbox} 0 36u 100% 14u "$(addToPathCheckbox)"
+  Pop $CliPathCheckbox
+  ${If} $AddToPath == "1"
+    SendMessage $CliPathCheckbox ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${Else}
+    SendMessage $CliPathCheckbox ${BM_SETCHECK} ${BST_UNCHECKED} 0
+  ${EndIf}
+
+  nsDialogs::Show
+FunctionEnd
+Function PageLeaveCliOptions
+  ${NSD_GetState} $CliPathCheckbox $CliPathCheckboxState
+  ${If} $CliPathCheckboxState = ${BST_CHECKED}
+    StrCpy $AddToPath "1"
+  ${Else}
+    StrCpy $AddToPath "0"
+  ${EndIf}
+FunctionEnd
+
 ; 7. Installation page
 !insertmacro MUI_PAGE_INSTFILES
 
@@ -501,6 +543,44 @@ FunctionEnd
 {{#each language_files}}
   !include "{{this}}"
 {{/each}}
+
+; Clash Nyanpasu: localized strings for CLI PATH integration
+!ifdef LANG_ENGLISH
+  LangString cliOptionsTitle ${LANG_ENGLISH} "Command-Line Tool"
+  LangString cliOptionsSubtitle ${LANG_ENGLISH} "Configure shell access to nyanpasu-cli."
+  LangString cliOptionsDescription ${LANG_ENGLISH} "Add Clash Nyanpasu's installation folder to PATH so you and AI agents can invoke nyanpasu-cli directly from PowerShell, Command Prompt, and Windows Terminal."
+  LangString addToPathCheckbox ${LANG_ENGLISH} "Add nyanpasu-cli to PATH (recommended)"
+!endif
+!ifdef LANG_JAPANESE
+  LangString cliOptionsTitle ${LANG_JAPANESE} "コマンドラインツール"
+  LangString cliOptionsSubtitle ${LANG_JAPANESE} "nyanpasu-cli へのシェルアクセスを設定します。"
+  LangString cliOptionsDescription ${LANG_JAPANESE} "Clash Nyanpasu のインストールフォルダーを PATH に追加し、PowerShell やコマンドプロンプトから nyanpasu-cli を直接呼び出せるようにします。"
+  LangString addToPathCheckbox ${LANG_JAPANESE} "nyanpasu-cli を PATH に追加する（推奨）"
+!endif
+!ifdef LANG_KOREAN
+  LangString cliOptionsTitle ${LANG_KOREAN} "명령줄 도구"
+  LangString cliOptionsSubtitle ${LANG_KOREAN} "nyanpasu-cli 셸 접근을 구성합니다."
+  LangString cliOptionsDescription ${LANG_KOREAN} "PowerShell 및 명령 프롬프트에서 nyanpasu-cli를 바로 실행할 수 있도록 Clash Nyanpasu 설치 폴더를 PATH에 추가합니다."
+  LangString addToPathCheckbox ${LANG_KOREAN} "nyanpasu-cli를 PATH에 추가 (권장)"
+!endif
+!ifdef LANG_RUSSIAN
+  LangString cliOptionsTitle ${LANG_RUSSIAN} "Инструмент командной строки"
+  LangString cliOptionsSubtitle ${LANG_RUSSIAN} "Настройка доступа к nyanpasu-cli из терминала."
+  LangString cliOptionsDescription ${LANG_RUSSIAN} "Добавить каталог установки Clash Nyanpasu в PATH для прямого вызова nyanpasu-cli из PowerShell и командной строки."
+  LangString addToPathCheckbox ${LANG_RUSSIAN} "Добавить nyanpasu-cli в PATH (рекомендуется)"
+!endif
+!ifdef LANG_SIMPCHINESE
+  LangString cliOptionsTitle ${LANG_SIMPCHINESE} "命令行工具"
+  LangString cliOptionsSubtitle ${LANG_SIMPCHINESE} "配置终端对 nyanpasu-cli 的访问。"
+  LangString cliOptionsDescription ${LANG_SIMPCHINESE} "将 Clash Nyanpasu 安装目录添加到系统 PATH，以便在 PowerShell、命令提示符等终端中直接运行 nyanpasu-cli。"
+  LangString addToPathCheckbox ${LANG_SIMPCHINESE} "将 nyanpasu-cli 添加到 PATH（推荐）"
+!endif
+!ifdef LANG_TRADCHINESE
+  LangString cliOptionsTitle ${LANG_TRADCHINESE} "命令列工具"
+  LangString cliOptionsSubtitle ${LANG_TRADCHINESE} "設定終端機對 nyanpasu-cli 的存取。"
+  LangString cliOptionsDescription ${LANG_TRADCHINESE} "將 Clash Nyanpasu 安裝目錄新增至系統 PATH，以便在 PowerShell 與命令提示字元中直接執行 nyanpasu-cli。"
+  LangString addToPathCheckbox ${LANG_TRADCHINESE} "將 nyanpasu-cli 新增至 PATH（建議）"
+!endif
 
 ; ===== Clash Nyanpasu customizations: macros =====
 
@@ -646,6 +726,37 @@ FunctionEnd
   DeleteRegKey HKCR "clash-nyanpasu"
 !macroend
 
+; Clash Nyanpasu: add or remove $INSTDIR from User or Machine PATH without
+; truncating long REG_EXPAND_SZ values (standard NSIS ReadRegStr is 1024 chars).
+!define /ifndef HWND_BROADCAST 0xffff
+!define /ifndef WM_WININICHANGE 0x001A
+!macro UpdateCliPath Action
+  !if "${INSTALLMODE}" == "perMachine"
+    StrCpy $0 "Machine"
+  !else if "${INSTALLMODE}" == "currentUser"
+    StrCpy $0 "User"
+  !else
+    ${If} $MultiUser.InstallMode == "AllUsers"
+      StrCpy $0 "Machine"
+    ${Else}
+      StrCpy $0 "User"
+    ${EndIf}
+  !endif
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_DIR", t "$INSTDIR")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_SCOPE", t "$0")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_ACTION", t "${Action}")'
+  nsExec::ExecToLog `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$dir=($$env:NYANPASU_PATH_DIR).TrimEnd([char]92,[char]47);if(-not $$dir){exit 0};$$act=$$env:NYANPASU_PATH_ACTION;$$m=$$env:NYANPASU_PATH_SCOPE -eq 'Machine';$$r=if($$m){[Microsoft.Win32.Registry]::LocalMachine}else{[Microsoft.Win32.Registry]::CurrentUser};$$s=if($$m){'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'}else{'Environment'};$$k=$$r.OpenSubKey($$s,$$true);if($$null -eq $$k){exit 0};try{$$kind=[Microsoft.Win32.RegistryValueKind]::ExpandString;$$raw='';if($$null -ne $$k.GetValue('Path')){$$kind=$$k.GetValueKind('Path');$$raw=[string]$$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)};$$items=@($$raw -split ';'|Where-Object{$$_ -ne ''});$$has=@($$items|Where-Object{$$_.Trim().TrimEnd([char]92,[char]47) -ie $$dir}).Count -gt 0;if($$act -eq 'add'){if(-not $$has){$$items+=$$dir;$$k.SetValue('Path',($$items -join ';'),$$kind)}}elseif($$act -eq 'remove' -and $$has){$$kept=@($$items|Where-Object{$$_.Trim().TrimEnd([char]92,[char]47) -ine $$dir});$$next=($$kept -join ';');if($$next){$$k.SetValue('Path',$$next,$$kind)}else{$$k.DeleteValue('Path',$$false)}}}finally{$$k.Close()}"`
+  Pop $0
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_DIR", t "")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_SCOPE", t "")'
+  System::Call 'kernel32::SetEnvironmentVariable(t "NYANPASU_PATH_ACTION", t "")'
+  ${If} $0 == "0"
+    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=500
+  ${Else}
+    DetailPrint "Failed to update PATH (${Action}) with exit code $0"
+  ${EndIf}
+!macroend
+
 ; ===== End Clash Nyanpasu customizations: macros =====
 
 Function .onInit
@@ -695,6 +806,31 @@ Function .onInit
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
   !endif
+
+  ; Clash Nyanpasu: resolve the CLI PATH preference. An explicit switch wins, then the choice
+  ; of an earlier install. With neither, only an install that shows the options page opts in,
+  ; so a silent, passive or update run never edits PATH on its own.
+  ${GetOptions} $CMDLINE "/NO_ADD_TO_PATH" $0
+  ${IfNot} ${Errors}
+    StrCpy $AddToPath "0"
+  ${Else}
+    ${GetOptions} $CMDLINE "/ADD_TO_PATH" $0
+    ${IfNot} ${Errors}
+      StrCpy $AddToPath "1"
+    ${Else}
+      StrCpy $AddToPath "1"
+      ${If} ${Silent}
+      ${OrIf} $PassiveMode = 1
+      ${OrIf} $UpdateMode = 1
+        StrCpy $AddToPath "0"
+      ${EndIf}
+      ReadRegStr $0 SHCTX "${UNINSTKEY}" "CliInPath"
+      ${If} $0 == "0"
+      ${OrIf} $0 == "1"
+        StrCpy $AddToPath $0
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
 FunctionEnd
 
 
@@ -884,6 +1020,14 @@ Section Install
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoModify" "1"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoRepair" "1"
 
+  ; Clash Nyanpasu: persist PATH preference and update PATH for nyanpasu-cli
+  WriteRegStr SHCTX "${UNINSTKEY}" "CliInPath" $AddToPath
+  ${If} $AddToPath == "1"
+    !insertmacro UpdateCliPath "add"
+  ${Else}
+    !insertmacro UpdateCliPath "remove"
+  ${EndIf}
+
   ${GetSize} "$INSTDIR" "/M=uninstall.exe /S=0K /G=0" $0 $1 $2
   IntOp $0 $0 + ${ESTIMATEDSIZE}
   IntFmt $0 "0x%08X" $0
@@ -1053,6 +1197,9 @@ Section Uninstall
 
     ; Clash Nyanpasu: remove autostart entries and clash / clash-nyanpasu protocol handlers
     !insertmacro RemoveRegs
+
+    ; Clash Nyanpasu: remove install directory (nyanpasu-cli) from PATH
+    !insertmacro UpdateCliPath "remove"
   ${EndIf}
 
   ; Delete app data (config / cache / profiles and install metadata) only if the

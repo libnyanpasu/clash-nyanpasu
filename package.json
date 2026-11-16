@@ -56,6 +56,7 @@
     "publish": "node scripts/src/release/publish.ts",
     "portable": "node scripts/src/release/portable.ts",
     "generate:git-info": "node scripts/src/generate/generate-git-info.ts",
+    "generate:completions": "node scripts/src/release/generate-completions.ts",
     "generate:data-slots": "node scripts/src/generate/extract-data-slots.ts",
     "generate:credits": "node scripts/src/generate/credits/generate-credits.ts",
     "generate:manifest": "pnpm run generate:manifest:latest-version",

@@ -697,6 +697,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.openCoreDir>) =>
         commands.openCoreDir(...input),
     }),
+    installCli: mutationOptions({
+      mutationKey: ['installCli'],
+      mutationFn: (input: Parameters<typeof commands.installCli>) =>
+        commands.installCli(...input),
+    }),
     restartSidecar: mutationOptions({
       mutationKey: ['restartSidecar'],
       mutationFn: (input: Parameters<typeof commands.restartSidecar>) =>

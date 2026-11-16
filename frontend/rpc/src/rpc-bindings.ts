@@ -637,6 +637,11 @@ export function createRpcClient(
       ),
     openCoreDir: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
+    /**  Links the bundled `nyanpasu-cli` onto the user's `PATH`, for the macOS app and the AppImage. */
+    installCli: () =>
+      typedError<CliInstallation, IpcError_Serialize>(
+        __RPC_INVOKE('install_cli'),
+      ),
     /**  restart the sidecar */
     restartSidecar: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_sidecar')),
@@ -1934,6 +1939,20 @@ export type ClashWsUpdate =
   | { kind: 'memory_updated'; data: ClashWsMemory }
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
+
+/**  What `nyanpasu-cli --json install` reports. The field names are the CLI's `Installed`. */
+export type CliInstallation = {
+  /**  The link on `PATH`. */
+  link: string
+  /**  The executable the link points at. */
+  target: string
+  /**  The link already pointed there, so nothing changed. */
+  already_linked: boolean
+  /**  Whether the link's directory is on the app's `PATH`. */
+  on_path: boolean
+  /**  A command that links the executable for every user, which needs elevation. */
+  system_command: string
+}
 
 export type ClosedConnection = {
   id: string

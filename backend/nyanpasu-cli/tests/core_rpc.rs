@@ -21,6 +21,7 @@ use nyanpasu_cli::{
     credentials::TokenVault,
     describe::{Capabilities, DESCRIBE_METHOD, Scope},
     error::{CliError, ExitStatus},
+    mcp::{McpOptions, RAW_TOOL, serve},
     target::{Environment, ResolvedTarget, TargetKind, TargetSource},
     transport::{StreamKind, Transport, event},
 };
@@ -117,6 +118,11 @@ impl Shell {
             vault: TokenVault::new(directory.join("tokens"), false),
             paths,
             connector: RealConnector,
+            home: None,
+            executable: None,
+            skill_dir: None,
+            appimage: None,
+            search_path: None,
         };
         let socket = self.socket.display().to_string();
         let mut full = vec!["nyanpasu-cli", "--config"];
@@ -403,5 +409,229 @@ async fn config_patch_works_over_the_socket_and_keeps_its_privilege_separation()
         let run = shell.cli(&["config", "patch", refused]).await;
         assert_eq!(run.status, ExitStatus::Usage, "{refused}: {}", run.stderr);
     }
+    shell.stop().await;
+}
+
+/// Runs `nyanpasu-cli mcp` against the shell: the production connector and describe, then the
+/// stdio server over in-memory streams. Returns one reply per request that has an id.
+async fn mcp_session(shell: &Shell, options: &McpOptions, requests: &[Value]) -> Vec<Value> {
+    let transport = RealConnector.connect(&shell.target(), None).await.unwrap();
+    let capabilities =
+        Capabilities::from_json(transport.call(DESCRIBE_METHOD, json!({})).await.unwrap()).unwrap();
+    let input: String = requests
+        .iter()
+        .map(|request| format!("{request}\n"))
+        .collect();
+    let mut output = Vec::new();
+    tokio::time::timeout(
+        WATCHDOG,
+        serve(
+            &transport,
+            &capabilities,
+            options,
+            input.as_bytes(),
+            &mut output,
+        ),
+    )
+    .await
+    .expect("the MCP session ends with its input")
+    .unwrap();
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+fn tool_names(reply: &Value) -> Vec<String> {
+    reply["result"]["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("not a tools/list reply: {reply}"))
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn tool_call(id: u64, name: &str, arguments: Value) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+           "params": {"name": name, "arguments": arguments}})
+}
+
+/// The tool list is the curated table intersected with what the real shell allows, and every
+/// offered tool reaches its real handler: a stale method name or schema fails here.
+#[tokio::test]
+async fn every_mcp_tool_reaches_a_real_local_handler() {
+    let shell = Shell::start().await;
+    let options = McpOptions {
+        scopes: Scope::ALL
+            .into_iter()
+            .filter(|scope| *scope != Scope::RemoteAdmin)
+            .collect(),
+        raw: false,
+    };
+    let list = json!({"jsonrpc": "2.0", "id": 0, "method": "tools/list"});
+    let replies = mcp_session(&shell, &options, &[list]).await;
+    let mut offered = tool_names(&replies[0]);
+    offered.sort_unstable();
+    let mut curated: Vec<String> = commands::COMMANDS
+        .iter()
+        .map(|command| command.name.to_owned())
+        .collect();
+    curated.sort_unstable();
+    assert_eq!(offered, curated, "the shell allows every curated tool");
+
+    for (command, id) in commands::COMMANDS.iter().zip(1..) {
+        // The connection stream sends nothing while the fixture has no running Clash; the
+        // bounded wait is covered by a unit test.
+        if command.name == "conn_list" {
+            continue;
+        }
+        let input = sample_input(command.name, &command.input_schema_value());
+        let replies = tokio::time::timeout(
+            Duration::from_secs(10),
+            mcp_session(&shell, &options, &[tool_call(id, command.name, input)]),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("{} never answered", command.name));
+        let reply = &replies[0];
+        assert!(reply.get("error").is_none(), "{}: {reply}", command.name);
+        // A fixture core without a running Clash may refuse the operation. The tool was
+        // still admitted, decoded and run, which is what a stale table would break.
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        if reply["result"]["isError"] == true {
+            for stale in [
+                "unsupported on this target",
+                "not authenticated",
+                "unknown_method",
+            ] {
+                assert!(!text.contains(stale), "{} is stale: {text}", command.name);
+            }
+        }
+    }
+    shell.stop().await;
+}
+
+#[tokio::test]
+async fn the_default_mcp_session_offers_only_read_tools_and_refuses_the_rest() {
+    let shell = Shell::start().await;
+    let replies = mcp_session(
+        &shell,
+        &McpOptions::default(),
+        &[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+            tool_call(2, "core_restart", json!({})),
+            tool_call(3, "profile_show", json!({"uid": "x"})),
+            tool_call(
+                4,
+                RAW_TOOL,
+                json!({"method": "get_configuration_status_summary"}),
+            ),
+        ],
+    )
+    .await;
+    let mut offered = tool_names(&replies[0]);
+    offered.sort_unstable();
+    let mut read_only: Vec<String> = commands::COMMANDS
+        .iter()
+        .filter(|command| command.scope == Scope::Read)
+        .map(|command| command.name.to_owned())
+        .collect();
+    read_only.sort_unstable();
+    assert_eq!(offered, read_only);
+    for refused in &replies[1..] {
+        assert!(
+            refused["error"].is_object(),
+            "not offered, not callable: {refused}"
+        );
+    }
+    shell.stop().await;
+}
+
+/// `--raw` is bounded by the session's scopes and can never administer remote access, even
+/// when every scope is requested and the local principal holds `remote_admin`.
+#[tokio::test]
+async fn mcp_raw_never_reaches_remote_administration_on_a_real_core() {
+    let shell = Shell::start().await;
+    let transport = RealConnector.connect(&shell.target(), None).await.unwrap();
+    let described = transport.call(DESCRIBE_METHOD, json!({})).await.unwrap();
+    let capabilities = Capabilities::from_json(described).unwrap();
+    assert!(
+        capabilities.holds(Scope::RemoteAdmin),
+        "the premise of this test"
+    );
+    let administration: Vec<String> = capabilities
+        .commands()
+        .iter()
+        .filter(|command| command.scope == Scope::RemoteAdmin)
+        .map(|command| command.name.clone())
+        .collect();
+    assert!(administration.len() >= 7, "{administration:?}");
+
+    let options = McpOptions {
+        scopes: Scope::ALL.to_vec(),
+        raw: true,
+    };
+    let mut requests = vec![json!({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})];
+    for (id, method) in (1..).zip(&administration) {
+        let params = match method.as_str() {
+            "set_remote_access" => json!({"patch": {"local_socket": {"enabled": true}}}),
+            "create_remote_access_token" => json!({"name": "agent", "scopes": ["read"]}),
+            _ => json!({}),
+        };
+        requests.push(tool_call(
+            id,
+            RAW_TOOL,
+            json!({"method": method, "params": params}),
+        ));
+    }
+    let replies = mcp_session(&shell, &options, &requests).await;
+
+    let raw = replies[0]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == RAW_TOOL)
+        .expect("call_method is offered with --raw");
+    let description = raw["description"].as_str().unwrap();
+    for method in &administration {
+        assert!(
+            !description.contains(method.as_str()),
+            "{method} is advertised"
+        );
+        assert!(
+            !tool_names(&replies[0]).contains(method),
+            "{method} has a tool of its own"
+        );
+    }
+    for (method, reply) in administration.iter().zip(&replies[1..]) {
+        assert_eq!(reply["result"]["isError"], true, "{method}: {reply}");
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("this MCP session does not offer"),
+            "{method} was refused for the wrong reason: {text}"
+        );
+    }
+
+    // Nothing was changed behind the refusals.
+    let status = shell.cli(&["--json", "remote", "status"]).await.json();
+    assert_eq!(
+        status["settings"]["local_socket"]["enabled"], false,
+        "{status}"
+    );
+    let tokens = shell.cli(&["--json", "remote", "token", "list"]).await;
+    assert_eq!(tokens.json(), json!([]));
+
+    // The same session can still use the raw tool for what its scopes allow.
+    let replies = mcp_session(
+        &shell,
+        &options,
+        &[tool_call(
+            1,
+            RAW_TOOL,
+            json!({"method": "get_configuration_status_summary"}),
+        )],
+    )
+    .await;
+    assert_eq!(replies[0]["result"]["isError"], false, "{}", replies[0]);
     shell.stop().await;
 }

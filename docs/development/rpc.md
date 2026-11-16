@@ -121,6 +121,13 @@ ordinary Option fields unchanged. These settings are absent from the concrete
 preferences DTO's schema. Their dedicated commands use the internal domain patch;
 `remote_access` is written only through its serial owner.
 
+`install_cli` is a Desktop-only native `system` mutation (capability `os_integration`) behind the
+settings action that puts `nyanpasu-cli` on `PATH` for the macOS app and the AppImage; packages and
+the Windows installer already provide it. The command starts the bundled
+`nyanpasu-cli --json install` (`adapters/cli_install.rs`) rather than linking in the shell, so the
+CLI alone owns the link and the standalone copy an AppImage needs, because its mount disappears
+with the app.
+
 HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
 embedded HTTP/local, uses interactive OS consent. The standalone server injects

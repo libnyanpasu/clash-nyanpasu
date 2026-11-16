@@ -286,6 +286,13 @@ impl LocalClient {
         }))
     }
 
+    /// Waits until the connection task ends or the client is closed.
+    ///
+    /// This reports a permanent end of the byte stream; the connection is never reused.
+    pub async fn closed(&self) {
+        self.requests.closed().await;
+    }
+
     /// Closes the connection without waiting, for a caller that can no longer trust the stream,
     /// such as one that failed to decode a reply and so cannot know the outcome.
     pub fn invalidate(&self) {

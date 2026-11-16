@@ -256,6 +256,10 @@ pub fn run() -> std::process::ExitCode {
         pre_logging_ms = started.elapsed().as_millis(),
         "logging initialized"
     );
+    #[cfg(windows)]
+    if let Ok(directory) = paths.app_install_dir() {
+        host_paths::cleanup_cli_update_backups(directory.as_std_path());
+    }
     let prepare_span = tracing::info_span!("prepare_app").entered();
     crate::log_err!(init::init_config(&paths));
 

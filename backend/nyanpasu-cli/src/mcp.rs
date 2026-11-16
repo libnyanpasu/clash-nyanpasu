@@ -337,13 +337,16 @@ pub async fn handle_message<T: Transport>(
 
 /// Serves MCP until the input ends. Messages are handled one at a time.
 ///
+/// A socket-backed session also ends when the shell closes its permanent local connection;
+/// an HTTP session stays alive because an HTTP call can fail transiently.
+///
 /// # Errors
 /// Reports a failed read or write on the streams.
 pub async fn serve<T, R, W>(
     transport: &T,
     capabilities: &Capabilities,
     options: &McpOptions,
-    mut input: R,
+    input: R,
     mut output: W,
 ) -> std::io::Result<()>
 where
@@ -351,12 +354,16 @@ where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut line = String::new();
+    let mut lines = input.lines();
     loop {
-        line.clear();
-        if input.read_line(&mut line).await? == 0 {
-            return Ok(());
-        }
+        let line = tokio::select! {
+            biased;
+            line = lines.next_line() => match line? {
+                Some(line) => line,
+                None => return Ok(()),
+            },
+            () = transport.closed() => return Ok(()),
+        };
         if line.trim().is_empty() {
             continue;
         }

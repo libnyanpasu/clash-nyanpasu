@@ -452,6 +452,46 @@ async fn mcp_session(shell: &Shell, options: &McpOptions, requests: &[Value]) ->
         .collect()
 }
 
+#[tokio::test]
+async fn mcp_over_the_local_socket_exits_when_the_shell_closes_it() {
+    let shell = Shell::start().await;
+    let transport = RealConnector.connect(&shell.target(), None).await.unwrap();
+    let capabilities =
+        Capabilities::from_json(transport.call(DESCRIBE_METHOD, json!({})).await.unwrap()).unwrap();
+    let (reader, _stdin) = tokio::io::duplex(64);
+    let session = tokio::spawn(async move {
+        let mut output = Vec::new();
+        serve(
+            &transport,
+            &capabilities,
+            &McpOptions::default(),
+            tokio::io::BufReader::new(reader),
+            &mut output,
+        )
+        .await?;
+        Ok::<_, std::io::Error>(output)
+    });
+
+    let Shell {
+        fixture,
+        shutdown,
+        server,
+        ..
+    } = shell;
+    shutdown.cancel();
+    tokio::time::timeout(WATCHDOG, server)
+        .await
+        .expect("the shell socket closes")
+        .unwrap();
+    let output = tokio::time::timeout(WATCHDOG, session)
+        .await
+        .expect("the MCP session observes the socket close")
+        .expect("the MCP task does not panic")
+        .expect("the MCP session exits normally");
+    assert!(output.is_empty());
+    fixture.shutdown().await;
+}
+
 fn tool_names(reply: &Value) -> Vec<String> {
     reply["result"]["tools"]
         .as_array()

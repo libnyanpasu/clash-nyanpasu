@@ -6,6 +6,8 @@
 ;   - GetProgramDataPath: resolve the ProgramData path used by nyanpasu-service
 ;   - StopCoreByService: ask the service to stop the running core before install
 ;   - CheckNyanpasuProcess / CheckAllNyanpasuProcesses: stop core processes (clash, mihomo, ...)
+;   - PrepareCliReplacement / CleanupCliReplacements: move an in-use nyanpasu-cli.exe aside
+;     before replacing it, and remove the backups once their processes exit
 ;   - StopAndRemoveServiceDirectory: uninstall nyanpasu-service and wipe its data dir
 ;   - RemoveRegs: clean autostart entries and clash / clash-nyanpasu protocol handlers
 ;   - PageCliOptions / UpdateCliPath: optional user/machine PATH toggle for nyanpasu-cli
@@ -69,6 +71,7 @@ ${StrLoc}
 !define UNINSTALLERHEADERIMAGE "{{uninstaller_header_image}}"
 !define MAINBINARYNAME "{{main_binary_name}}"
 !define MAINBINARYSRCPATH "{{main_binary_path}}"
+!define CLIEXENAME "nyanpasu-cli.exe"
 !define BUNDLEID "{{bundle_id}}"
 !define COPYRIGHT "{{copyright}}"
 !define OUTFILE "{{out_file}}"
@@ -97,6 +100,9 @@ Var ProgramDataPathVar ; Clash Nyanpasu: ProgramData path for nyanpasu-service
 Var AddToPath ; Clash Nyanpasu: add install dir (nyanpasu-cli) to PATH
 Var CliPathCheckbox
 Var CliPathCheckboxState
+Var CliReplacementSource
+Var CliReplacementDestination
+Var CliReplacementIndex
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -654,6 +660,43 @@ FunctionEnd
   !insertmacro CheckNyanpasuProcess "mihomo-alpha.exe" "7"
 !macroend
 
+; Clash Nyanpasu: Windows refuses to overwrite a running executable, but permits a rename
+; within the same directory. Move an installed CLI aside before any payload is written, so
+; an MCP host can keep its old process while new invocations use the updated sidecar. If the
+; rename fails, stop before a partial update instead of falling through to File's
+; Abort/Retry/Ignore prompt.
+!macro PrepareCliReplacement
+  StrCpy $CliReplacementSource "$INSTDIR\${CLIEXENAME}"
+  IfFileExists "$CliReplacementSource" 0 prepare_cli_replacement_done
+
+  ; Remove backups whose old processes have exited; locked ones are cleaned later.
+  Delete "$CliReplacementSource.old-*"
+
+  StrCpy $CliReplacementIndex 1
+  prepare_cli_replacement_find_name:
+    StrCpy $CliReplacementDestination "$CliReplacementSource.old-$CliReplacementIndex"
+    IfFileExists "$CliReplacementDestination" 0 prepare_cli_replacement_rename
+    IntOp $CliReplacementIndex $CliReplacementIndex + 1
+    Goto prepare_cli_replacement_find_name
+
+  prepare_cli_replacement_rename:
+    ClearErrors
+    Rename "$CliReplacementSource" "$CliReplacementDestination"
+    IfErrors prepare_cli_replacement_failed
+    DetailPrint "Moved the installed nyanpasu-cli.exe aside for replacement."
+    Goto prepare_cli_replacement_done
+
+  prepare_cli_replacement_failed:
+    Abort "Cannot move the installed nyanpasu-cli.exe aside. It may be in use or read-only. Close any process using nyanpasu-cli.exe (including an MCP server), check write permission for $INSTDIR, then retry the update."
+
+  prepare_cli_replacement_done:
+!macroend
+
+; Clash Nyanpasu: best-effort cleanup for old CLI images that are no longer running.
+!macro CleanupCliReplacements
+  Delete "$INSTDIR\${CLIEXENAME}.old-*"
+!macroend
+
 ; Clash Nyanpasu: ask the running nyanpasu-service to stop the core before we replace files.
 !macro StopCoreByService
   ; 构建服务可执行文件的完整路径
@@ -956,6 +999,7 @@ Section Install
   !insertmacro GetProgramDataPath
   !insertmacro StopCoreByService
   !insertmacro CheckAllNyanpasuProcesses
+  !insertmacro PrepareCliReplacement
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -972,6 +1016,7 @@ Section Install
   {{#each binaries}}
     File /a "/oname={{this}}" "{{no-escape @key}}"
   {{/each}}
+  !insertmacro CleanupCliReplacements
 
   ; Create file associations
   {{#each file_associations as |association| ~}}
@@ -1116,6 +1161,8 @@ Section Uninstall
   {{#each binaries}}
     Delete "$INSTDIR\\{{this}}"
   {{/each}}
+  ; Clash Nyanpasu: remove old CLI images before attempting to remove the directory.
+  !insertmacro CleanupCliReplacements
 
   ; Delete app associations
   {{#each file_associations as |association| ~}}

@@ -88,6 +88,14 @@ pub trait Transport: Send + Sync {
         &self,
         stream: StreamKind,
     ) -> impl Future<Output = Result<EventFeed, CliError>> + Send;
+
+    /// Resolves when the connection is permanently closed.
+    ///
+    /// An HTTP request can fail transiently without ending the session, so its default is
+    /// never to report closure.
+    fn closed(&self) -> impl Future<Output = ()> + Send {
+        std::future::pending()
+    }
 }
 
 /// The one connection of an invocation.
@@ -110,6 +118,13 @@ impl Transport for Connection {
         match self {
             Self::Http(transport) => transport.events(stream).await,
             Self::Socket(transport) => transport.events(stream).await,
+        }
+    }
+
+    async fn closed(&self) {
+        match self {
+            Self::Http(transport) => transport.closed().await,
+            Self::Socket(transport) => transport.closed().await,
         }
     }
 }

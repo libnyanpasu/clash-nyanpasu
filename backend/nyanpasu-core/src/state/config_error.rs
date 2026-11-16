@@ -42,6 +42,8 @@ pub enum ConfigError {
     InvalidLatencyTimeout { reason: String },
     #[snafu(display("the remote access settings are invalid: {reason}"))]
     InvalidRemoteAccess { reason: RemoteAccessError },
+    #[snafu(display("invalid network automation: {reason}"))]
+    InvalidNetworkAutomation { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]

@@ -43,12 +43,22 @@ A setting whose privilege class differs from ordinary preferences uses a dedicat
 | Request type (`nyanpasu-config`) | Command                     | Scope      | Writes                                                                                        |
 | -------------------------------- | --------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
 | `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings` | ordinary application preferences                                                              |
-| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL                                    |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
 | `ClashSettingsPatch`             | `patch_clash_config`        | `settings` | `expand_include_all`, `break_connection`                                                      |
 | `ClashSystemPatch`               | `patch_clash_system_config` | `system`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
 | `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
 | `ClashAccessPatch`               | `patch_runtime_access`      | `system`   | `allow-lan`, `secret`                                                                         |
 | `Mode`                           | `set_proxy_mode`            | `proxy`    | the proxy mode                                                                                |
+
+The network rules (`network_automation`) are a `system` setting rather than an ordinary
+preference: applying a rule writes the system proxy, TUN and transparent proxy switches, so a
+principal without `system` must not be able to change them through a policy. Their live status
+carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sensitive_read` query;
+`apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system`
+mutations. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
+MAC addresses, so the safe settings view (`get_app_settings`) reduces them to
+`network_automation_enabled`; the rule editor reads the full config (`sensitive_read`) and
+writes through `patch_system_settings`.
 
 Hotkeys, service mode, remote access and the core selection keep their dedicated commands
 (`set_hotkeys`, `set_service_mode`, `set_remote_access`, `change_clash_core`). The whole

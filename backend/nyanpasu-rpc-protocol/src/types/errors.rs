@@ -733,6 +733,9 @@ pub enum ConfigError {
     InvalidRemoteAccess {
         reason: RemoteAccessError,
     },
+    InvalidNetworkAutomation {
+        reason: String,
+    },
     ValidateHotkeys {
         source: HotkeyParseError,
     },

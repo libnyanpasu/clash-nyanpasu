@@ -722,3 +722,103 @@ async fn set_proxy_mode_writes_only_the_mode() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
     fixture.shutdown().await;
 }
+
+/// A policy that is saved but off: the test host cannot observe its network, and a policy that
+/// is on is refused there.
+fn network_rules_patch() -> Value {
+    json!({
+        "network_automation": {
+            "enabled": false,
+            "rules": [{
+                "id": "rule-id-sentinel",
+                "name": "rule-name-sentinel",
+                "conditions": {
+                    "wifi_ssid": "ssid-sentinel",
+                    "gateway_mac": "aa:bb:cc:dd:ee:ff",
+                },
+                "actions": {"tun": "disable"},
+            }],
+        }
+    })
+}
+
+/// The rules name the user's Wi-Fi networks and gateway MAC addresses: a `system` writer saves
+/// them, the full config returns them, and the settings a `read` caller gets carry only a flag.
+#[tokio::test]
+async fn network_rules_reach_a_read_caller_only_as_a_flag() {
+    let fixture = booted_fixture().await;
+    let (status, result) = fixture
+        .call(
+            "patch_system_settings",
+            json!({"patch": network_rules_patch()}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+
+    let (status, full) = fixture.call("get_app_config", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{full}");
+    assert_eq!(
+        full["network_automation"]["rules"][0]["conditions"]["wifi_ssid"], "ssid-sentinel",
+        "the editor still reads the saved rules: {full}"
+    );
+
+    let (status, settings) = fixture.call("get_app_settings", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    let wire = settings.to_string();
+    for private in [
+        "sentinel",
+        "aa:bb:cc",
+        "wifi_ssid",
+        "gateway_mac",
+        "\"rules\"",
+    ] {
+        assert!(!wire.contains(private), "{private}: {wire}");
+    }
+    assert_eq!(settings["network_automation_enabled"], false);
+    assert!(settings.get("network_automation").is_none(), "{wire}");
+    fixture.shutdown().await;
+}
+
+/// The rules are written under `system` only: the general patch refuses them whole, and neither
+/// the refusal nor the commit leaves the rules in a message a settings caller can read.
+#[tokio::test]
+async fn network_rules_are_not_writable_through_the_general_patch() {
+    let fixture = booted_fixture().await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+    let path = fixture.rpc.dependencies.paths.application_config_path();
+    let persisted = std::fs::read(&path).ok();
+
+    for patch in [
+        network_rules_patch(),
+        json!({"network_automation": {}}),
+        json!({"network_automation": {"enabled": false}, "proxy_layout_column": 9}),
+    ] {
+        for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+            let error = fixture
+                .rpc
+                .call(
+                    transport,
+                    "patch_app_config",
+                    RpcOwner::desktop("settings"),
+                    json!({"patch": patch}),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.kind, "invalid_params", "{patch}");
+            let wire = serde_json::to_string(&error).unwrap();
+            assert!(wire.contains("network_automation"), "{wire}");
+            for private in ["sentinel", "aa:bb:cc"] {
+                assert!(!wire.contains(private), "{private}: {wire}");
+            }
+            assert_eq!(
+                serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+                before,
+                "{patch}"
+            );
+            assert_eq!(std::fs::read(&path).ok(), persisted, "{patch}");
+        }
+    }
+    assert!(client.configuration_status().recent_operations.is_empty());
+    fixture.shutdown().await;
+}

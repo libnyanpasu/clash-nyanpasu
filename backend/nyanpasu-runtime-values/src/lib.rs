@@ -9,6 +9,7 @@ pub mod effects;
 pub mod execution_host;
 pub mod hotkey;
 pub mod mutation;
+pub mod network_automation;
 pub mod observation;
 pub mod ports;
 pub mod profiles;

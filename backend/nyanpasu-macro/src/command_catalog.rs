@@ -224,9 +224,9 @@ fn catalog_preserves_mutually_exclusive_platform_cfg() {
         r#"
         #[cfg(windows)] mod platform {
             #[cfg_attr(unix, cfg(target_os = "linux"))]
-            mod nested { #[nyanpasu_macro::rpc] #[tauri::command] fn platform_call() {} }
+            mod nested { #[nyanpasu_macro::rpc(scope = settings)] #[tauri::command] fn platform_call() {} }
         }
-        #[cfg(not(windows))] #[nyanpasu_macro::rpc] #[tauri::command] fn platform_call() {}
+        #[cfg(not(windows))] #[nyanpasu_macro::rpc(scope = settings)] #[tauri::command] fn platform_call() {}
     "#,
     )
     .unwrap();
@@ -279,13 +279,13 @@ fn catalog_follows_external_shared_modules() {
 fn catalog_excludes_test_fixtures() {
     let source = syn::parse_file(
         r#"
-        #[cfg(test)] mod fixtures { #[nyanpasu_macro::rpc] fn fixture() -> bool { true } }
+        #[cfg(test)] mod fixtures { #[nyanpasu_macro::rpc(scope = settings)] fn fixture() -> bool { true } }
         #[cfg(all(test, windows))] mod external_fixture;
         #[cfg_attr(not(test), cfg(any()))] mod conditional_fixture;
-        mod test_support { #[nyanpasu_macro::rpc] fn support() -> bool { true } }
-        #[test] #[nyanpasu_macro::rpc] fn fixture_test() -> bool { true }
-        #[tokio::test] #[nyanpasu_macro::rpc] async fn async_fixture() -> bool { true }
-        #[cfg(any(test, windows))] #[nyanpasu_macro::rpc] fn production() -> bool { true }
+        mod test_support { #[nyanpasu_macro::rpc(scope = settings)] fn support() -> bool { true } }
+        #[test] #[nyanpasu_macro::rpc(scope = settings)] fn fixture_test() -> bool { true }
+        #[tokio::test] #[nyanpasu_macro::rpc(scope = settings)] async fn async_fixture() -> bool { true }
+        #[cfg(any(test, windows))] #[nyanpasu_macro::rpc(scope = settings)] fn production() -> bool { true }
     "#,
     )
     .unwrap();
@@ -301,7 +301,8 @@ fn full_http_exposure_is_preserved_across_shared_split() {
     // E2a parent f56f08143: all 104 HTTP declarations are unconditional across
     // platform/feature cfgs. R3 removes set_hotkeys from HTTP; preserve the
     // remaining declarations and guards, not only names. R12 removes the three
-    // icon reads in favor of the special byte entries.
+    // icon reads in favor of the special byte entries. Remote access renames the debug
+    // HTTP status read to get_http_server_status, which no longer returns a credential.
     const BEFORE: &[&str] = &[
         "activate_profile",
         "change_clash_core",
@@ -338,9 +339,9 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "get_core_log",
         "get_core_log_status",
         "get_core_status",
-        "get_debug_http_status",
         "get_hotkey_functions",
         "get_hotkeys",
+        "get_http_server_status",
         "get_ip_lookup_providers",
         "get_postprocessing_output",
         "get_profile_sync_logs",
@@ -370,9 +371,12 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "open_log_session",
         "patch_app_config",
         "patch_clash_config",
+        "patch_clash_system_config",
         "patch_profile_metadata",
         "patch_remote_profile_options",
+        "patch_runtime_access",
         "patch_runtime_overrides",
+        "patch_system_settings",
         "probe_direct_egress",
         "query_core_logs",
         "query_logs",
@@ -397,6 +401,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "set_profile_layout",
         "set_profile_valid_fields",
         "set_proxy_group_layout",
+        "set_proxy_mode",
         "set_storage_item",
         "set_tray_icon_from_bytes",
         "set_widget_icon_from_bytes",

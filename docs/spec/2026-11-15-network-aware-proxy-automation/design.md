@@ -156,7 +156,7 @@ A manual switch change therefore **stands until the machine arrives on a network
 ## 6. Persistence and RPC
 
 - Field `network_automation` on `NyanpasuAppConfig`, `#[serde(default)]`, disabled and empty by default. Installations without the key decode unchanged; a test removes the key from a saved document. The patch replaces the whole policy, preserving rule order.
-- It is an **ordinary preference**: a rule writes only the switches that `patch_app_config` and `patch_clash_config` already let any HTTP caller change, so it needs no dedicated setter. `AppPreferencesPatch` is unchanged. Consequence: `get_app_config` (HTTP) returns the saved rules, including Wi-Fi names and gateway MACs, and configuration backups contain them.
+- It was specified as an ordinary preference, written through `patch_app_config`. With the remote-access scopes, those switches need the `system` scope, so the policy is written through `SystemSettingsPatch` and `patch_system_settings` instead: a `settings` principal must not gain them through a rule. `get_network_automation_status` is `sensitive_read` and `apply_network_automation` and `request_wifi_name_access` are `system`. Consequence: `get_app_config` (HTTP) returns the saved rules, including Wi-Fi names and gateway MACs, and configuration backups contain them.
 
 | Command                         | Kind     | Targets | Notes                                                                                                             |
 | ------------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |

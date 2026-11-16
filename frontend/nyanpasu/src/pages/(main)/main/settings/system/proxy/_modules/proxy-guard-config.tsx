@@ -9,7 +9,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useSetting } from '@nyanpasu/query'
+import { useSystemSetting } from '@nyanpasu/query'
 import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 
 const formSchema = z.object({
@@ -17,7 +17,7 @@ const formSchema = z.object({
 })
 
 export default function ProxyGuardConfig() {
-  const proxyGuardInterval = useSetting('proxy_guard_interval')
+  const proxyGuardInterval = useSystemSetting('proxy_guard_interval')
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

@@ -2,17 +2,18 @@ import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
-import { useSetting } from './use-settings'
+import { useSystemSetting } from './use-settings'
 
 /** The status is read by polling: the host has no network-change event. */
 const STATUS_REFETCH_INTERVAL = 5_000
 
 /**
  * The saved network rules. A patch replaces the policy as a whole, so `save`
- * takes the complete next policy.
+ * takes the complete next policy. A rule switches the system proxy, TUN and
+ * transparent proxy, so the policy is written under the `system` scope.
  */
 export const useNetworkAutomation = () => {
-  const setting = useSetting('network_automation')
+  const setting = useSystemSetting('network_automation')
 
   return {
     policy: setting.value,

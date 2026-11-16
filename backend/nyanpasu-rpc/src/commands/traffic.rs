@@ -6,7 +6,7 @@ use nyanpasu_observers::logs::{CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLog
 
 use crate::{error::Result, registry::RpcState};
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
     client: RpcState<'_, NyanpasuClient>,
@@ -14,7 +14,7 @@ pub async fn get_clash_ws_snapshot(
     Ok(client.clash_ws_snapshot().await?)
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, result, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn query_core_logs(
     client: RpcState<'_, NyanpasuClient>,
@@ -23,7 +23,7 @@ pub async fn query_core_logs(
     client.query_core_logs(query).await
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, result, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_log(
     client: RpcState<'_, NyanpasuClient>,
@@ -32,7 +32,7 @@ pub async fn get_core_log(
     client.get_core_log(cursor).await
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, result, query)]
 #[specta::specta]
 pub async fn get_core_log_status(
     client: RpcState<'_, NyanpasuClient>,
@@ -40,13 +40,13 @@ pub async fn get_core_log_status(
     client.get_core_log_status().await
 }
 
-#[nyanpasu_macro::rpc(http, result)]
+#[nyanpasu_macro::rpc(http, result, scope = settings)]
 #[specta::specta]
 pub async fn clear_core_logs(client: RpcState<'_, NyanpasuClient>) -> CoreLogResult<()> {
     client.clear_core_logs().await
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_traffic_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -54,7 +54,7 @@ pub async fn get_traffic_summary(
     Ok(client.traffic_summary().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn query_traffic_report(
     client: RpcState<'_, NyanpasuClient>,
@@ -63,7 +63,7 @@ pub async fn query_traffic_report(
     Ok(client.query_traffic_report(request).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn query_traffic_usage(
     client: RpcState<'_, NyanpasuClient>,
@@ -78,7 +78,7 @@ pub async fn query_traffic_usage(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn query_traffic_usage_by_keys(
     client: RpcState<'_, NyanpasuClient>,
@@ -91,7 +91,7 @@ pub async fn query_traffic_usage_by_keys(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn query_traffic_closed_connections(
     client: RpcState<'_, NyanpasuClient>,
@@ -105,7 +105,7 @@ pub async fn query_traffic_closed_connections(
         .await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn query_traffic_active_connection_ids(
     client: RpcState<'_, NyanpasuClient>,
@@ -114,7 +114,7 @@ pub async fn query_traffic_active_connection_ids(
     Ok(client.query_traffic_active_connection_ids(filters).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 #[specta::specta]
 pub async fn set_clash_ws_recording(
     client: RpcState<'_, NyanpasuClient>,
@@ -124,7 +124,7 @@ pub async fn set_clash_ws_recording(
     Ok(client.set_clash_ws_recording(kind, enabled).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 #[specta::specta]
 pub async fn clear_clash_ws_history(
     client: RpcState<'_, NyanpasuClient>,

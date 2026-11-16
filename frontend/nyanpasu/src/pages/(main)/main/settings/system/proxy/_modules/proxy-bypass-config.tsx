@@ -8,7 +8,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useSetting } from '@nyanpasu/query'
+import { useSystemSetting } from '@nyanpasu/query'
 import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 
 const DEFAULT_BYPASS =
@@ -21,7 +21,7 @@ const formSchema = z.object({
 })
 
 export default function ProxyBypassConfig() {
-  const systemProxyBypass = useSetting('system_proxy_bypass')
+  const systemProxyBypass = useSystemSetting('system_proxy_bypass')
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

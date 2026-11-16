@@ -46,9 +46,9 @@ use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
         ClientSetupArgs, NyanpasuClient, RuntimePaths, UiEventSink,
-        debug_http::DebugHttpControl,
         effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
+        http_server::HttpServerControl,
         system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::RedbHotkeyStoreOpener,
@@ -386,14 +386,14 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             network_environment: Some(Arc::new(
                 nyanpasu_os::network_environment::NetdevNetworkEnvironment::new(),
             )),
-            debug_http: Some({
-                let frontend = Some(debug_http_frontend(&app_handle));
+            http_server: Some({
+                let frontend = Some(http_server_frontend(&app_handle));
                 Arc::new(move || {
                     let (frontend, routes) = (frontend.clone(), http_routes.clone());
                     Box::pin(async move {
                         let server =
                             nyanpasu_rpc::http::HttpServerClient::spawn(frontend, routes).await?;
-                        Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+                        Ok(Arc::new(server) as Arc<dyn HttpServerControl>)
                     })
                 })
             }),
@@ -662,6 +662,16 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         owners,
     ))
     .context(StartLocalRpcSnafu)?;
+    // The routes exist now, so the listener can follow the persisted remote-access settings.
+    // A listener that cannot start degrades the feature, never the application's startup.
+    match tauri::async_runtime::block_on(app.state::<NyanpasuClient>().reconcile_http_server()) {
+        Ok(outcome) => {
+            for degradation in outcome.degradations() {
+                tracing::warn!(message = %degradation.message, "HTTP server startup degraded");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "HTTP server startup failed"),
+    }
     let desktop = crate::unified_rpc::native::DesktopRpc::new(
         rpc,
         owners.tasks.clone(),
@@ -688,7 +698,7 @@ pub(crate) const DESKTOP_RPC_CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::OsIntegration,
     ShellCapability::Elevation,
     ShellCapability::AccentColor,
-    ShellCapability::DebugHttp,
+    ShellCapability::HttpServer,
 ];
 
 #[derive(Debug, snafu::Snafu)]
@@ -834,7 +844,7 @@ fn build_application_effects(
     Ok((executor, widget))
 }
 
-fn debug_http_frontend(app: &tauri::AppHandle) -> nyanpasu_rpc::http::Frontend {
+fn http_server_frontend(app: &tauri::AppHandle) -> nyanpasu_rpc::http::Frontend {
     use nyanpasu_rpc::http::{Frontend, FrontendAssets};
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {

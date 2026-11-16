@@ -11,7 +11,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashConfig, useClashSetting } from '@nyanpasu/query'
+import { useClashConfig, useClashSettings } from '@nyanpasu/query'
 import type { ManageableField } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -59,14 +59,15 @@ export default function ManagedGuardFieldSelector({
 }: {
   field: ManagedGuardField
 }) {
-  const overrides = useClashSetting('overrides')
+  const { query: clashSettings } = useClashSettings()
+  const overrides = clashSettings.data?.overrides
 
   const { upsert } = useClashConfig()
 
   const current = useMemo(() => {
-    const value = overrides.value?.[field]
+    const value = overrides?.[field]
     return value ? toOption(value) : undefined
-  }, [overrides.value, field])
+  }, [overrides, field])
 
   const handleChange = useLockFn(async (option: ManagedGuardOption) => {
     try {

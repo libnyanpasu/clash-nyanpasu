@@ -32,7 +32,7 @@ use crate::{
     test_support::{Capture, Fixture, SECRET},
 };
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
 }
@@ -61,7 +61,7 @@ fn receipt() -> CommitReceipt {
     }
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 fn audit_mutation(
     value: String,
     degraded: bool,
@@ -346,7 +346,7 @@ async fn audit_drop_does_not_claim_transaction_cancellation() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_macro::rpc(local, owner, optional_capabilities(elevation))]
+#[nyanpasu_macro::rpc(local, owner, optional_capabilities(elevation), scope = settings)]
 #[specta::specta]
 fn local_optional_effect(
     _client: RpcState<'_, NyanpasuClient>,
@@ -417,7 +417,7 @@ async fn local_optional_elevation_expands_and_registers() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(clipboard))]
+#[nyanpasu_macro::rpc(http, capabilities(clipboard), scope = settings)]
 fn requires_clipboard(value: String) -> String {
     panic!("a command missing its required capability must not run: {value}");
 }

@@ -3,9 +3,15 @@
 use crate::error::Result;
 
 use nyanpasu_config::{
-    application::{ClashCore, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    application::{
+        ApplicationPreferencesPatch, ClashCore, IpLookupProviderInfo, NyanpasuAppConfig,
+        SystemSettingsPatch,
+    },
     clash::{
-        config::{ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch},
+        config::{
+            ClashConfig, ClashSettingsPatch, ClashSystemPatch,
+            overrides::{ClashAccessPatch, ClashOverridesSettingsPatch, Mode},
+        },
         features::ConfigFeatures,
     },
 };
@@ -17,7 +23,7 @@ use nyanpasu_runtime_values::network_automation::NetworkAutomationStatus;
 use super::types::GetSysProxyResponse;
 use crate::registry::RpcState;
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub fn get_clash_info(
     client: RpcState<'_, NyanpasuClient>,
@@ -26,7 +32,7 @@ pub fn get_clash_info(
 }
 
 /// get the runtime config
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
@@ -39,13 +45,13 @@ pub async fn get_runtime_config(
         .map(|config| serde_json::from_value(config).expect("a JSON value deserializes as itself")))
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: RpcState<'_, NyanpasuClient>) -> Result<String> {
     Ok(client.runtime_yaml().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn inspect_runtime(
     client: RpcState<'_, NyanpasuClient>,
@@ -53,7 +59,7 @@ pub async fn inspect_runtime(
     Ok(client.inspect_runtime().await)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn inspect_applied_runtime(
     client: RpcState<'_, NyanpasuClient>,
@@ -61,7 +67,7 @@ pub async fn inspect_applied_runtime(
     Ok(client.inspect_applied_runtime().await)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn inspect_runtime_node(
     client: RpcState<'_, NyanpasuClient>,
@@ -71,7 +77,7 @@ pub async fn inspect_runtime_node(
     Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_runtime_exists(client: RpcState<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client
@@ -82,7 +88,7 @@ pub async fn get_runtime_exists(client: RpcState<'_, NyanpasuClient>) -> Result<
         .unwrap_or_default())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_postprocessing_output(
     client: RpcState<'_, NyanpasuClient>,
@@ -95,7 +101,7 @@ pub async fn get_postprocessing_output(
         .unwrap_or_default())
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus, query)]
 #[specta::specta]
 pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,
@@ -105,7 +111,7 @@ pub async fn get_core_status(
 
 /// The network the host is on and what the network rules last did about it.
 /// Desktop-only: the status holds the live Wi-Fi name and gateway address.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_network_automation_status(
     client: RpcState<'_, NyanpasuClient>,
@@ -116,7 +122,7 @@ pub async fn get_network_automation_status(
 /// Applies the network rules to the current network again, overwriting
 /// capture switches changed by hand since. Switching the capture mechanisms
 /// reaches the same optional effects as a configuration patch.
-#[nyanpasu_macro::rpc(optional_capabilities(os_integration, presentation, elevation))]
+#[nyanpasu_macro::rpc(scope = system, optional_capabilities(os_integration, presentation, elevation))]
 #[specta::specta]
 pub async fn apply_network_automation(
     client: RpcState<'_, NyanpasuClient>,
@@ -128,7 +134,7 @@ pub async fn apply_network_automation(
 /// matches on it. Where the platform gates the name behind location access,
 /// this asks the user for it. The status holds that reading, or why there is
 /// none. Desktop-only: the status holds the live Wi-Fi name and gateway.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(scope = system)]
 #[specta::specta]
 pub async fn request_wifi_name_access(
     client: RpcState<'_, NyanpasuClient>,
@@ -136,13 +142,13 @@ pub async fn request_wifi_name_access(
     Ok(client.request_wifi_name_access().await)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 #[specta::specta]
 pub async fn probe_direct_egress(client: RpcState<'_, NyanpasuClient>) -> Result<DirectEgress> {
     Ok(client.probe_direct_egress().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_ip_lookup_providers(
     client: RpcState<'_, NyanpasuClient>,
@@ -150,126 +156,115 @@ pub async fn get_ip_lookup_providers(
     Ok(client.ip_lookup_providers())
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
     Ok(client.get_app_config().await?)
 }
 
-/// A patch of ordinary application preferences.
-///
-/// Settings whose privilege class differs from ordinary preferences get a
-/// dedicated command and are rejected here on every RPC transport.
-/// This list is limited to hotkeys and service mode. Before adding another
-/// such field, or a group that needs its own transport policy, split the
-/// domain instead of extending this list:
-/// - move the config type and its struct-patch derive in nyanpasu-config;
-/// - move the persisted document and add a nyanpasu-migration module;
-/// - update state/application.rs and state/mutation/impact.rs, and move
-///   the corresponding requested_owners inputs;
-/// - move the RPC command and its declaration, and the frontend hook.
-///
-/// Start that split from this newtype: it becomes the derived patch of the
-/// split-out ordinary application preferences domain.
-/// The core facade still accepts domain patches; this limits only the
-/// public patch_app_config command.
-#[derive(Debug, serde::Deserialize)]
-#[serde(try_from = "NyanpasuAppConfigPatch")]
-pub struct AppPreferencesPatch(NyanpasuAppConfigPatch);
-
-/// Errors while validating runtime command inputs.
-#[derive(Debug, snafu::Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "patch_app_config cannot write {fields:?}; \
-         use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
-    ))]
-    CheckPatchFields { fields: Vec<&'static str> },
-}
-
-impl TryFrom<NyanpasuAppConfigPatch> for AppPreferencesPatch {
-    type Error = Error;
-
-    fn try_from(patch: NyanpasuAppConfigPatch) -> std::result::Result<Self, Self::Error> {
-        let mut fields = Vec::new();
-
-        if patch.hotkeys.is_some() {
-            fields.push("hotkeys");
-        }
-
-        if patch.enable_service_mode.is_some() {
-            fields.push("enable_service_mode");
-        }
-
-        if !fields.is_empty() {
-            return Err(Error::CheckPatchFields { fields });
-        }
-
-        Ok(Self(patch))
-    }
-}
-
-impl specta::Type for AppPreferencesPatch {
-    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
-        <NyanpasuAppConfigPatch as specta::Type>::definition(types)
-    }
-}
-
-#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation))]
+/// Patch the ordinary application preferences.
+#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,
-    patch: AppPreferencesPatch,
+    patch: ApplicationPreferencesPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // AppPreferencesPatch establishes the command's input scope during decoding.
-    Ok(client.patch_app_config(patch.0).await?)
+    // The request type holds only ordinary preferences: fields of another class are refused while
+    // decoding, before this handler is admitted. Each class has its own command.
+    Ok(client.patch_app_config(patch.into()).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+/// Patch the application settings that change how the host behaves: autostart, the system proxy
+/// and its guard, the bypass list and the PAC URL.
+#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = system)]
+#[specta::specta]
+pub async fn patch_system_settings(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: SystemSettingsPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    Ok(client.patch_app_config(patch.into()).await?)
+}
+
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_clash_config(client: RpcState<'_, NyanpasuClient>) -> Result<ClashConfig> {
     Ok(client.get_clash_config().await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn get_config_features(client: RpcState<'_, NyanpasuClient>) -> Result<ConfigFeatures> {
     Ok(client.config_features())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+/// Patch the ordinary Clash settings: profile expansion and connection breaking.
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 pub async fn patch_clash_config(
     client: RpcState<'_, NyanpasuClient>,
-    patch: ClashConfigPatch,
+    patch: ClashSettingsPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch).await?)
+    Ok(client.patch_clash_config(patch.into()).await?)
 }
 
-/// patch the clash guard overrides (mode, log level, LAN, IPv6, secret...)
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+/// Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
+/// the web UI templates and the field filter.
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[specta::specta]
+pub async fn patch_clash_system_config(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: ClashSystemPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    Ok(client.patch_clash_config(patch.into()).await?)
+}
+
+/// Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency).
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
 pub async fn patch_runtime_overrides(
     client: RpcState<'_, NyanpasuClient>,
-    patch: ClashGuardOverridesPatch,
+    patch: ClashOverridesSettingsPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    // Explicit-field whitelist so future patch fields never auto-leak into
-    // logs; the secret is reported by presence only.
+    // Explicit-field whitelist so future patch fields never auto-leak into logs.
     tracing::debug!(
         log_level = ?patch.log_level,
-        allow_lan = ?patch.allow_lan,
-        mode = ?patch.mode,
-        secret = patch.secret.is_some(),
         unified_delay = ?patch.unified_delay,
         tcp_concurrent = ?patch.tcp_concurrent,
         ipv6 = ?patch.ipv6,
         "patch_runtime_overrides"
     );
-    Ok(client.patch_runtime_overrides(patch).await?)
+    Ok(client.patch_runtime_overrides(patch.into()).await?)
 }
 
-#[nyanpasu_macro::rpc(http)]
+/// Patch the controller exposure: LAN access and the controller secret.
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[specta::specta]
+#[tracing_attributes::instrument(skip_all)]
+pub async fn patch_runtime_access(
+    client: RpcState<'_, NyanpasuClient>,
+    patch: ClashAccessPatch,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    // The secret is reported by presence only.
+    tracing::debug!(
+        allow_lan = ?patch.allow_lan,
+        secret = patch.secret.is_some(),
+        "patch_runtime_access"
+    );
+    Ok(client.patch_runtime_overrides(patch.into()).await?)
+}
+
+/// Switch the proxy mode (rule, global, direct).
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
+#[specta::specta]
+pub async fn set_proxy_mode(
+    client: RpcState<'_, NyanpasuClient>,
+    mode: Mode,
+) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+    Ok(client.set_proxy_mode(mode).await?)
+}
+
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub fn get_hotkey_functions() -> Vec<&'static str> {
     nyanpasu_runtime_values::hotkey::HotkeyAction::all()
@@ -287,7 +282,7 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
         .collect()
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn change_clash_core(
     client: RpcState<'_, NyanpasuClient>,
@@ -298,7 +293,7 @@ pub async fn change_clash_core(
 }
 
 /// restart the sidecar
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn restart_sidecar(client: RpcState<'_, NyanpasuClient>) -> Result {
     client.reconcile_core().await?;
@@ -307,7 +302,7 @@ pub async fn restart_sidecar(client: RpcState<'_, NyanpasuClient>) -> Result {
 
 /// get the system proxy
 /// server field is the combination of host and port
-#[nyanpasu_macro::rpc(http, capabilities(os_integration))]
+#[nyanpasu_macro::rpc(http, capabilities(os_integration), query)]
 #[specta::specta]
 pub async fn get_sys_proxy(client: RpcState<'_, NyanpasuClient>) -> Result<GetSysProxyResponse> {
     let current = client.get_os_proxy().await?;
@@ -321,49 +316,4 @@ pub async fn get_sys_proxy(client: RpcState<'_, NyanpasuClient>) -> Result<GetSy
         bypass: current.bypass,
         server,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use nyanpasu_config::application::NyanpasuAppConfigPatch;
-    use serde_json::json;
-
-    use super::AppPreferencesPatch;
-
-    #[test]
-    fn app_preferences_decode_error_preserves_the_scope_message() {
-        for (patch, fields) in [
-            (json!({"hotkeys": []}), vec!["hotkeys"]),
-            (
-                json!({"enable_service_mode": false}),
-                vec!["enable_service_mode"],
-            ),
-            (
-                json!({"enable_service_mode": true, "hotkeys": []}),
-                vec!["hotkeys", "enable_service_mode"],
-            ),
-        ] {
-            let error = serde_json::from_value::<AppPreferencesPatch>(patch).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                format!(
-                    "patch_app_config cannot write {fields:?}; use set_hotkeys for hotkeys and set_service_mode for enable_service_mode"
-                )
-            );
-        }
-    }
-
-    #[test]
-    fn app_preferences_patch_exports_the_existing_patch_type() {
-        let mut original = specta::Types::default();
-        let expected = <NyanpasuAppConfigPatch as specta::Type>::definition(&mut original);
-        let mut scoped = specta::Types::default();
-        let actual = <AppPreferencesPatch as specta::Type>::definition(&mut scoped);
-        assert_eq!(actual, expected);
-        assert_eq!(scoped.len(), original.len());
-        assert_eq!(
-            scoped.into_sorted_iter().collect::<Vec<_>>(),
-            original.into_sorted_iter().collect::<Vec<_>>()
-        );
-    }
 }

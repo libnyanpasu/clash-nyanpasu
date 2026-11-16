@@ -144,7 +144,7 @@ APIs for callers that do not exist.
 - Avoid `impl Into<T>` parameters in application code unless several real call sites
   pass different types.
 - Replace a `bool` parameter whose meaning is unclear at the call site with an enum.
-  A clear binary setting, such as `set_debug_http_enabled(enabled: bool)` or a
+  A clear binary setting, such as `set_service_mode(enabled: bool)` or a
   serialized `enabled` field, stays a `bool`.
 - Use a newtype when values with the same representation mean different things:
   `ProfileId` and `FolderId`, `EffectRevision`, `Version`. Use a type alias only as a

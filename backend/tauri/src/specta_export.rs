@@ -43,7 +43,7 @@ macro_rules! schema_commands {
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         schema_commands![
-            commands::status::get_debug_http_status,
+            commands::status::get_http_server_status,
             commands::status::get_configuration_status,
             // Read-only commands
             ipc::read_clipboard_text,
@@ -117,7 +117,6 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::show_native_message_dialog,
             ipc::ask_native_dialog,
             ipc::open_native_file_dialog,
-            ipc::set_debug_http_enabled,
             commands::status::retry_configuration_runtime,
             commands::status::retry_configuration_effect,
             ipc::set_release_channel,
@@ -147,10 +146,14 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::open_core_dir,
             commands::runtime::restart_sidecar,
             commands::runtime::patch_app_config,
+            commands::runtime::patch_system_settings,
             commands::runtime::patch_clash_config,
+            commands::runtime::patch_clash_system_config,
             commands::runtime::apply_network_automation,
             commands::runtime::request_wifi_name_access,
             commands::runtime::patch_runtime_overrides,
+            commands::runtime::patch_runtime_access,
+            commands::runtime::set_proxy_mode,
             commands::runtime::change_clash_core,
             commands::clash::clash_api_delete_connections,
             commands::clash::clash_api_update_providers_rules,
@@ -187,6 +190,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::service::stop_service,
             ipc::service::restart_service,
             commands::host::set_service_mode,
+            commands::host::set_remote_access,
+            commands::status::create_http_launch_url,
             commands::clash::select_proxy,
             commands::clash::clear_proxy_fixed,
             commands::clash::update_proxy_provider,
@@ -596,6 +601,48 @@ mod tests {
         }
     }
 
+    /// The macro declaration is the source of truth for query/mutation; the hand-listed Specta
+    /// groups that become TanStack queries and mutations must agree with it for every command.
+    #[test]
+    fn query_mutation_split_agrees_with_the_declared_effect() {
+        use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect};
+
+        let (query_bindings, _) = build_specta_builder();
+        let (_, rest) = query_bindings.split_once("export const queries =").unwrap();
+        let (queries, mutations) = rest.split_once("export const mutations =").unwrap();
+        for command in COMMAND_CATALOG {
+            let mut camel = String::new();
+            let mut upper = false;
+            for character in command.name.chars() {
+                if character == '_' {
+                    upper = true;
+                } else if upper {
+                    camel.extend(character.to_uppercase());
+                    upper = false;
+                } else {
+                    camel.push(character);
+                }
+            }
+            let key = format!("{camel}:");
+            let (declared, other) = match command.effect {
+                CommandEffect::Query => (queries, mutations),
+                CommandEffect::Mutation => (mutations, queries),
+            };
+            assert!(
+                declared.contains(&key),
+                "{} is declared {:?} but is not in the matching Specta group",
+                command.name,
+                command.effect
+            );
+            assert!(
+                !other.contains(&key),
+                "{} is declared {:?} but is also in the other Specta group",
+                command.name,
+                command.effect
+            );
+        }
+    }
+
     #[test]
     fn configuration_status_is_exported_as_a_query() {
         let (query_bindings, _) = build_specta_builder();
@@ -674,8 +721,12 @@ mod tests {
         assert!(!queries.contains("unsubscribeClashConnectionDetails:"));
         assert!(mutations.contains("subscribeClashConnectionDetails:"));
         assert!(mutations.contains("unsubscribeClashConnectionDetails:"));
-        assert!(!queries.contains("setDebugHttpEnabled:"));
-        assert!(mutations.contains("setDebugHttpEnabled:"));
+        // The launch URL is a credential: a query would keep it in the client cache.
+        assert!(!queries.contains("createHttpLaunchUrl:"));
+        assert!(mutations.contains("createHttpLaunchUrl:"));
+        assert!(!queries.contains("setRemoteAccess:"));
+        assert!(mutations.contains("setRemoteAccess:"));
+        assert!(queries.contains("getHttpServerStatus:"));
         assert!(queries.contains("getAppUpdateState:"));
         // A probe downloads but writes nothing.
         assert!(queries.contains("probeProfileUrl:"));
@@ -727,10 +778,13 @@ mod tests {
             "DegradationPhase",
             "DegradationReason",
             "NyanpasuAppConfig",
-            "NyanpasuAppConfigPatch",
+            "ApplicationPreferencesPatch",
+            "SystemSettingsPatch",
             "ClashConfig",
-            "ClashConfigPatch",
-            "ClashGuardOverridesPatch",
+            "ClashSettingsPatch",
+            "ClashSystemPatch",
+            "ClashOverridesSettingsPatch",
+            "ClashAccessPatch",
             "ClashApiConfig",
         ] {
             assert!(
@@ -739,6 +793,103 @@ mod tests {
                 "expected named TS export for {name}"
             );
         }
+
+        // Each request contract advertises only the fields of its privilege class. The unrestricted
+        // patches stay internal and are not exported at all.
+        for internal in [
+            "NyanpasuAppConfigPatch",
+            "ClashConfigPatch",
+            "ClashGuardOverridesPatch",
+        ] {
+            assert!(!generated.contains(internal), "{internal} is exported");
+        }
+        let advertised = |name: &str, required: &[&str], forbidden: &[&str]| {
+            for suffix in ["Serialize", "Deserialize"] {
+                let declaration = exported_type(&generated, &format!("{name}_{suffix}"));
+                // A property key, not a word in a doc comment: `field?:`, `field:` or `'field'`.
+                for field in forbidden {
+                    for key in [
+                        format!("{field}?:"),
+                        format!("{field}:"),
+                        format!("'{field}'"),
+                    ] {
+                        assert!(
+                            !declaration.contains(&key),
+                            "{name} advertises {field}:\n{declaration}"
+                        );
+                    }
+                }
+                assert_contains_all(declaration, name, required);
+            }
+        };
+        advertised(
+            "ApplicationPreferencesPatch",
+            &[
+                "proxy_layout_column",
+                // Ordinary null is a no-op and the field is optional, so both are in the contract.
+                "theme_color?: string | null",
+                // The clearable preference accepts an explicit null.
+                "release_channel?: ReleaseChannel | null",
+            ],
+            &[
+                "hotkeys",
+                "enable_service_mode",
+                "remote_access",
+                "enable_auto_launch",
+                "enable_system_proxy",
+                "enable_proxy_guard",
+                "system_proxy_bypass",
+                "proxy_guard_interval",
+                "pac_url",
+            ],
+        );
+        advertised(
+            "SystemSettingsPatch",
+            &[
+                "enable_auto_launch",
+                "enable_system_proxy",
+                "enable_proxy_guard",
+                "system_proxy_bypass",
+                "proxy_guard_interval",
+                "pac_url?: string | null",
+            ],
+            &[
+                "hotkeys",
+                "remote_access",
+                "proxy_layout_column",
+                "release_channel",
+            ],
+        );
+        advertised(
+            "ClashSettingsPatch",
+            &["expand_include_all", "break_connection"],
+            &[
+                "enable_tun_mode",
+                "external_controller",
+                "mixed_port",
+                "overrides",
+            ],
+        );
+        advertised(
+            "ClashSystemPatch",
+            &[
+                "enable_tun_mode",
+                "external_controller",
+                "mixed_port",
+                "web_ui_list",
+            ],
+            &["expand_include_all", "break_connection", "overrides"],
+        );
+        advertised(
+            "ClashOverridesSettingsPatch",
+            &["'log-level'", "ipv6"],
+            &["mode", "allow-lan", "secret"],
+        );
+        advertised(
+            "ClashAccessPatch",
+            &["'allow-lan'", "secret"],
+            &["mode", "log-level", "ipv6"],
+        );
 
         assert!(
             !generated.contains("export type RebuildOutcome")
@@ -752,7 +903,7 @@ mod tests {
         );
         assert!(
             !generated.contains("export type PatchRuntimeConfig"),
-            "the whitelisted overrides DTO is replaced by ClashGuardOverridesPatch"
+            "the whitelisted overrides DTO is replaced by the per-class override patches"
         );
         assert!(
             !generated.contains("export type IVerge") && !generated.contains("export type Legacy"),
@@ -769,16 +920,21 @@ mod tests {
         );
         // The composite clash fields take nested patches, so edits of sibling
         // sub-fields merge in the actor instead of replacing each other.
-        let clash_patch = exported_type(&generated, "ClashConfigPatch_Deserialize");
-        assert_contains_all(
-            clash_patch,
-            "ClashConfigPatch_Deserialize",
-            &[
-                "mixed_port?: PortStrategyPatch_Deserialize",
-                "external_controller?: ExternalControllerStrategyPatch_Deserialize",
-                "break_connection?: BreakConnectionStrategyPatch_Deserialize",
-            ],
-        );
+        for (name, nested) in [
+            (
+                "ClashSystemPatch_Deserialize",
+                &[
+                    "mixed_port?: PortStrategyPatch_Deserialize",
+                    "external_controller?: ExternalControllerStrategyPatch_Deserialize",
+                ][..],
+            ),
+            (
+                "ClashSettingsPatch_Deserialize",
+                &["break_connection?: BreakConnectionStrategyPatch_Deserialize"][..],
+            ),
+        ] {
+            assert_contains_all(exported_type(&generated, name), name, nested);
+        }
 
         for phase in ["Deserialize", "Serialize"] {
             let name = format!("ConfigDefinition_{phase}");

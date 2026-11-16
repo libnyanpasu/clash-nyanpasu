@@ -80,9 +80,10 @@ asserted cache on slow workers, and verifies that the mutation clears its interv
 ## Real HTTP UI integration
 
 Browser Mode tests mock transports and do not verify the real backend chain. The
-existing `pnpm run test:http-ui <running debug HTTP server URL>` checks the
-browser UI and actual HTTP RPC against an already-running debug server. Use its
-authenticated entry URL; the script verifies credential removal from the URL,
+existing `pnpm run test:http-ui <launch URL of a running HTTP server>` checks the
+browser UI and actual HTTP RPC against an already-running server. Use its
+authenticated entry URL (a credential: it comes from the desktop-only
+`create_http_launch_url`, never from the status); the script verifies credential removal from the URL,
 HTTP capability restrictions, structured errors, and absence of native API errors.
 This requires a runnable backend and isolated test data. Unit tests, Browser Mode,
 and a successful frontend build do not establish desktop or real HTTP acceptance.

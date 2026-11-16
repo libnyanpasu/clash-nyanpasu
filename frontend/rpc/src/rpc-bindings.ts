@@ -12,9 +12,9 @@ export function createRpcClient(
 ) {
   const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)
   const commands = {
-    getDebugHttpStatus: () =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('get_debug_http_status'),
+    getHttpServerStatus: () =>
+      typedError<HttpServerStatus, IpcError>(
+        __RPC_INVOKE('get_http_server_status'),
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
@@ -373,10 +373,6 @@ export function createRpcClient(
       typedError<string | null, IpcError>(
         __RPC_INVOKE('open_native_file_dialog', { title, filters }),
       ),
-    setDebugHttpEnabled: (enabled: boolean) =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('set_debug_http_enabled', { enabled }),
-      ),
     retryConfigurationRuntime: () =>
       typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
     retryConfigurationEffect: (kind: EffectKind) =>
@@ -461,13 +457,31 @@ export function createRpcClient(
     /**  restart the sidecar */
     restartSidecar: () =>
       typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
-    patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
+    /**  Patch the ordinary application preferences. */
+    patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
-    patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
+    /**
+     *  Patch the application settings that change how the host behaves: autostart, the system proxy
+     *  and its guard, the bypass list and the PAC URL.
+     */
+    patchSystemSettings: (patch: SystemSettingsPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_system_settings', { patch }),
+      ),
+    /**  Patch the ordinary Clash settings: profile expansion and connection breaking. */
+    patchClashConfig: (patch: ClashSettingsPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_clash_config', { patch }),
+      ),
+    /**
+     *  Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
+     *  the web UI templates and the field filter.
+     */
+    patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_clash_system_config', { patch }),
       ),
     /**
      *  Applies the network rules to the current network again, overwriting
@@ -488,10 +502,20 @@ export function createRpcClient(
       typedError<NetworkAutomationStatus, IpcError>(
         __RPC_INVOKE('request_wifi_name_access'),
       ),
-    /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
-    patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
+    /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
+    patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_runtime_overrides', { patch }),
+      ),
+    /**  Patch the controller exposure: LAN access and the controller secret. */
+    patchRuntimeAccess: (patch: ClashAccessPatch_Deserialize) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('patch_runtime_access', { patch }),
+      ),
+    /**  Switch the proxy mode (rule, global, direct). */
+    setProxyMode: (mode: Mode) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_proxy_mode', { mode }),
       ),
     changeClashCore: (clashCore: ClashCore_Deserialize) =>
       typedError<null, IpcError>(
@@ -660,6 +684,23 @@ export function createRpcClient(
     setServiceMode: (enabled: boolean) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('set_service_mode', { enabled }),
+      ),
+    /**
+     *  Remote access widens who can reach the application, so it has its own desktop-only command;
+     *  `patch_app_config` rejects the section.
+     */
+    setRemoteAccess: (config: RemoteAccessConfig) =>
+      typedError<MutationOutcome<null>, IpcError>(
+        __RPC_INVOKE('set_remote_access', { config }),
+      ),
+    /**
+     *  A URL that logs the caller into the running HTTP server. It is a credential, so it is a
+     *  desktop-only mutation: a query would keep it in a client cache, and no remote transport may
+     *  return it.
+     */
+    createHttpLaunchUrl: () =>
+      typedError<string | null, IpcError>(
+        __RPC_INVOKE('create_http_launch_url'),
       ),
     selectProxy: (group: string, name: string) =>
       typedError<MutationOutcome<null>, IpcError>(
@@ -857,6 +898,115 @@ export type AppUpdateSnapshot = {
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
 
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch =
+  | ApplicationPreferencesPatch_Serialize
+  | ApplicationPreferencesPatch_Deserialize
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Deserialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Deserialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Deserialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_silent_start?: boolean | null
+  theme_color?: string | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close?: WindowCloseSettingsPatch_Deserialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Serialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Serialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Serialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_silent_start?: boolean | null
+  theme_color?: string | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close: WindowCloseSettingsPatch_Serialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+}
+
 export type BrandVersion = {
   brand: string
   version: string
@@ -912,6 +1062,31 @@ export type Bytes = {
   download: number
 }
 
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch =
+  ClashAccessPatch_Serialize | ClashAccessPatch_Deserialize
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Deserialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Serialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
 export type ClashApiConfig = {
   port: number | null
   mode: string | null
@@ -965,51 +1140,6 @@ export type ClashConfig = {
   tun_stack: TunStack
   /**  The options of the mips stack, kept while another stack is selected. */
   tun_mips?: MipsConfig
-}
-
-export type ClashConfigPatch =
-  ClashConfigPatch_Serialize | ClashConfigPatch_Deserialize
-
-export type ClashConfigPatch_Deserialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun?: TunOverridesPatch_Deserialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller?: ExternalControllerStrategyPatch_Deserialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port?: PortStrategyPatch_Deserialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy?: TransparentProxyConfigPatch
-  break_connection?: BreakConnectionStrategyPatch_Deserialize
-  tun_stack?: TunStack | null
-  tun_mips?: MipsConfigPatch_Deserialize
-}
-
-export type ClashConfigPatch_Serialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun: TunOverridesPatch_Serialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller: ExternalControllerStrategyPatch_Serialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port: PortStrategyPatch_Serialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy: TransparentProxyConfigPatch
-  break_connection: BreakConnectionStrategyPatch_Serialize
-  tun_stack?: TunStack | null
-  tun_mips: MipsConfigPatch_Serialize
 }
 
 /**
@@ -1130,29 +1260,6 @@ export type ClashGuardOverrides = {
   ipv6: boolean
 }
 
-export type ClashGuardOverridesPatch =
-  ClashGuardOverridesPatch_Serialize | ClashGuardOverridesPatch_Deserialize
-
-export type ClashGuardOverridesPatch_Deserialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
-export type ClashGuardOverridesPatch_Serialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
 export type ClashInfo = {
   /**  clash core port */
   port: number
@@ -1162,10 +1269,128 @@ export type ClashInfo = {
   secret: string | null
 }
 
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch =
+  | ClashOverridesSettingsPatch_Serialize
+  | ClashOverridesSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Deserialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Serialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
 export type ClashRule = {
   type: string
   payload: string
   proxy: string
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch =
+  ClashSettingsPatch_Serialize | ClashSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Deserialize = {
+  expand_include_all?: boolean | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Serialize = {
+  expand_include_all?: boolean | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch =
+  ClashSystemPatch_Serialize | ClashSystemPatch_Deserialize
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Deserialize = {
+  enable_tun_mode?: boolean | null
+  tun?: TunOverridesPatch_Deserialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port?: PortStrategyPatch_Deserialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy?: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips?: MipsConfigPatch_Deserialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Serialize = {
+  enable_tun_mode?: boolean | null
+  tun: TunOverridesPatch_Serialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port: PortStrategyPatch_Serialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips: MipsConfigPatch_Serialize
 }
 
 export type ClashVersion = {
@@ -1355,6 +1580,7 @@ export type ConfigError =
     }
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
+  | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
   | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'validate_hotkey_capability' }
@@ -1954,18 +2180,6 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
-/**  Why a debug HTTP query or setting change could not be performed. */
-export type DebugHttpControlError =
-  | { kind: 'read_status_unsupported' }
-  | { kind: 'change_enabled_unsupported' }
-  | { kind: 'read_status' }
-  | { kind: 'change_enabled' }
-
-export type DebugHttpStatus = {
-  enabled: boolean
-  url: string | null
-}
-
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = {
   phase: DegradationPhase
@@ -2005,6 +2219,8 @@ export type DegradationReason =
       profile: ProfileId
       cause: ProfilesError
     }
+  /**  The remote-access settings were saved but the HTTP listener could not follow them. */
+  | { code: 'http_server_unavailable' }
 
 export type Delay = {
   delay: number
@@ -2396,6 +2612,57 @@ export type HotkeyParseError =
       second: HotkeyAction
     }
 
+/**  HTTP listener settings. */
+export type HttpAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+  /**  Kept while the switch is off, so turning it on restores the earlier choice. */
+  strategy?: HttpAccessStrategy
+  /**
+   *  `None` until the first start binds a free port and records it. Later starts
+   *  reuse the recorded port, so URLs stay valid across restarts.
+   */
+  port?: number | null
+  /**  Serve the bundled web UI. When false only the API is served. */
+  serve_webui?: boolean
+}
+
+/**
+ *  How the HTTP listener decides who may call it.
+ *
+ *  Further strategies join this enum in the change that implements their complete
+ *  request, scope and transport checks. Until then a stored value cannot name them.
+ */
+export type HttpAccessStrategy =
+  /**  Loopback only; every request must carry the per-start credential. */
+  'local_authenticated'
+
+/**  Why an HTTP server query or setting change could not be performed. */
+export type HttpServerControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type HttpServerFault =
+  /**  The persisted port is taken. The server never moves to another port by itself. */
+  | 'port_in_use'
+  /**  The listener could not be bound for another reason. */
+  | 'bind_failed'
+
+/**
+ *  The listener's state. It never carries a credential: the credential-bearing launch URL
+ *  is a separate desktop-only query.
+ */
+export type HttpServerStatus = {
+  enabled: boolean
+  /**  The bound origin, for example `http://127.0.0.1:41234/`. */
+  url: string | null
+  /**  The bound port, which the facade records when the settings leave it open. */
+  port: number | null
+  fault: HttpServerFault | null
+}
+
 /**
  *  UI language of the application.
  *
@@ -2528,7 +2795,7 @@ export type IpcErrorKind =
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
-  | { domain: 'debug_http'; error: DebugHttpControlError }
+  | { domain: 'http_server'; error: HttpServerControlError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -3005,114 +3272,6 @@ export type NewProfileRequest_Serialize = {
 export type NyanpasuAppConfig =
   NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
 
-export type NyanpasuAppConfigPatch =
-  NyanpasuAppConfigPatch_Serialize | NyanpasuAppConfigPatch_Deserialize
-
-export type NyanpasuAppConfigPatch_Deserialize =
-  | ({
-      app_singleton_port?: number | null
-      app_log_level?: LoggingLevel_Deserialize | null
-      core_logs?: CoreLogSettings | null
-      language?: I18nLanguage_Deserialize | null
-      theme_mode?: ThemeMode | null
-      traffic_graph?: boolean | null
-      enable_memory_usage?: boolean | null
-      lighten_animation_effects?: boolean | null
-      enable_service_mode?: boolean | null
-      enable_auto_launch?: boolean | null
-      enable_silent_start?: boolean | null
-      enable_system_proxy?: boolean | null
-      enable_proxy_guard?: boolean | null
-      system_proxy_bypass?: string | null
-      theme_color?: string
-      hotkeys?: string[] | null
-      default_latency_test?: string | null
-      default_latency_timeout_ms?: number | null
-      enable_builtin_enhanced?: boolean | null
-      proxy_layout_column?: number | null
-      max_log_files?: number | null
-      max_log_file_size?: number | null
-      enable_auto_check_update?: boolean | null
-      enable_auto_download_update?: boolean | null
-      release_channel?: ReleaseChannel | null
-      update_sources?: UpdateSource[] | null
-      always_on_top?: boolean | null
-      tray_menu_mode?: TrayMenuMode | null
-      window_close?: WindowCloseSettingsPatch_Deserialize
-      network_statistic_widget?: NetworkStatisticWidgetConfig | null
-      network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-      traffic_retention?: TrafficRetention | null
-      enable_local_ip_probe?: boolean | null
-      stun_servers?: StunServer[] | null
-      ip_lookup_providers?: IpLookupProvider[] | null
-      network_automation?: NetworkAutomation | null
-      pac_url?: string | null
-      enable_tray_text?: boolean | null
-      enable_tray_traffic?: boolean | null
-      use_legacy_ui?: boolean | null
-    } & {
-      proxy_guard_interval?: number | null
-    })
-  | ({
-      proxy_guard_duration?: number | null
-    } & {
-      core?: ClashCore_Deserialize | null
-    })
-  | ({
-      clash_core?: ClashCore_Deserialize | null
-    } & {
-      tray_selector_mode?: ProxiesSelectorMode | null
-    })
-  | {
-      clash_tray_selector?: ProxiesSelectorMode | null
-    }
-
-export type NyanpasuAppConfigPatch_Serialize = {
-  app_singleton_port?: number | null
-  app_log_level?: LoggingLevel_Serialize | null
-  core_logs?: CoreLogSettings | null
-  language?: I18nLanguage_Serialize | null
-  theme_mode?: ThemeMode | null
-  traffic_graph?: boolean | null
-  enable_memory_usage?: boolean | null
-  lighten_animation_effects?: boolean | null
-  enable_service_mode?: boolean | null
-  enable_auto_launch?: boolean | null
-  enable_silent_start?: boolean | null
-  enable_system_proxy?: boolean | null
-  enable_proxy_guard?: boolean | null
-  system_proxy_bypass?: string | null
-  proxy_guard_interval?: number | null
-  theme_color?: string
-  core?: ClashCore_Serialize | null
-  hotkeys?: string[] | null
-  default_latency_test?: string | null
-  default_latency_timeout_ms?: number | null
-  enable_builtin_enhanced?: boolean | null
-  proxy_layout_column?: number | null
-  max_log_files?: number | null
-  max_log_file_size?: number | null
-  enable_auto_check_update?: boolean | null
-  enable_auto_download_update?: boolean | null
-  release_channel?: ReleaseChannel | null
-  update_sources?: UpdateSource[] | null
-  tray_selector_mode?: ProxiesSelectorMode | null
-  always_on_top?: boolean | null
-  tray_menu_mode?: TrayMenuMode | null
-  window_close: WindowCloseSettingsPatch_Serialize
-  network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-  traffic_retention?: TrafficRetention | null
-  enable_local_ip_probe?: boolean | null
-  stun_servers?: StunServer[] | null
-  ip_lookup_providers?: IpLookupProvider[] | null
-  network_automation?: NetworkAutomation | null
-  pac_url?: string | null
-  enable_tray_text?: boolean | null
-  enable_tray_traffic?: boolean | null
-  use_legacy_ui?: boolean | null
-}
-
 /**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Deserialize = {
   /**  app listening port for app singleton */
@@ -3200,6 +3359,11 @@ export type NyanpasuAppConfig_Deserialize = {
   network_statistic_widget_logo?: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention?: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access?: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe?: boolean
   /**
@@ -3327,6 +3491,11 @@ export type NyanpasuAppConfig_Serialize = {
   network_statistic_widget_logo: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe: boolean
   /**
@@ -4947,6 +5116,21 @@ export type ReleaseChannelInfo = {
   installed: ReleaseChannel
 }
 
+/**  The persisted `remote_access` section. */
+export type RemoteAccessConfig = {
+  http?: HttpAccessConfig
+}
+
+/**  Why a remote-access value cannot be committed. */
+export type RemoteAccessError =
+  /**  Port 0 asks the OS for any port; the persisted port is always a concrete one. */
+  | { kind: 'port_zero' }
+  /**
+   *  The section is changed only by the dedicated remote-access command, never by a
+   *  general application patch.
+   */
+  | { kind: 'use_dedicated_command' }
+
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
@@ -5674,6 +5858,65 @@ export type SystemDnsError =
    */
   | { kind: 'flush_rejected'; command: string; code: number | null }
   | { kind: 'unsupported' }
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch =
+  SystemSettingsPatch_Serialize | SystemSettingsPatch_Deserialize
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Deserialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+  network_automation?: NetworkAutomation | null
+}
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Serialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+  network_automation?: NetworkAutomation | null
+}
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 

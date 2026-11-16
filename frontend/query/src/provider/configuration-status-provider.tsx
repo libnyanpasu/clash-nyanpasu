@@ -39,8 +39,12 @@ type ConfigurationStatusContextValue = {
 
 const CONFIGURATION_MUTATIONS = new Set<unknown>([
   'patchAppConfig',
+  'patchSystemSettings',
   'patchClashConfig',
+  'patchClashSystemConfig',
   'patchRuntimeOverrides',
+  'patchRuntimeAccess',
+  'setProxyMode',
   'changeClashCore',
   'setHotkeys',
   'setServiceMode',

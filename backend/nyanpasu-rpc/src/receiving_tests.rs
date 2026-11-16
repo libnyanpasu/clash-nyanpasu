@@ -18,7 +18,7 @@ use nyanpasu_contracts::{
     system_proxy::OsProxyError,
 };
 use nyanpasu_core::{
-    client::debug_http::DebugHttpControlError, state::config_error::ConfigError,
+    client::http_server::HttpServerControlError, state::config_error::ConfigError,
     storage::StorageOperationError,
 };
 use nyanpasu_logging::LogError;
@@ -380,6 +380,7 @@ cases!(
         profile: sample(json!("profile-1")),
         cause: Arc::new(profiles_error_cases(present).remove(0)),
     },
+    HttpServerUnavailable,
 );
 
 cases!(
@@ -841,6 +842,9 @@ cases!(
     InvalidLatencyTimeout {
         reason: "field-57/路徑\\file.yaml".to_owned(),
     },
+    InvalidRemoteAccess {
+        reason: nyanpasu_config::application::RemoteAccessError::PortZero,
+    },
     InvalidNetworkAutomation {
         reason: "field-58/路徑\\file.yaml".to_owned(),
     },
@@ -983,16 +987,13 @@ cases!(
 );
 
 cases!(
-    debug_http_control_error_cases,
-    DebugHttpControlError,
-    received::DebugHttpControlError,
+    http_server_control_error_cases,
+    HttpServerControlError,
+    received::HttpServerControlError,
     present;
     ReadStatusUnsupported,
-    ChangeEnabledUnsupported,
+    ChangeUnsupported,
     ReadStatus {
-        source: anyhow::Error::new(io_source()),
-    },
-    ChangeEnabled {
         source: anyhow::Error::new(io_source()),
     },
 );
@@ -1116,7 +1117,7 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         hotkey_action_cases(present);
         hotkey_parse_error_cases(present);
         effects_error_cases(present);
-        debug_http_control_error_cases(present);
+        http_server_control_error_cases(present);
         ipc_domains_and_envelope(present);
         for error in log_error_cases(present) {
             let expected = serde_json::to_value(&error).unwrap();
@@ -1184,7 +1185,7 @@ fn ipc_domains_and_envelope(present: bool) {
         SystemDns => system_dns_error_cases,
         SystemProxy => os_proxy_error_cases,
         Effects => effects_error_cases,
-        DebugHttp => debug_http_control_error_cases,
+        HttpServer => http_server_control_error_cases,
     );
     receive::<received::Degradation>(degradation(present));
     receive::<received::RpcError>(nyanpasu_rpc_protocol::RpcError {

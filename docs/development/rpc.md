@@ -18,9 +18,9 @@ Allowed shape:
 #[nyanpasu_macro::rpc(http)]
 pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
-    patch: AppPreferencesPatch,
+    patch: ApplicationPreferencesPatch,
 ) -> Result<MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch.0).await?)
+    Ok(client.patch_app_config(patch.into()).await?)
 }
 ```
 
@@ -38,17 +38,64 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 ### Use the unified RPC surface
 
-A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. General `patch_*` commands accept ordinary preferences only; reject out-of-scope fields while decoding their request types, and split the domain when another such field or a policy group would grow the exception list.
+A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. Scopes are independent permissions, so each `patch_*` command has a concrete request type that writes only fields of its declared class; reject out-of-scope fields while decoding the request type, and split the domain when another such field or a policy group would grow the exception list.
+
+| Request type (`nyanpasu-config`) | Command                     | Scope      | Writes                                                                                        |
+| -------------------------------- | --------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings` | ordinary application preferences                                                              |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
+| `ClashSettingsPatch`             | `patch_clash_config`        | `settings` | `expand_include_all`, `break_connection`                                                      |
+| `ClashSystemPatch`               | `patch_clash_system_config` | `system`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
+| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
+| `ClashAccessPatch`               | `patch_runtime_access`      | `system`   | `allow-lan`, `secret`                                                                         |
+| `Mode`                           | `set_proxy_mode`            | `proxy`    | the proxy mode                                                                                |
+
+The network rules (`network_automation`) are a `system` setting rather than an ordinary
+preference: applying a rule writes the system proxy, TUN and transparent proxy switches, so a
+principal without `system` must not be able to change them through a policy. Their live status
+carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sensitive_read` query;
+`apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system`
+mutations. All three are Desktop-only.
+
+Hotkeys, service mode, remote access and the core selection keep their dedicated commands
+(`set_hotkeys`, `set_service_mode`, `set_remote_access`, `change_clash_core`). The whole
+`overrides` record is in no Clash patch: replacing it also writes the proxy mode and the
+ordinary overrides, which are other classes, so overrides are written only through the
+three per-class commands above. This is an intentional tightening of the wire contract: a
+`patch_clash_config` body with `overrides`, or any field of another class, is refused as a
+whole with `invalid_params` and commits nothing. `NyanpasuAppConfigPatch` and
+`ClashConfigPatch` stay the internal patches of trusted Rust callers and are not exported
+to the frontend schema.
+
+Every request type is decoded through its internal full patch, so omitted and `null`
+fields, aliases and unrelated unknown keys keep their meaning, and is then projected
+explicitly. The projection destructures the full patch without `..`, so a field added to
+the config must be classified before it compiles; a present field of another class,
+whatever its value, refuses the whole patch and names the field the way the wire spells it
+(for example `allow-lan`). Converting a request back to the full patch sets only its own
+fields. For an ordinary field `null` is a no-op; only the double-option fields
+(`release_channel`, `pac_url` and the optional Clash ports) clear on `null`. A generated
+schema is derived from the fields of the request type and never advertises a field of
+another class.
+
+`remote_access` is written only by `set_remote_access`, a Desktop-only mutation that
+returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
+them, and a listener that cannot follow is a `http_server_unavailable` degradation,
+never a rollback. A single serial owner (`RemoteAccessClient` in core) runs the whole
+operation, so concurrent edits cannot configure the listener from an older snapshot and
+a caller that leaves does not cancel it. Startup validates the saved settings before
+activating a listener. `get_http_server_status` is HTTP-exposed and
+never carries a credential; the login URL comes from the desktop-only mutation
+`create_http_launch_url`, which is a mutation so that it is not kept in a client cache.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
-`patch_app_config` command accepts `AppPreferencesPatch`: its validating Serde
-conversion rejects `Some` for `hotkeys` or `enable_service_mode` on both Desktop
-and HTTP, before handler admission. Empty arrays, `false` and same-value writes
+`patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
+`enable_service_mode` on both Desktop and HTTP, before handler admission. Empty arrays, `false` and same-value writes
 still count as requests; a mixed patch is rejected as a whole with
 `invalid_params` (HTTP 400, no domain payload). Explicit `null` leaves these two
-ordinary Option fields unchanged. The wrapper delegates its Specta type to the
-domain patch, so it adds no binding type or parameter shape. The core facade
-continues to accept the complete domain patch.
+ordinary Option fields unchanged. These settings are absent from the concrete
+preferences DTO's schema. Their dedicated commands use the internal domain patch;
+`remote_access` is written only through its serial owner.
 
 HTTP retains `retry_configuration_effect(Hotkeys)` and profile mutations;
 conditional elevation follows the injected shell policy. Desktop, including
@@ -130,6 +177,36 @@ port is absent and return `unsupported`. Executable resolution, icon files,
 service-install prompt formatting and accent queries use consumer-owned ports in
 `nyanpasu-rpc::ports`; the shell supplies the AppImage process value explicitly.
 
+### Declare effect and scope
+
+Every `rpc` declaration states what the command does and which scope a principal must hold
+to call it. The declaration is the single source: it generates the `effect` and `scope`
+fields of the committed catalog (`command_catalog.rs`) and the capability inventory, and the
+Specta query/mutation groups that become the frontend bindings are checked against it.
+
+- `query` marks a command that only reads and changes nothing. It defaults to the `read`
+  scope. Declare another scope when the operation needs it: secret-bearing reads use
+  `sensitive_read`, latency measurements use `proxy`, and management queries can use
+  `remote_admin`. Effect and authorization class are independent.
+- Everything else is a mutation and MUST declare `scope = ...`; a mutation without one does
+  not compile. A mutation may hold `read` when it only allocates a resource the caller owns
+  (a log session, a subscription). Operations that read but advance a cursor, allocate a
+  session or otherwise change application state are mutations. Observational queries may
+  refresh read models or measure network latency; their scope still limits who may request them.
+- The scopes are `nyanpasu_config::application::Scope` (re-exported by the protocol), the one
+  definition used by config validation, token storage and command metadata: `read`,
+  `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`.
+- Classify by actual payload and effect. A response with a secret (the Clash secret,
+  subscription URLs, profile or runtime contents, generic storage, clipboard, sync logs that
+  echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
+  separate secret-free query instead of labelling the full response `read`. A shell, OS or
+  elevation facility needs `system`.
+- Scope is independent of target. `scope = system` never makes a command HTTP- or
+  Local-reachable and never lifts a shell, OS or elevation restriction; target and
+  capability admission still apply. `remote_admin` commands are Desktop-only.
+- The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
+  Desktop-only `remote_admin` set, so changing any of them is a reviewed change.
+
 ### Declare capabilities and preserve transport semantics
 
 The registry first recognizes the command name, then checks the requested target
@@ -142,7 +219,7 @@ pass through `dispatch_audited`, and HTTP keeps its existing 501 mapping and
 
 Use required metadata for clipboard, dialogs/notifications, native webviews and
 channels, windows, lifecycle, openers, tray/widget refresh, deep-link queues,
-application-update operations, and host accent/debug-HTTP facilities. Caller
+application-update operations, and host accent/HTTP-server facilities. Caller
 ownership is `rpc(owner)`, not a native-webview requirement. Icon/file queries,
 release-channel configuration, changelog HTTP reads and service-install prompt
 formatting do not require presentation, installation or elevation facilities.

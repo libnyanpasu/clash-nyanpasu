@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use nyanpasu_config::{
-    application::{ClashCore, ReleaseChannel},
+    application::{ClashCore, ReleaseChannel, RemoteAccessError},
     clash::{config::TransparentProxyValidationError, features::UnsupportedConfigValue},
     profile::{ExternalProfilePath, ManagedProfilePath, ProfileId, ProfileValidationError},
     runtime::executor::{ScriptExecutionError, TransformFailure},
@@ -319,6 +319,7 @@ pub enum DegradationReason {
         profile: ProfileId,
         cause: Arc<ProfilesError>,
     },
+    HttpServerUnavailable,
 }
 
 /// Why a source transaction did not commit. A source wraps this in its domain error.
@@ -662,6 +663,9 @@ pub enum ConfigError {
     InvalidLatencyTimeout {
         reason: String,
     },
+    InvalidRemoteAccess {
+        reason: RemoteAccessError,
+    },
     InvalidNetworkAutomation {
         reason: String,
     },
@@ -743,14 +747,13 @@ pub enum HotkeyParseError {
     },
 }
 
-/// Why a debug HTTP query or setting change could not be performed.
+/// Why an HTTP server query or setting change could not be performed.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DebugHttpControlError {
+pub enum HttpServerControlError {
     ReadStatusUnsupported,
-    ChangeEnabledUnsupported,
+    ChangeUnsupported,
     ReadStatus {},
-    ChangeEnabled {},
 }
 
 /// A failed command as the frontend receives it.
@@ -777,5 +780,5 @@ pub enum IpcErrorKind {
     SystemDns(Box<SystemDnsError>),
     SystemProxy(Box<OsProxyError>),
     Effects(Box<EffectsError>),
-    DebugHttp(Box<DebugHttpControlError>),
+    HttpServer(Box<HttpServerControlError>),
 }

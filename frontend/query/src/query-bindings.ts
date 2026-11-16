@@ -6,12 +6,12 @@ export function createQueryBindings(rpc: RpcClient) {
   const commands = rpc
 
   const queries = {
-    getDebugHttpStatus: (
-      ...args: Parameters<typeof commands.getDebugHttpStatus>
+    getHttpServerStatus: (
+      ...args: Parameters<typeof commands.getHttpServerStatus>
     ) =>
       queryOptions({
-        queryKey: ['getDebugHttpStatus', ...args],
-        queryFn: () => commands.getDebugHttpStatus(...args),
+        queryKey: ['getHttpServerStatus', ...args],
+        queryFn: () => commands.getHttpServerStatus(...args),
       }),
     getConfigurationStatus: (
       ...args: Parameters<typeof commands.getConfigurationStatus>
@@ -434,11 +434,6 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.openNativeFileDialog>) =>
         commands.openNativeFileDialog(...input),
     }),
-    setDebugHttpEnabled: mutationOptions({
-      mutationKey: ['setDebugHttpEnabled'],
-      mutationFn: (input: Parameters<typeof commands.setDebugHttpEnabled>) =>
-        commands.setDebugHttpEnabled(...input),
-    }),
     retryConfigurationRuntime: mutationOptions({
       mutationKey: ['retryConfigurationRuntime'],
       mutationFn: (
@@ -580,10 +575,20 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>
         commands.patchAppConfig(...input),
     }),
+    patchSystemSettings: mutationOptions({
+      mutationKey: ['patchSystemSettings'],
+      mutationFn: (input: Parameters<typeof commands.patchSystemSettings>) =>
+        commands.patchSystemSettings(...input),
+    }),
     patchClashConfig: mutationOptions({
       mutationKey: ['patchClashConfig'],
       mutationFn: (input: Parameters<typeof commands.patchClashConfig>) =>
         commands.patchClashConfig(...input),
+    }),
+    patchClashSystemConfig: mutationOptions({
+      mutationKey: ['patchClashSystemConfig'],
+      mutationFn: (input: Parameters<typeof commands.patchClashSystemConfig>) =>
+        commands.patchClashSystemConfig(...input),
     }),
     applyNetworkAutomation: mutationOptions({
       mutationKey: ['applyNetworkAutomation'],
@@ -599,6 +604,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['patchRuntimeOverrides'],
       mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>
         commands.patchRuntimeOverrides(...input),
+    }),
+    patchRuntimeAccess: mutationOptions({
+      mutationKey: ['patchRuntimeAccess'],
+      mutationFn: (input: Parameters<typeof commands.patchRuntimeAccess>) =>
+        commands.patchRuntimeAccess(...input),
+    }),
+    setProxyMode: mutationOptions({
+      mutationKey: ['setProxyMode'],
+      mutationFn: (input: Parameters<typeof commands.setProxyMode>) =>
+        commands.setProxyMode(...input),
     }),
     changeClashCore: mutationOptions({
       mutationKey: ['changeClashCore'],
@@ -783,6 +798,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['setServiceMode'],
       mutationFn: (input: Parameters<typeof commands.setServiceMode>) =>
         commands.setServiceMode(...input),
+    }),
+    setRemoteAccess: mutationOptions({
+      mutationKey: ['setRemoteAccess'],
+      mutationFn: (input: Parameters<typeof commands.setRemoteAccess>) =>
+        commands.setRemoteAccess(...input),
+    }),
+    createHttpLaunchUrl: mutationOptions({
+      mutationKey: ['createHttpLaunchUrl'],
+      mutationFn: (input: Parameters<typeof commands.createHttpLaunchUrl>) =>
+        commands.createHttpLaunchUrl(...input),
     }),
     selectProxy: mutationOptions({
       mutationKey: ['selectProxy'],

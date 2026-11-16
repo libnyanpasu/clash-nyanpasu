@@ -3,7 +3,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
+import { useSystemSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -12,7 +12,7 @@ import {
 } from '../../../../_modules/settings-card'
 
 export default function ProxyGuardSwitch() {
-  const proxyGuard = useSetting('enable_proxy_guard')
+  const proxyGuard = useSystemSetting('enable_proxy_guard')
 
   const handleProxyGuard = useLockFn(async () => {
     try {

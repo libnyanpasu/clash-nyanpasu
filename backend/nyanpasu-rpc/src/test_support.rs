@@ -40,7 +40,7 @@ impl RpcAuditSink for AuditSink {
 
 // These commands exercise generated parsing, execution and serialization without
 // adding capabilities to the production registry or touching application state.
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, scope = settings)]
 async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
     if fail {
         Err(std::io::Error::other(value))
@@ -165,7 +165,7 @@ pub const CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::OsIntegration,
     ShellCapability::Elevation,
     ShellCapability::AccentColor,
-    ShellCapability::DebugHttp,
+    ShellCapability::HttpServer,
 ];
 
 pub async fn rpc_for_test_call(

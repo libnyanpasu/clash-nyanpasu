@@ -16,7 +16,7 @@ vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: string) => ({
     value: key === 'core' ? 'mihomo' : true,
   }),
-  useClashSetting: (key: string) => ({
+  useClashSystemSetting: (key: string) => ({
     value:
       key === 'transparent_proxy'
         ? { mode: 'disabled', local: true, interfaces: ['eth0'], ipv6: false }

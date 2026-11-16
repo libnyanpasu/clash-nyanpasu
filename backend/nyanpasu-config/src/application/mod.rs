@@ -9,7 +9,11 @@ mod core_logs;
 mod i18n;
 mod logging;
 mod network_automation;
+mod preferences;
 mod public_ip_probe;
+mod remote_access;
+mod scope;
+mod system_settings;
 mod traffic;
 mod update;
 mod widget;
@@ -19,7 +23,11 @@ pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
 pub use network_automation::*;
+pub use preferences::*;
 pub use public_ip_probe::*;
+pub use remote_access::*;
+pub use scope::*;
+pub use system_settings::*;
 pub use traffic::*;
 pub use update::*;
 pub use widget::*;
@@ -217,6 +225,11 @@ pub struct NyanpasuAppConfig {
     #[serde(default)]
     pub traffic_retention: TrafficRetention,
 
+    /// Who may reach the application over HTTP. Written only by the dedicated
+    /// remote-access command; ordinary preference patches reject it.
+    #[serde(default)]
+    pub remote_access: RemoteAccessConfig,
+
     /// Allow public IP probes to locate LAN/local traffic sources.
     #[serde(default)]
     pub enable_local_ip_probe: bool,
@@ -326,6 +339,7 @@ impl Default for NyanpasuAppConfig {
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
             network_statistic_widget_logo: NetworkStatisticWidgetLogo::default(),
             traffic_retention: TrafficRetention::default(),
+            remote_access: RemoteAccessConfig::default(),
             enable_local_ip_probe: false,
             stun_servers: default_stun_servers(),
             ip_lookup_providers: Vec::new(),

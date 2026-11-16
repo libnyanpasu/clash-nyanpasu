@@ -52,7 +52,7 @@ impl RuntimePreparation {
     }
 
     pub async fn prepare(
-        &mut self,
+        &self,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
         app: NyanpasuAppConfig,
@@ -83,21 +83,21 @@ impl RuntimePreparation {
     }
 
     pub async fn prepare_inputs(
-        &mut self,
+        &self,
         inputs: super::inputs::RuntimeInputs,
     ) -> Result<PreparedRuntime, RuntimeError> {
         self.prepare_inputs_with_policy(inputs, false).await
     }
 
     pub async fn prepare_candidate_inputs(
-        &mut self,
+        &self,
         inputs: super::inputs::RuntimeInputs,
     ) -> Result<PreparedRuntime, RuntimeError> {
         self.prepare_inputs_with_policy(inputs, true).await
     }
 
     async fn prepare_inputs_with_policy(
-        &mut self,
+        &self,
         inputs: super::inputs::RuntimeInputs,
         strict_transforms: bool,
     ) -> Result<PreparedRuntime, RuntimeError> {
@@ -146,7 +146,7 @@ impl RuntimePreparation {
     }
 
     pub async fn prepare_committed(
-        &mut self,
+        &self,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
     ) -> Result<PreparedRuntime, RuntimeError> {
@@ -157,7 +157,7 @@ impl RuntimePreparation {
 
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
-    async fn prepare_latest(&mut self) -> Result<PreparedRuntime, RuntimeError> {
+    async fn prepare_latest(&self) -> Result<PreparedRuntime, RuntimeError> {
         // Independent committed snapshots, sampled when the build starts.
         let profiles = Arc::new(self.profiles.load().state.clone());
         let clash = self.clash.load().state.clone();

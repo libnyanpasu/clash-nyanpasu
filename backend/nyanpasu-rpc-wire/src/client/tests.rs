@@ -55,6 +55,15 @@ async fn respond(server: &mut DuplexStream, id: RequestId) {
 }
 
 #[tokio::test(start_paused = true)]
+async fn closed_reports_a_peer_disconnect() {
+    let (client, server) = pair(1024).await;
+    drop(server);
+    tokio::time::timeout(TIMEOUT, client.closed())
+        .await
+        .expect("the transport reports its closed stream");
+}
+
+#[tokio::test(start_paused = true)]
 async fn timed_out_local_connection_cannot_be_reused() {
     let (client, mut server) = pair(1024).await;
     let (error, _) = tokio::join!(

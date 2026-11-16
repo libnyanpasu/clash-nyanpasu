@@ -53,12 +53,10 @@ pub struct CommandMetadata {
     pub name: &'static str,
     /// Desktop dispatch category. This is not the query/mutation effect.
     pub kind: CommandKind,
-    /// The declared `group.name:action` permission, the only input to [`Self::scope`].
-    pub permission: &'static str,
     /// Whether the command only reads.
     pub effect: CommandEffect,
-    /// The one scope a principal must hold to call the command, resolved from
-    /// [`Self::permission`] when the declaration is expanded.
+    /// The one scope a principal must hold to call the command, resolved from the declaration's
+    /// permission when it is expanded.
     pub scope: Scope,
     /// Explicit transport exposure.
     pub targets: &'static [RpcTarget],
@@ -97,50 +95,6 @@ mod tests {
                 .unwrap();
             assert_eq!(command.effect, CommandEffect::Query, "{name}");
             assert_eq!(command.scope, Scope::Proxy, "{name}");
-        }
-    }
-
-    /// Read scopes and administration are reachable only through their explicit permission, so no
-    /// name, verb or effect can lower a command's scope.
-    #[test]
-    fn permissions_and_scopes_agree() {
-        // A permission string never stands for two scopes or two effects.
-        let mut seen = std::collections::BTreeMap::new();
-        for command in COMMAND_CATALOG {
-            let previous = seen.insert(command.permission, (command.scope, command.effect));
-            assert!(
-                previous.is_none_or(|previous| previous == (command.scope, command.effect)),
-                "{} reuses {} for a different scope or effect",
-                command.name,
-                command.permission
-            );
-        }
-        for command in COMMAND_CATALOG {
-            let (resource, action) = command.permission.split_once(':').unwrap();
-            let group = resource.split_once('.').unwrap().0;
-            let name = command.name;
-            assert_eq!(
-                command.scope == Scope::SensitiveRead,
-                action.starts_with("reveal"),
-                "{name}"
-            );
-            assert_eq!(
-                command.scope == Scope::RemoteAdmin,
-                group == "remote_admin",
-                "{name}"
-            );
-            assert_eq!(
-                command.scope == Scope::Read,
-                matches!(action, "view" | "follow"),
-                "{name}"
-            );
-            let follows = action.ends_with("follow");
-            let reads = command.scope == Scope::Read || command.scope == Scope::SensitiveRead;
-            assert_eq!(
-                reads && command.effect == CommandEffect::Mutation,
-                follows,
-                "{name}"
-            );
         }
     }
 

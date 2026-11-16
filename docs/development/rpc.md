@@ -102,6 +102,9 @@ through `remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
 socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
+When the bounded browser-session table is full, a login evicts the caller's least recently
+active session first (or the least recently active session overall) and announces its
+revocation; capacity never turns into a global login denial.
 `create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
 launch codes are not kept in a client cache.
 
@@ -265,7 +268,11 @@ shared source, and tracks every declaration file with `include_str!` so a change
 recompiles the invoking crate. The invoking package needs a build script for `OUT_DIR`; the
 protocol crate has none and, per [Backend packages](backend-packages.md), reads no application
 declarations, so the shell crate that owns both declaration roots hosts the invocation. The
-reviewed snapshot is `backend/nyanpasu-macro/tests/fixtures/rpc-permission-table.txt`. Two tests
+expander resolves the invoking crate's `CARGO_MANIFEST_DIR` at build time and emits only relative
+source paths plus `OUT_DIR`, never the checkout that compiled the proc macro, so a copied Cargo
+target remains usable from another worktree. The runtime catalog keeps the resolved scope and
+effect; the generated table is the review surface for the permission labels. The reviewed
+snapshot is `backend/nyanpasu-macro/tests/fixtures/rpc-permission-table.txt`. Two tests
 compare against it: `rpc_permission_table_snapshot_is_fresh` in `nyanpasu-macro`, and
 `generated_table_is_the_reviewed_snapshot` in `clash-nyanpasu`, which compares the table the
 build produced. Update the snapshot after reviewing a permission change:

@@ -518,7 +518,7 @@ async fn an_expiring_token_closes_its_sessions_without_a_request() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn logout_and_revoke_close_one_session_and_the_session_limit_holds() {
+async fn logout_and_revoke_close_one_session_and_a_full_table_evicts_the_oldest() {
     let mut harness = Harness::start_with(
         RemoteAuthPolicy {
             max_sessions: 2,
@@ -539,56 +539,140 @@ async fn logout_and_revoke_close_one_session_and_the_session_limit_holds() {
         }
     };
     let first = open(&harness).await.unwrap();
+    tokio::time::advance(MINUTE).await;
     let second = open(&harness).await.unwrap();
+    tokio::time::advance(MINUTE).await;
 
     let spare = harness
         .client
         .issue_launch_code(ScopeSet::empty())
         .await
         .unwrap();
-    assert!(matches!(
-        harness
-            .client
-            .exchange_launch_code(spare.code.clone())
-            .await,
-        Err(RemoteAuthError::CapacityExceeded { .. })
-    ));
-
-    harness.client.logout(first.cookie.clone()).await.unwrap();
+    let third = harness
+        .client
+        .exchange_launch_code(spare.code)
+        .await
+        .expect("a full session table must not refuse a new login");
     assert_eq!(
         harness.revocations.recv().await.unwrap(),
         AuthRevocation::Session {
             session_id: first.summary.id.clone()
         }
     );
+
     assert_eq!(
-        harness.client.logout(first.cookie).await.unwrap_err(),
+        harness
+            .client
+            .logout(first.cookie)
+            .await
+            .expect_err("the evicted session is already gone"),
         RemoteAuthError::Unauthorized
     );
 
-    // The refused exchange did not spend the code.
-    let third = harness
-        .client
-        .exchange_launch_code(spare.code)
-        .await
-        .unwrap();
+    harness.client.logout(second.cookie).await.unwrap();
+    assert_eq!(
+        harness.revocations.recv().await.unwrap(),
+        AuthRevocation::Session {
+            session_id: second.summary.id.clone()
+        }
+    );
+    assert_eq!(
+        harness
+            .client
+            .revoke_browser_session(second.summary.id.clone())
+            .await
+            .unwrap_err(),
+        RemoteAuthError::NotFound
+    );
     harness
         .client
-        .revoke_browser_session(second.summary.id.clone())
+        .revoke_browser_session(third.summary.id.clone())
         .await
         .unwrap();
     assert_eq!(
         harness
             .client
-            .revoke_browser_session(second.summary.id)
+            .revoke_browser_session(third.summary.id)
             .await
             .unwrap_err(),
         RemoteAuthError::NotFound
+    );
+    assert_eq!(
+        harness
+            .client
+            .resolve_browser_session(third.cookie)
+            .await
+            .unwrap_err(),
+        RemoteAuthError::Unauthorized
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_token_cannot_fill_the_session_table_and_lock_out_login() {
+    let mut harness = Harness::start_with(
+        RemoteAuthPolicy {
+            max_sessions: 2,
+            ..RemoteAuthPolicy::default()
+        },
+        Arc::default(),
+    )
+    .await;
+    let read_token = harness.create_token(None).await;
+    let other_token = harness.create_token(None).await;
+    let first = harness
+        .client
+        .login_with_token(read_token.clone())
+        .await
+        .unwrap();
+    tokio::time::advance(MINUTE).await;
+    let second = harness
+        .client
+        .login_with_token(read_token.clone())
+        .await
+        .unwrap();
+    tokio::time::advance(MINUTE).await;
+
+    // The other credential still logs in. The table evicts one of the read token's own
+    // sessions instead of returning a capacity error that would deny every login.
+    let third = harness
+        .client
+        .login_with_token(other_token)
+        .await
+        .expect("filling the table with one token must not deny another login");
+    let AuthRevocation::Session { session_id } = harness.revocations.recv().await.unwrap() else {
+        panic!("expected a session eviction");
+    };
+    assert_eq!(
+        session_id, first.summary.id,
+        "the least recently active read-token session is evicted first"
+    );
+
+    // A further login from that token drops its remaining own session before another
+    // principal's session.
+    let fourth = harness.client.login_with_token(read_token).await.unwrap();
+    let AuthRevocation::Session { session_id } = harness.revocations.recv().await.unwrap() else {
+        panic!("expected a session eviction");
+    };
+    assert_eq!(
+        session_id, second.summary.id,
+        "the second read-token session is evicted before another principal"
+    );
+
+    assert_eq!(
+        harness.client.list_browser_sessions().await.unwrap().len(),
+        2
     );
     assert!(
         harness
             .client
             .resolve_browser_session(third.cookie)
+            .await
+            .is_ok()
+    );
+    assert!(
+        harness
+            .client
+            .resolve_browser_session(fourth.cookie)
             .await
             .is_ok()
     );

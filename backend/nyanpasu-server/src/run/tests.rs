@@ -438,7 +438,7 @@ fn owner_work(
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared, permission: "settings.storage_item:set",
+        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,

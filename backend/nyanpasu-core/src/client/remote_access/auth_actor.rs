@@ -595,7 +595,6 @@ impl State {
             }
         }
         let index = matched.ok_or(RemoteAuthError::Unauthorized)?;
-        self.ensure_session_capacity()?;
         let code = self.launch_codes.swap_remove(index);
         self.open_session(code.scopes, None, None)
     }
@@ -612,17 +611,41 @@ impl State {
             live.record.id.clone(),
             live.record.expires_at_ms,
         );
-        self.ensure_session_capacity()?;
         self.open_session(scopes, Some(id), expires)
     }
 
-    fn ensure_session_capacity(&self) -> Result<(), RemoteAuthError> {
-        if self.sessions.len() >= self.policy.max_sessions {
-            return Err(RemoteAuthError::CapacityExceeded {
-                resource: "browser_sessions",
-            });
+    /// A full session table is a bounded cache, not a login denial. Prefer dropping one of the
+    /// caller's own older sessions; if it has none, drop the least recently active session.
+    fn make_session_room(
+        &mut self,
+        backing_token_id: Option<&TokenId>,
+    ) -> Result<(), RemoteAuthError> {
+        while self.sessions.len() >= self.policy.max_sessions {
+            let victim = backing_token_id
+                .and_then(|token_id| self.oldest_session(Some(token_id)))
+                .or_else(|| self.oldest_session(None))
+                .ok_or(RemoteAuthError::CapacityExceeded {
+                    resource: "browser_sessions",
+                })?;
+            self.sessions.remove(&victim);
+            self.announce(AuthRevocation::Session { session_id: victim });
         }
         Ok(())
+    }
+
+    fn oldest_session(&self, backing_token_id: Option<&TokenId>) -> Option<SessionId> {
+        self.sessions
+            .values()
+            .filter(|session| {
+                backing_token_id
+                    .is_none_or(|token_id| session.backing_token_id.as_ref() == Some(token_id))
+            })
+            .min_by(|left, right| {
+                left.idle_deadline_mono_ms
+                    .cmp(&right.idle_deadline_mono_ms)
+                    .then_with(|| left.id.cmp(&right.id))
+            })
+            .map(|session| session.id.clone())
     }
 
     fn open_session(
@@ -636,6 +659,7 @@ impl State {
         let id = SessionId::parse(raw_id).map_err(|error| RemoteAuthError::EntropyFailed {
             reason: error.to_string(),
         })?;
+        self.make_session_room(backing_token_id.as_ref())?;
         let session = Session {
             id: id.clone(),
             cookie_hash,

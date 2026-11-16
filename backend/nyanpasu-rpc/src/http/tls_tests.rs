@@ -165,6 +165,28 @@ async fn https_presents_the_certificate_and_marks_the_session_cookie_secure() {
 }
 
 #[tokio::test]
+async fn a_loopback_https_listener_answers_to_localhost() {
+    let harness = Harness::start().await;
+    let status = harness.configure(tls_config()).await;
+    let port = status.port.unwrap();
+    let http = reqwest::Client::builder()
+        .no_proxy()
+        .tls_danger_accept_invalid_certs(true)
+        .resolve("localhost", ([127, 0, 0, 1], port).into())
+        .build()
+        .unwrap();
+
+    let response = http
+        .get(format!("https://localhost:{port}/login"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn a_plain_loopback_listener_keeps_its_cookie_without_secure() {
     let harness = Harness::start().await;
     let status = harness
@@ -648,4 +670,18 @@ fn a_loopback_endpoint_matches_only_its_authority() {
     assert!(endpoint.allows("127.0.0.1:4000"));
     assert!(!endpoint.allows("localhost:4000"));
     assert!(!endpoint.allows("127.0.0.1:4001"));
+}
+
+#[test]
+fn a_secure_loopback_endpoint_also_matches_localhost() {
+    let endpoint = HttpEndpoint::secure_loopback("127.0.0.1:4000".into());
+    assert!(endpoint.allows("127.0.0.1:4000"));
+    assert!(endpoint.allows("localhost:4000"));
+    assert!(endpoint.allows("LOCALHOST:4000"));
+    assert!(!endpoint.allows("localhost:4001"));
+    assert!(!endpoint.allows("localhost.example:4000"));
+
+    let endpoint = HttpEndpoint::secure_loopback("127.0.0.1:443".into());
+    assert!(endpoint.allows("localhost"));
+    assert!(endpoint.allows("localhost:443"));
 }

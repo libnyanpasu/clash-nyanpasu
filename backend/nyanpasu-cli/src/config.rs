@@ -19,7 +19,7 @@ use crate::error::CliError;
 pub struct CliPaths {
     /// The `cli.toml` file.
     pub config_file: PathBuf,
-    /// The directory of `0600` token files used when no OS keyring is available.
+    /// The directory of owner-only token files used when no OS keyring is available.
     pub token_dir: PathBuf,
 }
 
@@ -52,7 +52,7 @@ impl CliPaths {
 pub enum TokenBackend {
     /// The OS keychain.
     Keyring,
-    /// A `0600` file next to `cli.toml`.
+    /// An owner-only file (`0600` on Unix, a current-user-only DACL on Windows).
     File,
 }
 

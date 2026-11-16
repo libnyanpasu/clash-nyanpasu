@@ -149,11 +149,9 @@ pub(super) fn metadata(
     } else {
         quote!(Mutation)
     };
-    let permission = options.permission.as_ref();
     Ok(quote! {
         #protocol::CommandMetadata {
             name: #name,
-            permission: #permission,
             kind: #protocol::CommandKind::#kind,
             effect: #protocol::CommandEffect::#effect,
             scope: #protocol::Scope::#scope,
@@ -943,7 +941,6 @@ mod tests {
                 )),
                 "{attribute}"
             );
-            assert!(expanded.contains("permission : \""), "{attribute}");
         }
     }
 

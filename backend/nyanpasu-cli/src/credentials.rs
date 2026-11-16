@@ -1,4 +1,5 @@
-//! CLI token storage: the OS keychain when available, otherwise a `0600` file.
+//! CLI token storage: the OS keychain when available, otherwise an owner-only file
+//! (`0600` on Unix and a current-user-only, protected DACL on Windows).
 //!
 //! A token is never accepted as a command-line argument, so it cannot reach shell
 //! history or the process list. It comes from standard input, from `NYANPASU_TOKEN`
@@ -73,7 +74,7 @@ impl SecretStore for DisabledStore {
     }
 }
 
-/// `0600` files in a `0700` directory, named after the validated context name.
+/// Owner-only files in an owner-only directory, named after the validated context name.
 #[derive(Debug)]
 pub struct FileStore {
     directory: PathBuf,
@@ -100,9 +101,14 @@ fn private_directory(directory: &std::path::Path) -> io::Result<()> {
         .create(directory)
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn private_directory(directory: &std::path::Path) -> io::Result<()> {
-    // The per-user profile directory is already private to the user on Windows.
+    fs::create_dir_all(directory)?;
+    set_private_acl(directory)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn private_directory(directory: &std::path::Path) -> io::Result<()> {
     fs::create_dir_all(directory)
 }
 
@@ -124,14 +130,180 @@ fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
     file.write_all(secret.as_bytes())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
+    use std::io::{Seek as _, SeekFrom, Write as _};
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
+    set_private_acl(path)?;
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(secret.as_bytes())?;
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
     fs::write(path, secret)
 }
 
+#[cfg(windows)]
+fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt as _;
+
+    value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn current_user_sid() -> io::Result<String> {
+    use std::{
+        os::windows::io::{AsRawHandle as _, FromRawHandle as _, OwnedHandle},
+        ptr, slice,
+    };
+
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::{
+            Authorization::ConvertSidToStringSidW, GetTokenInformation, TOKEN_QUERY, TOKEN_USER,
+            TokenUser,
+        },
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
+    };
+
+    // SAFETY: GetCurrentProcess returns a pseudo-handle valid for this process. Every
+    // out-parameter is initialized before use, and the token and SID string are closed/freed.
+    unsafe {
+        let mut raw_token = ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let token = OwnedHandle::from_raw_handle(raw_token);
+
+        let mut len = 0_u32;
+        GetTokenInformation(
+            token.as_raw_handle(),
+            TokenUser,
+            ptr::null_mut(),
+            0,
+            &mut len,
+        );
+        if len == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // u64 elements keep the buffer aligned for TOKEN_USER.
+        let mut buffer = vec![0_u64; (len as usize).div_ceil(size_of::<u64>())];
+        if GetTokenInformation(
+            token.as_raw_handle(),
+            TokenUser,
+            buffer.as_mut_ptr().cast(),
+            len,
+            &mut len,
+        ) == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        let user = &*buffer.as_ptr().cast::<TOKEN_USER>();
+
+        let mut raw_sid = ptr::null_mut();
+        if ConvertSidToStringSidW(user.User.Sid, &mut raw_sid) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut length = 0;
+        while *raw_sid.add(length) != 0 {
+            length += 1;
+        }
+        let sid = String::from_utf16_lossy(slice::from_raw_parts(raw_sid, length));
+        LocalFree(raw_sid.cast());
+        Ok(sid)
+    }
+}
+
+#[cfg(windows)]
+fn set_private_acl(path: &std::path::Path) -> io::Result<()> {
+    use std::ptr;
+
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::{
+            Authorization::{
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+                SE_FILE_OBJECT, SetNamedSecurityInfoW,
+            },
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
+            PROTECTED_DACL_SECURITY_INFORMATION,
+        },
+    };
+
+    let sid = current_user_sid()?;
+    let sddl = wide(std::ffi::OsStr::new(&format!("D:P(A;;FA;;;{sid})")));
+    let path = wide(path.as_os_str());
+    let mut descriptor = ptr::null_mut();
+
+    // SAFETY: The SDDL is a valid null-terminated string. The descriptor is allocated by the
+    // API and freed before returning. The path is null-terminated and the DACL pointer remains
+    // valid until SetNamedSecurityInfoW returns.
+    unsafe {
+        if ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &mut descriptor,
+            ptr::null_mut(),
+        ) == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+
+        let mut present = 0;
+        let mut dacl = ptr::null_mut();
+        let mut defaulted = 0;
+        if GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted) == 0 {
+            let error = io::Error::last_os_error();
+            LocalFree(descriptor);
+            return Err(error);
+        }
+        if present == 0 || dacl.is_null() {
+            LocalFree(descriptor);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the private token ACL is absent",
+            ));
+        }
+
+        let result = SetNamedSecurityInfoW(
+            path.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            dacl,
+            ptr::null_mut(),
+        );
+        LocalFree(descriptor);
+        if result != 0 {
+            return Err(io::Error::from_raw_os_error(result as i32));
+        }
+    }
+    Ok(())
+}
+
 impl SecretStore for FileStore {
     fn get(&self, name: &str) -> Result<Option<String>, CliError> {
-        match fs::read_to_string(self.path(name)) {
+        let path = self.path(name);
+        #[cfg(windows)]
+        match set_private_acl(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(CliError::failed(format!(
+                    "cannot secure token file: {error}"
+                )));
+            }
+        }
+        match fs::read_to_string(path) {
             Ok(secret) => Ok(Some(secret.trim().to_owned())),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(CliError::failed(format!("cannot read token file: {error}"))),
@@ -342,6 +514,17 @@ mod tests {
             assert_eq!(directory_mode & 0o777, 0o700);
         }
 
+        #[cfg(windows)]
+        {
+            let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
+            assert_eq!(file_sddl(&store.path("a")), expected);
+            assert_eq!(
+                file_sddl(&directory.path().join("tokens")),
+                expected,
+                "the token directory must not inherit broader grants"
+            );
+        }
+
         store.delete("a").unwrap();
         store.delete("a").unwrap();
         assert_eq!(store.get("a").unwrap(), None);
@@ -352,5 +535,109 @@ mod tests {
         assert_eq!(clean_token(" npk_1_x\n").unwrap(), "npk_1_x");
         assert!(clean_token("").is_err());
         assert!(clean_token("two words").is_err());
+    }
+
+    #[cfg(windows)]
+    fn file_sddl(path: &std::path::Path) -> String {
+        use std::ptr;
+
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::{
+                Authorization::{GetNamedSecurityInfoW, SE_FILE_OBJECT},
+                DACL_SECURITY_INFORMATION,
+            },
+        };
+
+        let path = wide(path.as_os_str());
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: The path is null-terminated and GetNamedSecurityInfoW initializes the
+        // descriptor on success. The allocation is freed after conversion below.
+        let result = unsafe {
+            GetNamedSecurityInfoW(
+                path.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(result, 0, "GetNamedSecurityInfoW failed: {result}");
+        let sddl = descriptor_sddl(descriptor);
+        // SAFETY: GetNamedSecurityInfoW allocated this descriptor with LocalAlloc.
+        unsafe { LocalFree(descriptor) };
+        sddl
+    }
+
+    #[cfg(windows)]
+    fn canonical_sddl(sddl: &str) -> String {
+        use std::ptr;
+
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::Authorization::{
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+            },
+        };
+
+        let sddl = wide(std::ffi::OsStr::new(sddl));
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: The input is a valid null-terminated SDDL string, and the returned descriptor
+        // is freed after conversion.
+        let converted = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                ptr::null_mut(),
+            )
+        };
+        assert_ne!(converted, 0, "the expected ACL is invalid");
+        let sddl = descriptor_sddl(descriptor);
+        // SAFETY: the conversion allocated this descriptor with LocalAlloc.
+        unsafe { LocalFree(descriptor) };
+        sddl
+    }
+
+    #[cfg(windows)]
+    fn descriptor_sddl(descriptor: *mut std::ffi::c_void) -> String {
+        use std::ptr;
+
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::{
+                Authorization::{
+                    ConvertSecurityDescriptorToStringSecurityDescriptorW, SDDL_REVISION_1,
+                },
+                DACL_SECURITY_INFORMATION,
+            },
+        };
+
+        let mut text = ptr::null_mut();
+        // SAFETY: `descriptor` is a valid security descriptor supplied by the caller, and the
+        // returned string is allocated by the API and freed below.
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut text,
+                ptr::null_mut(),
+            )
+        };
+        assert_ne!(converted, 0, "cannot serialize the file ACL");
+        let mut length = 0;
+        // SAFETY: a successful conversion returns a null-terminated UTF-16 string.
+        unsafe {
+            while *text.add(length) != 0 {
+                length += 1;
+            }
+            let value = String::from_utf16_lossy(std::slice::from_raw_parts(text, length));
+            LocalFree(text.cast());
+            value
+        }
     }
 }

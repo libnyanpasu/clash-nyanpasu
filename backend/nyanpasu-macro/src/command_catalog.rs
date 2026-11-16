@@ -3,7 +3,7 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -13,7 +13,7 @@ use syn::{Attribute, Item, ItemFn, Meta, Token, punctuated::Punctuated};
 use crate::unified_command;
 
 // Move these roots together with the schema and handler inventories when commands move.
-const DECLARATION_ROOTS: &[&str] = &["../tauri/src/ipc.rs", "../nyanpasu-rpc/src/commands/mod.rs"];
+const DECLARATION_ROOTS: &[&str] = &["tauri/src/ipc.rs", "nyanpasu-rpc/src/commands/mod.rs"];
 #[cfg(test)]
 const CATALOG: &str = "../nyanpasu-rpc-protocol/src/command_catalog.rs";
 /// The platforms the permission table and the capability inventory are evaluated for.
@@ -28,14 +28,10 @@ pub(super) struct Declarations {
     pub(super) files: Vec<PathBuf>,
 }
 
-pub(super) fn production_sources() -> Declarations {
+fn production_sources_at(backend_root: &Path) -> Declarations {
     let mut declarations = Declarations::default();
     for root in DECLARATION_ROOTS {
-        collect_file(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join(root),
-            &[],
-            &mut declarations,
-        );
+        collect_file(&backend_root.join(root), &[], &mut declarations);
     }
     assert!(
         !declarations.commands.is_empty(),
@@ -46,7 +42,15 @@ pub(super) fn production_sources() -> Declarations {
 
 #[cfg(test)]
 pub(super) fn production_declarations() -> Vec<ItemFn> {
-    production_sources().commands
+    production_sources_at(&backend_root()).commands
+}
+
+#[cfg(test)]
+fn backend_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the macro crate lives under backend")
+        .to_owned()
 }
 
 fn collect_file(path: &Path, inherited: &[Attribute], declarations: &mut Declarations) {
@@ -319,33 +323,73 @@ pub(super) fn expand_permission_table() -> Result<proc_macro2::TokenStream, Stri
     let out_dir = std::env::var_os("OUT_DIR").ok_or(
         "rpc_permission_table! needs OUT_DIR, so the invoking package must have a build script",
     )?;
-    expand_permission_table_in(Path::new(&out_dir))
+    let invoking_dir = env::var_os("CARGO_MANIFEST_DIR").ok_or(
+        "rpc_permission_table! needs the invoking crate's CARGO_MANIFEST_DIR at expansion time",
+    )?;
+    let invoking_dir = Path::new(&invoking_dir);
+    let backend_root = invoking_dir
+        .parent()
+        .ok_or("rpc_permission_table! must be invoked from the backend shell crate")?;
+    expand_permission_table_in(Path::new(&out_dir), backend_root, invoking_dir)
 }
 
-fn expand_permission_table_in(out_dir: &Path) -> Result<proc_macro2::TokenStream, String> {
-    let declarations = production_sources();
+fn expand_permission_table_in(
+    out_dir: &Path,
+    backend_root: &Path,
+    invoking_dir: &Path,
+) -> Result<proc_macro2::TokenStream, String> {
+    let declarations = production_sources_at(backend_root);
     let table = out_dir.join(PERMISSION_TABLE_FILE);
     write_if_changed(&table, &render_permission_table(&declarations.commands))?;
-    let literal = |path: &Path| {
-        path.to_str()
-            .map(str::to_owned)
-            .ok_or_else(|| format!("{} is not valid UTF-8", path.display()))
-    };
-    let table = literal(&table)?;
     let mut sources = declarations
         .files
         .iter()
-        .map(|file| literal(file))
+        .map(|file| relative_source_path(invoking_dir, file))
         .collect::<Result<Vec<_>, _>>()?;
     sources.sort();
     sources.dedup();
     Ok(quote! {
         /// The permission table of the production RPC declarations, as cargo generated it.
         #[allow(dead_code)]
-        pub const RPC_PERMISSION_TABLE: &str = include_str!(#table);
+        pub const RPC_PERMISSION_TABLE: &str =
+            include_str!(concat!(env!("OUT_DIR"), "/rpc_permission_table.txt"));
         // Every declaration file is a dependency of the invoking crate, so a change reruns this macro.
-        const _: &[&str] = &[#(include_str!(#sources)),*];
+        const _: &[&str] = &[
+            #(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), #sources))),*
+        ];
     })
+}
+
+/// The `include_str!` operand is relative to the invoking crate, so a copied build cache never
+/// carries an absolute path from the checkout that compiled the proc macro.
+fn relative_source_path(invoking_dir: &Path, source: &Path) -> Result<String, String> {
+    let from: Vec<_> = invoking_dir.components().collect();
+    let to: Vec<_> = source.components().collect();
+    let common = from
+        .iter()
+        .zip(&to)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if common == 0 {
+        return Err(format!(
+            "{} is not on the invoking crate's path root",
+            source.display()
+        ));
+    }
+
+    let mut relative = String::new();
+    for _ in &from[common..] {
+        relative.push_str("/..");
+    }
+    for component in &to[common..] {
+        let text = component
+            .as_os_str()
+            .to_str()
+            .ok_or_else(|| format!("{} is not valid UTF-8", source.display()))?;
+        relative.push('/');
+        relative.push_str(text);
+    }
+    Ok(relative)
 }
 
 #[cfg(test)]
@@ -454,15 +498,20 @@ fn rpc_permission_table_is_generated_deterministically_under_out_dir_only() {
         std::process::id()
     ));
     fs::create_dir_all(&directory).unwrap();
-    let sources = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let sources = backend_root();
     let before =
         fs::read_to_string(sources.join("nyanpasu-rpc-protocol/src/command_catalog.rs")).unwrap();
+    let invoking = sources.join("tauri");
 
-    let first = expand_permission_table_in(&directory).unwrap().to_string();
+    let first = expand_permission_table_in(&directory, &sources, &invoking)
+        .unwrap()
+        .to_string();
     let table = directory.join(PERMISSION_TABLE_FILE);
     let written = fs::read_to_string(&table).unwrap();
     let modified = fs::metadata(&table).unwrap().modified().unwrap();
-    let second = expand_permission_table_in(&directory).unwrap().to_string();
+    let second = expand_permission_table_in(&directory, &sources, &invoking)
+        .unwrap()
+        .to_string();
 
     assert_eq!(first, second, "the expansion must be deterministic");
     assert_eq!(written, render_permission_table(&production_declarations()));
@@ -477,8 +526,14 @@ fn rpc_permission_table_is_generated_deterministically_under_out_dir_only() {
         "only the table is written"
     );
     assert!(first.contains("RPC_PERMISSION_TABLE"));
+    assert!(first.contains("CARGO_MANIFEST_DIR"));
+    assert!(first.contains("OUT_DIR"));
+    assert!(
+        !first.contains(sources.to_string_lossy().as_ref()),
+        "the expansion must not bake the checkout path"
+    );
     // Both roots and their module files are dependencies of the invoking crate.
-    for tracked in ["tauri/src/ipc.rs", "nyanpasu-rpc/src/commands/profiles.rs"] {
+    for tracked in ["/src/ipc.rs", "/../nyanpasu-rpc/src/commands/profiles.rs"] {
         assert!(first.contains(tracked), "{tracked} is not tracked");
     }
     assert_eq!(
@@ -487,6 +542,43 @@ fn rpc_permission_table_is_generated_deterministically_under_out_dir_only() {
         "generation never writes shared source"
     );
     fs::remove_dir_all(&directory).unwrap();
+}
+
+#[test]
+fn permission_table_uses_the_invoking_checkout() {
+    let directory = std::env::temp_dir().join(format!(
+        "nyanpasu-macro-copied-checkout-{}",
+        std::process::id()
+    ));
+    let backend = directory.join("backend");
+    let tauri = backend.join("tauri");
+    let commands = backend.join("nyanpasu-rpc/src/commands");
+    fs::create_dir_all(tauri.join("src")).unwrap();
+    fs::create_dir_all(&commands).unwrap();
+    fs::write(
+        tauri.join("src/ipc.rs"),
+        r#"
+        #[nyanpasu_macro::rpc(query, permission = "core.version:view")]
+        #[tauri::command]
+        fn command_from_the_current_checkout() {}
+        "#,
+    )
+    .unwrap();
+    fs::write(commands.join("mod.rs"), "").unwrap();
+    let out = directory.join("out");
+    fs::create_dir_all(&out).unwrap();
+
+    let expanded = expand_permission_table_in(&out, &backend, &tauri).unwrap();
+    let expanded = expanded.to_string();
+    let table = fs::read_to_string(out.join(PERMISSION_TABLE_FILE)).unwrap();
+    assert!(table.contains("command_from_the_current_checkout"));
+    assert!(expanded.contains("/src/ipc.rs"));
+    assert!(
+        !expanded.contains(directory.to_string_lossy().as_ref()),
+        "only paths relative to the invoking crate are emitted"
+    );
+
+    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

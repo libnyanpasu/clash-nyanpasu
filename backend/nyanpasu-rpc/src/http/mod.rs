@@ -259,6 +259,9 @@ impl HttpServerState {
                     .map(|identity| identity.dns_names().to_vec())
                     .unwrap_or_default(),
             ),
+            (Some(_), _) if local.ip().is_loopback() => HttpEndpoint::secure_loopback(
+                SocketAddr::new(reachable_address(local.ip()), local.port()).to_string(),
+            ),
             (identity, _) => HttpEndpoint::exact(
                 SocketAddr::new(reachable_address(local.ip()), local.port()).to_string(),
                 identity.is_some(),
@@ -530,17 +533,44 @@ pub(crate) struct HttpEndpoint {
 #[derive(Clone)]
 enum HostPolicy {
     /// Exactly this authority, for a loopback listener.
-    Exact(String),
+    Exact {
+        authority: String,
+        aliases: Vec<String>,
+    },
     /// A LAN listener: any IP literal on the port, or one of the names its certificate covers.
     Lan { port: u16, names: Vec<String> },
+}
+
+fn authority_matches(host: &str, authority: &str, default_port: u16) -> bool {
+    host.eq_ignore_ascii_case(authority)
+        || authority
+            .strip_suffix(&format!(":{default_port}"))
+            .is_some_and(|bare| host.eq_ignore_ascii_case(bare))
 }
 
 impl HttpEndpoint {
     /// A loopback listener answering to `authority` only.
     pub(crate) fn exact(authority: String, secure: bool) -> Self {
         Self {
-            hosts: HostPolicy::Exact(authority),
+            hosts: HostPolicy::Exact {
+                authority,
+                aliases: Vec::new(),
+            },
             secure,
+        }
+    }
+
+    /// A loopback HTTPS listener. Its certificate covers `localhost`, so a browser may address
+    /// the same bound port by that name.
+    pub(crate) fn secure_loopback(authority: String) -> Self {
+        let aliases = authority
+            .rsplit_once(':')
+            .filter(|(_, port)| !port.is_empty())
+            .map(|(_, port)| vec![format!("localhost:{port}")])
+            .unwrap_or_default();
+        Self {
+            hosts: HostPolicy::Exact { authority, aliases },
+            secure: true,
         }
     }
 
@@ -563,11 +593,11 @@ impl HttpEndpoint {
 
     fn allows(&self, host: &str) -> bool {
         match &self.hosts {
-            HostPolicy::Exact(authority) => {
-                host == authority
-                    || authority
-                        .strip_suffix(&format!(":{}", self.default_port()))
-                        .is_some_and(|bare| host == bare)
+            HostPolicy::Exact { authority, aliases } => {
+                authority_matches(host, authority, self.default_port())
+                    || aliases
+                        .iter()
+                        .any(|alias| authority_matches(host, alias, self.default_port()))
             }
             HostPolicy::Lan { port, names } => {
                 let (name, host_port) = match host.strip_prefix('[') {

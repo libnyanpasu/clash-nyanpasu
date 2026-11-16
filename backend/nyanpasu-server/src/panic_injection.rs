@@ -51,7 +51,7 @@ pub(crate) fn logger_refresh(rotation: Option<&LogRotation>) {
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_panic", kind: CommandKind::Shared, permission: "settings.storage_item:set",
+        metadata: CommandMetadata { name: "e4b_test_panic", kind: CommandKind::Shared,
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Http, RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: panic_handler,
@@ -60,7 +60,7 @@ inventory::submit! {
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared, permission: "settings.storage_item:set",
+        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
             effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,

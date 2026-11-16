@@ -6,7 +6,7 @@ import {
   type RpcEventCallback,
   type RpcEventTransport,
 } from '@nyanpasu/rpc'
-import type { AppUpdateSummary } from '@nyanpasu/rpc/types'
+import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
   acceptAppUpdateSnapshot,
@@ -15,9 +15,9 @@ import {
 } from '../src/ipc/use-app-update'
 import { rpcWrapper } from './rpc-test-utils'
 
-type EventHandler = RpcEventCallback<AppUpdateSummary>
+type EventHandler = RpcEventCallback<AppUpdateSnapshot>
 
-function snapshot(revision: number): AppUpdateSummary {
+function snapshot(revision: number): AppUpdateSnapshot {
   return {
     revision,
     phase: 'idle',
@@ -26,14 +26,15 @@ function snapshot(revision: number): AppUpdateSummary {
     total: null,
     speed: 0,
     source: 'github',
-    has_error: false,
+    error: null,
     last_checked_at: null,
     supported: true,
+    endpoints: [],
   }
 }
 
 function makeRpc(
-  getSnapshot: () => Promise<AppUpdateSummary>,
+  getSnapshot: () => Promise<AppUpdateSnapshot>,
   listenGate?: Promise<void>,
 ) {
   let handler: EventHandler | undefined
@@ -43,7 +44,7 @@ function makeRpc(
   })
   const invoke = vi.fn(
     async (method: string, _params?: Record<string, unknown>) => {
-      if (method === 'get_app_update_summary') return getSnapshot()
+      if (method === 'get_app_update_state') return getSnapshot()
       throw new Error(`Unexpected RPC method: ${method}`)
     },
   )
@@ -74,9 +75,9 @@ function makeRpc(
     invoke,
     listen: events.listen,
     unlisten,
-    emit(next: AppUpdateSummary) {
+    emit(next: AppUpdateSnapshot) {
       handler?.({
-        event: 'app-update-summary-changed',
+        event: 'app-update-state-changed',
         id: next.revision,
         payload: next,
       })
@@ -88,7 +89,7 @@ function makeRpc(
 }
 
 async function setup(
-  getSnapshot: () => Promise<AppUpdateSummary>,
+  getSnapshot: () => Promise<AppUpdateSnapshot>,
   onTestFinished: TestContext['onTestFinished'],
   enabled = true,
   listenGate?: Promise<void>,
@@ -125,7 +126,7 @@ test('keeps the cached snapshot when an event repeats its revision', () => {
 test('an update event wins over an older snapshot request already in flight', async ({
   onTestFinished,
 }) => {
-  const initial = deferred<AppUpdateSummary>()
+  const initial = deferred<AppUpdateSnapshot>()
   let requests = 0
   const { emit, hook, queryClient } = await setup(async () => {
     requests += 1
@@ -139,7 +140,7 @@ test('an update event wins over an older snapshot request already in flight', as
   await expect
     .poll(
       () =>
-        queryClient.getQueryData<AppUpdateSummary>(APP_UPDATE_QUERY_KEY)
+        queryClient.getQueryData<AppUpdateSnapshot>(APP_UPDATE_QUERY_KEY)
           ?.revision,
     )
     .toBe(3)
@@ -148,7 +149,7 @@ test('an update event wins over an older snapshot request already in flight', as
   await expect
     .poll(
       () =>
-        queryClient.getQueryData<AppUpdateSummary>(APP_UPDATE_QUERY_KEY)
+        queryClient.getQueryData<AppUpdateSnapshot>(APP_UPDATE_QUERY_KEY)
           ?.revision,
     )
     .toBe(3)

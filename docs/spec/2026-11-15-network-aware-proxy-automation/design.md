@@ -184,7 +184,7 @@ Text lives under `settings_system_proxy_network_automation_*` (the Wi-Fi notices
 - **Location access is requested only for a name rule.** The Wi-Fi name is not read, and no consent is asked, until an enabled rule matches on it or the user presses **Use current network** (3.1.1). The application does not read or send the device's location; the name is gated behind location access because Wi-Fi names can reveal where a device is. `backend/tauri/Info.plist` carries the macOS usage description.
 - **Identifiers are sensitive.** SSID and gateway MAC are never logged by the actor (it logs only the match kind or rule id). They are stored in plain text in the application config (section 6). Diagnostic-archive redaction of the saved rules is **not** implemented in this change (section 10).
 - **No new privilege.** Observation is unprivileged and in the user's process; transparent capture still goes through the typed service IPC.
-- **Remote control.** An HTTP caller can already change the switches; with this change it can also edit the rules through `patch_app_config`. It cannot read the live network (status is desktop-only).
+- **Remote control.** An HTTP caller can already change the switches; with this change it can also edit the rules through `patch_system_settings`, which requires the `system` scope. It cannot read the live network (status is desktop-only).
 
 ## 9. Tests
 

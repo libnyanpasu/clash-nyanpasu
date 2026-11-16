@@ -43,12 +43,25 @@ A setting whose privilege class differs from ordinary preferences uses a dedicat
 | Request type (`nyanpasu-config`) | Command                     | Scope      | Writes                                                                                        |
 | -------------------------------- | --------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
 | `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings` | ordinary application preferences                                                              |
-| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL                                    |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
 | `ClashSettingsPatch`             | `patch_clash_config`        | `settings` | `expand_include_all`, `break_connection`                                                      |
 | `ClashSystemPatch`               | `patch_clash_system_config` | `system`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
 | `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
 | `ClashAccessPatch`               | `patch_runtime_access`      | `system`   | `allow-lan`, `secret`                                                                         |
 | `Mode`                           | `set_proxy_mode`            | `proxy`    | the proxy mode                                                                                |
+
+The network rules (`network_automation`) are a `system` setting rather than an ordinary
+preference: applying a rule writes the system proxy, TUN and transparent proxy switches, so a
+principal without `system` must not be able to change them through a policy. Their live status
+carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sensitive_read` query;
+`apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system`
+mutations that return the status as `RpcNetworkAutomationStatus`: a caller without `sensitive_read`
+receives `NetworkAutomationSummary` (supported, whether a rule matched and what each switch did),
+with no Wi-Fi name, gateway, rule id or refusal text, and a refused policy reaches it only as the
+fixed `invalid_network_automation` public error. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
+MAC addresses, so the safe settings view (`get_app_settings`) reduces them to
+`network_automation_enabled`; the rule editor reads the full config (`sensitive_read`) and
+writes through `patch_system_settings`.
 
 Hotkeys, service mode, remote access and the core selection keep their dedicated commands
 (`set_hotkeys`, `set_service_mode`, `set_remote_access`, `change_clash_core`). The whole
@@ -107,7 +120,7 @@ plus `rpc_describe`). `get_configuration_status` is a query;
 the two dedicated setters are mutations in the hand-maintained Specta metadata.
 
 - Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
-- Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, or `RpcAppUpdateOutcome`) and pass `privacy` on `#[nyanpasu_macro::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
+- Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, `RpcAppUpdateOutcome`, or `RpcNetworkAutomationStatus`) and pass `privacy` on `#[nyanpasu_macro::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
 - Frontend application calls use generated protocol types and transport adapters from `@nyanpasu/rpc`, then query/mutation bindings from `@nyanpasu/query`. The app injects the RPC client/context into query providers. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
 - Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.

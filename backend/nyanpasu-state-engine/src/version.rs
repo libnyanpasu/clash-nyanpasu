@@ -39,35 +39,6 @@ impl Version {
     }
 }
 
-/// Unique identifier for a state change, used for tracking and acknowledgment purposes.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct StateChangeId(pub Version);
-
-impl Deref for StateChangeId {
-    type Target = u64;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<u64> for StateChangeId {
-    fn as_ref(&self) -> &u64 {
-        &self.0
-    }
-}
-
-impl StateChangeId {
-    pub fn new(id: u64) -> Self {
-        Self(Version::new(id))
-    }
-
-    pub fn next(&self) -> Self {
-        Self(self.0.next())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,11 +47,5 @@ mod tests {
     #[should_panic(expected = "version overflow")]
     fn version_next_panics_on_overflow() {
         Version::new(u64::MAX).next();
-    }
-
-    #[test]
-    #[should_panic(expected = "version overflow")]
-    fn state_change_id_next_panics_on_overflow() {
-        StateChangeId::new(u64::MAX).next();
     }
 }

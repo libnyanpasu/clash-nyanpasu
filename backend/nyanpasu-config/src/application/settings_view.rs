@@ -2,10 +2,11 @@
 //!
 //! [`NyanpasuAppConfig`] holds values that can carry credentials: the PAC URL and the latency test
 //! URL are free-form URLs a user may write a token into, in the userinfo, the query, the path or
-//! the host name, so no syntactic check can tell a safe one apart. [`ApplicationSettings`] is the
-//! projection for callers that only hold `read`. It keeps every ordinary preference and the public
-//! desired state of the system settings, and reduces the two URL fields to flags:
-//! `pac_configured` and `latency_test_configured`.
+//! the host name, so no syntactic check can tell a safe one apart. The network rules name the Wi-Fi
+//! networks and gateway MAC addresses of the places the user connects from. [`ApplicationSettings`]
+//! is the projection for callers that only hold `read`. It keeps every ordinary preference and the
+//! public desired state of the system settings, and reduces the two URL fields and the network
+//! rules to flags: `pac_configured`, `latency_test_configured` and `network_automation_enabled`.
 //!
 //! A flag is not a placeholder: a form that needs the real URL reads the full config
 //! (`sensitive_read`), and a flag is never a valid thing to write back.
@@ -70,6 +71,9 @@ pub struct ApplicationSettings {
     pub ip_lookup_providers: Vec<IpLookupProvider>,
     /// Whether a PAC URL is set. The URL itself is only in the full config.
     pub pac_configured: bool,
+    /// Whether the network rules are on. The rules and the default actions name the user's
+    /// networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+    pub network_automation_enabled: bool,
     pub enable_tray_text: bool,
     pub enable_tray_traffic: bool,
     pub use_legacy_ui: bool,
@@ -121,6 +125,7 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             stun_servers,
             ip_lookup_providers,
             pac_url,
+            network_automation,
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
@@ -169,6 +174,7 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             stun_servers: stun_servers.clone(),
             ip_lookup_providers: ip_lookup_providers.clone(),
             pac_configured: pac_url.is_some(),
+            network_automation_enabled: network_automation.enabled,
             enable_tray_text: *enable_tray_text,
             enable_tray_traffic: *enable_tray_traffic,
             use_legacy_ui: *use_legacy_ui,
@@ -183,6 +189,9 @@ mod tests {
     use url::Url;
 
     use super::*;
+    use crate::application::{
+        MechanismAction, MechanismActions, NetworkAutomation, NetworkConditions, NetworkRule,
+    };
 
     fn serialized(config: &NyanpasuAppConfig) -> String {
         serde_json::to_string(&ApplicationSettings::from(config)).unwrap()
@@ -230,5 +239,39 @@ mod tests {
         let mut config = NyanpasuAppConfig::default();
         config.default_latency_test.clear();
         assert!(!ApplicationSettings::from(&config).latency_test_configured);
+    }
+
+    #[test]
+    fn network_rules_are_reduced_to_a_flag() {
+        let config = NyanpasuAppConfig {
+            network_automation: NetworkAutomation {
+                enabled: true,
+                default_actions: MechanismActions {
+                    tun: MechanismAction::Disable,
+                    ..Default::default()
+                },
+                rules: vec![NetworkRule {
+                    id: "rule-id-sentinel".to_owned(),
+                    name: "rule-name-sentinel".to_owned(),
+                    enabled: true,
+                    conditions: NetworkConditions {
+                        wifi_ssid: Some("ssid-sentinel".to_owned()),
+                        gateway_mac: Some("aa:bb:cc:dd:ee:ff".to_owned()),
+                        interface_kind: None,
+                    },
+                    actions: MechanismActions::default(),
+                }],
+            },
+            ..Default::default()
+        };
+
+        let json = serialized(&config);
+        for private in ["sentinel", "aa:bb:cc", "ssid", "gateway", "rules"] {
+            assert!(!json.contains(private), "{private}: {json}");
+        }
+        assert!(ApplicationSettings::from(&config).network_automation_enabled);
+        assert!(
+            !ApplicationSettings::from(&NyanpasuAppConfig::default()).network_automation_enabled
+        );
     }
 }

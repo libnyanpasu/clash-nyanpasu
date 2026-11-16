@@ -10,7 +10,6 @@ import type {
   EffectFailureCode,
   EffectsError,
   ElevationConsentError,
-  EvidenceGap,
   ExecutionHost,
   HotkeyAction,
   HotkeyParseError,
@@ -36,7 +35,6 @@ import type {
   PublicProfileContentKind,
   PublicProfilesError,
   PublicRemoteAccessErrorKind,
-  PublicRuntimeAftermathKind,
   PublicRuntimeBuildKind,
   PublicRuntimeCheckUnavailableKind,
   PublicRuntimeError,
@@ -46,7 +44,6 @@ import type {
   PublicSystemDnsError,
   PublicTransparentProxyValidationKind,
   RemoteAccessError,
-  RuntimeAftermath,
   RuntimeBuildError,
   RuntimeError,
   RuntimePipelineError,
@@ -96,36 +93,27 @@ export function ipcErrorMessage(
 }
 
 /**
- * Why a source's commit did not go through, with what became of the running
- * core. Shared by every domain that wraps `CommitAborted`.
+ * Why a source's commit did not go through. Shared by every domain that
+ * wraps `CommitAborted`.
  */
 export function commitAbortedMessage(
   error: CommitAborted,
   profileLabel: ProfileLabel = (id) => id,
 ): string {
-  const message = (() => {
-    switch (error.kind) {
-      case 'write_config':
-        return m.error_commit_write_config()
-      case 'recover_after_write_failure':
-        return m.error_commit_recover_after_write_failure()
-      case 'runtime_refused':
-        return m.error_commit_runtime_refused({
-          reason: runtimeErrorsMessage(error.errors, profileLabel),
-        })
-      case 'runtime_failed':
-        return m.error_commit_runtime_failed({
-          reason: runtimeErrorsMessage(error.errors, profileLabel),
-        })
-      case 'validate_state':
-        return m.error_commit_validate_state()
-    }
-  })()
-  const aftermath =
-    error.kind === 'validate_state'
-      ? undefined
-      : runtimeAftermathMessage(error.runtime)
-  return aftermath ? `${message} (${aftermath})` : message
+  switch (error.kind) {
+    case 'write_config':
+      return m.error_commit_write_config()
+    case 'recover_after_write_failure':
+      return m.error_commit_recover_after_write_failure()
+    case 'runtime_refused':
+      return m.error_commit_runtime_refused({
+        reason: runtimeErrorsMessage(error.errors, profileLabel),
+      })
+    case 'runtime_failed':
+      return m.error_commit_runtime_failed({
+        reason: runtimeErrorsMessage(error.errors, profileLabel),
+      })
+  }
 }
 
 function runtimeErrorsMessage(
@@ -135,18 +123,6 @@ function runtimeErrorsMessage(
   return errors
     .map((error) => runtimeErrorMessage(error, profileLabel))
     .join('\n\n')
-}
-
-function runtimeAftermathMessage(runtime: RuntimeAftermath) {
-  switch (runtime.kind) {
-    case 'untouched':
-      return undefined
-    case 'rolled_back':
-      return m.error_commit_runtime_rolled_back()
-    case 'rollback_failed':
-    case 'unknown':
-      return m.error_commit_runtime_unknown()
-  }
 }
 
 /** A subscription URL can carry a token, so only its host is shown. */
@@ -259,6 +235,8 @@ export function configErrorMessage(
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
     case 'invalid_remote_access':
       return remoteAccessErrorMessage(error.reason)
+    case 'invalid_network_automation':
+      return m.error_config_invalid_network_automation({ reason: error.reason })
     case 'validate_hotkey_capability':
       return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':
@@ -497,46 +475,21 @@ function publicProfileContentMessage(reason: PublicProfileContentKind): string {
 }
 
 function publicCommitAbortedMessage(commit: PublicCommitAborted): string {
-  const headline = (() => {
-    switch (commit.kind) {
-      case 'write_config':
-        return m.error_commit_write_config()
-      case 'recover_after_write_failure':
-        return m.error_commit_recover_after_write_failure()
-      case 'validate_state':
-        return m.error_commit_validate_state()
-      case 'runtime_refused':
-      case 'runtime_failed': {
-        const primary = commit.runtime_causes?.[0]
-        const reason = primary
-          ? publicRuntimeErrorMessage(primary)
-          : m.error_runtime_core_reason_internal()
-        return commit.kind === 'runtime_refused'
-          ? m.error_commit_runtime_refused({ reason })
-          : m.error_commit_runtime_failed({ reason })
-      }
+  switch (commit.kind) {
+    case 'write_config':
+      return m.error_commit_write_config()
+    case 'recover_after_write_failure':
+      return m.error_commit_recover_after_write_failure()
+    case 'runtime_refused':
+    case 'runtime_failed': {
+      const primary = commit.runtime_causes?.[0]
+      const reason = primary
+        ? publicRuntimeErrorMessage(primary)
+        : m.error_runtime_core_reason_internal()
+      return commit.kind === 'runtime_refused'
+        ? m.error_commit_runtime_refused({ reason })
+        : m.error_commit_runtime_failed({ reason })
     }
-  })()
-
-  const outcome = publicRuntimeAftermathMessage(commit.runtime ?? null)
-  const recovery = commit.aftermath_cause
-    ? publicRuntimeErrorMessage(commit.aftermath_cause)
-    : undefined
-  return [headline, outcome, recovery].filter(Boolean).join('. ')
-}
-
-function publicRuntimeAftermathMessage(
-  aftermath: PublicRuntimeAftermathKind | null,
-): string | undefined {
-  switch (aftermath) {
-    case null:
-    case 'untouched':
-      return undefined
-    case 'rolled_back':
-      return m.error_commit_runtime_rolled_back()
-    case 'rollback_failed':
-    case 'unknown':
-      return m.error_commit_runtime_unknown()
   }
 }
 
@@ -544,14 +497,8 @@ function publicRuntimeErrorMessage(error: PublicRuntimeError): string {
   switch (error.kind) {
     case 'shutting_down':
       return m.error_runtime_shutting_down()
-    case 'isolated':
-      return m.error_runtime_isolated()
     case 'owner_unresponsive':
       return m.error_runtime_owner_unresponsive()
-    case 'owner_unavailable':
-      return m.error_runtime_owner_unavailable()
-    case 'source_settled':
-      return m.error_runtime_source_settled()
     case 'apply_runtime':
       return withCoreReason(m.error_runtime_apply_runtime(), error.core_kind)
     case 'stop_core':
@@ -590,10 +537,8 @@ function publicRuntimeErrorMessage(error: PublicRuntimeError): string {
       )
     case 'service_hosts_core':
       return m.error_runtime_service_hosts_core()
-    case 'core_not_started':
-      return m.error_runtime_core_not_started()
-    case 'recovery_unresolved':
-      return m.error_runtime_recovery_unresolved()
+    case 'configuration_not_in_effect':
+      return m.error_runtime_configuration_not_in_effect()
     case 'build_runtime':
       return publicRuntimeBuildMessage(error.source)
     case 'publish_runtime':
@@ -608,8 +553,6 @@ function publicRuntimeErrorMessage(error: PublicRuntimeError): string {
       return m.error_runtime_prepare_service_install_prompt()
     case 'read_core_version':
       return m.error_runtime_read_core_version({ core: error.core })
-    case 'unsettled_baseline':
-      return unsettledBaselineMessage(error.gap)
     case 'core_rejected_config':
       return withCoreReason(
         m.error_runtime_core_rejected_config(),
@@ -619,14 +562,6 @@ function publicRuntimeErrorMessage(error: PublicRuntimeError): string {
       return publicCheckUnavailableMessage(error.reason)
     case 'core_rolled_back':
       return m.error_runtime_core_rolled_back()
-    case 'handoff_owner_mismatch':
-      return m.error_runtime_handoff_owner_mismatch()
-    case 'handoff_not_restored':
-      return m.error_runtime_handoff_not_restored()
-    case 'restore_failed':
-      return m.error_runtime_restore_failed()
-    case 'committed_after_refusal':
-      return m.error_runtime_committed_after_refusal()
     case 'no_runtime_config':
       return m.error_runtime_no_runtime_config()
     case 'serialize_runtime_config':
@@ -754,10 +689,6 @@ function publicCheckUnavailableMessage(
         m.error_runtime_check_unavailable(),
         reason.core_kind,
       )
-    case 'no_endpoint':
-    case 'host_unsupported':
-    case 'candidate_unavailable':
-      return m.error_runtime_check_unavailable()
   }
 }
 
@@ -775,6 +706,8 @@ function publicConfigErrorMessage(error: PublicConfigError): string {
       return m.error_public_config_invalid_latency_timeout()
     case 'invalid_remote_access':
       return publicRemoteAccessErrorMessage(error.reason)
+    case 'invalid_network_automation':
+      return m.error_public_config_invalid_network_automation()
     case 'validate_hotkey_capability':
       return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':
@@ -1024,14 +957,8 @@ export function runtimeErrorMessage(
   switch (error.kind) {
     case 'shutting_down':
       return m.error_runtime_shutting_down()
-    case 'isolated':
-      return m.error_runtime_isolated()
     case 'owner_unresponsive':
       return m.error_runtime_owner_unresponsive()
-    case 'owner_unavailable':
-      return m.error_runtime_owner_unavailable()
-    case 'source_settled':
-      return m.error_runtime_source_settled()
     case 'apply_runtime':
       return coreOperationMessage(
         m.error_runtime_apply_runtime(),
@@ -1083,10 +1010,8 @@ export function runtimeErrorMessage(
       )
     case 'service_hosts_core':
       return m.error_runtime_service_hosts_core()
-    case 'core_not_started':
-      return m.error_runtime_core_not_started()
-    case 'recovery_unresolved':
-      return m.error_runtime_recovery_unresolved()
+    case 'configuration_not_in_effect':
+      return m.error_runtime_configuration_not_in_effect()
     case 'build_runtime':
       return buildRuntimeMessage(error.source, profileLabel)
     case 'publish_runtime':
@@ -1101,8 +1026,6 @@ export function runtimeErrorMessage(
       return m.error_runtime_prepare_service_install_prompt()
     case 'read_core_version':
       return m.error_runtime_read_core_version({ core: error.source.core })
-    case 'unsettled_baseline':
-      return unsettledBaselineMessage(error.gap)
     case 'core_rejected_config':
       return withCoreReason(
         m.error_runtime_core_rejected_config(),
@@ -1117,14 +1040,6 @@ export function runtimeErrorMessage(
         m.error_runtime_submission_unobserved(),
         error.failure,
       )
-    case 'handoff_owner_mismatch':
-      return m.error_runtime_handoff_owner_mismatch()
-    case 'handoff_not_restored':
-      return m.error_runtime_handoff_not_restored()
-    case 'restore_failed':
-      return m.error_runtime_restore_failed()
-    case 'committed_after_refusal':
-      return m.error_runtime_committed_after_refusal()
     case 'no_runtime_config':
       return m.error_runtime_no_runtime_config()
     case 'serialize_runtime_config':
@@ -1152,17 +1067,6 @@ function hostName(host: ExecutionHost): string {
       return m.error_runtime_host_local()
     case 'service':
       return m.error_runtime_host_service()
-  }
-}
-
-function unsettledBaselineMessage(gap: EvidenceGap): string {
-  switch (gap) {
-    case 'core_transitioning':
-      return m.error_runtime_unsettled_baseline_core_transitioning()
-    case 'baseline_unconfirmed':
-      return m.error_runtime_unsettled_baseline_baseline_unconfirmed()
-    case 'no_restorable_baseline':
-      return m.error_runtime_unsettled_baseline_no_restorable_baseline()
   }
 }
 
@@ -1443,7 +1347,6 @@ export function effectFailureMessage(code: EffectFailureCode): string {
 
 type SharedDegradationReason = Exclude<
   DegradationReason,
-  | { code: 'runtime_recovery_required' }
   | { code: 'runtime_deferred' }
   | { code: 'runtime_product_publish_failed' }
   | { code: 'service_stop_failed' }
@@ -1483,12 +1386,6 @@ export function degradationReasonMessage(
   profileLabel: ProfileLabel = (id) => id,
 ): string {
   switch (reason.code) {
-    case 'runtime_recovery_required': {
-      const summary = m.mutation_degradation_reason_runtime_recovery_required()
-      return reason.cause
-        ? `${summary} (${runtimeErrorMessage(reason.cause, profileLabel)})`
-        : summary
-    }
     case 'runtime_deferred':
       return m.mutation_degradation_reason_runtime_deferred({
         reason: runtimeErrorMessage(reason.cause, profileLabel),
@@ -1510,12 +1407,6 @@ export function publicDegradationReasonMessage(
   reason: PublicDegradationReason,
 ): string {
   switch (reason.code) {
-    case 'runtime_recovery_required': {
-      const summary = m.mutation_degradation_reason_runtime_recovery_required()
-      return reason.cause
-        ? `${summary} (${publicRuntimeErrorMessage(reason.cause)})`
-        : summary
-    }
     case 'runtime_deferred':
       return m.mutation_degradation_reason_runtime_deferred({
         reason: publicRuntimeErrorMessage(reason.cause),

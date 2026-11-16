@@ -385,6 +385,9 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         host_adapters: ClientHostAdapters {
             icon_fetcher: network.clone(),
             network_diagnostics: network,
+            network_environment: Some(Arc::new(
+                nyanpasu_os::network_environment::NetdevNetworkEnvironment::new(),
+            )),
             http_server: Some({
                 let frontend = Some(http_server_frontend(&app_handle));
                 Arc::new(move || {

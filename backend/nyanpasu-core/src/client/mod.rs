@@ -25,10 +25,9 @@ pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
 pub mod application;
-pub mod application_workflow;
 pub mod artifact_snapshot;
 mod clash_api;
-mod clash_config;
+pub(crate) mod clash_config;
 mod clash_streams;
 pub mod configuration_status;
 pub mod core_lifecycle;
@@ -44,10 +43,12 @@ pub mod hotkey;
 pub mod http_server;
 pub mod jobs;
 pub mod logs;
+pub mod network_automation;
 #[cfg(test)]
 mod network_tests;
 pub(crate) mod ports;
 pub mod profiles;
+pub mod reconciler;
 mod remote_access;
 pub mod runtime;
 pub mod runtime_build;
@@ -139,7 +140,7 @@ pub struct ClientSetupArgs {
     /// owner-only secret file.
     pub remote_auth: RemoteAccessAuthPorts,
     pub ui_sink: Arc<dyn UiEventSink>,
-    /// Built after the session proxy source and application workflow exist.
+    /// Built after the session proxy source and the runtime reconciler exist.
     pub updater_backend_factory: Arc<BackendFactory>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -194,7 +195,7 @@ pub enum SetupError {
     #[snafu(display("failed to start effects"))]
     StartEffects { source: effects::actor::Error },
     #[snafu(display("failed to start workflow"))]
-    StartWorkflow { source: application_workflow::Error },
+    StartWorkflow { source: reconciler::Error },
     #[snafu(display("failed to start updater"))]
     StartUpdater { source: nyanpasu_updater::Error },
     #[snafu(display("failed to start app updater"))]
@@ -205,6 +206,8 @@ pub enum SetupError {
     StartGeoIndex {
         source: nyanpasu_observers::geo::SpawnError,
     },
+    #[snafu(display("failed to start network automation"))]
+    StartNetworkAutomation { source: network_automation::Error },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -230,9 +233,9 @@ impl WeakNyanpasuClient {
 }
 
 struct MutationCoordinators {
-    application: MutationCoordinator<NyanpasuAppConfig>,
-    clash: MutationCoordinator<ClashConfig>,
-    profiles: MutationCoordinator<Profiles>,
+    application: MutationCoordinator,
+    clash: MutationCoordinator,
+    profiles: MutationCoordinator,
 }
 
 impl MutationCoordinators {
@@ -323,7 +326,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     paths: PathResolver,
     storage: Arc<dyn StorageSnapshot>,
-    application_workflow: application_workflow::ApplicationWorkflowClient,
+    reconciler: reconciler::RuntimeReconcilerClient,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
@@ -342,6 +345,8 @@ struct NyanpasuClientInner {
     geo_index: nyanpasu_observers::geo::GeoIndexClient,
     os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
     effects: effects::actor::EffectsClient,
+    /// `None` on a host that cannot observe its network.
+    network_automation: Option<network_automation::NetworkAutomationClient>,
     window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
@@ -403,8 +408,10 @@ impl NyanpasuClient {
         // active binding. The first reconcile resolves and confirms.
         let ports = Arc::new(SessionPortResolver::default());
         let file_ports = (host_adapters.profile_files)(ports.clone());
+        let content_lock = crate::state::mutation::ProfileContentLock::default();
         let profiles = profiles::ProfilesClient::new_with_jobs(
             mutations.profiles.clone(),
+            content_lock,
             paths.profiles_path(),
             jobs.clone(),
             file_ports.fs.clone(),
@@ -430,7 +437,6 @@ impl NyanpasuClient {
             instance_config_dir,
             paths,
             storage,
-            runtime_paths,
             remote_auth,
             host_adapters,
             ui_sink,
@@ -471,7 +477,6 @@ impl NyanpasuClient {
         instance_config_dir: PathBuf,
         paths: PathResolver,
         storage: Arc<dyn StorageSnapshot>,
-        runtime_paths: RuntimePaths,
         remote_auth: RemoteAccessAuthPorts,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
@@ -567,38 +572,47 @@ impl NyanpasuClient {
         .context(StartEffectsSnafu)?;
         let notifications: Arc<dyn effects::ports::CommitNotifications> =
             Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
-        let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
-            application_workflow::ApplicationWorkflowArgs {
+        let revisions = runtime::RuntimeRevisionAllocator::new();
+        let builder = host_adapters.runtime_build;
+        let validator: Arc<dyn reconciler::ports::RuntimeValidatorPort> =
+            Arc::new(reconciler::adapters::CoreCheckValidator::new(&core_v2));
+        let reconciler =
+            reconciler::RuntimeReconcilerClient::spawn(reconciler::RuntimeReconcilerArgs {
+                revisions: revisions.clone(),
                 notifications: notifications.clone(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
-                profiles: profiles.snapshot_handle(),
+                profile_content: profiles.content_reader(),
                 core: core_v2.clone(),
                 service,
-                builder: host_adapters.runtime_build,
-                validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
-                    core_v2.clone(),
-                    runtime_paths,
-                )),
+                builder: builder.clone(),
                 ports: ports.clone(),
                 installer: binary_installer,
                 ownership: core_lifecycle::Ownership::Unproven,
                 instance_config_dir,
                 shutdown: shutdown.child_token(),
                 tasks: tasks.clone(),
-            },
-        )
-        .await
-        .context(StartWorkflowSnafu)?;
+            })
+            .await
+            .context(StartWorkflowSnafu)?;
         if let Some(mutations) = mutations {
-            let factory = Arc::new(application_workflow.clone());
+            let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
+                reconciler::check::CandidateCheck::new(reconciler::check::Args {
+                    application: application.snapshot_handle(),
+                    clash: clash_config.snapshot_handle(),
+                    profile_content: profiles.content_reader(),
+                    builder,
+                    ports: ports.clone(),
+                    revisions,
+                    validator,
+                    workflow: reconciler.clone(),
+                }),
+            );
             mutations
                 .application
-                .connect(factory.clone(), notifications.clone());
-            mutations
-                .clash
-                .connect(factory.clone(), notifications.clone());
-            mutations.profiles.connect(factory, notifications);
+                .connect(notifications.clone(), gate.clone());
+            mutations.clash.connect(notifications.clone(), gate.clone());
+            mutations.profiles.connect(notifications, gate);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -607,7 +621,7 @@ impl NyanpasuClient {
                 }
                 BackendFactoryError::LocateExecutableParent => SetupError::LocateExecutableParent,
             })?,
-            Arc::new(application_workflow.clone()),
+            Arc::new(reconciler.clone()),
             shutdown.child_token(),
             &tasks,
         )
@@ -727,6 +741,20 @@ impl NyanpasuClient {
             }
             None => None,
         };
+        let network_automation = match host_adapters.network_environment {
+            Some(environment) => Some(
+                Self::spawn_network_automation(
+                    environment,
+                    &application,
+                    &clash_config,
+                    &core_v2,
+                    &shutdown,
+                    &tasks,
+                )
+                .await?,
+            ),
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 remote_access,
@@ -746,7 +774,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 paths,
                 storage,
-                application_workflow,
+                reconciler,
                 core_api: core_v2,
                 proxies,
                 streams,
@@ -763,6 +791,7 @@ impl NyanpasuClient {
                 geo_index,
                 os_proxy,
                 effects,
+                network_automation,
                 window,
                 accelerators,
                 shutdown,
@@ -775,6 +804,56 @@ impl NyanpasuClient {
     #[must_use]
     pub fn downgrade(&self) -> WeakNyanpasuClient {
         WeakNyanpasuClient(Arc::downgrade(&self.inner))
+    }
+
+    /// Starts the network automation owner and forwards each committed
+    /// policy to it. The owner writes the capture switches through the same
+    /// config owners a settings change uses.
+    async fn spawn_network_automation(
+        environment: Arc<dyn nyanpasu_contracts::network_environment::NetworkEnvironmentPort>,
+        application: &ApplicationClient,
+        clash_config: &ClashConfigClient,
+        core: &CoreClientV2,
+        shutdown: &tokio_util::sync::CancellationToken,
+        tasks: &tokio_util::task::TaskTracker,
+    ) -> std::result::Result<network_automation::NetworkAutomationClient, SetupError> {
+        let mut settings = application.subscribe_settings_changes();
+        // The borrow guard is not `Send`, so it must not live across the spawn's await.
+        let policy = settings.borrow_and_update().network_automation.clone();
+        let automation = network_automation::NetworkAutomationClient::spawn(
+            network_automation::NetworkAutomationArgs {
+                environment,
+                switches: Arc::new(network_automation::ConfigCaptureSwitches {
+                    application: application.clone(),
+                    clash_config: clash_config.clone(),
+                    core: core.clone(),
+                }),
+                policy,
+                schedule_polls: true,
+                shutdown: shutdown.child_token(),
+            },
+            tasks,
+        )
+        .await
+        .context(StartNetworkAutomationSnafu)?;
+
+        let (policies, token) = (automation.clone(), shutdown.child_token());
+        tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = token.cancelled() => break,
+                    changed = settings.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let policy = settings.borrow_and_update().network_automation.clone();
+                        policies.set_policy(policy);
+                    }
+                }
+            }
+        });
+
+        Ok(automation)
     }
 
     pub async fn http_server_status(
@@ -1095,14 +1174,14 @@ impl NyanpasuClient {
     }
 
     pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
-        self.inner.application_workflow.reconcile().await
+        self.inner.reconciler.reconcile().await
     }
 
     // No UI entry issues an explicit stop yet; this is the facade entry to the
     // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
     #[allow(dead_code)]
     pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
-        self.inner.application_workflow.stop_core().await
+        self.inner.reconciler.stop_core().await
     }
 
     /// Select the core through the application source transaction.
@@ -1115,35 +1194,35 @@ impl NyanpasuClient {
         self.patch_app_config(patch).await
     }
     pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.application_workflow.core_status()
+        self.inner.reconciler.core_status()
     }
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.application_workflow.core_events()
+        self.inner.reconciler.core_events()
     }
     pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.application_workflow.service_status()
+        self.inner.reconciler.service_status()
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.application_workflow.service_events()
+        self.inner.reconciler.service_events()
     }
     pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.install_service().await
+        self.inner.reconciler.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.start_service().await
+        self.inner.reconciler.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.stop_service().await
+        self.inner.reconciler.stop_service().await
     }
 
     pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.restart_service().await
+        self.inner.reconciler.restart_service().await
     }
 
     pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.uninstall_service().await
+        self.inner.reconciler.uninstall_service().await
     }
 
     pub async fn get_core_version(
@@ -1247,6 +1326,17 @@ impl NyanpasuClient {
             }
             .into());
         }
+        if self.inner.network_automation.is_none()
+            && patch
+                .network_automation
+                .as_ref()
+                .is_some_and(|policy| policy.enabled)
+        {
+            return Err(ConfigError::InvalidNetworkAutomation {
+                reason: "this host cannot observe its network".into(),
+            }
+            .into());
+        }
         let mut candidate = self.inner.application.snapshot().state;
         candidate.apply(patch.clone());
         let clash = self.inner.clash_config.snapshot().state;
@@ -1260,11 +1350,57 @@ impl NyanpasuClient {
             return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
         }
         let client = self.inner.application.clone();
-        Ok(client.patch(patch).await?.outcome())
+        let committed = client.patch(patch).await?;
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        committed.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        Ok(reconciler::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "application".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        ))
+    }
+
+    /// Prepares the daemon before committing service preference; ownership changes after commit.
+    pub async fn set_service_mode(
+        &self,
+        enabled: bool,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        if enabled {
+            self.inner
+                .reconciler
+                .prepare_service()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        Arc::new(error),
+                    )
+                })?;
+        }
+        self.patch_app_config(NyanpasuAppConfigPatch {
+            enable_service_mode: Some(enabled),
+            ..Default::default()
+        })
+        .await
     }
 
     pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.retry_runtime().await
+        self.inner.reconciler.retry_runtime().await
     }
 
     pub fn retry_effect_now(&self, kind: EffectKind) -> std::result::Result<(), EffectsError> {
@@ -1382,8 +1518,50 @@ impl NyanpasuClient {
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-        let client = self.inner.clash_config.clone();
-        let outcome = client.patch_overrides(patch).await?.outcome();
+        let current = self.inner.clash_config.snapshot();
+        let nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+            mode,
+            log_level,
+            allow_lan,
+            secret,
+            unified_delay,
+            tcp_concurrent,
+            ipv6,
+        } = &patch;
+        let outcome = if mode.is_some_and(|mode| mode == current.state.overrides.mode())
+            && log_level.is_none()
+            && allow_lan.is_none()
+            && secret.is_none()
+            && unified_delay.is_none()
+            && tcp_concurrent.is_none()
+            && ipv6.is_none()
+        {
+            let failure = self
+                .inner
+                .reconciler
+                .interrupt_connections()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+                        Arc::new(error),
+                    )
+                })?;
+            let degradations = failure.into_iter().map(|error| {
+                nyanpasu_runtime_values::runtime::Degradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
+                    reason: nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed {
+                        cause: (&error).into(),
+                    },
+                    message: error.to_string(),
+                    retryable: false,
+                }
+            }).collect();
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), degradations)
+        } else {
+            let committed = self.inner.clash_config.patch_overrides(patch).await?;
+            self.clash_outcome(committed).await
+        };
         self.request_proxy_refresh();
         Ok(outcome)
     }
@@ -1401,20 +1579,10 @@ impl NyanpasuClient {
         &self,
         patch: ClashConfigPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-        let mut candidate = self.inner.clash_config.snapshot().state;
-        candidate.apply(patch.clone());
         let application = self.inner.application.snapshot().state;
-        candidate
-            .validate_transparent_proxy(application.core, cfg!(target_os = "linux"))
-            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
-        if candidate.transparent_proxy.mode
-            != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
-            && !application.enable_service_mode
-        {
-            return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
-        }
         let client = self.inner.clash_config.clone();
-        Ok(client.patch(patch).await?.outcome())
+        let committed = client.patch_validated(&application, patch).await?;
+        Ok(self.clash_outcome(committed).await)
     }
 
     // ---- profiles domain (PR-3 T07) ----
@@ -1446,7 +1614,7 @@ impl NyanpasuClient {
                     message = %degradation.message,
                     "profile commit completed with a degraded side effect",
                 );
-                application_workflow::profiles::map_profile_degradation(degradation)
+                reconciler::profiles::map_profile_degradation(degradation)
             })
             .collect();
         degradations.extend(report.runtime_degradations.clone());
@@ -1457,11 +1625,33 @@ impl NyanpasuClient {
         &self,
         report: &CommitReport,
     ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        self.profile_outcome((), report).await
+    }
+
+    async fn profile_outcome<T>(
+        &self,
+        value: T,
+        report: &CommitReport,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<T> {
+        let settled = if report.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
+                        report.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        let runtime = reconciler::status::outcome(report.receipt.clone(), settled);
         nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            (),
+            value,
             self.collect_post_commit_degradations(report).await,
         )
-        .with_commit(report.receipt.clone())
+        .append_commit_result(runtime)
     }
 
     /// Public wire for a post-commit auto-activation hard failure. Create/import
@@ -1537,13 +1727,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an add commits the uid it generated");
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                created,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(created, &report).await)
     }
 
     /// Create a profile from a fully-specified request and apply the design §9
@@ -1639,11 +1823,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an import commits the uid it generated");
-        let outcome = nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            created.clone(),
-            self.collect_post_commit_degradations(&report).await,
-        )
-        .with_commit(report.receipt.clone());
+        let outcome = self.profile_outcome(created.clone(), &report).await;
         if transform.is_some() {
             return Ok(outcome);
         }
@@ -1729,13 +1909,7 @@ impl NyanpasuClient {
             .create_proxy_group_folder(profile, name, members)
             .await?;
         self.inner.proxies.notify_rearranged();
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
@@ -1745,13 +1919,7 @@ impl NyanpasuClient {
         members: Vec<ProfileId>,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
         let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     pub async fn refresh_profile(
@@ -1873,12 +2041,12 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.application_workflow.runtime().promoted
+        self.inner.reconciler.runtime().promoted
     }
 }
 
 #[async_trait::async_trait]
-impl nyanpasu_updater::CoreUpdateInstaller for application_workflow::ApplicationWorkflowClient {
+impl nyanpasu_updater::CoreUpdateInstaller for reconciler::RuntimeReconcilerClient {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
@@ -1998,14 +2166,14 @@ pub(crate) mod tests {
         std::fs::write(path, content).unwrap();
     }
 
-    /// The application workflow applies committed state; it is not a second
+    /// The runtime reconciler applies committed state; it is not a second
     /// commit point for a configuration domain (design D1/§3.1). Holding a
     /// domain client, the facade that owns all three, or an actor's raw message
     /// enum is what would make it one, so the production sources under the
     /// workflow must not name any of them. Its `tests/` directories are skipped:
     /// a fixture legitimately builds the real clients to seed a graph.
     #[test]
-    fn application_workflow_sources_hold_no_source_config_client() {
+    fn reconciler_sources_hold_no_source_config_client() {
         // A domain client is the direct way to write a source domain. The facade
         // reaches all three, and an actor's own message enum reaches one without
         // its typed client, so naming any of them is a way to commit.
@@ -2037,7 +2205,7 @@ pub(crate) mod tests {
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/client");
         let mut files = Vec::new();
-        collect(&root.join("application_workflow"), &mut files);
+        collect(&root.join("reconciler"), &mut files);
         collect(&root.join("core_lifecycle"), &mut files);
         assert!(!files.is_empty(), "the scan found no workflow sources");
 
@@ -2059,58 +2227,60 @@ pub(crate) mod tests {
         }
         assert!(
             offenders.is_empty(),
-            "the application workflow must read source config through StateSnapshot handles, \
+            "the runtime reconciler must read source config through StateSnapshot handles, \
              reach the actors through their typed clients, and let the facade commit:\n{}",
             offenders.join("\n")
         );
     }
 
-    /// Required subscriber that holds the transaction open inside `on_prepare`
-    /// until the test releases it, so the owning actor's mailbox is provably
-    /// blocked while the assertion runs.
-    struct ParkedPrepare {
+    /// Holds an independent check while committed reads bypass the source mailbox.
+    struct ParkedGate {
         entered: Arc<tokio::sync::Notify>,
         release: Arc<tokio::sync::Notify>,
     }
-
     #[async_trait::async_trait]
-    impl nyanpasu_state_engine::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
-        fn name(&self) -> nyanpasu_state_engine::SubscriberName<'_> {
-            "test-parked-prepare".into()
-        }
-
-        async fn on_prepare(
+    impl crate::state::mutation::ports::RuntimeGate for ParkedGate {
+        async fn check(
             &self,
-            _change: nyanpasu_state_engine::StateChange<NyanpasuAppConfig>,
-        ) -> nyanpasu_state_engine::Ack {
+            _: crate::state::mutation::ports::RuntimeCandidate,
+        ) -> std::result::Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>
+        {
             self.entered.notify_one();
             self.release.notified().await;
-            nyanpasu_state_engine::Ack::Ok
+            Ok(())
+        }
+        fn committed(
+            &self,
+            _: nyanpasu_runtime_values::mutation::ConfigDomain,
+            _: nyanpasu_state_engine::Version,
+        ) {
         }
     }
 
     #[tokio::test]
-    async fn committed_config_reads_do_not_wait_for_a_parked_required_prepare() {
+    async fn committed_config_reads_do_not_wait_for_a_parked_check() {
         use futures_util::FutureExt;
 
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
+        let manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
             nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()
-        .from_state(NyanpasuAppConfig::default())
-        .await
-        .expect("application manager should initialize");
-        manager.add_subscriber(Box::new(ParkedPrepare {
-            entered: entered.clone(),
-            release: release.clone(),
-        }));
+        .from_state(NyanpasuAppConfig::default());
+        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        mutations.connect(
+            Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            Arc::new(ParkedGate {
+                entered: entered.clone(),
+                release: release.clone(),
+            }),
+        );
         let application = ApplicationClient::from_manager(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            mutations,
             manager,
             ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
@@ -2134,11 +2304,13 @@ pub(crate) mod tests {
         )
         .await
         .expect("clash config client should be created");
+        let writer = application.clone();
         let client = test_client_from_typed_clients(
             &dir,
             application,
             session_state,
             clash_config,
+            None,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
             Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
@@ -2146,16 +2318,17 @@ pub(crate) mod tests {
         )
         .await;
 
-        assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
+        let previous = client
+            .get_app_config()
+            .await
+            .unwrap()
+            .enable_builtin_enhanced;
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_system_proxy = Some(true);
-        let patching = {
-            let client = client.clone();
-            tokio::spawn(async move { client.patch_app_config(patch).await })
-        };
+        patch.enable_builtin_enhanced = Some(!previous);
+        let patching = { tokio::spawn(async move { writer.patch(patch).await }) };
 
-        // The transaction now owns the actor and is parked mid-prepare.
+        // The source owner is awaiting its independent check.
         entered.notified().await;
         let parked = client
             .get_app_config()
@@ -2163,7 +2336,7 @@ pub(crate) mod tests {
             .expect("a committed read must not await the parked actor")
             .expect("committed read should succeed");
         assert!(
-            !parked.enable_system_proxy,
+            parked.enable_builtin_enhanced == previous,
             "an unfinished transaction must not be visible as committed state"
         );
 
@@ -2172,7 +2345,14 @@ pub(crate) mod tests {
             .await
             .expect("patch task should join")
             .expect("patch should commit");
-        assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .unwrap()
+                .enable_builtin_enhanced,
+            !previous
+        );
     }
 
     #[tokio::test]
@@ -2658,7 +2838,7 @@ pub(crate) mod tests {
             let report = client.startup_reconcile().await;
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
         }
@@ -2840,7 +3020,11 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
 
         (async {
-            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let (application, session_state, clash_config) = test_typed_config_clients(
+                &dir,
+                crate::state::mutation::MutationCoordinator::isolated(),
+            )
+            .await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.theme_color = Some(yaml_serde::from_str("\"#123456\"").unwrap());
             application
@@ -2939,7 +3123,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let client = test_client(&dir).await;
         let promoted = client.promoted_runtime().await;
-        let lifecycle = client.inner.application_workflow.runtime();
+        let lifecycle = client.inner.reconciler.runtime();
 
         assert!(promoted.is_none());
         assert!(lifecycle.promoted.is_none());
@@ -3105,7 +3289,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn activation_requires_runtime_success_before_committing_selection() {
+    async fn activation_commits_selection_when_apply_is_deferred() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -3129,10 +3313,11 @@ pub(crate) mod tests {
                 .unwrap()
                 .into_value();
             let version = client.get_profiles().await.unwrap().revision();
-            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let outcome = client.activate_profile(Some(uid.clone())).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
             let after = client.get_profiles().await.unwrap();
-            assert!(after.current.is_none());
-            assert_eq!(after.revision(), version);
+            assert_eq!(after.current, Some(uid));
+            assert_eq!(after.revision(), version + 1);
         })
         .await;
     }
@@ -3151,7 +3336,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(client.core_status().host, ExecutionHost::Service);
@@ -3201,7 +3386,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(
@@ -3209,6 +3394,7 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by startup"
             );
+            client.inner.reconciler.settle_core_changes().await;
             assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
@@ -3245,7 +3431,7 @@ pub(crate) mod tests {
             client.activate_profile(Some(uid)).await.unwrap();
             endpoint.set_effective_enabled(true);
             client.reconcile_core().await.unwrap();
-            let state = client.inner.application_workflow.runtime();
+            let state = client.inner.reconciler.runtime();
             assert!(state.pending.is_some());
             assert!(state.promoted.as_ref().unwrap().effective.is_none());
             let submitted = endpoint.submissions();
@@ -3260,14 +3446,7 @@ pub(crate) mod tests {
                 }
             )));
             assert_eq!(endpoint.submissions(), submitted);
-            assert!(
-                client
-                    .inner
-                    .application_workflow
-                    .runtime()
-                    .pending
-                    .is_none()
-            );
+            assert!(client.inner.reconciler.runtime().pending.is_none());
             assert!(client.inspect_applied_runtime().await.unwrap().applied);
         })
         .await;
@@ -3425,9 +3604,9 @@ pub(crate) mod tests {
                 .await
                 .expect("add")
                 .into_value();
-            // A rejected activation keeps the last accepted product.
-            assert!(client.activate_profile(Some(uid)).await.is_err());
-            let lifecycle = client.inner.application_workflow.runtime();
+            let outcome = client.activate_profile(Some(uid)).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
+            let lifecycle = client.inner.reconciler.runtime();
             assert!(client.promoted_runtime().await.is_some());
             assert_eq!(lifecycle.promoted.unwrap().revision.get(), 1);
         })
@@ -3435,7 +3614,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn failed_reconcile_still_advances_the_promoted_read_model() {
+    async fn failed_reconcile_preserves_the_confirmed_product() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -3456,7 +3635,7 @@ pub(crate) mod tests {
             let before = client.promoted_runtime().await.unwrap();
             let _ = client.reconcile_core().await.expect_err("reconcile fails");
             let after = client.promoted_runtime().await.unwrap();
-            assert!(after.revision > before.revision);
+            assert_eq!(after.revision, before.revision);
         })
         .await;
     }

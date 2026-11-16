@@ -150,7 +150,7 @@ fn operation_receivers_decode_existing_success_values() {
                 degradations: vec![crate::types::PublicDegradation {
                     phase: nyanpasu_runtime_values::runtime::DegradationPhase::RuntimeBuild,
                     reason: crate::types::PublicDegradationReason::RuntimeDeferred {
-                        cause: crate::types::PublicRuntimeError::RestoreFailed,
+                        cause: crate::types::PublicRuntimeError::ConfigurationNotInEffect,
                     },
                     retryable: true,
                 }],
@@ -185,7 +185,7 @@ fn operation_receivers_decode_existing_success_values() {
     receive::<operations::GetConfigurationStatus>(sample(json!({
         "event_seq": 1, "maintenance": null, "active": null, "effects": [], "sources": [],
         "recent_operations": [], "source_versions": {"application": 1, "clash": 2, "session": 3, "profiles": 4},
-        "runtime": {"health": "healthy", "operation_id": null, "attempts": 0, "automatic_remaining": 0, "message": null}
+        "runtime": {"health": "healthy", "operation_id": null, "message": null}
     })));
     receive::<operations::GetCoreStatus>(sample(json!({
         "controller": null, "host": "local", "connectivity": {"kind": "shut_down"},

@@ -3,6 +3,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <!-- macOS shows the name of the connected Wi-Fi network only to an app the user
+         lets use location. Network rules ask for that access to match a Wi-Fi name. -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Clash Nyanpasu reads the name of the Wi-Fi network you are connected to, so your network rules can match it. Your location is not read or sent anywhere.</string>
     <key>CFBundleURLTypes</key>
     <array>
       <dict>

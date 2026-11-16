@@ -61,6 +61,33 @@
         "commits": [],
         "notifications_pending": true,
         "degradations": []
+      },
+      {
+        "status": "committed_degraded",
+        "value": "profile-1",
+        "commits": [
+          {
+            "operation_id": "commit-1",
+            "domain": "profiles",
+            "source_version": 4,
+            "runtime": "deferred"
+          }
+        ],
+        "notifications_pending": true,
+        "degradations": [
+          {
+            "phase": "runtime_apply",
+            "reason": {
+              "code": "runtime_deferred",
+              "cause": {
+                "kind": "configuration_not_in_effect",
+                "reason": "waiting for a stable runtime"
+              }
+            },
+            "message": "the committed configuration is not in effect: waiting for a stable runtime",
+            "retryable": true
+          }
+        ]
       }
     ],
     "failures": [
@@ -105,6 +132,33 @@
         "commits": [],
         "notifications_pending": true,
         "degradations": []
+      },
+      {
+        "status": "committed_degraded",
+        "value": null,
+        "commits": [
+          {
+            "operation_id": "commit-1",
+            "domain": "profiles",
+            "source_version": 4,
+            "runtime": "deferred"
+          }
+        ],
+        "notifications_pending": true,
+        "degradations": [
+          {
+            "phase": "runtime_apply",
+            "reason": {
+              "code": "runtime_deferred",
+              "cause": {
+                "kind": "configuration_not_in_effect",
+                "reason": "waiting for a stable runtime"
+              }
+            },
+            "message": "the committed configuration is not in effect: waiting for a stable runtime",
+            "retryable": true
+          }
+        ]
       }
     ],
     "failures": [
@@ -177,14 +231,49 @@
         "runtime": {
           "health": "healthy",
           "operation_id": null,
-          "attempts": 0,
-          "automatic_remaining": 0,
           "message": null
         },
         "effects": [],
         "sources": [],
         "active": null,
         "recent_operations": []
+      },
+      {
+        "event_seq": 2,
+        "maintenance": null,
+        "source_versions": {
+          "application": 1,
+          "clash": 2,
+          "session": 3,
+          "profiles": 4
+        },
+        "runtime": {
+          "health": "waiting_dependency",
+          "operation_id": "round-1",
+          "message": "the committed configuration is not in effect: waiting for a stable runtime"
+        },
+        "effects": [
+          {
+            "kind": "locale",
+            "health": "retry_scheduled",
+            "desired_revision": 2,
+            "applied_revision": 1,
+            "attempts": 1,
+            "automatic_remaining": 2,
+            "code": "presentation_unsupported",
+            "message": "unavailable"
+          }
+        ],
+        "sources": [],
+        "active": null,
+        "recent_operations": [
+          {
+            "operation_id": "round-1",
+            "domain": "CoreChanged",
+            "outcome": "Waiting",
+            "message": "the committed configuration is not in effect: waiting for a stable runtime"
+          }
+        ]
       }
     ],
     "failures": [

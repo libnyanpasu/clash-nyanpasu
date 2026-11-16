@@ -35,11 +35,11 @@ use nyanpasu_rpc_protocol::{
         PublicFailure, PublicHotkeyErrorKind, PublicHttpServerError, PublicInstallCoreBinaryKind,
         PublicMutationOutcome, PublicOsProxyError, PublicPortResolveKind, PublicProfileContentKind,
         PublicProfileSyncReadError, PublicProfilesError, PublicRemoteAccessErrorKind,
-        PublicRuntimeAftermathKind, PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind,
-        PublicRuntimeError, PublicRuntimePipelineKind, PublicStorageError,
-        PublicSubscriptionFetchKind, PublicSystemDnsError, PublicTransparentProxyMode,
-        PublicTransparentProxyValidationKind, RpcAppUpdateOutcome, RpcFolderMutationOutcome,
-        RpcMutationOutcome, RpcProfileMutationOutcome, RpcUnitMutationOutcome,
+        PublicRuntimeBuildKind, PublicRuntimeCheckUnavailableKind, PublicRuntimeError,
+        PublicRuntimePipelineKind, PublicStorageError, PublicSubscriptionFetchKind,
+        PublicSystemDnsError, PublicTransparentProxyMode, PublicTransparentProxyValidationKind,
+        RpcAppUpdateOutcome, RpcFolderMutationOutcome, RpcMutationOutcome,
+        RpcNetworkAutomationStatus, RpcProfileMutationOutcome, RpcUnitMutationOutcome,
     },
 };
 use nyanpasu_runtime_values::{
@@ -47,7 +47,8 @@ use nyanpasu_runtime_values::{
     check::RuntimeCheckUnavailable,
     effects::EffectsError,
     hotkey::HotkeyParseError,
-    mutation::{CommitAborted, RuntimeAftermath},
+    mutation::CommitAborted,
+    network_automation::NetworkAutomationSummary,
     ports::PortResolveError,
     profiles::{ProfileContentError, ProfilesError},
     runtime::{Degradation, DegradationReason, MutationOutcome},
@@ -199,6 +200,26 @@ impl RpcResponseProjection for RpcAppUpdateOutcome {
     }
 }
 
+impl RpcResponseProjection for RpcNetworkAutomationStatus {
+    fn summarize_completion(&self) -> CompletionSummary {
+        CompletionSummary::NotReported
+    }
+
+    fn encode_for_visibility(
+        self,
+        visibility: ResponseVisibility,
+    ) -> Result<serde_json::Value, RpcError> {
+        let encoded = match (visibility, self) {
+            (ResponseVisibility::Full, Self::Full(status)) => serde_json::to_value(status),
+            (ResponseVisibility::Public, Self::Full(status)) => {
+                serde_json::to_value(NetworkAutomationSummary::from(&status))
+            }
+            (_, Self::Public(summary)) => serde_json::to_value(summary),
+        };
+        encoded.map_err(|error| application_error_for(visibility, &error))
+    }
+}
+
 /// Project a rich [`MutationOutcome<T>`] onto [`PublicMutationOutcome<T>`] without cloning `T`.
 pub(crate) fn project_mutation_outcome<T>(outcome: MutationOutcome<T>) -> PublicMutationOutcome<T> {
     match outcome {
@@ -241,13 +262,6 @@ fn project_degradation(degradation: &Degradation) -> PublicDegradation {
 
 fn project_degradation_reason(reason: &DegradationReason) -> PublicDegradationReason {
     match reason {
-        DegradationReason::RuntimeRecoveryRequired {
-            operation_id,
-            cause,
-        } => PublicDegradationReason::RuntimeRecoveryRequired {
-            operation_id: operation_id.clone(),
-            cause: cause.as_deref().map(project_runtime_error),
-        },
         DegradationReason::RuntimeDeferred { cause } => PublicDegradationReason::RuntimeDeferred {
             cause: project_runtime_error(cause),
         },
@@ -602,70 +616,23 @@ fn project_profiles_error(error: &ProfilesError) -> PublicProfilesError {
     }
 }
 
-fn project_runtime_aftermath(
-    aftermath: &RuntimeAftermath,
-) -> (PublicRuntimeAftermathKind, Option<Box<PublicRuntimeError>>) {
-    match aftermath {
-        RuntimeAftermath::Untouched => (PublicRuntimeAftermathKind::Untouched, None),
-        RuntimeAftermath::RolledBack => (PublicRuntimeAftermathKind::RolledBack, None),
-        RuntimeAftermath::RollbackFailed { detail } => (
-            PublicRuntimeAftermathKind::RollbackFailed,
-            Some(Box::new(project_runtime_error(detail))),
-        ),
-        RuntimeAftermath::Unknown { detail } => (
-            PublicRuntimeAftermathKind::Unknown,
-            Some(Box::new(project_runtime_error(detail))),
-        ),
-    }
-}
-
 fn project_commit_aborted(commit: &CommitAborted) -> PublicCommitAborted {
     match commit {
-        CommitAborted::WriteConfig { runtime, .. } => {
-            let (runtime, aftermath_cause) = project_runtime_aftermath(runtime);
-            PublicCommitAborted {
-                kind: PublicCommitAbortedKind::WriteConfig,
-                runtime: Some(runtime),
-                runtime_causes: Vec::new(),
-                aftermath_cause,
-            }
-        }
-        CommitAborted::RecoverAfterWriteFailure { runtime, .. } => {
-            let (runtime, aftermath_cause) = project_runtime_aftermath(runtime);
-            PublicCommitAborted {
-                kind: PublicCommitAbortedKind::RecoverAfterWriteFailure,
-                runtime: Some(runtime),
-                runtime_causes: Vec::new(),
-                aftermath_cause,
-            }
-        }
-        CommitAborted::RuntimeRefused {
-            errors, runtime, ..
-        } => {
-            let (runtime, aftermath_cause) = project_runtime_aftermath(runtime);
-            PublicCommitAborted {
-                kind: PublicCommitAbortedKind::RuntimeRefused,
-                runtime: Some(runtime),
-                runtime_causes: errors.iter().map(|e| project_runtime_error(e)).collect(),
-                aftermath_cause,
-            }
-        }
-        CommitAborted::RuntimeFailed {
-            errors, runtime, ..
-        } => {
-            let (runtime, aftermath_cause) = project_runtime_aftermath(runtime);
-            PublicCommitAborted {
-                kind: PublicCommitAbortedKind::RuntimeFailed,
-                runtime: Some(runtime),
-                runtime_causes: errors.iter().map(|e| project_runtime_error(e)).collect(),
-                aftermath_cause,
-            }
-        }
-        CommitAborted::ValidateState { .. } => PublicCommitAborted {
-            kind: PublicCommitAbortedKind::ValidateState,
-            runtime: None,
+        CommitAborted::WriteConfig { .. } => PublicCommitAborted {
+            kind: PublicCommitAbortedKind::WriteConfig,
             runtime_causes: Vec::new(),
-            aftermath_cause: None,
+        },
+        CommitAborted::RecoverAfterWriteFailure { .. } => PublicCommitAborted {
+            kind: PublicCommitAbortedKind::RecoverAfterWriteFailure,
+            runtime_causes: Vec::new(),
+        },
+        CommitAborted::RuntimeRefused { errors, .. } => PublicCommitAborted {
+            kind: PublicCommitAbortedKind::RuntimeRefused,
+            runtime_causes: errors.iter().map(|e| project_runtime_error(e)).collect(),
+        },
+        CommitAborted::RuntimeFailed { errors, .. } => PublicCommitAborted {
+            kind: PublicCommitAbortedKind::RuntimeFailed,
+            runtime_causes: errors.iter().map(|e| project_runtime_error(e)).collect(),
         },
     }
 }
@@ -797,13 +764,6 @@ fn project_install_core_binary_error(
 
 fn project_check_unavailable(error: &RuntimeCheckUnavailable) -> PublicRuntimeCheckUnavailableKind {
     match error {
-        RuntimeCheckUnavailable::NoEndpoint { .. } => PublicRuntimeCheckUnavailableKind::NoEndpoint,
-        RuntimeCheckUnavailable::HostUnsupported { host, .. } => {
-            PublicRuntimeCheckUnavailableKind::HostUnsupported { host: *host }
-        }
-        RuntimeCheckUnavailable::CandidateUnavailable { .. } => {
-            PublicRuntimeCheckUnavailableKind::CandidateUnavailable
-        }
         RuntimeCheckUnavailable::Backend { kind, .. } => {
             PublicRuntimeCheckUnavailableKind::Backend { core_kind: *kind }
         }
@@ -813,10 +773,7 @@ fn project_check_unavailable(error: &RuntimeCheckUnavailable) -> PublicRuntimeCh
 fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
     match error {
         RuntimeError::ShuttingDown => PublicRuntimeError::ShuttingDown,
-        RuntimeError::Isolated => PublicRuntimeError::Isolated,
         RuntimeError::OwnerUnresponsive { .. } => PublicRuntimeError::OwnerUnresponsive,
-        RuntimeError::OwnerUnavailable => PublicRuntimeError::OwnerUnavailable,
-        RuntimeError::SourceSettled => PublicRuntimeError::SourceSettled,
         RuntimeError::ApplyRuntime { failure } => PublicRuntimeError::ApplyRuntime {
             core_kind: failure.kind,
         },
@@ -854,8 +811,9 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
             core_kind: failure.kind,
         },
         RuntimeError::ServiceHostsCore => PublicRuntimeError::ServiceHostsCore,
-        RuntimeError::CoreNotStarted { .. } => PublicRuntimeError::CoreNotStarted,
-        RuntimeError::RecoveryUnresolved { .. } => PublicRuntimeError::RecoveryUnresolved,
+        RuntimeError::ConfigurationNotInEffect { .. } => {
+            PublicRuntimeError::ConfigurationNotInEffect
+        }
         RuntimeError::BuildRuntime { source } => PublicRuntimeError::BuildRuntime {
             source: project_runtime_build_error(source),
         },
@@ -892,9 +850,6 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
             };
             PublicRuntimeError::ReadCoreVersion { core }
         }
-        RuntimeError::UnsettledBaseline { gap } => {
-            PublicRuntimeError::UnsettledBaseline { gap: *gap }
-        }
         RuntimeError::CoreRejectedConfig { core_kind, .. } => {
             PublicRuntimeError::CoreRejectedConfig {
                 core_kind: *core_kind,
@@ -909,10 +864,6 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
                 core_kind: failure.kind,
             }
         }
-        RuntimeError::HandoffOwnerMismatch { .. } => PublicRuntimeError::HandoffOwnerMismatch,
-        RuntimeError::HandoffNotRestored { .. } => PublicRuntimeError::HandoffNotRestored,
-        RuntimeError::RestoreFailed { .. } => PublicRuntimeError::RestoreFailed,
-        RuntimeError::CommittedAfterRefusal { .. } => PublicRuntimeError::CommittedAfterRefusal,
         RuntimeError::NoRuntimeConfig => PublicRuntimeError::NoRuntimeConfig,
         RuntimeError::SerializeRuntimeConfig { .. } => PublicRuntimeError::SerializeRuntimeConfig,
         RuntimeError::ConvertRuntimeConfig { .. } => PublicRuntimeError::ConvertRuntimeConfig,
@@ -959,6 +910,7 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
                 }
             },
         },
+        ConfigError::InvalidNetworkAutomation { .. } => PublicConfigError::InvalidNetworkAutomation,
         ConfigError::ValidateHotkeyCapability => PublicConfigError::ValidateHotkeyCapability,
         ConfigError::ValidateHotkeys { source } => PublicConfigError::ValidateHotkeys {
             reason: project_hotkey_error(source),

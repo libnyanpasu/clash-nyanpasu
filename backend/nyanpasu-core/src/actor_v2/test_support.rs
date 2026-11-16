@@ -16,7 +16,10 @@ use tokio::sync::watch;
 
 use super::{
     CoreClient as CoreClientV2,
-    endpoint::{ApiChanges, ControlEndpoint, CoreStatusSnapshot, CoreSubmission},
+    endpoint::{
+        ApiChanges, CheckSubmission, CheckSupport, ControlEndpoint, CoreStatusSnapshot,
+        CoreSubmission,
+    },
     service_actor::ServiceClient,
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
@@ -27,6 +30,10 @@ struct IdleEndpoint;
 impl crate::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
     fn host(&self) -> ExecutionHost {
         ExecutionHost::Local
+    }
+
+    async fn check_config(&self, _submission: CheckSubmission) -> CheckSupport {
+        CheckSupport::Ran(Ok(()))
     }
 
     async fn submit(
@@ -54,6 +61,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for IdleEndpoint {
         nyanpasu_core_manager::CoreError,
     > {
         Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
+            instance_id: None,
             controller: None,
             state: Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
             state_changed_at: 0,
@@ -293,6 +301,7 @@ impl ControlEndpoint for Endpoint {
 
     async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
         Ok(CoreStatusSnapshot {
+            instance_id: None,
             controller: None,
             state: Some(if self.binding.borrow().is_some() {
                 CoreStateDetail::Running { epoch: 1, pid: 7 }

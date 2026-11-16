@@ -19,8 +19,6 @@ const status = (
   runtime: {
     health,
     operation_id: null,
-    attempts: 0,
-    automatic_remaining: 0,
     message: null,
   },
   source_versions: { application: 1, clash: 1, session: 1, profiles: 1 },

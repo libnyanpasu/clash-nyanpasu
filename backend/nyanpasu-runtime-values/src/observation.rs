@@ -48,8 +48,6 @@ pub struct ConfigurationStatusSummary {
 pub struct RuntimeConvergenceSummary {
     pub health: ConvergenceHealth,
     pub operation_id: Option<String>,
-    pub attempts: u32,
-    pub automatic_remaining: u8,
     /// The owner reported diagnostic text, available to protected callers.
     pub has_diagnostic: bool,
 }
@@ -66,13 +64,12 @@ pub struct EffectConvergenceSummary {
     pub has_diagnostic: bool,
 }
 
-/// One settled mutation. `domain`, `outcome` and `conclusion` name variants of closed enums.
+/// One settled mutation. `domain` and `outcome` name variants of closed enums.
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct OperationSummary {
     pub operation_id: String,
     pub domain: String,
     pub outcome: String,
-    pub conclusion: String,
     pub has_diagnostic: bool,
 }
 
@@ -135,15 +132,11 @@ impl From<&RuntimeConvergence> for RuntimeConvergenceSummary {
         let RuntimeConvergence {
             health,
             operation_id,
-            attempts,
-            automatic_remaining,
             message,
         } = runtime;
         Self {
             health: *health,
             operation_id: operation_id.clone(),
-            attempts: *attempts,
-            automatic_remaining: *automatic_remaining,
             has_diagnostic: message.is_some(),
         }
     }
@@ -180,14 +173,12 @@ impl From<&OperationStatus> for OperationSummary {
             operation_id,
             domain,
             outcome,
-            conclusion,
             message,
         } = operation;
         Self {
             operation_id: operation_id.clone(),
             domain: domain.clone(),
             outcome: outcome.clone(),
-            conclusion: conclusion.clone(),
             has_diagnostic: message.is_some(),
         }
     }
@@ -507,10 +498,8 @@ mod tests {
                 profiles: 4,
             },
             runtime: RuntimeConvergence {
-                health: ConvergenceHealth::RecoveryRequired,
+                health: ConvergenceHealth::RetryScheduled,
                 operation_id: Some("op-1".into()),
-                attempts: 2,
-                automatic_remaining: 1,
                 message: Some(hostile()),
             },
             effects: vec![EffectConvergence {
@@ -568,7 +557,6 @@ mod tests {
                 operation_id: "op-3".into(),
                 domain: "Profiles".into(),
                 outcome: "Rejected".into(),
-                conclusion: "Withdrawn".into(),
                 message: Some(hostile()),
             }],
         }
@@ -581,22 +569,15 @@ mod tests {
 
         assert!(summary.maintenance_active);
         assert_eq!(summary.event_seq, 9);
-        assert_eq!(summary.runtime.health, ConvergenceHealth::RecoveryRequired);
+        assert_eq!(summary.runtime.health, ConvergenceHealth::RetryScheduled);
         assert_eq!(summary.runtime.operation_id.as_deref(), Some("op-1"));
-        assert_eq!(
-            (
-                summary.runtime.attempts,
-                summary.runtime.automatic_remaining
-            ),
-            (2, 1)
-        );
         assert!(summary.runtime.has_diagnostic);
         let effect = &summary.effects[0];
         assert_eq!(effect.code, Some(EffectFailureCode::SystemProxyApplyFailed));
         assert_eq!((effect.desired_revision, effect.applied_revision), (5, 4));
         assert!(effect.has_diagnostic);
         assert_eq!(summary.active.as_deref(), Some("op-2"));
-        assert_eq!(summary.recent_operations[0].conclusion, "Withdrawn");
+        assert_eq!(summary.recent_operations[0].outcome, "Rejected");
         assert!(summary.recent_operations[0].has_diagnostic);
     }
 

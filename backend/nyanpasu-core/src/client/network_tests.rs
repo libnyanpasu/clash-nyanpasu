@@ -20,6 +20,7 @@ async fn client(
     adapters.icon_fetcher = Arc::new(icons);
     adapters.network_diagnostics = Arc::new(diagnostics);
     let client = test_support::facade::test_client_with_profile_ports(dir, adapters).await;
+    client.stop_core().await.unwrap();
     set_port(&client, 7891).await;
     client
 }

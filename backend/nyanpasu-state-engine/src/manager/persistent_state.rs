@@ -1,19 +1,22 @@
-use anyhow::Context;
+//! Atomic document persistence and versioned snapshot publication owned by a source actor.
+
+use std::{future::Future, io::Write, pin::Pin, sync::Arc};
+
+use anyhow::Context as _;
+use arc_swap::ArcSwap;
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use nyanpasu_persistence::format::{Format, YamlFormat};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{future::Future, io::Write, pin::Pin};
-
-use super::{super::error::*, *};
 
 use crate::{
-    DecisionHandle, PrepareReport, StateParticipant, Version,
-    coordinator::{ParticipantEntry, PendingOutcome},
+    StateSnapshot, Version, VersionedState,
+    error::{LoadError, StateChangedError, UpsertError},
 };
 
+/// Loading inputs for an actor-owned persistent document.
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
 pub struct PersistentStateManagerSetup<State, Formatter = YamlFormat>
@@ -24,81 +27,33 @@ where
     config_path: Utf8PathBuf,
     config_prefix: Option<String>,
     #[builder(default)]
-    state_coordinator: StateCoordinatorBuilder<State>,
-    #[builder(default)]
     formatter: Formatter,
-    #[builder(default)]
-    force_build: bool,
+    #[builder(skip)]
+    state: std::marker::PhantomData<State>,
 }
 
 impl<State, Formatter> PersistentStateManagerSetup<State, Formatter>
 where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
-    Formatter: Format + Clone + Default,
+    Formatter: Format + Default,
 {
-    async fn build_manager(
-        self,
-        state: State,
-    ) -> Result<
-        PersistentStateManager<State, Formatter>,
-        ManagerInitError<PersistentStateManager<State, Formatter>>,
-    > {
-        let Self {
-            config_path,
-            config_prefix,
-            state_coordinator,
-            formatter,
-            force_build,
-        } = self;
-
-        let build_result = state_coordinator.build_initialized(state).await;
-        let make_manager = |coordinator| PersistentStateManager {
-            config_prefix,
-            config_path,
-            state_coordinator: coordinator,
-            formatter,
-        };
-
-        match build_result {
-            Ok(coordinator) => Ok(make_manager(coordinator)),
-            Err(error) => {
-                let (coordinator, report) = error.into_parts();
-                let manager = make_manager(coordinator);
-                if force_build {
-                    Ok(manager)
-                } else {
-                    Err(ManagerInitError::new(manager, report))
-                }
-            }
-        }
-    }
-
-    pub async fn load(
-        self,
-    ) -> Result<
-        PersistentStateManager<State, Formatter>,
-        LoadError<PersistentStateManager<State, Formatter>>,
-    > {
+    /// Read and decode the document without changing it on disk.
+    pub async fn load(self) -> Result<PersistentStateManager<State, Formatter>, LoadError> {
         let bytes = fs::read(&self.config_path)
             .await
             .map_err(|e| LoadError::ReadConfig(e.into()))?;
-        let state: State = self
+        let state = self
             .formatter
             .deserialize(bytes.as_slice())
             .map_err(LoadError::DeserializeConfig)?;
-
-        self.build_manager(state)
-            .await
-            .map_err(|e| LoadError::Init(Box::new(e)))
+        Ok(self.from_state(state))
     }
 
+    /// Read and decode the document, using the default only when it is absent.
     pub async fn load_or_default(
         self,
-    ) -> Result<
-        PersistentStateManager<State, Formatter>,
-        LoadError<PersistentStateManager<State, Formatter>>,
-    > {
-        let state: State = match fs::read(&self.config_path).await {
+    ) -> Result<PersistentStateManager<State, Formatter>, LoadError> {
+        let state = match fs::read(&self.config_path).await {
             Ok(bytes) => self
                 .formatter
                 .deserialize(bytes.as_slice())
@@ -113,31 +68,31 @@ where
             }
             Err(e) => return Err(LoadError::ReadConfig(e.into())),
         };
-
-        self.build_manager(state)
-            .await
-            .map_err(|e| LoadError::Init(Box::new(e)))
+        Ok(self.from_state(state))
     }
 
-    pub async fn from_state(
-        self,
-        state: State,
-    ) -> Result<
-        PersistentStateManager<State, Formatter>,
-        LoadError<PersistentStateManager<State, Formatter>>,
-    > {
-        self.build_manager(state)
-            .await
-            .map_err(|e| LoadError::Init(Box::new(e)))
+    /// Initialize version zero from a supplied state without writing a file.
+    pub fn from_state(self, state: State) -> PersistentStateManager<State, Formatter> {
+        PersistentStateManager {
+            config_path: self.config_path,
+            config_prefix: self.config_prefix,
+            formatter: self.formatter,
+            current_state: Arc::new(ArcSwap::from_pointee(VersionedState {
+                version: Version::default(),
+                state,
+            })),
+        }
     }
 }
 
+/// Whether a conditional replacement committed or found a newer version.
 #[derive(Debug)]
 pub enum ReplaceIfVersionResult {
     Replaced,
     Conflict { actual_version: Version },
 }
 
+/// A persistence, recovery or snapshot-publication failure.
 #[derive(Debug, thiserror::Error)]
 pub enum ReplaceIfVersionError {
     #[error("state change error: {0}")]
@@ -153,10 +108,8 @@ pub enum ReplaceIfVersionError {
     },
 }
 
-/// Which write inside one conditional replacement failed.
-///
-/// The caller's local write step and the config write share one transaction, so
-/// they share one error channel; this keeps them apart on the way out.
+/// The local resource write and document write share a recovery step, but keep
+/// their distinct error categories for the caller.
 #[derive(Debug)]
 enum ConditionalWriteError {
     LocalWrite(anyhow::Error),
@@ -164,47 +117,33 @@ enum ConditionalWriteError {
 }
 
 impl ConditionalWriteError {
-    /// The failure named by the write it came from, with its cause chain kept.
     fn into_cause(self) -> anyhow::Error {
         match self {
             Self::LocalWrite(error) => error.context("local write failed"),
             Self::Config(error) => error.context("config write failed"),
         }
     }
-
-    fn into_inner(self) -> anyhow::Error {
-        match self {
-            Self::LocalWrite(error) | Self::Config(error) => error,
-        }
-    }
 }
 
-/// The deferred half of a config write: the bytes are already serialized, only
-/// the file write is left.
 type ConfigWrite = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
 
-/// Where the config file write runs.
-///
-/// These are the two behaviours this manager has always had, and they are kept
-/// as they were: `upsert` offloads the write, conditional replacement runs it on
-/// the calling task. Offloading conditional replacement too would change when a
-/// commit becomes observable on a path this change was not asked to touch.
 #[derive(Debug, Clone, Copy)]
 enum ConfigWriteMode {
-    /// Write on the current task.
     Inline,
-    /// Write on a blocking thread, so a multi-syscall file write never stalls
-    /// the runtime. The work runs to completion even if the caller is dropped.
     Offloaded,
 }
 
+/// A source owner's document and read-only, versioned snapshots.
+///
+/// Writes publish their snapshot before returning success. Conditional writes
+/// run on the owner's task; unconditional writes offload the atomic file write.
 pub struct PersistentStateManager<State, Formatter = YamlFormat>
 where
     State: Clone + Send + Sync + 'static,
 {
     config_prefix: Option<String>,
     pub(crate) config_path: Utf8PathBuf,
-    state_coordinator: StateCoordinator<State>,
+    current_state: Arc<ArcSwap<VersionedState<State>>>,
     formatter: Formatter,
 }
 
@@ -213,41 +152,30 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
     Formatter: Format,
 {
-    super::impl_state_manager_delegates!(State);
+    /// Clone the most recently committed value.
+    pub fn snapshot(&self) -> Arc<State> {
+        Arc::new(self.current_state.load().state.clone())
+    }
 
-    /// Replace the state unconditionally and persist it.
-    ///
-    /// This is the same conditional-replacement transaction as
-    /// [`PersistentStateManager::replace_if_version`] with no version
-    /// precondition. A failed write leaves the old file in place, so there is
-    /// nothing to recover.
-    pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, UpsertError>
+    /// Return a read-only handle that observes future committed versions.
+    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
+        StateSnapshot::from_store(Arc::clone(&self.current_state))
+    }
+
+    /// Persist an unconditional replacement, then publish its snapshot.
+    pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
     where
         Formatter: Clone,
     {
-        let effect = self.write_config_step(ConfigWriteMode::Offloaded);
-        self.state_coordinator
-            .with_pending_state(&state, effect, |_committed| async { Ok(()) })
+        let previous = self.current_state.load_full();
+        let version = previous.version.next();
+        self.write_config_step(ConfigWriteMode::Offloaded)(&state)
             .await
-            .map(|((), report)| report)
-            .map_err(|error| match error {
-                WithEffectError::State(error) => UpsertError::State(error),
-                WithEffectError::Effect(error) => UpsertError::WriteConfig(error),
-                WithEffectError::EffectRecovery {
-                    effect_error,
-                    recovery_error,
-                } => UpsertError::ResourceRecovery {
-                    cause: anyhow::anyhow!("{effect_error}"),
-                    recovery_error,
-                },
-            })
+            .map_err(UpsertError::WriteConfig)?;
+        self.publish(previous, version, state)
+            .map_err(UpsertError::State)
     }
 
-    /// A self-contained "write the config file" step, detached from `&self` so
-    /// it can be moved into the transaction's effect.
-    ///
-    /// Serialization always happens on the calling task because it is in-memory
-    /// and cheap; `mode` only decides where the file write itself runs.
     fn write_config_step(
         &self,
         mode: ConfigWriteMode,
@@ -281,6 +209,7 @@ where
         }
     }
 
+    /// Persist and publish the value only if the expected version is current.
     pub async fn replace_if_version(
         &mut self,
         expected_version: Version,
@@ -289,66 +218,19 @@ where
     where
         Formatter: Clone,
     {
-        let effect = self.write_config_step(ConfigWriteMode::Inline);
-        let outcome = self
-            .state_coordinator
-            .with_pending_state_if_version(
-                expected_version,
-                &next_state,
-                |state| async move { effect(state).await.map_err(ConditionalWriteError::Config) },
-                |_committed| async { Ok(()) },
-            )
-            .await;
-        Self::map_conditional_outcome(outcome)
-    }
-
-    /// Replace the state only if the store still holds `expected_version`, with
-    /// one extra participant taking part in this transaction.
-    ///
-    /// `participant` is built from the transaction's own read-only
-    /// [`DecisionHandle`], so it can still tell what the transaction decided
-    /// after its `on_committed` notification was dropped. It joins the
-    /// permanently registered subscribers of the same transaction: same prepare
-    /// fan-out, same required-failure rollback, same notifications. It is never
-    /// registered on the coordinator, so a cancelled replacement cannot leave a
-    /// subscription behind.
-    ///
-    /// Necessary local writes and their recovery are owned by this transaction.
-    /// Recovery must settle partial writes as well as completed publications;
-    /// the authoritative abort is published only after it returns.
-    ///
-    /// The transaction runs on the caller, whose future is the owner's work.
-    /// Dropping it drops the transaction, which publishes an abort, flagged as
-    /// needing recovery once the local write has started.
-    pub async fn replace_if_version_with_participant<P, W, WFut, R, RFut>(
-        &mut self,
-        expected_version: Version,
-        next_state: State,
-        participant: P,
-        local_write: W,
-        local_recovery: R,
-    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
-    where
-        Formatter: Clone,
-        P: FnOnce(DecisionHandle) -> StateParticipant<State>,
-        W: FnOnce() -> WFut,
-        WFut: Future<Output = anyhow::Result<()>>,
-        R: FnOnce() -> RFut,
-        RFut: Future<Output = anyhow::Result<()>>,
-    {
-        self.replace_with_local_write(
+        self.replace_if_version_with_local_write(
             expected_version,
             next_state,
-            Some(ParticipantEntry::new(participant)),
-            local_write,
-            local_recovery,
+            || async { Ok(()) },
+            || async { Ok(()) },
         )
         .await
     }
 
-    /// [`PersistentStateManager::replace_if_version_with_participant`] with no
-    /// participant: only the registered subscribers take part, and the local
-    /// write and its recovery are owned by the transaction the same way.
+    /// Persist local resources and the document only at `expected_version`.
+    ///
+    /// A write failure awaits local recovery before returning. A CAS failure
+    /// after persistence preserves the winning snapshot and does not undo files.
     pub async fn replace_if_version_with_local_write<W, WFut, R, RFut>(
         &mut self,
         expected_version: Version,
@@ -363,105 +245,69 @@ where
         R: FnOnce() -> RFut,
         RFut: Future<Output = anyhow::Result<()>>,
     {
-        self.replace_with_local_write(
-            expected_version,
-            next_state,
-            None,
-            local_write,
-            local_recovery,
-        )
-        .await
-    }
+        let previous = self.current_state.load_full();
+        if previous.version != expected_version {
+            return Ok(ReplaceIfVersionResult::Conflict {
+                actual_version: previous.version,
+            });
+        }
 
-    async fn replace_with_local_write<W, WFut, R, RFut>(
-        &mut self,
-        expected_version: Version,
-        next_state: State,
-        participant: Option<ParticipantEntry<State>>,
-        local_write: W,
-        local_recovery: R,
-    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError>
-    where
-        Formatter: Clone,
-        W: FnOnce() -> WFut,
-        WFut: Future<Output = anyhow::Result<()>>,
-        R: FnOnce() -> RFut,
-        RFut: Future<Output = anyhow::Result<()>>,
-    {
+        let version = previous.version.next();
         let effect = self.write_config_step(ConfigWriteMode::Inline);
-        let write = |state| async move {
+        let written = async {
             local_write()
                 .await
                 .map_err(ConditionalWriteError::LocalWrite)?;
-            effect(state).await.map_err(ConditionalWriteError::Config)
-        };
-        // Only the caller's own local write is undone. A config write that
-        // failed before its rename left the old file; one whose directory sync
-        // failed after the rename (Unix) left the new file, and nothing here
-        // reconciles that.
-        let recover = |_committed| async move {
-            local_recovery()
+            effect(&next_state)
                 .await
-                .map_err(ConditionalWriteError::LocalWrite)
-        };
-        let outcome = match participant {
-            Some(participant) => {
-                self.state_coordinator
-                    .with_pending_state_if_version_with_participant(
-                        expected_version,
-                        &next_state,
-                        participant,
-                        write,
-                        recover,
-                    )
-                    .await
-            }
-            None => {
-                self.state_coordinator
-                    .with_pending_state_if_version(expected_version, &next_state, write, recover)
-                    .await
-            }
-        };
-        Self::map_conditional_outcome(outcome)
-    }
-
-    fn map_conditional_outcome(
-        outcome: Result<PendingOutcome<()>, WithEffectError<ConditionalWriteError>>,
-    ) -> Result<ReplaceIfVersionResult, ReplaceIfVersionError> {
-        match outcome {
-            Ok(PendingOutcome::Committed { .. }) => Ok(ReplaceIfVersionResult::Replaced),
-            Ok(PendingOutcome::Conflict { actual }) => Ok(ReplaceIfVersionResult::Conflict {
-                actual_version: actual,
-            }),
-            Err(WithEffectError::State(error)) => Err(ReplaceIfVersionError::State(error)),
-            Err(WithEffectError::Effect(ConditionalWriteError::LocalWrite(error))) => {
-                Err(ReplaceIfVersionError::LocalWrite(error))
-            }
-            Err(WithEffectError::Effect(ConditionalWriteError::Config(error))) => {
-                Err(ReplaceIfVersionError::WriteConfig(error))
-            }
-            Err(WithEffectError::EffectRecovery {
-                effect_error,
-                recovery_error,
-            }) => Err(ReplaceIfVersionError::ResourceRecovery {
-                cause: effect_error.into_cause(),
-                recovery_error: recovery_error.into_inner(),
-            }),
+                .map_err(ConditionalWriteError::Config)
         }
+        .await;
+        if let Err(error) = written {
+            if let Err(recovery_error) = local_recovery().await {
+                return Err(ReplaceIfVersionError::ResourceRecovery {
+                    cause: error.into_cause(),
+                    recovery_error,
+                });
+            }
+            return Err(match error {
+                ConditionalWriteError::LocalWrite(error) => {
+                    ReplaceIfVersionError::LocalWrite(error)
+                }
+                ConditionalWriteError::Config(error) => ReplaceIfVersionError::WriteConfig(error),
+            });
+        }
+
+        self.publish(previous, version, next_state)?;
+        Ok(ReplaceIfVersionResult::Replaced)
     }
 
-    /// The raw store behind this manager, so tests can simulate a writer that
-    /// bypassed the coordinator and force a CAS mismatch.
+    fn publish(
+        &mut self,
+        previous: Arc<VersionedState<State>>,
+        version: Version,
+        state: State,
+    ) -> Result<(), StateChangedError> {
+        let next = Arc::new(VersionedState { version, state });
+        let actual = self.current_state.compare_and_swap(&previous, next);
+        if !Arc::ptr_eq(&actual, &previous) {
+            return Err(StateChangedError::StateCasMismatch {
+                expected: previous.version,
+                actual: actual.version,
+            });
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
-    pub(crate) fn state_store(&self) -> crate::coordinator::StateStore<State> {
-        self.state_coordinator.state_store()
+    pub(crate) fn state_store(&self) -> Arc<ArcSwap<VersionedState<State>>> {
+        Arc::clone(&self.current_state)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use serde::{Deserialize, Serialize};
     use std::sync::{
         Arc,
@@ -482,6 +328,28 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct FailingSerializeFormat;
+
+    impl Format for FailingSerializeFormat {
+        fn serialize<W: Write, T: Serialize>(
+            &self,
+            mut writer: W,
+            _value: &T,
+            _prefix: Option<&str>,
+        ) -> anyhow::Result<()> {
+            writer.write_all(b"partial document")?;
+            Err(std::io::Error::other("serialization failed").into())
+        }
+
+        fn deserialize<R: std::io::Read, T: DeserializeOwned>(
+            &self,
+            reader: R,
+        ) -> anyhow::Result<T> {
+            YamlFormat.deserialize(reader)
+        }
+    }
+
     async fn create_temp_config_file(
         state: &TestState,
     ) -> anyhow::Result<(Utf8PathBuf, tempfile::TempDir)> {
@@ -498,27 +366,6 @@ mod tests {
         let content = fs::read_to_string(path).await?;
         let value = yaml_serde::from_str(&content)?;
         Ok(value)
-    }
-
-    struct FailingInitSubscriber {
-        calls: Arc<AtomicUsize>,
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for FailingInitSubscriber {
-        fn name(&self) -> SubscriberName<'_> {
-            "failing_init".into()
-        }
-
-        async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(crate::ack::test_ack_error("init ACK failed"))
-        }
-    }
-
-    fn failing_builder(calls: Arc<AtomicUsize>) -> StateCoordinatorBuilder<TestState> {
-        StateCoordinatorBuilder::default()
-            .with_subscriber(Box::new(FailingInitSubscriber { calls }))
     }
 
     #[tokio::test]
@@ -591,7 +438,157 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_setup_from_state() {
+    async fn load_or_default_rejects_malformed_documents_without_changing_them() {
+        let dir = tempdir().unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("config.yaml")).unwrap();
+        let bytes = b"name: [unterminated\n";
+        fs::write(&path, bytes).await.unwrap();
+
+        let result = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(path.clone())
+            .assemble()
+            .load_or_default()
+            .await;
+
+        let Err(LoadError::DeserializeConfig(error)) = result else {
+            panic!("a malformed document must report a deserialize error");
+        };
+        assert!(error.downcast_ref::<yaml_serde::Error>().is_some());
+        assert_eq!(fs::read(&path).await.unwrap(), bytes);
+    }
+
+    #[tokio::test]
+    async fn load_or_default_rejects_a_directory_in_place_of_the_document() {
+        let dir = tempdir().unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("config.yaml")).unwrap();
+        fs::create_dir(&path).await.unwrap();
+
+        let result = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(path.clone())
+            .assemble()
+            .load_or_default()
+            .await;
+
+        let Err(LoadError::ReadConfig(error)) = result else {
+            panic!("a directory must report a read error instead of a default value");
+        };
+        let source = error.downcast_ref::<std::io::Error>().unwrap();
+        assert_ne!(source.kind(), std::io::ErrorKind::NotFound);
+        assert!(path.is_dir());
+    }
+
+    #[tokio::test]
+    async fn failed_local_write_and_recovery_report_both_causes() {
+        let initial = TestState::new("committed".into(), 7);
+        let (path, _dir) = create_temp_config_file(&initial).await.unwrap();
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(path)
+            .assemble()
+            .from_state(initial.clone());
+        let handle = manager.snapshot_handle();
+
+        let result = manager
+            .replace_if_version_with_local_write(
+                Version::new(0),
+                TestState::new("candidate".into(), 8),
+                || async {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "local write denied",
+                    )
+                    .into())
+                },
+                || async { Err(std::io::Error::other("recovery failed").into()) },
+            )
+            .await;
+
+        let Err(ReplaceIfVersionError::ResourceRecovery {
+            cause,
+            recovery_error,
+        }) = result
+        else {
+            panic!("expected both persistence and recovery causes: {result:?}");
+        };
+        let write = cause.root_cause().downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(write.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(write.to_string(), "local write denied");
+        let recovery = recovery_error.downcast_ref::<std::io::Error>().unwrap();
+        assert_eq!(recovery.to_string(), "recovery failed");
+        assert_eq!(handle.load().version, Version::new(0));
+        assert_eq!(handle.load().state, initial);
+    }
+
+    #[tokio::test]
+    async fn serialization_failure_recovers_changed_resources_without_publishing() {
+        let initial = TestState::new("committed".into(), 7);
+        let (path, dir) = create_temp_config_file(&initial).await.unwrap();
+        let mut manager =
+            PersistentStateManagerSetup::<TestState, FailingSerializeFormat>::builder()
+                .config_path(path)
+                .assemble()
+                .from_state(initial.clone());
+        let handle = manager.snapshot_handle();
+        let resource = dir.path().join("resource");
+        fs::write(&resource, b"old").await.unwrap();
+
+        let result = manager
+            .replace_if_version_with_local_write(
+                Version::new(0),
+                TestState::new("candidate".into(), 8),
+                || async {
+                    fs::write(&resource, b"new").await?;
+                    Ok(())
+                },
+                || async {
+                    assert_eq!(fs::read(&resource).await.unwrap(), b"new");
+                    fs::write(&resource, b"old").await?;
+                    Ok(())
+                },
+            )
+            .await;
+
+        let Err(ReplaceIfVersionError::WriteConfig(error)) = result else {
+            panic!("expected a serialization failure: {result:?}");
+        };
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().to_string(),
+            "serialization failed"
+        );
+        assert_eq!(fs::read(&resource).await.unwrap(), b"old");
+        assert_eq!(handle.load().version, Version::new(0));
+        assert_eq!(handle.load().state, initial);
+    }
+
+    #[tokio::test]
+    async fn failed_replacement_preserves_existing_document_bytes() {
+        let initial = TestState::new("committed".into(), 7);
+        let (path, _dir) = create_temp_config_file(&initial).await.unwrap();
+        let bytes = b"# preserve this comment\nname: committed\nvalue: 7\n";
+        fs::write(&path, bytes).await.unwrap();
+        let mut manager =
+            PersistentStateManagerSetup::<TestState, FailingSerializeFormat>::builder()
+                .config_path(path.clone())
+                .assemble()
+                .from_state(initial.clone());
+
+        let result = manager
+            .replace_if_version(Version::new(0), TestState::new("candidate".into(), 8))
+            .await;
+
+        let Err(ReplaceIfVersionError::WriteConfig(error)) = result else {
+            panic!("expected a failed replacement: {result:?}");
+        };
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().to_string(),
+            "serialization failed"
+        );
+        assert_eq!(fs::read(&path).await.unwrap(), bytes);
+        assert_eq!(manager.snapshot_handle().load().version, Version::new(0));
+        assert_eq!(&*manager.snapshot(), &initial);
+    }
+
+    #[test]
+    fn test_setup_from_state() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("from_state.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
@@ -600,59 +597,9 @@ mod tests {
         let manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path)
             .assemble()
-            .from_state(state.clone())
-            .await
-            .unwrap();
+            .from_state(state.clone());
 
         assert_eq!(&*manager.snapshot(), &state);
-    }
-
-    #[tokio::test]
-    async fn test_from_state_ack_failure_returns_recoverable_manager() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("from_state_ack_fail.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-        let calls = Arc::new(AtomicUsize::new(0));
-        let state = TestState::new("committed".to_string(), 99);
-
-        let result = PersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path)
-            .state_coordinator(failing_builder(Arc::clone(&calls)))
-            .assemble()
-            .from_state(state.clone())
-            .await;
-
-        match result {
-            Err(LoadError::Init(error)) => {
-                let (manager, report) = error.into_parts();
-                assert!(report.has_required_failures());
-                assert_eq!(&*manager.snapshot(), &state);
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
-            }
-            Err(error) => panic!("expected init ACK error, got {error}"),
-            Ok(_) => panic!("expected recoverable init ACK error"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_force_build_returns_manager_after_ack_failure() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("force_build_ack_fail.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-        let calls = Arc::new(AtomicUsize::new(0));
-        let state = TestState::new("forced".to_string(), 123);
-
-        let manager = PersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path)
-            .state_coordinator(failing_builder(Arc::clone(&calls)))
-            .force_build(true)
-            .assemble()
-            .from_state(state.clone())
-            .await
-            .unwrap();
-
-        assert_eq!(&*manager.snapshot(), &state);
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -665,9 +612,7 @@ mod tests {
             .config_path(config_path.clone())
             .config_prefix("# upsert test".to_string())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let state = TestState::new("upsert".to_string(), 200);
         let result = manager.upsert(state).await;
@@ -690,9 +635,7 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path)
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let state = TestState::new("write_fail".to_string(), 300);
         let result = manager.upsert(state).await;
@@ -713,9 +656,7 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path)
             .assemble()
-            .from_state(TestState::new("initial".to_string(), 100))
-            .await
-            .unwrap();
+            .from_state(TestState::new("initial".to_string(), 100));
 
         assert_eq!(manager.snapshot().name, "initial");
 
@@ -745,9 +686,7 @@ mod tests {
             .config_path(config_path.clone())
             .config_prefix("# multiple upserts".to_string())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let state1 = TestState::new("first".to_string(), 1);
         manager.upsert(state1).await.unwrap();
@@ -773,27 +712,20 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path.clone())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let result = manager
             .replace_if_version(Version::new(0), TestState::new("next".into(), 1))
             .await
             .unwrap();
         assert!(matches!(result, ReplaceIfVersionResult::Replaced));
-        assert_eq!(
-            manager.state_coordinator.snapshot_versioned().version,
-            Version::new(1)
-        );
+        assert_eq!(manager.snapshot_handle().load().version, Version::new(1));
         assert_eq!(
             read_yaml::<TestState>(&config_path).await.unwrap().name,
             "next"
         );
     }
 
-    /// The participant-free entry owns the caller's local write and its
-    /// recovery exactly as the participant one does.
     #[tokio::test]
     async fn test_replace_if_version_with_local_write_owns_the_write_and_its_recovery() {
         let temp_dir = tempdir().unwrap();
@@ -802,9 +734,7 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path.clone())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
         let writes = Arc::new(AtomicUsize::new(0));
         let recoveries = Arc::new(AtomicUsize::new(0));
 
@@ -882,9 +812,7 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path.clone())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
         manager
             .upsert(TestState::new("current".into(), 1))
             .await
@@ -914,9 +842,7 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path)
             .assemble()
-            .from_state(TestState::new("initial".into(), 1))
-            .await
-            .unwrap();
+            .from_state(TestState::new("initial".into(), 1));
         let missing_dir = tempdir().unwrap();
         let missing_path =
             Utf8PathBuf::from_path_buf(missing_dir.path().join("replace.yaml")).unwrap();
@@ -928,10 +854,7 @@ mod tests {
             .await;
         assert!(matches!(result, Err(ReplaceIfVersionError::WriteConfig(_))));
         assert_eq!(manager.snapshot().name, "initial");
-        assert_eq!(
-            manager.state_coordinator.snapshot_versioned().version,
-            Version::new(0)
-        );
+        assert_eq!(manager.snapshot_handle().load().version, Version::new(0));
     }
 
     #[tokio::test]
@@ -942,29 +865,21 @@ mod tests {
         let mut manager = PersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path)
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let first = manager
             .replace_if_version(Version::new(0), TestState::new("one".into(), 1))
             .await
             .unwrap();
         assert!(matches!(first, ReplaceIfVersionResult::Replaced));
-        assert_eq!(
-            manager.state_coordinator.snapshot_versioned().version,
-            Version::new(1)
-        );
+        assert_eq!(manager.snapshot_handle().load().version, Version::new(1));
 
         let second = manager
             .replace_if_version(Version::new(1), TestState::new("two".into(), 2))
             .await
             .unwrap();
         assert!(matches!(second, ReplaceIfVersionResult::Replaced));
-        assert_eq!(
-            manager.state_coordinator.snapshot_versioned().version,
-            Version::new(2)
-        );
+        assert_eq!(manager.snapshot_handle().load().version, Version::new(2));
     }
 
     #[tokio::test]
@@ -978,9 +893,7 @@ mod tests {
             .config_path(config_path.clone())
             .config_prefix(prefix.to_string())
             .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
+            .from_state(TestState::default());
 
         let state = TestState::new("prefix_test".to_string(), 500);
         manager.upsert(state).await.unwrap();

@@ -209,12 +209,7 @@ export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
 export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
 
 export type ConvergenceHealth =
-  | 'healthy'
-  | 'pending'
-  | 'retry_scheduled'
-  | 'waiting_dependency'
-  | 'blocked'
-  | 'recovery_required'
+  'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
 /**
  *  The core's control endpoint, as the manager resolved it.
@@ -677,16 +672,14 @@ export type OperationStatus = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   message: string | null
 }
 
-/**  One settled mutation. `domain`, `outcome` and `conclusion` name variants of closed enums. */
+/**  One settled mutation. `domain` and `outcome` name variants of closed enums. */
 export type OperationSummary = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   has_diagnostic: boolean
 }
 
@@ -730,16 +723,12 @@ export type RpcValue = any
 export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   message: string | null
 }
 
 export type RuntimeConvergenceSummary = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   /**  The owner reported diagnostic text, available to protected callers. */
   has_diagnostic: boolean
 }

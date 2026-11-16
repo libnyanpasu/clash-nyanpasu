@@ -25,12 +25,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -49,7 +44,7 @@ pub struct ApplicationClient {
 
 struct ApplicationClientInner {
     actor_ref: ActorRef<ApplicationActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<NyanpasuAppConfig>,
     settings_changes: tokio::sync::watch::Receiver<NyanpasuAppConfig>,
@@ -76,10 +71,7 @@ impl ApplicationClient {
                 .await
                 .context(LoadStateSnafu { path: &config_path })?
         } else {
-            setup
-                .from_state(seed)
-                .await
-                .context(InitializeStateSnafu { path: &config_path })?
+            setup.from_state(seed)
         };
 
         let mut initial = manager.snapshot_handle().load().state.clone();
@@ -99,8 +91,7 @@ impl ApplicationClient {
         Self::from_manager(mutations, manager, build_channel, shutdown, tasks).await
     }
 
-    /// Takes ownership of an already loaded manager. Separate from [`Self::new`]
-    /// so a caller can register state subscribers before the actor claims it.
+    /// Takes ownership of an already loaded document before spawning its actor.
     pub(crate) async fn from_manager(
         mutations: MutationCoordinator,
         manager: PersistentStateManager<NyanpasuAppConfig, ApplicationFormat>,
@@ -525,9 +516,7 @@ mod tests {
             PersistentStateManagerSetup::<NyanpasuAppConfig, ApplicationFormat>::builder()
                 .config_path(temp_config_path(&dir))
                 .assemble()
-                .from_state(NyanpasuAppConfig::default())
-                .await
-                .unwrap();
+                .from_state(NyanpasuAppConfig::default());
         drop(manager);
         let beta = ApplicationClient::new(
             crate::state::mutation::MutationCoordinator::isolated(),

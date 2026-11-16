@@ -11,8 +11,6 @@ nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = fa
 anyhow = '1'
 bon = '3'
 arc-swap = '1'
-async-trait = '0.1'
-indexmap = { version = '2.2.3', features = ['serde'] }
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

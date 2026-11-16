@@ -238,7 +238,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_macro::rpc(scope = settings, local, result, operation = SetStorageItem)]
+/// #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, result, operation = SetStorageItem)]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -250,7 +250,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -262,24 +262,24 @@ pub type RpcHandler =
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
 /// }
 /// ```
 ///
-/// A mutation that names no scope does not compile:
+/// A command that declares no permission does not compile:
 ///
 /// ```compile_fail
-/// fn a_mutation_without_a_scope_fails_to_compile() {
+/// fn a_command_without_a_permission_fails_to_compile() {
 ///     #[nyanpasu_macro::rpc(http)]
 ///     fn reorder() -> bool { true }
 /// }
 /// ```
 ///
-/// Effect and scope are independent: a query may explicitly require `proxy` permission.
+/// Effect and scope are independent: a query's permission may map to the `proxy` scope.
 ///
 /// ```no_run
-/// #[nyanpasu_macro::rpc(http, query, scope = proxy)]
+/// #[nyanpasu_macro::rpc(http, query, permission = "proxy.url_delay:measure")]
 /// fn proxy_scoped_query() -> bool { true }
 /// ```
 ///
@@ -289,7 +289,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_macro::rpc(permission = "settings.storage_item:set", local, operation = SetStorageItem)]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }

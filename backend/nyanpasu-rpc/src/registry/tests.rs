@@ -321,34 +321,49 @@ fn shared_profile_command_over_experimental_http() {
                 rpc_for_test_call(&app, "get_hotkey_functions", serde_json::json!({}), None).await;
             assert_eq!(pure.0, StatusCode::OK);
             assert!(pure.1.is_array());
-            let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
-            let open = rpc_for_test_call(
+            let client_id = uuid::Uuid::new_v4().to_string();
+            let open = crate::test_support::rpc_for_test_call_with_client_id(
                 &app,
                 "open_log_session",
                 serde_json::json!({"source":"app", "request":{"request_id":"first", "file":null}}),
-                Some(&cookie),
+                Some(&client_id),
+                None,
             )
             .await;
             assert_eq!(open.0, StatusCode::OK);
             assert!(open.1["id"].is_string());
             let query = serde_json::json!({"source":"app", "request":{"session":open.1["id"], "filter":nyanpasu_logging::Filter::default(),"direction":"latest","cursor":null,"limit":200}});
-            let other_cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
-            let foreign =
-                rpc_for_test_call(&app, "query_logs", query.clone(), Some(&other_cookie)).await;
+            let other_client_id = uuid::Uuid::new_v4().to_string();
+            let foreign = crate::test_support::rpc_for_test_call_with_client_id(
+                &app,
+                "query_logs",
+                query.clone(),
+                Some(&other_client_id),
+                None,
+            )
+            .await;
             assert_eq!(foreign.1["domain_error"], "session_expired");
-            let own = rpc_for_test_call(&app, "query_logs", query, Some(&cookie)).await;
+            let own = crate::test_support::rpc_for_test_call_with_client_id(
+                &app,
+                "query_logs",
+                query,
+                Some(&client_id),
+                None,
+            )
+            .await;
             assert_eq!(own.0, StatusCode::OK, "{:?}", own.1);
             assert!(own.1.get("rows").is_some());
-            let close = rpc_for_test_call(
+            let close = crate::test_support::rpc_for_test_call_with_client_id(
                 &app,
                 "close_log_session",
                 serde_json::json!({"source":"app", "session":open.1["id"]}),
-                Some(&cookie),
+                Some(&client_id),
+                None,
             )
             .await;
             assert_eq!(close.0, StatusCode::OK);
             assert!(close.1.is_null());
-            let report = rpc_for_test_call(
+            let report = crate::test_support::rpc_for_test_call_with_client_id(
                 &app,
                 "report_frontend_events",
                 serde_json::json!({"batch":{"events":[{
@@ -357,16 +372,18 @@ fn shared_profile_command_over_experimental_http() {
                     "fingerprint":"x", "count":1, "first_seen_ms":0, "last_seen_ms":0,
                     "route":"/main/dashboard"
                 }], "dropped":0}}),
-                Some(&cookie),
+                Some(&client_id),
+                None,
             )
             .await;
             assert_eq!(report.0, StatusCode::OK, "{:?}", report.1);
             assert!(report.1.is_null());
-            let malformed = rpc_for_test_call(
+            let malformed = crate::test_support::rpc_for_test_call_with_client_id(
                 &app,
                 "report_frontend_events",
                 serde_json::json!({"batch":{"events":[{"kind":"unknown"}], "dropped":0}}),
-                Some(&cookie),
+                Some(&client_id),
+                None,
             )
             .await;
             assert_eq!(malformed.0, StatusCode::BAD_REQUEST);
@@ -1452,12 +1469,19 @@ fn enabled_http_server_joins_application_shutdown() {
     ));
     let frontend = Some(Frontend::Embedded(Arc::new(Assets)));
     let routes = Arc::new(RpcHttpRoutes::default());
+    let authenticator = Arc::new(crate::http::auth::RpcHttpAuthenticator::default());
     args.host_adapters.http_server = Some(crate::http::test_support::control_factory(
         frontend,
         routes.clone(),
+        authenticator.clone(),
     ));
     let paths = args.paths.clone();
     let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    authenticator
+        .install(Arc::new(
+            crate::http::auth::NyanpasuClientHttpAuthenticator::new(&client),
+        ))
+        .unwrap();
     let rpc = UnifiedRpc::new(
         RpcDependencies {
             icon_files: None,
@@ -1489,7 +1513,7 @@ fn enabled_http_server_joins_application_shutdown() {
         assert!(outcome.degradations().is_empty());
         let status = client.http_server_status().await.unwrap();
         assert!(
-            !status.url.as_deref().unwrap().contains("access_token"),
+            !status.url.as_deref().unwrap().contains("code="),
             "the status never carries the credential"
         );
         assert_eq!(
@@ -1498,7 +1522,11 @@ fn enabled_http_server_joins_application_shutdown() {
             "the first start records the bound port"
         );
         let url = client.http_launch_url().await.unwrap().unwrap();
-        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
         let base = url::Url::parse(&url)
             .unwrap()
             .origin()
@@ -1509,7 +1537,7 @@ fn enabled_http_server_joins_application_shutdown() {
         );
         assert_eq!(
             http.get(&url).send().await.unwrap().status(),
-            StatusCode::UNAUTHORIZED
+            StatusCode::SEE_OTHER
         );
         client.request_shutdown();
         tokio::time::timeout(std::time::Duration::from_secs(5), client.wait_shutdown())

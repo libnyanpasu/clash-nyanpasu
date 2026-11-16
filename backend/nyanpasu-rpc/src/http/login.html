@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Clash Nyanpasu — Sign In</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+
+        --bg: #f6f7f9;
+        --card: #fff;
+        --border: #d8dee6;
+        --text: #141821;
+        --muted: #5b6474;
+        --accent: #2563eb;
+        --accent-hover: #1d4ed8;
+        --danger: #dc2626;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1117;
+          --card: #171a23;
+          --border: #2a3040;
+          --text: #e8ecf4;
+          --muted: #98a2b3;
+          --accent: #3b82f6;
+          --accent-hover: #60a5fa;
+          --danger: #f87171;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 24px;
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      main {
+        width: 100%;
+        max-width: 400px;
+        padding: 28px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgb(0 0 0 / 8%);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      p {
+        margin: 0 0 20px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      input[type='password'] {
+        width: 100%;
+        padding: 10px 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+        color: var(--text);
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      button {
+        width: 100%;
+        padding: 10px 14px;
+        margin-top: 14px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        cursor: pointer;
+        background: var(--accent);
+        border: 0;
+        border-radius: 8px;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+
+      #error {
+        min-height: 20px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Clash Nyanpasu WebUI</h1>
+      <p>
+        Enter an access token generated on the desktop app to open a browser
+        session.
+      </p>
+      <form id="login-form">
+        <label for="token">Access token</label>
+        <input
+          id="token"
+          name="token"
+          type="password"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="npk_..."
+          required
+        />
+        <button id="submit" type="submit">Sign in</button>
+        <div id="error" role="alert" aria-live="polite"></div>
+      </form>
+    </main>
+    <script>
+      const form = document.getElementById('login-form')
+      const input = document.getElementById('token')
+      const button = document.getElementById('submit')
+      const errorBox = document.getElementById('error')
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        const token = input.value.trim()
+        if (!token) {
+          errorBox.textContent = 'Access token is required.'
+          return
+        }
+        button.disabled = true
+        errorBox.textContent = ''
+        try {
+          const response = await fetch('/bridge/login', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ token }),
+          })
+          if (response.ok) {
+            window.location.replace('/')
+            return
+          }
+          if (response.status === 401) {
+            errorBox.textContent = 'Invalid, expired, or revoked access token.'
+          } else {
+            errorBox.textContent =
+              'Sign-in failed (HTTP ' + response.status + ').'
+          }
+        } catch {
+          errorBox.textContent = 'Unable to reach server.'
+        } finally {
+          button.disabled = false
+        }
+      })
+    </script>
+  </body>
+</html>

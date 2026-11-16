@@ -1,3 +1,4 @@
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -17,13 +18,15 @@ function RouteComponent() {
         {m.settings_nyanpasu_keyboard_shortcuts()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <div data-slot="keyboard-settings-container">
-          <SettingsGroup>
-            <HotkeyManager />
-          </SettingsGroup>
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <div data-slot="keyboard-settings-container">
+            <SettingsGroup>
+              <HotkeyManager />
+            </SettingsGroup>
+          </div>
         </div>
-      </div>
+      </ReadOnlyScope>
     </>
   )
 }

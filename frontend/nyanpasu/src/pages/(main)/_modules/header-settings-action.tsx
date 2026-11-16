@@ -11,6 +11,7 @@ import {
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
 import { CircularProgress } from '@nyanpasu/ui/progress'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { useLanguage } from '@/components/providers/language-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import {
@@ -95,6 +96,9 @@ const ProxySettings = () => {
   const transparentProxy = useTransparentProxy()
 
   const proxyMode = useProxyMode()
+
+  // Switching the routing mode changes the core: `proxy` scope.
+  const canProxy = useCapabilities().hasScope('proxy')
 
   const proxyModeMessages = {
     global: m.settings_system_proxy_global_mode_label(),
@@ -183,7 +187,7 @@ const ProxySettings = () => {
           onValueChange={(value) => proxyMode.upsert(value as ProxyMode)}
         >
           {Object.keys(proxyMode.value).map((key) => (
-            <MenubarRadioItem key={key} value={key}>
+            <MenubarRadioItem key={key} value={key} disabled={!canProxy}>
               {proxyModeMessages[key as ProxyMode]}
             </MenubarRadioItem>
           ))}

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use specta::Type;
 
+use super::Scope;
+
 /// How the HTTP listener decides who may call it.
 ///
 /// Further strategies join this enum in the change that implements their complete
@@ -15,9 +17,13 @@ use specta::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpAccessStrategy {
-    /// Loopback only; every request must carry the per-start credential.
+    /// Loopback only; every request must carry a valid credential.
     #[default]
     LocalAuthenticated,
+    /// Loopback only; a request without a credential is an anonymous caller holding
+    /// [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
+    /// reach it, because loopback TCP is not user-scoped.
+    LocalOpen,
 }
 
 /// HTTP listener settings.
@@ -33,6 +39,9 @@ pub struct HttpAccessConfig {
     pub port: Option<u16>,
     /// Serve the bundled web UI. When false only the API is served.
     pub serve_webui: bool,
+    /// What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
+    /// another strategy is selected.
+    pub local_open_scopes: Vec<Scope>,
 }
 
 impl Default for HttpAccessConfig {
@@ -42,6 +51,7 @@ impl Default for HttpAccessConfig {
             strategy: HttpAccessStrategy::default(),
             port: None,
             serve_webui: true,
+            local_open_scopes: vec![Scope::Read],
         }
     }
 }
@@ -60,6 +70,15 @@ pub enum RemoteAccessError {
     /// Port 0 asks the OS for any port; the persisted port is always a concrete one.
     #[snafu(display("the HTTP port must be between 1 and 65535"))]
     PortZero,
+    /// An anonymous caller must hold at least one scope; `local_open` with none admits nothing.
+    #[snafu(display("local_open_scopes must name at least one scope"))]
+    LocalOpenScopesEmpty,
+    /// An anonymous caller never holds secrets, system control or remote administration.
+    #[snafu(display("local_open_scopes cannot include {scope}"))]
+    LocalOpenScopeForbidden {
+        /// The scope that anonymous callers can never hold.
+        scope: Scope,
+    },
     /// The section is changed only by the dedicated remote-access command, never by a
     /// general application patch.
     UseDedicatedCommand,
@@ -73,6 +92,17 @@ impl RemoteAccessConfig {
     pub fn validate(&self) -> Result<(), RemoteAccessError> {
         if self.http.port == Some(0) {
             return Err(RemoteAccessError::PortZero);
+        }
+        if self.http.local_open_scopes.is_empty() {
+            return Err(RemoteAccessError::LocalOpenScopesEmpty);
+        }
+        if let Some(&scope) = self.http.local_open_scopes.iter().find(|scope| {
+            matches!(
+                scope,
+                Scope::SensitiveRead | Scope::System | Scope::RemoteAdmin
+            )
+        }) {
+            return Err(RemoteAccessError::LocalOpenScopeForbidden { scope });
         }
         Ok(())
     }
@@ -89,6 +119,7 @@ mod tests {
         assert_eq!(config.http.strategy, HttpAccessStrategy::LocalAuthenticated);
         assert_eq!(config.http.port, None);
         assert!(config.http.serve_webui);
+        assert_eq!(config.http.local_open_scopes, vec![Scope::Read]);
     }
 
     #[test]
@@ -102,10 +133,33 @@ mod tests {
     }
 
     #[test]
-    fn strategies_that_are_not_delivered_cannot_be_stored() {
-        for strategy in ["local_open", "lan_authenticated"] {
-            let document = format!(r#"{{"http":{{"strategy":"{strategy}"}}}}"#);
-            assert!(serde_json::from_str::<RemoteAccessConfig>(&document).is_err());
+    fn local_open_is_stored_but_strategies_that_are_not_delivered_are_not() {
+        let open: RemoteAccessConfig =
+            serde_json::from_str(r#"{"http":{"strategy":"local_open"}}"#).unwrap();
+        assert_eq!(open.http.strategy, HttpAccessStrategy::LocalOpen);
+        assert_eq!(open.http.local_open_scopes, vec![Scope::Read]);
+        let lan = r#"{"http":{"strategy":"lan_authenticated"}}"#;
+        assert!(serde_json::from_str::<RemoteAccessConfig>(lan).is_err());
+    }
+
+    #[test]
+    fn local_open_scopes_are_validated_before_commit() {
+        let mut config = RemoteAccessConfig::default();
+        config.http.local_open_scopes = vec![Scope::Read, Scope::Proxy, Scope::Profile];
+        assert_eq!(config.validate(), Ok(()));
+
+        config.http.local_open_scopes = Vec::new();
+        assert_eq!(
+            config.validate(),
+            Err(RemoteAccessError::LocalOpenScopesEmpty)
+        );
+
+        for scope in [Scope::SensitiveRead, Scope::System, Scope::RemoteAdmin] {
+            config.http.local_open_scopes = vec![Scope::Read, scope];
+            assert_eq!(
+                config.validate(),
+                Err(RemoteAccessError::LocalOpenScopeForbidden { scope })
+            );
         }
     }
 

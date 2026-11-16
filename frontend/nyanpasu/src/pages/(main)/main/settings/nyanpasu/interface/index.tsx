@@ -1,3 +1,5 @@
+import { RequireCapability } from '@/components/auth/capabilities'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -68,13 +70,17 @@ function RouteComponent() {
         {m.settings_user_interface_title()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <LanguageSettings />
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <LanguageSettings />
 
-        <ThemeModeSettings />
+          <ThemeModeSettings />
 
-        <CustomCssSettings />
-      </div>
+          <RequireCapability scope="sensitive_read">
+            <CustomCssSettings />
+          </RequireCapability>
+        </div>
+      </ReadOnlyScope>
     </>
   )
 }

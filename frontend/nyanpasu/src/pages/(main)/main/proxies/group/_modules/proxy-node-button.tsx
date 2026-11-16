@@ -3,6 +3,7 @@ import KeepRounded from '~icons/material-symbols/keep-rounded'
 import { ComponentProps, memo, MouseEvent } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import HighlightText from '@nyanpasu/ui/highlight-text'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import DelayChip from '@/components/proxies/delay-chip'
 import DelayHistory from '@/components/proxies/delay-history'
@@ -60,9 +61,13 @@ export default memo(function ProxyNodeButton({
   /** The term highlighted in the name; empty highlights nothing. */
   searchText?: string
 }) {
+  // A caller without the `proxy` scope reads the group but cannot change it.
+  const { hasScope } = useCapabilities()
+  const canProxy = hasScope('proxy')
+
   const handleSelectProxy = useLockFn(async () => {
     // The core picks this group's member on its own.
-    if (!selectable) {
+    if (!selectable || !canProxy) {
       return
     }
 
@@ -80,6 +85,10 @@ export default memo(function ProxyNodeButton({
     async (e: MouseEvent<HTMLButtonElement>) => {
       e.preventDefault()
       e.stopPropagation()
+
+      if (!canProxy) {
+        return
+      }
 
       await delayTask.execute()
     },
@@ -162,6 +171,7 @@ export default memo(function ProxyNodeButton({
             variant="raised"
             onClick={handleDelayClick}
             loading={delayTask.isPending}
+            disabled={!canProxy}
             asChild
           >
             <span>

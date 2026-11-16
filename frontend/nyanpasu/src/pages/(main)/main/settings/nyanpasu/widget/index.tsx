@@ -1,3 +1,4 @@
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { useSetting } from '@nyanpasu/query'
@@ -23,25 +24,27 @@ function RouteComponent() {
     <>
       <PageTitle backTo="/main/settings">{m.settings_label_widget()}</PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <div data-slot="widget-settings-container">
-          <SettingsLabel>
-            {m.settings_nyanpasu_network_statistic_widget_label()}
-          </SettingsLabel>
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <div data-slot="widget-settings-container">
+            <SettingsLabel>
+              {m.settings_nyanpasu_network_statistic_widget_label()}
+            </SettingsLabel>
 
-          <SettingsGroup>
-            <NetworkStatisticWidgetSelector />
+            <SettingsGroup>
+              <NetworkStatisticWidgetSelector />
 
-            {enabled && <NetworkStatisticWidgetLogoFollowStateSwitch />}
+              {enabled && <NetworkStatisticWidgetLogoFollowStateSwitch />}
 
-            {enabled && <NetworkStatisticWidgetLogoSourceSelector />}
-          </SettingsGroup>
+              {enabled && <NetworkStatisticWidgetLogoSourceSelector />}
+            </SettingsGroup>
 
-          {enabled && logo?.source === 'widget' && (
-            <NetworkStatisticWidgetIconConfig />
-          )}
+            {enabled && logo?.source === 'widget' && (
+              <NetworkStatisticWidgetIconConfig />
+            )}
+          </div>
         </div>
-      </div>
+      </ReadOnlyScope>
     </>
   )
 }

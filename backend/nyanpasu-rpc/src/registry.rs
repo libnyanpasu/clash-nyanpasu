@@ -635,6 +635,8 @@ impl UnifiedRpc {
 pub enum SetupError {
     #[snafu(display("HTTP routes already installed"))]
     InstallRoutes,
+    #[snafu(display("HTTP authenticator already installed"))]
+    InstallAuthenticator,
     #[snafu(display("duplicate RPC command: {name}"))]
     RegisterCommand { name: &'static str },
 }

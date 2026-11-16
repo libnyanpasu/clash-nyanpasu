@@ -6847,6 +6847,7 @@ dependencies = [
  "tokio-util",
  "url",
  "whoami",
+ "zeroize",
 ]
 
 [[package]]
@@ -6910,6 +6911,7 @@ dependencies = [
  "specta",
  "struct-patch",
  "strum",
+ "subtle",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -6921,6 +6923,7 @@ dependencies = [
  "url",
  "uuid",
  "yaml_serde",
+ "zeroize",
  "zstd",
 ]
 
@@ -7210,6 +7213,7 @@ dependencies = [
  "dispatch2",
  "dunce",
  "futures",
+ "getrandom 0.4.3",
  "hex",
  "mockall",
  "netdev",
@@ -7240,6 +7244,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "zbus",
+ "zeroize",
 ]
 
 [[package]]

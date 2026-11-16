@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -28,24 +29,26 @@ function RouteComponent() {
         {m.settings_label_updates()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <div
-          className="-mb-4 columns-1 gap-x-4 md:columns-2"
-          data-slot="updates-masonry"
-        >
-          <UpdatesMasonryItem>
-            <UpdateStatusCard />
-          </UpdatesMasonryItem>
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <div
+            className="-mb-4 columns-1 gap-x-4 md:columns-2"
+            data-slot="updates-masonry"
+          >
+            <UpdatesMasonryItem>
+              <UpdateStatusCard />
+            </UpdatesMasonryItem>
 
-          <UpdatesMasonryItem>
-            <UpdateSourceSelector />
-          </UpdatesMasonryItem>
+            <UpdatesMasonryItem>
+              <UpdateSourceSelector />
+            </UpdatesMasonryItem>
 
-          <UpdatesMasonryItem>
-            <UpdatePreferencesCard />
-          </UpdatesMasonryItem>
+            <UpdatesMasonryItem>
+              <UpdatePreferencesCard />
+            </UpdatesMasonryItem>
+          </div>
         </div>
-      </div>
+      </ReadOnlyScope>
     </>
   )
 }

@@ -182,7 +182,15 @@ mod tests {
         }
         assert_eq!(
             names(|command| command.scope == Scope::RemoteAdmin),
-            ["create_http_launch_url", "set_remote_access"]
+            [
+                "create_http_launch_url",
+                "create_remote_access_token",
+                "list_remote_access_tokens",
+                "list_remote_browser_sessions",
+                "revoke_remote_access_token",
+                "revoke_remote_browser_session",
+                "set_remote_access",
+            ]
         );
     }
 

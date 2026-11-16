@@ -17,6 +17,7 @@ import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import {
   createIconTransport,
   createRpcClient,
+  getClientId,
   type RpcEventTransport,
 } from '@nyanpasu/rpc'
 import type {
@@ -245,7 +246,9 @@ test.for([3, 2, 4])(
 
     await expect.poll(() => FakeEventSource.instances.length).toBe(1)
     const detailsSource = FakeEventSource.instances[0]!
-    expect(detailsSource.url).toBe('/bridge/connection-details')
+    expect(detailsSource.url).toBe(
+      `/bridge/connection-details?client_id=${getClientId()}`,
+    )
     detailsSource.onmessage?.(
       new MessageEvent('message', { data: JSON.stringify(frame) }),
     )
@@ -316,7 +319,9 @@ test.for([3, 2, 4])(
     ).toHaveLength(1)
     expect(
       FakeEventSource.instances.filter(
-        (source) => source.url === '/bridge/connection-details',
+        (source) =>
+          source.url ===
+          `/bridge/connection-details?client_id=${getClientId()}`,
       ),
     ).toHaveLength(1)
   },

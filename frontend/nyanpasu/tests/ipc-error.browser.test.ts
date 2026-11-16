@@ -823,21 +823,34 @@ test.each(
 )
 
 test.each([
-  ['port_zero', m.error_config_remote_access_port_zero],
-  ['use_dedicated_command', m.error_config_remote_access_use_dedicated_command],
-] satisfies [RemoteAccessError['kind'], () => string][])(
-  'remote_access_config_errors_use_their_messages: %s',
-  (kind, message) => {
+  [{ kind: 'port_zero' }, m.error_config_remote_access_port_zero()],
+  [
+    { kind: 'local_open_scopes_empty' },
+    m.error_config_remote_access_local_open_scopes_empty(),
+  ],
+  [
+    { kind: 'local_open_scope_forbidden', scope: 'sensitive_read' },
+    m.error_config_remote_access_local_open_scope_forbidden_scope({
+      scope: 'sensitive_read',
+    }),
+  ],
+  [
+    { kind: 'use_dedicated_command' },
+    m.error_config_remote_access_use_dedicated_command(),
+  ],
+] satisfies [RemoteAccessError, string][])(
+  'remote_access_config_errors_use_their_messages: %o',
+  (reason, expected) => {
     expect(
       ipcErrorMessage({
         kind: {
           domain: 'config',
-          error: { kind: 'invalid_remote_access', reason: { kind } },
+          error: { kind: 'invalid_remote_access', reason },
         },
         message: 'the backend text',
         detail: 'the backend text: caused by',
       }),
-    ).toBe(message())
+    ).toBe(expected)
   },
 )
 

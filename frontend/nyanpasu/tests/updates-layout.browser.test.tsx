@@ -19,6 +19,7 @@ import {
 import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
 import UpdateStatusCard from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-status-card'
 import { Route } from '../src/pages/(main)/main/settings/nyanpasu/updates/index'
+import { AllScopes } from './all-scopes'
 
 const backend = vi.hoisted(() => ({
   phase: 'downloading',
@@ -134,6 +135,8 @@ test('Update cards remain legible at desktop and mobile widths', async ({
         <RouterProvider router={router} />
       </ScrollArea>
     </TooltipProvider>,
+
+    { wrapper: AllScopes },
   )
   onTestFinished(async () => {
     await view.unmount()
@@ -254,6 +257,8 @@ test('update actions fit every locale at mobile widths in light and dark themes'
     <TooltipProvider>
       <UpdateStatusCard />
     </TooltipProvider>,
+
+    { wrapper: AllScopes },
   )
   onTestFinished(async () => {
     await view.unmount()

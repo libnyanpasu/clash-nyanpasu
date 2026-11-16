@@ -32,6 +32,7 @@ import type {
   SyncRunSummary,
 } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AllScopes } from './all-scopes'
 
 const hooks = vi.hoisted(() => ({
   useProfileListing: vi.fn(),
@@ -257,42 +258,44 @@ function mount(
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   root.render(
-    <RpcProvider rpc={rpc}>
-      <QueryClientProvider client={client}>
-        <KvStorageProvider>
-          <DashboardProvider>
-            <TooltipProvider>
-              <DndContext>
-                <DndGridProvider
-                  value={{
-                    displayItems: [item],
-                    getItemRect: () => ({
-                      left: 0,
-                      top: 0,
-                      width: 320,
-                      height: options.pixelHeight ?? 220,
-                    }),
-                    dropInfoMap: {},
-                    activeItemId: null,
-                    resizingItemId: null,
-                    disabled: options.gridDisabled ?? true,
-                    sourceOnly: options.sourceOnly ?? false,
-                    dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
-                    isOverlay: false,
-                    constraintsMapRef: { current: {} },
-                    onResizeStart: () => {},
-                    onResizeMove: () => {},
-                    onResizeEnd: () => {},
-                  }}
-                >
-                  <Widget id={id} onCloseClick={() => {}} />
-                </DndGridProvider>
-              </DndContext>
-            </TooltipProvider>
-          </DashboardProvider>
-        </KvStorageProvider>
-      </QueryClientProvider>
-    </RpcProvider>,
+    <AllScopes>
+      <RpcProvider rpc={rpc}>
+        <QueryClientProvider client={client}>
+          <KvStorageProvider>
+            <DashboardProvider>
+              <TooltipProvider>
+                <DndContext>
+                  <DndGridProvider
+                    value={{
+                      displayItems: [item],
+                      getItemRect: () => ({
+                        left: 0,
+                        top: 0,
+                        width: 320,
+                        height: options.pixelHeight ?? 220,
+                      }),
+                      dropInfoMap: {},
+                      activeItemId: null,
+                      resizingItemId: null,
+                      disabled: options.gridDisabled ?? true,
+                      sourceOnly: options.sourceOnly ?? false,
+                      dragIdPrefix: options.sourceOnly ? 'sheet:' : '',
+                      isOverlay: false,
+                      constraintsMapRef: { current: {} },
+                      onResizeStart: () => {},
+                      onResizeMove: () => {},
+                      onResizeEnd: () => {},
+                    }}
+                  >
+                    <Widget id={id} onCloseClick={() => {}} />
+                  </DndGridProvider>
+                </DndContext>
+              </TooltipProvider>
+            </DashboardProvider>
+          </KvStorageProvider>
+        </QueryClientProvider>
+      </RpcProvider>
+    </AllScopes>,
   )
   const cleanup = () => {
     root.unmount()

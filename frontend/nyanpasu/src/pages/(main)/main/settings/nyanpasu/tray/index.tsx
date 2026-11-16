@@ -1,3 +1,4 @@
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { Platform } from '@nyanpasu/platform/react'
@@ -20,31 +21,33 @@ function RouteComponent() {
     <>
       <PageTitle backTo="/main/settings">{m.settings_label_tray()}</PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <div data-slot="tray-settings-container">
-          <SettingsLabel>{m.settings_nyanpasu_tray()}</SettingsLabel>
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <div data-slot="tray-settings-container">
+            <SettingsLabel>{m.settings_nyanpasu_tray()}</SettingsLabel>
 
-          <SettingsGroup>
-            <TrayMenuModeSelector />
+            <SettingsGroup>
+              <TrayMenuModeSelector />
 
-            {trayMenuMode === 'native' && <TrayProxiesSelector />}
-          </SettingsGroup>
+              {trayMenuMode === 'native' && <TrayProxiesSelector />}
+            </SettingsGroup>
 
-          <Platform when={['windows', 'linux']}>
-            <TrayIconConfig />
-          </Platform>
+            <Platform when={['windows', 'linux']}>
+              <TrayIconConfig />
+            </Platform>
+          </div>
+
+          <div data-slot="window-settings-container">
+            <SettingsLabel>{m.settings_nyanpasu_window_close()}</SettingsLabel>
+
+            <SettingsGroup>
+              <WindowCloseBehaviorCards
+                showTrayMenu={trayMenuMode === 'webview'}
+              />
+            </SettingsGroup>
+          </div>
         </div>
-
-        <div data-slot="window-settings-container">
-          <SettingsLabel>{m.settings_nyanpasu_window_close()}</SettingsLabel>
-
-          <SettingsGroup>
-            <WindowCloseBehaviorCards
-              showTrayMenu={trayMenuMode === 'webview'}
-            />
-          </SettingsGroup>
-        </div>
-      </div>
+      </ReadOnlyScope>
     </>
   )
 }

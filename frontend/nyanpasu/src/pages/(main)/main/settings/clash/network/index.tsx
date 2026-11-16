@@ -1,3 +1,6 @@
+import { RequireCapability } from '@/components/auth/capabilities'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { PlatformLinux } from '@nyanpasu/platform/react'
@@ -81,17 +84,24 @@ function RouteComponent() {
         {m.settings_label_network()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <PortSettings />
+      <RequireCapability
+        scope="sensitive_read"
+        fallback={<RestrictedContent />}
+      >
+        <ReadOnlyScope scopes={['settings', 'system']}>
+          <div className="space-y-4 px-4 pb-4">
+            <PortSettings />
 
-        <PlatformLinux>
-          <TransparentProxyConfigSettings />
-        </PlatformLinux>
+            <PlatformLinux>
+              <TransparentProxyConfigSettings />
+            </PlatformLinux>
 
-        <LanSettings />
+            <LanSettings />
 
-        <TunSettings />
-      </div>
+            <TunSettings />
+          </div>
+        </ReadOnlyScope>
+      </RequireCapability>
     </>
   )
 }

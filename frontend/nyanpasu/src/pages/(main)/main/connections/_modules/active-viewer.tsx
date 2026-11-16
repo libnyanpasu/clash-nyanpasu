@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import { formatRelativeTime } from '@/utils/date'
@@ -58,6 +59,9 @@ const ActiveViewer = memo(function ActiveViewer({
 
   // `mutateAsync` is a new function on every render; the row renderer stays
   // the same and calls the latest one, so rows can skip re-rendering.
+  // Closing a connection changes the core: `proxy` scope.
+  const canProxy = useCapabilities().hasScope('proxy')
+
   const deleteConnectionsRef = useRef(deleteConnections.mutateAsync)
   deleteConnectionsRef.current = deleteConnections.mutateAsync
 
@@ -68,10 +72,12 @@ const ActiveViewer = memo(function ActiveViewer({
       <TableRow
         {...props}
         onViewDetails={() => setDetailId(row.id)}
-        onCloseConnection={() => deleteConnectionsRef.current(row.id)}
+        onCloseConnection={
+          canProxy ? () => deleteConnectionsRef.current(row.id) : undefined
+        }
       />
     ),
-    [],
+    [canProxy],
   )
 
   const detail = useActiveConnectionDetail(connections, detailId)
@@ -80,10 +86,10 @@ const ActiveViewer = memo(function ActiveViewer({
 
   const closeDetailConnection = useMemo(
     () =>
-      detailId === null
+      detailId === null || !canProxy
         ? undefined
         : () => deleteConnectionsRef.current(detailId),
-    [detailId],
+    [detailId, canProxy],
   )
 
   const columns = useMemo(

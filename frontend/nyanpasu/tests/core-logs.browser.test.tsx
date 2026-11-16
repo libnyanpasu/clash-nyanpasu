@@ -8,6 +8,7 @@ import type {
 } from '@nyanpasu/rpc/types'
 import { Route } from '../src/pages/(main)/main/logs'
 import { m } from '../src/paraglide/messages'
+import { AllScopes } from './all-scopes'
 
 const mocked = vi.hoisted(() => ({
   queryCoreLogs: vi.fn(),
@@ -117,7 +118,7 @@ test.for(['app', 'service'] as const)(
         file_bytes: '100',
       }),
     )
-    const view = await render(<CoreLogsPage />)
+    const view = await render(<CoreLogsPage />, { wrapper: AllScopes })
     onTestFinished(() => view.unmount())
     await expect.poll(() => mocked.openLogSession.mock.calls.length).toBe(1)
     const select = view.getByRole('button', { name: m.logs_file_label() })
@@ -152,6 +153,8 @@ async function mountPage() {
       `}</style>
       <CoreLogsPage />
     </>,
+
+    { wrapper: AllScopes },
   )
   const viewport = view.container.querySelector<HTMLDivElement>(
     '[data-slot="scroll-area-viewport"]',

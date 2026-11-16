@@ -1,10 +1,25 @@
-//! Transport-neutral caller principals, scopes, and authorization contexts.
+//! Transport-neutral caller principals, scopes, authorization contexts, and auth ports.
+
+pub mod ports;
+pub mod secrets;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+pub mod types;
 
 use std::collections::BTreeSet;
 
 pub use nyanpasu_config::application::Scope;
+pub use ports::{AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError};
+pub use secrets::{SecretHash, SecretString};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+pub use types::{
+    AccessTokenStatus, AccessTokenSummary, AuthRevocation, AuthValidationError,
+    AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest,
+    EstablishedBrowserSession, IssuedAccessToken, IssuedLaunchCode, MAX_AUTH_ID_LEN,
+    MAX_TOKEN_NAME_LEN, ParsedAccessToken, RemoteAuthPolicy, SECRET_HEX_LEN, SessionId, TokenId,
+    TokenName, is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
+};
 
 /// Canonical deduplicated set of independent permission scopes held by a caller.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Type)]

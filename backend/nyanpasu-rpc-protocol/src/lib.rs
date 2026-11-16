@@ -15,7 +15,7 @@ pub use error::{ResponseVisibility, RpcError, RpcValue};
 pub use event::EventName;
 /// Canonical authentication and scope domain types shared across core and transports.
 pub use nyanpasu_contracts::auth::{AuthContext, Principal, Scope, ScopeSet};
-pub use owner::RpcOwner;
+pub use owner::{ClientNonce, ClientNonceError, MAX_CLIENT_NONCE_LEN, RpcOwner};
 pub use request::Request;
 
 pub mod frame;

@@ -1,3 +1,4 @@
+export * from './client-id'
 export * from './command-transport'
 export * from './event-transport'
 export * from './icon-transport'
@@ -11,6 +12,7 @@ export type * from './types'
 export { createConnectionDetailsTransport } from './connection-details-transport'
 export type {
   ConnectionDetailsCallbacks,
+  ConnectionDetailsTransportOptions,
   ConnectionDetailsRpc,
   ConnectionDetailsTransport,
 } from './connection-details-transport'

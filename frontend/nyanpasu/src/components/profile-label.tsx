@@ -27,8 +27,10 @@ export function partsText(parts: LabelPart[], profiles: ProfileLookup) {
     .join('')
 }
 
-export function useProfileLookup(): ProfileLookup {
-  const query = useProfileListing()
+export function useProfileLookup(options?: {
+  enabled?: boolean
+}): ProfileLookup {
+  const query = useProfileListing(options)
   return useMemo(
     () => new Map(query.data?.items?.map((item) => [item.uid, item]) ?? []),
     [query.data?.items],

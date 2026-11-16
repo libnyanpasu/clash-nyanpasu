@@ -1102,7 +1102,10 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
         .insert(auth_with_scopes([Scope::Read]));
     sse_req
         .extensions_mut()
-        .insert(crate::http::HttpSessionRevocation(revocation.clone()));
+        .insert(crate::http::HttpSessionRevocation(
+            revocation.clone(),
+            Arc::new(None),
+        ));
     let response = router.clone().oneshot(sse_req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let mut stream = response.into_body().into_data_stream();

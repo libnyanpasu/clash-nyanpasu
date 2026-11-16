@@ -1,4 +1,5 @@
 import { AnimatePresence } from 'motion/react'
+import { RequireCapability } from '@/components/auth/capabilities'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -15,7 +16,6 @@ import ConfigurationStatus from './_modules/configuration-status'
 import CrashSimulation from './_modules/crash-simulation'
 import { useDebugContext } from './_modules/debug-provider'
 import ErrorReportingDebug from './_modules/error-reporting-debug'
-import HttpServer from './_modules/http-server'
 import KVStorage from './_modules/kv-storage'
 import MockConnectionsSwitch from './_modules/mock-connections-switch'
 import MockTrafficSwitch from './_modules/mock-traffic-switch'
@@ -61,11 +61,12 @@ const AdvanceToolsSettings = () => {
 
               <BlockTaskViewer />
 
-              <KVStorage />
+              <RequireCapability scope="sensitive_read">
+                <KVStorage />
+              </RequireCapability>
 
               <ChangelogPreview />
 
-              <HttpServer />
               {import.meta.env.DEV && <MockConnectionsSwitch />}
               {import.meta.env.DEV && <MockTrafficSwitch />}
             </>
@@ -84,7 +85,9 @@ function RouteComponent() {
       <div className="space-y-4 px-4 pb-4">
         <PathUtilsSettings />
 
-        <ConfigurationStatus />
+        <RequireCapability scope="sensitive_read">
+          <ConfigurationStatus />
+        </RequireCapability>
 
         <AdvanceToolsSettings />
       </div>

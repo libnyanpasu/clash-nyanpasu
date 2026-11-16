@@ -2,6 +2,9 @@ import { cva } from 'class-variance-authority'
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SharedTooltip } from '@nyanpasu/ui/shared-tooltip'
 import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { useLeafRouteLayout } from '@/components/router/route-layout'
 import { cn } from '@nyanpasu/utils'
@@ -35,7 +38,18 @@ const profilesOutletVariants = cva('flex flex-1 flex-col', {
   },
 })
 
+// The profile editors read whole profile documents, which hold the subscription
+// URLs and headers, so a caller that may not read secrets gets no profile pages
+// instead of a burst of rejected requests.
 function RouteComponent() {
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      <ProfilesLayout />
+    </RequireCapability>
+  )
+}
+
+function ProfilesLayout() {
   const layout = useLeafRouteLayout() ?? 'scroll'
 
   return (
@@ -46,7 +60,9 @@ function RouteComponent() {
             className="bg-surface-variant/50 min-w-72 dark:bg-transparent [&>div>div]:block!"
             data-slot="profiles-sidebar-scroll-area"
           >
-            <ProfilesNavigate />
+            <ReadOnlyScope scopes={['profile']} banner={false}>
+              <ProfilesNavigate />
+            </ReadOnlyScope>
           </SidebarContent>
 
           <AppContentScrollArea
@@ -74,9 +90,11 @@ function RouteComponent() {
               {/* One tooltip for the labels of every card and its actions;
                   a tooltip per trigger mounts a popper with each. */}
               <SharedTooltip>
-                <AnimatedOutletPreset
-                  className={profilesOutletVariants({ layout })}
-                />
+                <ReadOnlyScope scopes={['profile']}>
+                  <AnimatedOutletPreset
+                    className={profilesOutletVariants({ layout })}
+                  />
+                </ReadOnlyScope>
               </SharedTooltip>
             </div>
           </AppContentScrollArea>

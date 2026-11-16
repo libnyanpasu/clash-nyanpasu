@@ -69,14 +69,3 @@ pub async fn get_http_server_status(
 ) -> Result<nyanpasu_core::client::http_server::HttpServerStatus> {
     Ok(client.http_server_status().await?)
 }
-
-/// A URL that logs the caller into the running HTTP server. It is a credential, so it is a
-/// desktop-only mutation: a query would keep it in a client cache, and no remote transport may
-/// return it.
-#[nyanpasu_macro::rpc(capabilities(http_server), scope = remote_admin)]
-#[specta::specta]
-pub async fn create_http_launch_url(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<Option<String>> {
-    Ok(client.http_launch_url().await?)
-}

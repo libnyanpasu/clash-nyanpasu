@@ -1,3 +1,5 @@
+import { RequireCapability } from '@/components/auth/capabilities'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
@@ -61,13 +63,17 @@ function RouteComponent() {
         {m.settings_label_core_settings()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <CoreBehaviorSettings />
+      <ReadOnlyScope scopes={['settings']}>
+        <div className="space-y-4 px-4 pb-4">
+          <CoreBehaviorSettings />
 
-        <LatencyTestSettings />
+          <RequireCapability scope="sensitive_read">
+            <LatencyTestSettings />
+          </RequireCapability>
 
-        <ConnectionSettings />
-      </div>
+          <ConnectionSettings />
+        </div>
+      </ReadOnlyScope>
     </>
   )
 }

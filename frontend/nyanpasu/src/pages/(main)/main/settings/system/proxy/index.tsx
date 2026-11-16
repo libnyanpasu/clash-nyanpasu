@@ -1,4 +1,5 @@
 import { AnimatePresence } from 'motion/react'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import {
   SystemProxyButton,
@@ -37,17 +38,19 @@ const ProxyMode = () => {
         {m.settings_system_proxy_proxy_mode_label()}
       </SettingsLabel>
 
-      <SettingsGroup className="pb-4">
-        <div className="grid grid-cols-2 gap-2">
-          <SystemProxyButton />
+      <ReadOnlyScope scopes={['system']}>
+        <SettingsGroup className="pb-4">
+          <div className="grid grid-cols-2 gap-2">
+            <SystemProxyButton />
 
-          <TunModeButton />
+            <TunModeButton />
 
-          <PlatformLinux>
-            <TransparentProxyButton />
-          </PlatformLinux>
-        </div>
-      </SettingsGroup>
+            <PlatformLinux>
+              <TransparentProxyButton />
+            </PlatformLinux>
+          </div>
+        </SettingsGroup>
+      </ReadOnlyScope>
 
       <ProxyModeSelector />
     </div>
@@ -63,27 +66,29 @@ const ProxyGuard = () => {
         {m.settings_system_proxy_proxy_guard_label()}
       </SettingsLabel>
 
-      <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <ProxyGuardSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
+      <ReadOnlyScope scopes={['system']} banner={false}>
+        <SettingsGroup>
+          <SettingsCard>
+            <SettingsCardContent>
+              <ProxyGuardSwitch />
+            </SettingsCardContent>
+          </SettingsCard>
 
-        <AnimatePresence initial={false}>
-          {value && (
-            <SettingsCard asChild>
-              <SettingsCardAnimatedItem>
-                <SettingsCardContent>
-                  <ProxyGuardConfig />
+          <AnimatePresence initial={false}>
+            {value && (
+              <SettingsCard asChild>
+                <SettingsCardAnimatedItem>
+                  <SettingsCardContent>
+                    <ProxyGuardConfig />
 
-                  <ProxyBypassConfig />
-                </SettingsCardContent>
-              </SettingsCardAnimatedItem>
-            </SettingsCard>
-          )}
-        </AnimatePresence>
-      </SettingsGroup>
+                    <ProxyBypassConfig />
+                  </SettingsCardContent>
+                </SettingsCardAnimatedItem>
+              </SettingsCard>
+            )}
+          </AnimatePresence>
+        </SettingsGroup>
+      </ReadOnlyScope>
     </div>
   )
 }

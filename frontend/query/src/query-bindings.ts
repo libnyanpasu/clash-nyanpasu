@@ -519,6 +519,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getTransparentProxyStatusSummary', ...args],
         queryFn: () => commands.getTransparentProxyStatusSummary(...args),
       }),
+    listRemoteAccessTokens: (
+      ...args: Parameters<typeof commands.listRemoteAccessTokens>
+    ) =>
+      queryOptions({
+        queryKey: ['listRemoteAccessTokens', ...args],
+        queryFn: () => commands.listRemoteAccessTokens(...args),
+      }),
+    listRemoteBrowserSessions: (
+      ...args: Parameters<typeof commands.listRemoteBrowserSessions>
+    ) =>
+      queryOptions({
+        queryKey: ['listRemoteBrowserSessions', ...args],
+        queryFn: () => commands.listRemoteBrowserSessions(...args),
+      }),
   }
   const mutations = {
     writeClipboardText: mutationOptions({
@@ -926,6 +940,24 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['createHttpLaunchUrl'],
       mutationFn: (input: Parameters<typeof commands.createHttpLaunchUrl>) =>
         commands.createHttpLaunchUrl(...input),
+    }),
+    createRemoteAccessToken: mutationOptions({
+      mutationKey: ['createRemoteAccessToken'],
+      mutationFn: (
+        input: Parameters<typeof commands.createRemoteAccessToken>,
+      ) => commands.createRemoteAccessToken(...input),
+    }),
+    revokeRemoteAccessToken: mutationOptions({
+      mutationKey: ['revokeRemoteAccessToken'],
+      mutationFn: (
+        input: Parameters<typeof commands.revokeRemoteAccessToken>,
+      ) => commands.revokeRemoteAccessToken(...input),
+    }),
+    revokeRemoteBrowserSession: mutationOptions({
+      mutationKey: ['revokeRemoteBrowserSession'],
+      mutationFn: (
+        input: Parameters<typeof commands.revokeRemoteBrowserSession>,
+      ) => commands.revokeRemoteBrowserSession(...input),
     }),
     selectProxy: mutationOptions({
       mutationKey: ['selectProxy'],

@@ -9,6 +9,8 @@ import {
 } from 'react'
 import { SnackbarProvider } from '@nyanpasu/ui/snackbar'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { AuthBootstrapGate } from '@/components/auth/auth-bootstrap-gate'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { ImportUrlProvider } from '@/components/profile-import/import-url-provider'
 import { useProfileLookup } from '@/components/profile-label'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
@@ -153,8 +155,8 @@ export const Route = createRootRouteWithContext<RootContext>()({
   pendingComponent: Pending,
 })
 
-function WindowReadyReporter() {
-  const { query } = useSettings()
+function WindowReadyReporter({ canRead }: { canRead: boolean }) {
+  const { query } = useSettings({ enabled: canRead })
   const hasReported = useRef(false)
 
   useEffect(() => {
@@ -168,11 +170,14 @@ function WindowReadyReporter() {
   }, [])
 
   useEffect(() => {
-    if ((query.isSuccess || query.isError) && !hasReported.current) {
+    if (
+      (!canRead || query.isSuccess || query.isError) &&
+      !hasReported.current
+    ) {
       hasReported.current = true
       reportWindowReady()
     }
-  }, [query.isSuccess, query.isError])
+  }, [canRead, query.isSuccess, query.isError])
 
   return null
 }
@@ -214,10 +219,12 @@ type DegradationHandler = (degradations: AnyDegradation[]) => void
 
 function MutationDegradationNotifier({
   handler,
+  canRead,
 }: {
   handler: RefObject<DegradationHandler | null>
+  canRead: boolean
 }) {
-  const profiles = useProfileLookup()
+  const profiles = useProfileLookup({ enabled: canRead })
   useEffect(() => {
     const notify: DegradationHandler = (degradations) => {
       if (degradations.length === 0) {
@@ -261,44 +268,102 @@ function DeepLinkImport() {
   return null
 }
 
-export default function App() {
+function BootstrapErrorFallback({
+  error,
+  retry,
+}: {
+  error: unknown
+  retry: () => void
+}) {
+  useEffect(reportWindowReady, [])
+
+  return (
+    <div className={cn('flex h-dvh flex-col gap-4 bg-black p-4 text-white')}>
+      <div
+        className="fixed top-0 left-0 z-10 h-6 w-full"
+        data-tauri-drag-region
+      />
+      <h1 data-tauri-drag-region>Connection error</h1>
+      <pre className="overflow-x-auto font-mono whitespace-pre-wrap select-text">
+        {formatError(error)}
+      </pre>
+      <div>
+        <button
+          type="button"
+          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+          onClick={retry}
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AuthenticatedApp() {
   const [appWindow] = useState(createWindowAdapter)
+  const { hasScope } = useCapabilities()
+  const canRead = hasScope('read')
+  const canSensitiveRead = hasScope('sensitive_read')
   const degradationHandler = useRef<DegradationHandler | null>(null)
   const onDegraded = useCallback(
     (items: AnyDegradation[]) => degradationHandler.current?.(items),
     [],
   )
 
+  const appTree = (
+    <TooltipProvider>
+      <SnackbarProvider>
+        <ImportUrlProvider>
+          <WindowReadyReporter canRead={canRead} />
+          <MutationDegradationNotifier
+            handler={degradationHandler}
+            canRead={canRead}
+          />
+          {appWindow?.label() === 'main' && <DeepLinkImport />}
+          <Outlet />
+        </ImportUrlProvider>
+      </SnackbarProvider>
+    </TooltipProvider>
+  )
+
+  return (
+    <NyanpasuQueryProvider
+      rpc={rpc}
+      queryClient={queryClient}
+      onDegraded={onDegraded}
+      kvPersistence={canSensitiveRead ? 'backend' : 'local'}
+      clashWsEnabled={canRead}
+    >
+      <BlockTaskProvider>
+        <LanguageProvider enabled={canRead}>
+          <ExperimentalThemeProvider enabled={canRead}>
+            {canSensitiveRead ? (
+              <CustomCssProvider>{appTree}</CustomCssProvider>
+            ) : (
+              appTree
+            )}
+          </ExperimentalThemeProvider>
+
+          <TanStackRouterDevtools />
+        </LanguageProvider>
+      </BlockTaskProvider>
+    </NyanpasuQueryProvider>
+  )
+}
+
+export default function App() {
   return (
     <RootPlatformBoundary>
-      <NyanpasuQueryProvider
-        rpc={rpc}
+      <AuthBootstrapGate
+        describe={() => rpc.rpcDescribe()}
         queryClient={queryClient}
-        onDegraded={onDegraded}
+        renderError={(error, retry) => (
+          <BootstrapErrorFallback error={error} retry={retry} />
+        )}
       >
-        <BlockTaskProvider>
-          <LanguageProvider>
-            <ExperimentalThemeProvider>
-              <CustomCssProvider>
-                <TooltipProvider>
-                  <SnackbarProvider>
-                    <ImportUrlProvider>
-                      <WindowReadyReporter />
-                      <MutationDegradationNotifier
-                        handler={degradationHandler}
-                      />
-                      {appWindow?.label() === 'main' && <DeepLinkImport />}
-                      <Outlet />
-                    </ImportUrlProvider>
-                  </SnackbarProvider>
-                </TooltipProvider>
-              </CustomCssProvider>
-            </ExperimentalThemeProvider>
-
-            <TanStackRouterDevtools />
-          </LanguageProvider>
-        </BlockTaskProvider>
-      </NyanpasuQueryProvider>
+        <AuthenticatedApp />
+      </AuthBootstrapGate>
     </RootPlatformBoundary>
   )
 }

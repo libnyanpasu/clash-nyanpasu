@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
-use super::{application_workflow::ports::RuntimeBuildPort, http_server::HttpServerControl};
+use super::{http_server::HttpServerControl, reconciler::ports::RuntimeBuildPort};
 use nyanpasu_contracts::{
     net::{ChangelogHttp, IconFetcher, NetworkDiagnostics, SelfProxyPortSource},
+    network_environment::NetworkEnvironmentPort,
     profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
 };
 
@@ -47,4 +48,6 @@ pub struct ClientHostAdapters {
     pub changelog_http: Arc<ChangelogHttpFactory>,
     /// Supplies HTTP lifecycle control whose shutdown must drain the owner before returning.
     pub http_server: Option<Arc<HttpServerFactory>>,
+    /// Reads the host's network for network automation; `None` leaves the feature unsupported.
+    pub network_environment: Option<Arc<dyn NetworkEnvironmentPort>>,
 }

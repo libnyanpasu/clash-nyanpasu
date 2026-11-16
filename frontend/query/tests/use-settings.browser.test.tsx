@@ -6,6 +6,7 @@ import type {
   ClashConfig,
   ClashSettings,
   MutationOutcome,
+  NetworkRule,
   NyanpasuAppConfig_Serialize,
 } from '@nyanpasu/rpc/types'
 import { MutationCache, QueryClient } from '@tanstack/react-query'
@@ -15,6 +16,7 @@ import {
   useClashSystemSetting,
   useClashSystemSettings,
   useFullSetting,
+  useFullSystemSetting,
   useSetting,
   useSettings,
   useSystemSetting,
@@ -24,6 +26,15 @@ import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
 const PRIVATE_URL = 'https://probe.example/private-token/generate_204'
 
+// A network rule names a Wi-Fi network and a gateway: the safe view never carries it.
+const NETWORK_RULE: NetworkRule = {
+  id: 'home',
+  name: 'Home',
+  enabled: true,
+  conditions: { wifi_ssid: 'ssid-sentinel', gateway_mac: 'aa:bb:cc:dd:ee:ff' },
+  actions: { tun: 'disable' },
+}
+
 // What the safe query returns: the URLs are reduced to flags.
 const appSettings = {
   theme_mode: 'dark',
@@ -31,6 +42,7 @@ const appSettings = {
   enable_system_proxy: false,
   pac_configured: true,
   latency_test_configured: true,
+  network_automation_enabled: true,
   enable_service_mode: false,
   hotkeys: ['toggle_tun_mode,Control+Q'],
 } satisfies Partial<ApplicationSettings_Serialize>
@@ -40,6 +52,11 @@ const appConfig = {
   ...appSettings,
   pac_url: 'https://example.com/proxy.pac',
   default_latency_test: PRIVATE_URL,
+  network_automation: {
+    enabled: true,
+    default_actions: {},
+    rules: [NETWORK_RULE],
+  },
 } satisfies Partial<NyanpasuAppConfig_Serialize> & Record<string, unknown>
 
 const clashSettings = {
@@ -530,4 +547,52 @@ test('an editor reads the full value of a field the safe view reduces to a flag'
 
   await expect.poll(() => hook.result.current.value).toBe(PRIVATE_URL)
   expect(invoke).toHaveBeenCalledWith('get_app_config', undefined)
+})
+
+test('the network rules are read in full and written under the system scope', async ({
+  onTestFinished,
+}) => {
+  const { hook, settled, invoke } = await setup(
+    () => ({
+      rules: useFullSystemSetting('network_automation'),
+      safe: useSystemSettings().query.data,
+    }),
+    onTestFinished,
+  )
+  await expect
+    .poll(() => hook.result.current.rules.value?.rules?.[0]?.id)
+    .toBe('home')
+  expect(invoke).toHaveBeenCalledWith('get_app_config', undefined)
+
+  // The safe view reduces the rules to a flag.
+  await expect
+    .poll(() => hook.result.current.safe?.network_automation_enabled)
+    .toBe(true)
+  expect(JSON.stringify(hook.result.current.safe)).not.toContain('sentinel')
+  expect(hook.result.current.safe).not.toHaveProperty('network_automation')
+
+  await hook.act(async () => {
+    await hook.result.current.rules.upsert({
+      enabled: false,
+      default_actions: {},
+      rules: [],
+    })
+  })
+
+  expect(invoke).toHaveBeenCalledWith('patch_system_settings', {
+    patch: {
+      network_automation: { enabled: false, default_actions: {}, rules: [] },
+    },
+  })
+  expect(invoke).not.toHaveBeenCalledWith('patch_app_config', expect.anything())
+  expect(settled).toEqual([degraded])
+})
+
+test('the network rules cannot be read by key from the safe view', () => {
+  type RulesValue = ReturnType<
+    // @ts-expect-error the rules are only in the full config
+    typeof useSystemSetting<'network_automation'>
+  >['value']
+  const reads: RulesValue[] = []
+  expect(reads).toEqual([])
 })

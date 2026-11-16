@@ -183,12 +183,13 @@ pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
                 || is_context_type(ty, "RpcProfileMutationOutcome")
                 || is_context_type(ty, "RpcFolderMutationOutcome")
                 || is_context_type(ty, "RpcAppUpdateOutcome")
+                || is_context_type(ty, "RpcNetworkAutomationStatus")
                 || is_context_type(ty, "MutationOutcome")
         })
     {
         return Err(Error::new(
             original.output.span(),
-            "commands returning `RpcMutationOutcome` or `RpcAppUpdateOutcome` must specify `privacy` (and raw `MutationOutcome` must wrap via `RpcMutationOutcome` + `privacy`)",
+            "commands returning `RpcMutationOutcome`, `RpcAppUpdateOutcome` or `RpcNetworkAutomationStatus` must specify `privacy` (and raw `MutationOutcome` must wrap via `RpcMutationOutcome` + `privacy`)",
         ));
     }
     if options.scope.is_none() && !options.query {
@@ -952,6 +953,7 @@ mod tests {
             reported,
             [
                 "activate_profile",
+                "apply_network_automation",
                 "cancel_app_update_download",
                 "check_app_update",
                 "clear_proxy_fixed",
@@ -974,6 +976,7 @@ mod tests {
                 "reorder_profile",
                 "reorder_profiles_by_list",
                 "replace_profile_definition",
+                "request_wifi_name_access",
                 "save_profile_file",
                 "select_proxy",
                 "set_global_transforms",
@@ -1522,7 +1525,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 182, "{platform} command inventory");
+            assert_eq!(rows.len(), 185, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

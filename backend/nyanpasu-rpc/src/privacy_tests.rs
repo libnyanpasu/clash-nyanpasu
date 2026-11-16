@@ -14,9 +14,9 @@ use nyanpasu_rpc_protocol::{
     AuthContext, Principal, ResponseVisibility, RpcError, RpcOwner, Scope,
 };
 use nyanpasu_runtime_values::{
-    mutation::{CommitAborted, RuntimeAftermath},
+    mutation::CommitAborted,
     profiles::ProfilesError,
-    runtime_error::{CoreFailure, RestoreFailure, RuntimeError},
+    runtime_error::{CoreFailure, RuntimeError},
 };
 use serde_json::json;
 use tower::ServiceExt as _;
@@ -449,7 +449,7 @@ async fn transport_parse_route_and_admission_ordering_enforce_public_privacy() {
 }
 
 #[test]
-fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aftermath() {
+fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_metadata() {
     #[derive(Debug)]
     struct WrappedCoreCommit {
         core: CoreError,
@@ -477,14 +477,6 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aft
         retryable: true,
         operation_id: Some(op_id.to_string()),
     };
-    let rollback_failure = RestoreFailure::ReadStatus {
-        failure: CoreFailure {
-            kind: Some(CoreErrorKind::BackendUnavailable),
-            message: format!("cannot reach {secret_url}"),
-            retryable: true,
-            operation_id: Some("inner-op".to_owned()),
-        },
-    };
     let commit_err = ProfilesError::Commit {
         uid: Some(serde_json::from_value(json!("secret-uid")).unwrap()),
         path: Some(serde_json::from_value(json!("secret/managed-profile.yaml")).unwrap()),
@@ -493,13 +485,10 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aft
                 Arc::new(RuntimeError::ApplyRuntime {
                     failure: core_failure,
                 }),
-                Arc::new(RuntimeError::SourceSettled),
-            ],
-            runtime: RuntimeAftermath::RollbackFailed {
-                detail: Arc::new(RuntimeError::RestoreFailed {
-                    failure: rollback_failure,
+                Arc::new(RuntimeError::ConfigurationNotInEffect {
+                    reason: format!("waiting on {secret_url}"),
                 }),
-            },
+            ],
             source: Box::new(io::Error::other(format!("raw cause {secret_url}"))),
         },
         cleanup_failures: vec![ProfilesError::ShuttingDown],
@@ -529,9 +518,11 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aft
         wire["domain_error"]["kind"]["error"]["error"]["source"]["kind"],
         "runtime_failed"
     );
-    assert_eq!(
-        wire["domain_error"]["kind"]["error"]["error"]["source"]["runtime"],
-        "rollback_failed"
+    assert!(
+        wire["domain_error"]["kind"]["error"]["error"]["source"]
+            .get("runtime")
+            .is_none(),
+        "{wire}"
     );
     assert_eq!(
         wire["domain_error"]["kind"]["error"]["error"]["source"]["runtime_causes"]
@@ -541,8 +532,8 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_and_aft
         2
     );
     assert_eq!(
-        wire["domain_error"]["kind"]["error"]["error"]["source"]["aftermath_cause"]["kind"],
-        "restore_failed"
+        wire["domain_error"]["kind"]["error"]["error"]["source"]["runtime_causes"][1]["kind"],
+        "configuration_not_in_effect"
     );
 
     // Rich caller still receives full diagnostics and `detail`.
@@ -613,12 +604,11 @@ fn canary_degraded_outcome(
         degradations: vec![
             Degradation {
                 phase: DegradationPhase::RuntimeApply,
-                reason: DegradationReason::RuntimeRecoveryRequired {
-                    operation_id: Some("op_layer10_canary".to_owned()),
-                    cause: Some(Arc::new(RuntimeError::CoreRejectedConfig {
+                reason: DegradationReason::RuntimeDeferred {
+                    cause: Arc::new(RuntimeError::CoreRejectedConfig {
                         core_kind: None,
                         message: format!("failed inspecting {secret_path} at {secret_url}"),
-                    })),
+                    }),
                 },
                 message: format!("recovery failed: {secret_diag}"),
                 retryable: true,
@@ -757,6 +747,161 @@ fn privacy_canary_app_update_mutation(
     .into()
 }
 
+/// The live network reading of the host and the rule that matched it, with a refusal text that
+/// echoes both: everything `NetworkAutomationStatus` can hold that names the user's network.
+#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+fn privacy_canary_network_status(
+    secret_ssid: String,
+    secret_mac: String,
+    secret_rule: String,
+) -> nyanpasu_rpc_protocol::types::RpcNetworkAutomationStatus {
+    use nyanpasu_config::application::{
+        InterfaceKind, NetworkMatch, NetworkObservation, NetworkState, WifiName,
+    };
+    use nyanpasu_runtime_values::network_automation::{
+        MechanismOutcome, MechanismOutcomes, NetworkAutomationApplication, NetworkAutomationStatus,
+    };
+
+    NetworkAutomationStatus {
+        supported: true,
+        network: Some(NetworkState::Online {
+            network: NetworkObservation {
+                interface_kind: InterfaceKind::Wifi,
+                wifi: WifiName::Known {
+                    ssid: secret_ssid.clone(),
+                },
+                gateway_mac: Some(secret_mac.clone()),
+            },
+        }),
+        applied: Some(NetworkAutomationApplication {
+            matched: NetworkMatch::Rule { id: secret_rule },
+            outcomes: MechanismOutcomes {
+                system_proxy: MechanismOutcome::Enabled,
+                tun: MechanismOutcome::Failed {
+                    message: format!("refused on {secret_ssid} behind {secret_mac}"),
+                },
+                transparent_proxy: MechanismOutcome::Unchanged,
+            },
+        }),
+    }
+    .into()
+}
+
+#[tokio::test]
+async fn network_automation_status_reply_drops_the_network_without_sensitive_read() {
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+    let params = json!({
+        "secretSsid": "ssid-canary",
+        "secretMac": "aa:bb:cc:dd:ee:ff",
+        "secretRule": "rule-canary",
+    });
+
+    // A writer that holds `system` but not `sensitive_read` learns what the switches did, not
+    // which network it was on.
+    let (status, public) = rpc_for_test_call_with_auth(
+        &router,
+        "privacy_canary_network_status",
+        params.clone(),
+        None,
+        Some(auth_with_scopes([Scope::System])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{public}");
+    assert_no_canary(
+        &public,
+        &["ssid-canary", "aa:bb:cc", "rule-canary", "refused on"],
+    );
+    assert_eq!(
+        public,
+        json!({
+            "supported": true,
+            "applied": {
+                "matched_rule": true,
+                "outcomes": {
+                    "system_proxy": "enabled",
+                    "tun": "failed",
+                    "transparent_proxy": "unchanged",
+                },
+            },
+        })
+    );
+
+    // The editor's caller keeps the full reading.
+    let (status, full) = rpc_for_test_call_with_auth(
+        &router,
+        "privacy_canary_network_status",
+        params,
+        None,
+        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{full}");
+    assert_eq!(full["network"]["network"]["wifi"]["ssid"], "ssid-canary");
+    assert_eq!(
+        full["network"]["network"]["gateway_mac"],
+        "aa:bb:cc:dd:ee:ff"
+    );
+    assert_eq!(full["applied"]["matched"]["id"], "rule-canary");
+    fixture.shutdown().await;
+}
+
+/// A refused policy names its rule, Wi-Fi name and gateway address in the full diagnostic. A
+/// `system` writer without `sensitive_read` is told only that the policy was invalid.
+#[tokio::test]
+async fn refused_network_rules_name_nothing_without_sensitive_read() {
+    let fixture = Fixture::new(false).await;
+    let router = fixture.rpc.clone().router();
+    let patch = json!({"patch": {"network_automation": {
+        "enabled": false,
+        "rules": [{
+            "id": "rule-id-canary",
+            "name": "rule-name-canary",
+            "conditions": {"gateway_mac": "mac-canary", "wifi_ssid": "ssid-canary"},
+        }],
+    }}});
+
+    let (status, public) = rpc_for_test_call_with_auth(
+        &router,
+        "patch_system_settings",
+        patch.clone(),
+        None,
+        Some(auth_with_scopes([Scope::System])),
+    )
+    .await;
+    assert_ne!(status, StatusCode::OK, "{public}");
+    assert_no_canary(
+        &public,
+        &[
+            "rule-id-canary",
+            "rule-name-canary",
+            "mac-canary",
+            "ssid-canary",
+        ],
+    );
+    assert_eq!(public["domain_error"]["kind"]["domain"], "public");
+    assert_eq!(public["domain_error"]["kind"]["error"]["domain"], "config");
+    assert_eq!(
+        public["domain_error"]["kind"]["error"]["error"]["kind"],
+        "invalid_network_automation"
+    );
+
+    let (status, full) = rpc_for_test_call_with_auth(
+        &router,
+        "patch_system_settings",
+        patch,
+        None,
+        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+    )
+    .await;
+    assert_ne!(status, StatusCode::OK, "{full}");
+    assert!(
+        full.to_string().contains("rule-name-canary"),
+        "the editor's caller keeps the reason: {full}"
+    );
+    fixture.shutdown().await;
+}
+
 #[tokio::test]
 async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes() {
     use nyanpasu_rpc_protocol::types::ReceivedMutationOutcome;
@@ -850,11 +995,7 @@ async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes
         assert!(public_body["degradations"][0].get("message").is_none());
         assert_eq!(
             public_body["degradations"][0]["reason"]["code"],
-            "runtime_recovery_required"
-        );
-        assert_eq!(
-            public_body["degradations"][0]["reason"]["operation_id"],
-            public_body["commits"][0]["operation_id"]
+            "runtime_deferred"
         );
         assert_eq!(
             public_body["degradations"][0]["reason"]["cause"]["kind"],

@@ -1,7 +1,7 @@
 //! Typed client for the ProfilesActor. Committed reads come from the state
 //! snapshot handle; writes go through the actor with no RPC timeout.
 
-use crate::state::mutation::MutationCoordinator;
+use crate::state::mutation::{MutationCoordinator, ProfileContentLock, ProfileContentReader};
 use nyanpasu_config::profile::NewProfileRequest;
 
 use std::{sync::Arc, time::Duration};
@@ -18,7 +18,7 @@ use nyanpasu_config::profile::{
 };
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_state_engine::{
-    PersistentStateManager, PersistentStateManagerSetup, StateSnapshot,
+    PersistentStateManagerSetup, StateSnapshot,
     error::{LoadError, UpsertError},
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
@@ -48,12 +48,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<Profiles, ProfilesFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -78,7 +73,8 @@ pub struct ProfilesClient {
 
 struct ProfilesClientInner {
     actor_ref: ActorRef<ProfilesActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    content_lock: ProfileContentLock,
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<Profiles>,
     sources: tokio::sync::watch::Receiver<SourcesSnapshot>,
@@ -110,7 +106,8 @@ impl ProfilesClient {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn new_with_jobs(
-        mutations: MutationCoordinator<Profiles>,
+        mutations: MutationCoordinator,
+        content_lock: ProfileContentLock,
         profiles_path: Utf8PathBuf,
         jobs: nyanpasu_jobs::JobsClient,
         fs: Arc<dyn ProfileFsPort>,
@@ -134,12 +131,7 @@ impl ProfilesClient {
                 path: &profiles_path,
             })?
         } else {
-            setup
-                .from_state(Profiles::default())
-                .await
-                .context(InitializeStateSnafu {
-                    path: &profiles_path,
-                })?
+            setup.from_state(Profiles::default())
         };
 
         // A hand-edited or downgraded document may carry malformed folders or
@@ -179,10 +171,12 @@ impl ProfilesClient {
 
         let loaded = snapshot.load().state.clone();
         let preparation = materialization.clone();
+        let guard = content_lock.write().await;
         let report = nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || preparation.reconcile(&loaded)).await,
         )
         .context(PrepareMaterializationSnafu)?;
+        drop(guard);
         ProfilesActor::log_reconcile_report(&report);
 
         let (sources, sources_rx) = tokio::sync::watch::channel(SourcesSnapshot::default());
@@ -191,6 +185,7 @@ impl ProfilesClient {
             ProfilesActor,
             ProfilesActorArgs {
                 mutations,
+                content_lock: content_lock.clone(),
                 manager,
                 fs,
                 fetcher: Arc::clone(&fetcher),
@@ -208,6 +203,7 @@ impl ProfilesClient {
         Ok(Self {
             inner: Arc::new(ProfilesClientInner {
                 actor_ref,
+                content_lock,
                 snapshot,
                 sources: sources_rx,
                 jobs,
@@ -218,7 +214,7 @@ impl ProfilesClient {
 
     #[cfg(any(test, feature = "test-support"))]
     pub async fn new(
-        mutations: MutationCoordinator<Profiles>,
+        mutations: MutationCoordinator,
         profiles_path: Utf8PathBuf,
         fs: Arc<dyn ProfileFsPort>,
         fetcher: Arc<dyn SubscriptionFetcher>,
@@ -230,6 +226,7 @@ impl ProfilesClient {
         let jobs = crate::client::jobs::test_client_with_owner(shutdown.clone(), tasks).await;
         Self::new_with_jobs(
             mutations,
+            ProfileContentLock::default(),
             profiles_path,
             jobs,
             fs,
@@ -280,9 +277,15 @@ impl ProfilesClient {
     }
 
     /// The last committed profiles document. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// in-flight candidate check cannot delay them.
     pub fn snapshot(&self) -> Arc<Profiles> {
         Arc::new(self.inner.snapshot.load().state.clone())
+    }
+
+    /// The read side for anything that needs the committed document together
+    /// with its files.
+    pub(crate) fn content_reader(&self) -> ProfileContentReader {
+        ProfileContentReader::new(self.inner.snapshot.clone(), self.inner.content_lock.clone())
     }
 
     /// Read-only handle for collaborators that must observe committed state
@@ -1561,10 +1564,9 @@ mod tests {
         assert_eq!(fetch_count.load(Ordering::SeqCst), 1);
     }
 
-    /// An operation id on the receipt is the source having classified the
-    /// write as reaching the runtime and taken the Runtime into it.
+    /// Only changes to runtime inputs receive a runtime operation id.
     #[tokio::test]
-    async fn set_current_commits_and_reaches_the_runtime_even_when_reselected() {
+    async fn set_current_commits_without_runtime_work_when_reselected() {
         let (client, dir) = seeded_client().await;
         let report = client
             .set_current(Some(ProfileId("cfg1".into())))
@@ -1579,8 +1581,8 @@ mod tests {
             .await
             .unwrap();
         assert!(
-            report.receipt.operation_id.is_some(),
-            "re-selecting the current profile still asks for the runtime"
+            report.receipt.operation_id.is_none(),
+            "re-selecting the current profile does not change runtime inputs"
         );
         assert_eq!(report.snapshot.revision(), 3);
 
@@ -1955,7 +1957,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_definition_prepare_cleanup_failure_compensates_new_and_preserves_old() {
+    async fn replace_definition_cleanup_preparation_failure_compensates_new_and_preserves_old() {
         let mut materialization = MockProfileMaterializationPort::new();
         materialization
             .expect_reconcile()
@@ -4752,6 +4754,7 @@ mod tests {
         .unwrap();
         ProfilesClient::new_with_jobs(
             crate::state::mutation::MutationCoordinator::isolated(),
+            crate::state::mutation::ProfileContentLock::default(),
             temp_profiles_path(directory),
             jobs,
             Arc::new(MockProfileFsPort::new()),

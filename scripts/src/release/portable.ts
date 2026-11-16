@@ -27,7 +27,6 @@ export async function createPortableArchive(
     mainEntryPath = path.join(buildDir, 'clash-nyanpasu.exe')
   }
   zip.addLocalFile(mainEntryPath)
-  zip.addLocalFile(path.join(buildDir, 'clash.exe'))
   zip.addLocalFile(path.join(buildDir, 'mihomo.exe'))
   zip.addLocalFile(path.join(buildDir, 'mihomo-alpha.exe'))
   zip.addLocalFile(path.join(buildDir, 'nyanpasu-service.exe'))

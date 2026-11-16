@@ -28,7 +28,7 @@ use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_contracts::auth::{
     AccessTokenSummary, AuthClock, AuthRevocation, AuthenticatedCaller, BrowserSessionSummary,
     CreateAccessTokenRequest, EntropySource, EstablishedBrowserSession, IssuedAccessToken,
-    IssuedLaunchCode, RemoteAuthPolicy, ScopeSet, SecretStore, SecretString, SessionId,
+    IssuedLaunchCode, Principal, RemoteAuthPolicy, ScopeSet, SecretStore, SecretString, SessionId,
     TlsCertificateGenerator, TlsCertificateSummary, TlsIdentity, TokenId,
 };
 use nyanpasu_runtime_values::runtime::MutationOutcome;
@@ -271,10 +271,28 @@ impl RemoteAccessAuthClient {
 
     /// Revocations and expiries of tokens and sessions, as they happen.
     ///
-    /// A receiver that lags loses events; treat that as "revalidate everything".
+    /// A receiver that lags loses events; revalidate every tracked principal with
+    /// [`Self::is_principal_active`] instead of assuming which streams changed.
     #[must_use]
     pub fn subscribe_revocations(&self) -> broadcast::Receiver<AuthRevocation> {
         self.revocations.subscribe()
+    }
+
+    /// Whether a token or session principal is still valid.
+    ///
+    /// Other principal kinds are not owned by this actor and are reported active.
+    ///
+    /// # Errors
+    /// Fails when the owner stopped before answering.
+    pub async fn is_principal_active(
+        &self,
+        principal: &Principal,
+    ) -> Result<bool, RemoteAuthError> {
+        self.call(|reply| AuthMessage::PrincipalActive {
+            principal: principal.clone(),
+            reply,
+        })
+        .await
     }
 
     /// Mints a named token. The raw secret is returned once and never stored.

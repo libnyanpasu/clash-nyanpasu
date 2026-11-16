@@ -51,6 +51,9 @@ pub trait HttpAuthenticator: Send + Sync + 'static {
 
     async fn logout(&self, cookie: SecretString) -> Result<(), HttpAuthError>;
 
+    /// Whether an authenticated streaming principal is still valid.
+    async fn is_principal_active(&self, principal: &Principal) -> Result<bool, HttpAuthError>;
+
     async fn subscribe_revocations(
         &self,
     ) -> Result<broadcast::Receiver<AuthRevocation>, HttpAuthError>;
@@ -134,6 +137,13 @@ impl HttpAuthenticator for NyanpasuClientHttpAuthenticator {
             .map_err(map_remote_auth_error)
     }
 
+    async fn is_principal_active(&self, principal: &Principal) -> Result<bool, HttpAuthError> {
+        self.upgrade()?
+            .is_remote_principal_active(principal)
+            .await
+            .map_err(map_remote_auth_error)
+    }
+
     async fn subscribe_revocations(
         &self,
     ) -> Result<broadcast::Receiver<AuthRevocation>, HttpAuthError> {
@@ -197,6 +207,10 @@ impl HttpAuthenticator for RpcHttpAuthenticator {
 
     async fn logout(&self, cookie: SecretString) -> Result<(), HttpAuthError> {
         self.get()?.logout(cookie).await
+    }
+
+    async fn is_principal_active(&self, principal: &Principal) -> Result<bool, HttpAuthError> {
+        self.get()?.is_principal_active(principal).await
     }
 
     async fn subscribe_revocations(
@@ -356,7 +370,7 @@ impl PrincipalStreams {
         }
     }
 
-    /// Cancel every active token/session stream (used when the revocation broadcast lags or closes).
+    /// Cancel every active token/session stream when revocation state cannot be reconstructed.
     pub fn cancel_all(&self) {
         let mut cancelled = Vec::new();
         {
@@ -370,6 +384,55 @@ impl PrincipalStreams {
         }
         for token in cancelled {
             token.cancel();
+        }
+    }
+
+    fn tracked_principals(&self) -> Vec<Principal> {
+        let inner = self.0.lock();
+        let tokens = inner.by_token.keys().map(|id| Principal::Token {
+            id: id.as_str().to_owned(),
+            name: String::new(),
+        });
+        let sessions = inner.by_session.keys().map(|id| Principal::Session {
+            id: id.as_str().to_owned(),
+        });
+        tokens.chain(sessions).collect()
+    }
+
+    fn cancel_principal(&self, principal: &Principal) {
+        match principal {
+            Principal::Token { id, .. } => {
+                if let Ok(token_id) = TokenId::parse(id.clone()) {
+                    self.handle_revocation(&AuthRevocation::Token {
+                        token_id,
+                        session_ids: Vec::new(),
+                    });
+                }
+            }
+            Principal::Session { id } => {
+                if let Ok(session_id) = SessionId::parse(id.clone()) {
+                    self.handle_revocation(&AuthRevocation::Session { session_id });
+                }
+            }
+            Principal::Anonymous | Principal::Desktop { .. } | Principal::LocalSocket { .. } => {}
+        }
+    }
+
+    async fn reconcile(&self, authenticator: &dyn HttpAuthenticator) {
+        for principal in self.tracked_principals() {
+            match authenticator.is_principal_active(&principal).await {
+                Ok(true) => {}
+                Ok(false) => self.cancel_principal(&principal),
+                Err(error) => {
+                    tracing::warn!(
+                        target: "nyanpasu::remote_access",
+                        %error,
+                        "auth revocation receiver lagged and revalidation failed; closing all active principal streams"
+                    );
+                    self.cancel_all();
+                    return;
+                }
+            }
         }
     }
 
@@ -389,12 +452,17 @@ impl PrincipalStreams {
                 }
             },
         };
-        self.drive_receiver(receiver, shutdown).await;
+        self.drive_receiver(authenticator, receiver, shutdown).await;
     }
 
-    /// Process events from an explicit `broadcast::Receiver<AuthRevocation>` until `shutdown`.
+    /// Process events from an explicit receiver until `shutdown`.
+    ///
+    /// A lagged receiver loses events, so every tracked principal is revalidated against the
+    /// authenticator. Only invalid principals are cancelled; an unavailable authenticator still
+    /// closes every stream.
     pub async fn drive_receiver(
         self,
+        authenticator: Arc<dyn HttpAuthenticator>,
         mut receiver: broadcast::Receiver<AuthRevocation>,
         shutdown: CancellationToken,
     ) {
@@ -407,9 +475,9 @@ impl PrincipalStreams {
                         tracing::warn!(
                             target: "nyanpasu::remote_access",
                             skipped,
-                            "auth revocation receiver lagged; closing all active principal streams"
+                            "auth revocation receiver lagged; revalidating tracked principal streams"
                         );
-                        self.cancel_all();
+                        self.reconcile(authenticator.as_ref()).await;
                     }
                     Err(broadcast::error::RecvError::Closed) => {
                         self.cancel_all();
@@ -423,11 +491,11 @@ impl PrincipalStreams {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashSet};
 
     use nyanpasu_contracts::auth::{AuthRevocation, Principal, Scope, SessionId, TokenId};
     use parking_lot::Mutex;
-    use tokio::sync::broadcast;
+    use tokio::sync::{broadcast, mpsc};
     use tokio_util::sync::CancellationToken;
     use tracing::{Level, Subscriber};
     use tracing_subscriber::{
@@ -458,6 +526,76 @@ mod tests {
         }
     }
 
+    struct TestAuthenticator {
+        active: Mutex<HashSet<String>>,
+        unavailable: Mutex<bool>,
+        checked: mpsc::UnboundedSender<()>,
+    }
+
+    impl TestAuthenticator {
+        fn new(active: &[&str]) -> (Arc<Self>, mpsc::UnboundedReceiver<()>) {
+            let (checked, receiver) = mpsc::unbounded_channel();
+            (
+                Arc::new(Self {
+                    active: Mutex::new(active.iter().map(|label| (*label).to_owned()).collect()),
+                    unavailable: Mutex::new(false),
+                    checked,
+                }),
+                receiver,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl HttpAuthenticator for TestAuthenticator {
+        async fn authenticate_token(
+            &self,
+            _token: SecretString,
+        ) -> Result<AuthenticatedCaller, HttpAuthError> {
+            unreachable!("stream reconciliation does not authenticate tokens")
+        }
+
+        async fn exchange_launch_code(
+            &self,
+            _code: SecretString,
+        ) -> Result<EstablishedBrowserSession, HttpAuthError> {
+            unreachable!("stream reconciliation does not exchange launch codes")
+        }
+
+        async fn login_with_token(
+            &self,
+            _token: SecretString,
+        ) -> Result<EstablishedBrowserSession, HttpAuthError> {
+            unreachable!("stream reconciliation does not log in")
+        }
+
+        async fn resolve_browser_session(
+            &self,
+            _cookie: SecretString,
+        ) -> Result<AuthenticatedCaller, HttpAuthError> {
+            unreachable!("stream reconciliation does not resolve cookies")
+        }
+
+        async fn logout(&self, _cookie: SecretString) -> Result<(), HttpAuthError> {
+            unreachable!("stream reconciliation does not log out")
+        }
+
+        async fn is_principal_active(&self, principal: &Principal) -> Result<bool, HttpAuthError> {
+            if *self.unavailable.lock() {
+                return Err(HttpAuthError::Unavailable);
+            }
+            let active = self.active.lock().contains(&principal.audit_label());
+            let _ = self.checked.send(());
+            Ok(active)
+        }
+
+        async fn subscribe_revocations(
+            &self,
+        ) -> Result<broadcast::Receiver<AuthRevocation>, HttpAuthError> {
+            unreachable!("the test supplies its own receiver")
+        }
+    }
+
     #[test]
     fn clamp_local_open_scopes_strips_privileged_scopes() {
         let clamped = clamp_local_open_scopes(&[
@@ -479,7 +617,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn principal_streams_cancels_matching_revocations_and_lag_cancels_all() {
+    async fn principal_streams_cancels_matching_revocations() {
         let streams = PrincipalStreams::default();
         let parent = CancellationToken::new();
 
@@ -520,8 +658,22 @@ mod tests {
         assert!(tok_cancel.is_cancelled());
         assert!(derived_cancel.is_cancelled());
         assert!(!unrelated_cancel.is_cancelled());
+    }
 
-        // Broadcast lag cancels all remaining tracked streams and emits a WARN log.
+    #[tokio::test]
+    async fn a_lagged_receiver_revalidates_and_keeps_unrelated_streams() {
+        let streams = PrincipalStreams::default();
+        let parent = CancellationToken::new();
+        let revoked = Principal::Session {
+            id: "sess_revoked".to_owned(),
+        };
+        let healthy = Principal::Session {
+            id: "sess_healthy".to_owned(),
+        };
+        let (revoked_cancel, _revoked_guard) = streams.register(&revoked, &parent);
+        let (healthy_cancel, _healthy_guard) = streams.register(&healthy, &parent);
+        let (authenticator, mut checked) = TestAuthenticator::new(&["session:sess_healthy"]);
+
         let (tx, rx) = broadcast::channel(1);
         tx.send(AuthRevocation::Session {
             session_id: SessionId::parse("sess_x").unwrap(),
@@ -538,18 +690,84 @@ mod tests {
         let watcher = tokio::spawn({
             let streams = streams.clone();
             let stop = stop.clone();
-            async move { streams.drive_receiver(rx, stop).await }
+            async move { streams.drive_receiver(authenticator, rx, stop).await }
         });
-        tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            unrelated_cancel.cancelled(),
-        )
-        .await
-        .expect("lagged revocation receiver must cancel remaining streams");
+        for _ in 0..2 {
+            tokio::time::timeout(std::time::Duration::from_secs(2), checked.recv())
+                .await
+                .expect("every tracked principal must be revalidated")
+                .expect("the test authenticator must stay alive");
+        }
+        assert!(revoked_cancel.is_cancelled());
+        assert!(
+            !healthy_cancel.is_cancelled(),
+            "a lag must not close a stream whose principal is still active"
+        );
         stop.cancel();
         watcher.await.unwrap();
 
         let logs = capture.0.lock();
-        assert!(logs.iter().any(|(level, _)| *level == Level::WARN));
+        assert!(
+            logs.iter().any(|(level, fields)| {
+                *level == Level::WARN
+                    && fields
+                        .values()
+                        .any(|value| value.contains("revalidating tracked principal streams"))
+            }),
+            "{logs:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lagged_receiver_with_unavailable_revalidation_still_fails_closed() {
+        let streams = PrincipalStreams::default();
+        let parent = CancellationToken::new();
+        let first = Principal::Token {
+            id: "tok_01".to_owned(),
+            name: "cli".to_owned(),
+        };
+        let second = Principal::Session {
+            id: "sess_02".to_owned(),
+        };
+        let (first_cancel, _first_guard) = streams.register(&first, &parent);
+        let (second_cancel, _second_guard) = streams.register(&second, &parent);
+        let (authenticator, _checked) = TestAuthenticator::new(&[]);
+        *authenticator.unavailable.lock() = true;
+
+        let (tx, rx) = broadcast::channel(1);
+        tx.send(AuthRevocation::Session {
+            session_id: SessionId::parse("sess_x").unwrap(),
+        })
+        .unwrap();
+        tx.send(AuthRevocation::Session {
+            session_id: SessionId::parse("sess_y").unwrap(),
+        })
+        .unwrap();
+        let stop = CancellationToken::new();
+        let capture = RemoteAccessWarnCapture::default();
+        let _sub =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+        let watcher = tokio::spawn({
+            let streams = streams.clone();
+            let stop = stop.clone();
+            async move { streams.drive_receiver(authenticator, rx, stop).await }
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), first_cancel.cancelled())
+            .await
+            .expect("unavailable revalidation must close every stream");
+        assert!(second_cancel.is_cancelled());
+        stop.cancel();
+        watcher.await.unwrap();
+
+        let logs = capture.0.lock();
+        assert!(
+            logs.iter().any(|(level, fields)| {
+                *level == Level::WARN
+                    && fields
+                        .values()
+                        .any(|value| value.contains("revalidation failed"))
+            }),
+            "{logs:?}"
+        );
     }
 }

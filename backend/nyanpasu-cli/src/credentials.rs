@@ -5,7 +5,10 @@
 //! history or the process list. It comes from standard input, from `NYANPASU_TOKEN`
 //! when a context is added, or from `NYANPASU_TOKEN` at call time.
 
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use crate::{config::TokenBackend, error::CliError};
 
@@ -102,9 +105,27 @@ fn private_directory(directory: &std::path::Path) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-fn private_directory(directory: &std::path::Path) -> io::Result<()> {
-    fs::create_dir_all(directory)?;
-    set_private_acl(directory)
+fn private_directory(directory: &Path) -> io::Result<()> {
+    let security = PrivateSecurity::new()?;
+    let mut missing = Vec::new();
+    let mut current = directory;
+    loop {
+        match fs::symlink_metadata(current) {
+            Ok(_) => break,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                missing.push(current.to_owned());
+                current = match current.parent() {
+                    Some(parent) if !parent.as_os_str().is_empty() => parent,
+                    _ => break,
+                };
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    for path in missing.iter().rev() {
+        create_private_directory(path, &security)?;
+    }
+    secure_existing_directory(directory, &security)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -131,18 +152,66 @@ fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
-    use std::io::{Seek as _, SeekFrom, Write as _};
+fn write_private(path: &Path, secret: &str) -> io::Result<()> {
+    use std::io::Write as _;
 
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)?;
-    set_private_acl(path)?;
-    file.set_len(0)?;
-    file.seek(SeekFrom::Start(0))?;
-    file.write_all(secret.as_bytes())?;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "token path has no parent"))?;
+    let file_name = path.file_name().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "token path has no file name")
+    })?;
+    let security = PrivateSecurity::new()?;
+    let temporary = parent.join(temporary_token_name(file_name));
+    let mut file = create_private_file(&temporary, &security)?;
+    let written = file
+        .write_all(secret.as_bytes())
+        .and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = written {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.is_file() || is_reparse_point(&metadata) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the token target is not a regular file",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+    }
+
+    let source = wide(temporary.as_os_str());
+    let target = wide(path.as_os_str());
+    // The replacement's protected DACL was applied at creation, and moving within the volume
+    // keeps that descriptor. Reassert it by handle after publication so an old, permissive
+    // target descriptor cannot survive a platform merge.
+    // SAFETY: both paths are valid, null-terminated UTF-16 strings for the duration of the call.
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            target.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        let error = io::Error::last_os_error();
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    secure_existing_file(path, &security)?;
     Ok(())
 }
 
@@ -156,6 +225,80 @@ fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt as _;
 
     value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+struct PrivateSecurity {
+    descriptor: *mut std::ffi::c_void,
+}
+
+#[cfg(windows)]
+impl PrivateSecurity {
+    fn new() -> io::Result<Self> {
+        use std::ptr;
+
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+        };
+
+        let sid = current_user_sid()?;
+        let sddl = wide(std::ffi::OsStr::new(&format!("D:P(A;;FA;;;{sid})")));
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: the SDDL is a valid null-terminated string and a successful conversion
+        // allocates `descriptor`, which Drop releases with LocalFree.
+        if unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                ptr::null_mut(),
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self { descriptor })
+    }
+
+    fn attributes(&self) -> windows_sys::Win32::Security::SECURITY_ATTRIBUTES {
+        windows_sys::Win32::Security::SECURITY_ATTRIBUTES {
+            nLength: size_of::<windows_sys::Win32::Security::SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: self.descriptor,
+            bInheritHandle: 0,
+        }
+    }
+
+    fn dacl(&self) -> io::Result<*mut windows_sys::Win32::Security::ACL> {
+        use std::ptr;
+
+        use windows_sys::Win32::Security::GetSecurityDescriptorDacl;
+
+        let mut present = 0;
+        let mut dacl = ptr::null_mut();
+        let mut defaulted = 0;
+        // SAFETY: `descriptor` is a valid security descriptor owned by this value.
+        if unsafe {
+            GetSecurityDescriptorDacl(self.descriptor, &mut present, &mut dacl, &mut defaulted)
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        if present == 0 || dacl.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the private token ACL is absent",
+            ));
+        }
+        Ok(dacl)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PrivateSecurity {
+    fn drop(&mut self) {
+        // SAFETY: `descriptor` was allocated by ConvertStringSecurityDescriptorToSecurityDescriptorW.
+        let _ = unsafe { windows_sys::Win32::Foundation::LocalFree(self.descriptor) };
+    }
 }
 
 #[cfg(windows)]
@@ -223,91 +366,266 @@ fn current_user_sid() -> io::Result<String> {
 }
 
 #[cfg(windows)]
-fn set_private_acl(path: &std::path::Path) -> io::Result<()> {
-    use std::ptr;
-
+fn create_private_directory(path: &Path, security: &PrivateSecurity) -> io::Result<()> {
     use windows_sys::Win32::{
-        Foundation::LocalFree,
-        Security::{
-            Authorization::{
-                ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-                SE_FILE_OBJECT, SetNamedSecurityInfoW,
-            },
-            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
-            PROTECTED_DACL_SECURITY_INFORMATION,
-        },
+        Foundation::ERROR_ALREADY_EXISTS, Storage::FileSystem::CreateDirectoryW,
     };
 
-    let sid = current_user_sid()?;
-    let sddl = wide(std::ffi::OsStr::new(&format!("D:P(A;;FA;;;{sid})")));
-    let path = wide(path.as_os_str());
-    let mut descriptor = ptr::null_mut();
+    let path_wide = wide(path.as_os_str());
+    let attributes = security.attributes();
+    // SAFETY: the path is a valid null-terminated UTF-16 string, and the security attributes
+    // point to a descriptor that outlives the call.
+    if unsafe { CreateDirectoryW(path_wide.as_ptr(), &attributes) } != 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(ERROR_ALREADY_EXISTS as i32) {
+        return secure_existing_directory(path, security);
+    }
+    Err(error)
+}
 
-    // SAFETY: The SDDL is a valid null-terminated string. The descriptor is allocated by the
-    // API and freed before returning. The path is null-terminated and the DACL pointer remains
-    // valid until SetNamedSecurityInfoW returns.
-    unsafe {
-        if ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            sddl.as_ptr(),
-            SDDL_REVISION_1,
-            &mut descriptor,
-            ptr::null_mut(),
-        ) == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+#[cfg(windows)]
+fn secure_existing_directory(path: &Path, security: &PrivateSecurity) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle as _;
 
-        let mut present = 0;
-        let mut dacl = ptr::null_mut();
-        let mut defaulted = 0;
-        if GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted) == 0 {
-            let error = io::Error::last_os_error();
-            LocalFree(descriptor);
-            return Err(error);
-        }
-        if present == 0 || dacl.is_null() {
-            LocalFree(descriptor);
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "the private token ACL is absent",
-            ));
-        }
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, READ_CONTROL, WRITE_DAC,
+    };
 
-        let result = SetNamedSecurityInfoW(
-            path.as_ptr(),
+    let handle = open_existing_handle(
+        path,
+        READ_CONTROL | WRITE_DAC,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )?
+    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "token directory disappeared"))?;
+    let attributes = file_attributes(&handle)?;
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the token directory is a reparse point",
+        ));
+    }
+    if attributes & FILE_ATTRIBUTE_DIRECTORY == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the token directory path is not a directory",
+        ));
+    }
+    set_private_dacl(handle.as_raw_handle(), security)
+}
+
+#[cfg(windows)]
+fn secure_existing_file(path: &Path, security: &PrivateSecurity) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+        READ_CONTROL, WRITE_DAC,
+    };
+
+    let handle =
+        open_existing_handle(path, READ_CONTROL | WRITE_DAC, FILE_FLAG_OPEN_REPARSE_POINT)?
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "token file disappeared"))?;
+    let attributes = file_attributes(&handle)?;
+    if attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the token target is not a regular file",
+        ));
+    }
+    set_private_dacl(handle.as_raw_handle(), security)
+}
+
+#[cfg(windows)]
+fn set_private_dacl(
+    handle: std::os::windows::io::RawHandle,
+    security: &PrivateSecurity,
+) -> io::Result<()> {
+    use std::ptr;
+
+    use windows_sys::Win32::Security::{
+        Authorization::{SE_FILE_OBJECT, SetSecurityInfo},
+        DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+
+    let dacl = security.dacl()?;
+    let result = unsafe {
+        SetSecurityInfo(
+            handle,
             SE_FILE_OBJECT,
             DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
             ptr::null_mut(),
             ptr::null_mut(),
             dacl,
-            ptr::null_mut(),
-        );
-        LocalFree(descriptor);
-        if result != 0 {
-            return Err(io::Error::from_raw_os_error(result as i32));
-        }
+            ptr::null(),
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::from_raw_os_error(result as i32))
     }
-    Ok(())
+}
+
+#[cfg(windows)]
+fn create_private_file(path: &Path, security: &PrivateSecurity) -> io::Result<fs::File> {
+    use std::{
+        os::windows::io::{FromRawHandle as _, OwnedHandle},
+        ptr,
+    };
+
+    use windows_sys::Win32::{
+        Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE},
+        Storage::FileSystem::{CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_NONE},
+    };
+
+    let path = wide(path.as_os_str());
+    let attributes = security.attributes();
+    // SAFETY: the path and security descriptor are valid for the call. The returned handle is
+    // converted to an owner that closes it.
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            GENERIC_WRITE,
+            FILE_SHARE_NONE,
+            &attributes,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL,
+            ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: CreateFileW returned a valid owned handle.
+    let handle = unsafe { OwnedHandle::from_raw_handle(handle) };
+    Ok(fs::File::from(handle))
+}
+
+#[cfg(windows)]
+fn open_existing_handle(
+    path: &Path,
+    access: u32,
+    flags: u32,
+) -> io::Result<Option<std::os::windows::io::OwnedHandle>> {
+    use std::{
+        os::windows::io::{FromRawHandle as _, OwnedHandle},
+        ptr,
+    };
+
+    use windows_sys::Win32::{
+        Foundation::INVALID_HANDLE_VALUE,
+        Storage::FileSystem::{
+            CreateFileW, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+        },
+    };
+
+    let path = wide(path.as_os_str());
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            access,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            ptr::null(),
+            OPEN_EXISTING,
+            flags,
+            ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        let error = io::Error::last_os_error();
+        return if error.kind() == io::ErrorKind::NotFound {
+            Ok(None)
+        } else {
+            Err(error)
+        };
+    }
+    // SAFETY: CreateFileW returned a valid owned handle.
+    Ok(Some(unsafe { OwnedHandle::from_raw_handle(handle) }))
+}
+
+#[cfg(windows)]
+fn file_attributes(handle: &std::os::windows::io::OwnedHandle) -> io::Result<u32> {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+
+    let mut information = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: the handle is valid and `information` is a correctly sized out-parameter.
+    if unsafe { GetFileInformationByHandle(handle.as_raw_handle(), &mut information) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(information.dwFileAttributes)
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+
+    metadata.file_attributes()
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+}
+
+#[cfg(windows)]
+fn temporary_token_name(file_name: &std::ffi::OsStr) -> std::ffi::OsString {
+    use std::ffi::OsString;
+
+    let mut name = OsString::from(".");
+    name.push(file_name);
+    name.push(format!(
+        ".tmp-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    name
+}
+
+#[cfg(windows)]
+fn read_private(path: &Path) -> io::Result<Option<String>> {
+    use std::io::Read as _;
+
+    use windows_sys::Win32::{
+        Foundation::GENERIC_READ,
+        Storage::FileSystem::{
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+        },
+    };
+
+    let Some(handle) = open_existing_handle(path, GENERIC_READ, FILE_FLAG_OPEN_REPARSE_POINT)?
+    else {
+        return Ok(None);
+    };
+    let attributes = file_attributes(&handle)?;
+    if attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY) != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the token file is not a regular file",
+        ));
+    }
+    let mut file = fs::File::from(handle);
+    let mut secret = String::new();
+    file.read_to_string(&mut secret)?;
+    Ok(Some(secret.trim().to_owned()))
+}
+
+#[cfg(not(windows))]
+fn read_private(path: &Path) -> io::Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(secret) => Ok(Some(secret.trim().to_owned())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 impl SecretStore for FileStore {
     fn get(&self, name: &str) -> Result<Option<String>, CliError> {
-        let path = self.path(name);
-        #[cfg(windows)]
-        match set_private_acl(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(CliError::failed(format!(
-                    "cannot secure token file: {error}"
-                )));
-            }
-        }
-        match fs::read_to_string(path) {
-            Ok(secret) => Ok(Some(secret.trim().to_owned())),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(CliError::failed(format!("cannot read token file: {error}"))),
-        }
+        read_private(&self.path(name))
+            .map_err(|error| CliError::failed(format!("cannot read token file: {error}")))
     }
 
     fn set(&self, name: &str, secret: &str) -> Result<(), CliError> {
@@ -533,11 +851,170 @@ mod tests {
         assert_eq!(store.get("a").unwrap(), None);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn an_existing_handle_keeps_the_old_secret_when_the_file_is_replaced() {
+        use std::io::Read as _;
+
+        use windows_sys::Win32::{
+            Foundation::GENERIC_READ, Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT,
+        };
+
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = directory.path().join("tokens");
+        fs::create_dir_all(&tokens).unwrap();
+        let path = tokens.join("a.token");
+        fs::write(&path, "old").unwrap();
+        set_named_sddl(
+            &path,
+            &format!("D:P(A;;FA;;;{})(A;;FR;;;WD)", current_user_sid().unwrap()),
+        );
+        let mut old_handle = fs::File::from(
+            open_existing_handle(&path, GENERIC_READ, FILE_FLAG_OPEN_REPARSE_POINT)
+                .unwrap()
+                .unwrap(),
+        );
+
+        let store = FileStore::new(tokens);
+        store.set("a", "new").unwrap();
+
+        let mut old = String::new();
+        old_handle.read_to_string(&mut old).unwrap();
+        assert_eq!(old, "old", "an open handle must not observe the new secret");
+        assert_eq!(store.get("a").unwrap().as_deref(), Some("new"));
+        let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+        assert_eq!(
+            comparable(file_sddl(&path)),
+            canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap())),
+            "the replacement must not inherit the old permissive DACL"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn every_created_token_directory_is_owner_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = directory.path().join("nyanpasu-cli").join("tokens");
+        let store = FileStore::new(tokens.clone());
+        store.set("a", "secret").unwrap();
+
+        let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
+        let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+        for path in [directory.path().join("nyanpasu-cli"), tokens] {
+            assert_eq!(
+                comparable(file_sddl(&path)),
+                expected,
+                "{} must be owner-only",
+                path.display()
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reading_a_token_does_not_rewrite_its_acl() {
+        let directory = tempfile::tempdir().unwrap();
+        let tokens = directory.path().join("tokens");
+        fs::create_dir_all(&tokens).unwrap();
+        let path = tokens.join("a.token");
+        fs::write(&path, "secret").unwrap();
+        set_named_sddl(
+            &path,
+            &format!("D:P(A;;FA;;;{})(A;;FR;;;WD)", current_user_sid().unwrap()),
+        );
+        let before = file_sddl(&path);
+
+        let store = FileStore::new(tokens);
+        assert_eq!(store.get("a").unwrap().as_deref(), Some("secret"));
+        assert_eq!(file_sddl(&path), before, "reading must not change the ACL");
+    }
+
+    #[cfg(windows)]
+    #[expect(
+        clippy::permissions_set_readonly_false,
+        reason = "this Windows-only test clears the attribute so the temporary directory can be removed"
+    )]
+    #[test]
+    fn a_read_only_token_file_is_still_readable() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = FileStore::new(directory.path().join("tokens"));
+        store.set("a", "secret").unwrap();
+        let path = store.path("a");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&path, permissions).unwrap();
+
+        assert_eq!(store.get("a").unwrap().as_deref(), Some("secret"));
+
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
     #[test]
     fn clean_token_rejects_whitespace_and_empty_input() {
         assert_eq!(clean_token(" npk_1_x\n").unwrap(), "npk_1_x");
         assert!(clean_token("").is_err());
         assert!(clean_token("two words").is_err());
+    }
+
+    #[cfg(windows)]
+    fn set_named_sddl(path: &Path, sddl: &str) {
+        use std::ptr;
+
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::{
+                Authorization::{
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+                    SE_FILE_OBJECT, SetNamedSecurityInfoW,
+                },
+                DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
+                PROTECTED_DACL_SECURITY_INFORMATION,
+            },
+        };
+
+        let sddl = wide(std::ffi::OsStr::new(sddl));
+        let path = wide(path.as_os_str());
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: the SDDL is null-terminated and the descriptor is released below.
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut descriptor,
+                    ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let mut present = 0;
+        let mut dacl = ptr::null_mut();
+        let mut defaulted = 0;
+        // SAFETY: descriptor is valid and every out-parameter is initialized by the API.
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted)
+            },
+            0
+        );
+        assert_ne!(present, 0);
+        // SAFETY: the path and DACL are valid for the call; the descriptor remains alive.
+        let result = unsafe {
+            SetNamedSecurityInfoW(
+                path.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                dacl,
+                ptr::null_mut(),
+            )
+        };
+        // SAFETY: the conversion allocated this descriptor with LocalAlloc.
+        unsafe { LocalFree(descriptor) };
+        assert_eq!(result, 0, "SetNamedSecurityInfoW failed: {result}");
     }
 
     #[cfg(windows)]

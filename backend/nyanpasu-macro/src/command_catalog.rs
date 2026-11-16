@@ -4,7 +4,7 @@
 use std::{
     collections::BTreeMap,
     env, fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use quote::{ToTokens as _, quote};
@@ -363,12 +363,12 @@ fn expand_permission_table_in(
 /// The `include_str!` operand is relative to the invoking crate, so a copied build cache never
 /// carries an absolute path from the checkout that compiled the proc macro.
 fn relative_source_path(invoking_dir: &Path, source: &Path) -> Result<String, String> {
-    let from: Vec<_> = invoking_dir.components().collect();
-    let to: Vec<_> = source.components().collect();
+    let from = path_parts(invoking_dir)?;
+    let to = path_parts(source)?;
     let common = from
         .iter()
         .zip(&to)
-        .take_while(|(left, right)| left == right)
+        .take_while(|(left, right)| left.0 == right.0)
         .count();
     if common == 0 {
         return Err(format!(
@@ -381,15 +381,54 @@ fn relative_source_path(invoking_dir: &Path, source: &Path) -> Result<String, St
     for _ in &from[common..] {
         relative.push_str("/..");
     }
-    for component in &to[common..] {
-        let text = component
-            .as_os_str()
-            .to_str()
-            .ok_or_else(|| format!("{} is not valid UTF-8", source.display()))?;
+    for (_, component) in &to[common..] {
         relative.push('/');
-        relative.push_str(text);
+        relative.push_str(component);
     }
     Ok(relative)
+}
+
+/// A path component's comparison key and its original text.
+fn path_parts(path: &Path) -> Result<Vec<(String, String)>, String> {
+    path.components()
+        .map(|component| {
+            let text = component
+                .as_os_str()
+                .to_str()
+                .ok_or_else(|| format!("{} is not valid UTF-8", path.display()))?
+                .to_owned();
+            let key = match &component {
+                Component::Prefix(prefix) => prefix_key(prefix),
+                _ if cfg!(windows) => text.to_lowercase(),
+                _ => text.clone(),
+            };
+            Ok((key, text))
+        })
+        .collect()
+}
+
+/// Windows considers `C:` and `\\?\C:` the same volume, and the same for UNC shares.
+/// Normalize the comparison key only; the emitted path keeps the source's spelling.
+#[cfg(windows)]
+fn prefix_key(prefix: &std::path::PrefixComponent<'_>) -> String {
+    use std::path::Prefix;
+
+    match prefix.kind() {
+        Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => {
+            format!("disk:{}", char::from(drive).to_ascii_uppercase())
+        }
+        Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => format!(
+            "unc:{}\\{}",
+            server.to_string_lossy().to_lowercase(),
+            share.to_string_lossy().to_lowercase()
+        ),
+        _ => prefix.as_os_str().to_string_lossy().to_lowercase(),
+    }
+}
+
+#[cfg(not(windows))]
+fn prefix_key(prefix: &std::path::PrefixComponent<'_>) -> String {
+    prefix.as_os_str().to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -579,6 +618,35 @@ fn permission_table_uses_the_invoking_checkout() {
     );
 
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_verbatim_source_paths_stay_relative() {
+    assert_eq!(
+        relative_source_path(
+            Path::new(r"C:\work\backend\tauri"),
+            Path::new(r"\\?\C:\work\backend\nyanpasu-rpc\src\commands\profiles.rs"),
+        )
+        .unwrap(),
+        "/../nyanpasu-rpc/src/commands/profiles.rs"
+    );
+    assert_eq!(
+        relative_source_path(
+            Path::new(r"\\server\share\backend\tauri"),
+            Path::new(r"\\?\UNC\server\share\backend\nyanpasu-rpc\src\commands\profiles.rs"),
+        )
+        .unwrap(),
+        "/../nyanpasu-rpc/src/commands/profiles.rs"
+    );
+    assert!(
+        relative_source_path(
+            Path::new(r"C:\work\backend\tauri"),
+            Path::new(r"\\?\D:\work\backend\nyanpasu-rpc\src\commands\profiles.rs"),
+        )
+        .is_err(),
+        "a source on another volume is not relative to the invoking crate"
+    );
 }
 
 #[test]

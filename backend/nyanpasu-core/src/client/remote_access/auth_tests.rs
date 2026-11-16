@@ -496,6 +496,120 @@ async fn revoking_a_token_closes_its_sessions_and_announces_them() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn principal_activity_tracks_logout_token_revocation_and_expiry() {
+    let harness = Harness::start().await;
+    let token = harness.create_token(Some(10 * MINUTE)).await;
+    let token_id = harness.client.list_access_tokens().await.unwrap()[0]
+        .id
+        .clone();
+    let token_principal = Principal::Token {
+        id: token_id.as_str().to_owned(),
+        name: "unused".to_owned(),
+    };
+
+    let session = harness
+        .client
+        .login_with_token(token.clone())
+        .await
+        .unwrap();
+    let session_principal = Principal::Session {
+        id: session.summary.id.as_str().to_owned(),
+    };
+    assert!(
+        harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+
+    harness.client.logout(session.cookie).await.unwrap();
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+
+    let session = harness.client.login_with_token(token).await.unwrap();
+    let session_principal = Principal::Session {
+        id: session.summary.id.as_str().to_owned(),
+    };
+    tokio::time::advance(10 * MINUTE).await;
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+
+    let revoked_token = harness.create_token(None).await;
+    let revoked_token_id = harness
+        .client
+        .list_access_tokens()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|summary| summary.id != token_id)
+        .expect("the second token is listed")
+        .id;
+    let revoked_principal = Principal::Token {
+        id: revoked_token_id.as_str().to_owned(),
+        name: "unused".to_owned(),
+    };
+    let revoked_session = harness
+        .client
+        .login_with_token(revoked_token)
+        .await
+        .unwrap();
+    let revoked_session_principal = Principal::Session {
+        id: revoked_session.summary.id.as_str().to_owned(),
+    };
+    harness
+        .client
+        .revoke_access_token(revoked_token_id)
+        .await
+        .unwrap();
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&revoked_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&revoked_session_principal)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn an_expiring_token_closes_its_sessions_without_a_request() {
     let mut harness = Harness::start().await;
     let token = harness.create_token(Some(10 * MINUTE)).await;

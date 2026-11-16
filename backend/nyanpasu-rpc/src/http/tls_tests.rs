@@ -467,6 +467,82 @@ async fn the_lan_strategy_answers_only_to_addresses_and_known_names() {
 }
 
 #[tokio::test]
+async fn mixed_case_https_host_and_origin_are_the_same_local_origin() {
+    let harness = Harness::start().await;
+    let status = harness.configure(tls_config()).await;
+    let port = status.port.unwrap();
+    let token = harness.token().await;
+    let http = http1_client();
+    let request = json!({ "method": "rpc_describe", "params": {} });
+
+    for (host, origin) in [
+        (
+            format!("LOCALHOST:{port}"),
+            format!("https://localhost:{port}"),
+        ),
+        (
+            format!("localhost:{port}"),
+            format!("https://LOCALHOST:{port}"),
+        ),
+    ] {
+        let response = http
+            .post(format!("{}/bridge/rpc", url_of(&status)))
+            .bearer_auth(&token)
+            .header("host", &host)
+            .header("origin", &origin)
+            .json(&request)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{host} / {origin}");
+    }
+
+    harness.finish().await;
+}
+
+#[test]
+fn an_origin_must_match_the_request_scheme_and_authority_exactly() {
+    assert!(super::origin_matches(
+        "https://LOCALHOST:8443",
+        "https",
+        "localhost:8443",
+        443,
+    ));
+    assert!(super::origin_matches(
+        "https://localhost:8443",
+        "https",
+        "LOCALHOST:8443",
+        443,
+    ));
+    assert!(super::origin_matches(
+        "https://localhost",
+        "https",
+        "localhost:443",
+        443,
+    ));
+    assert!(super::origin_matches(
+        "https://localhost:443",
+        "https",
+        "localhost",
+        443,
+    ));
+    for refused in [
+        "http://localhost:8443",
+        "https://localhost:8443/path",
+        "https://user@localhost:8443",
+        "https://localhost:8443?key=value",
+        "https://localhost:8443#fragment",
+        "https://localhost:8444",
+        "null",
+    ] {
+        assert!(
+            !super::origin_matches(refused, "https", "localhost:8443", 443),
+            "{refused}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn leaving_the_lan_strategy_stops_answering_to_lan_names_on_the_same_port() {
     let harness = Harness::start().await;
     let lan = harness.configure(lan_config()).await;

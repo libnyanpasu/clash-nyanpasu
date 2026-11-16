@@ -3,6 +3,7 @@ pub mod convergence;
 
 use crate::{client::clash_info::ClashInfo, state::mutation::MutationCoordinator};
 use nyanpasu_contracts::{
+    auth::Principal,
     bundle_metadata::BundleMetadata,
     net::{
         ChangelogHttp, DirectEgress, DirectEgressProbe, NetworkDiagnostics, ProbeSources,
@@ -997,6 +998,17 @@ impl NyanpasuClient {
         &self,
     ) -> tokio::sync::broadcast::Receiver<nyanpasu_contracts::auth::AuthRevocation> {
         self.inner.remote_auth.subscribe_revocations()
+    }
+
+    /// Whether a remote token or browser-session principal is still valid.
+    ///
+    /// HTTP transports use this to reconcile a lagged revocation feed without ending streams
+    /// owned by unrelated principals.
+    pub async fn is_remote_principal_active(
+        &self,
+        principal: &Principal,
+    ) -> std::result::Result<bool, RemoteAuthError> {
+        self.inner.remote_auth.is_principal_active(principal).await
     }
 
     /// The committed remote-access settings.

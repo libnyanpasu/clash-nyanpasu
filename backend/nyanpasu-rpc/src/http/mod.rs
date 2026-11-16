@@ -548,6 +548,10 @@ fn authority_matches(host: &str, authority: &str, default_port: u16) -> bool {
             .is_some_and(|bare| host.eq_ignore_ascii_case(bare))
 }
 
+fn same_authority(left: &str, right: &str, default_port: u16) -> bool {
+    authority_matches(left, right, default_port) || authority_matches(right, left, default_port)
+}
+
 impl HttpEndpoint {
     /// A loopback listener answering to `authority` only.
     pub(crate) fn exact(authority: String, secure: bool) -> Self {
@@ -779,17 +783,40 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
 /// The authority the caller addressed. HTTP/1 sends it as `Host`; HTTP/2, which TLS negotiates,
 /// sends `:authority` and no `Host`. When both are present they must agree, so neither can be
 /// used to smuggle a name past the policy.
-fn request_host(request: &Request) -> Option<&str> {
+fn request_host(request: &Request, default_port: u16) -> Option<&str> {
     let header = request.headers().get("host").and_then(|v| v.to_str().ok());
     let authority = request
         .uri()
         .authority()
         .map(|authority| authority.as_str());
     match (header, authority) {
-        (Some(header), Some(authority)) if header != authority => None,
+        (Some(header), Some(authority)) if !same_authority(header, authority, default_port) => None,
         (Some(host), _) | (None, Some(host)) => Some(host),
         (None, None) => None,
     }
+}
+
+/// Whether an `Origin` header names exactly the scheme and authority the caller addressed.
+///
+/// The host part is normalized by `url` and compared by [`authority_matches`], so DNS names
+/// keep their case-insensitive meaning. A path, query, fragment, user info, or another scheme
+/// is not an origin and is refused.
+fn origin_matches(origin: &str, scheme: &str, host: &str, default_port: u16) -> bool {
+    let Ok(origin) = url::Url::parse(origin) else {
+        return false;
+    };
+    if !origin.scheme().eq_ignore_ascii_case(scheme)
+        || !origin.username().is_empty()
+        || origin.password().is_some()
+        || !origin.has_host()
+        || origin.path() != "/"
+        || origin.query().is_some()
+        || origin.fragment().is_some()
+    {
+        return false;
+    }
+    let authority = &origin[url::Position::BeforeHost..url::Position::AfterPort];
+    same_authority(host, authority, default_port)
 }
 
 pub(crate) async fn http_auth_middleware(
@@ -803,17 +830,19 @@ pub(crate) async fn http_auth_middleware(
         .map(|ConnectInfo(addr)| *addr);
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
-    let host = request_host(&request);
+    let host = request_host(&request, state.endpoint.default_port());
     let origin = request
         .headers()
         .get("origin")
         .and_then(|v| v.to_str().ok());
     let scheme = state.endpoint.scheme();
-    if !host.is_some_and(|host| state.endpoint.allows(host))
-        || origin.is_some_and(|origin| {
-            Some(origin) != host.map(|host| format!("{scheme}://{host}")).as_deref()
+    let host_allowed = host.is_some_and(|host| state.endpoint.allows(host));
+    let origin_allowed = host.is_some_and(|host| {
+        origin.is_none_or(|origin| {
+            origin_matches(origin, scheme, host, state.endpoint.default_port())
         })
-    {
+    });
+    if !host_allowed || !origin_allowed {
         tracing::warn!(
             target: "nyanpasu::remote_access",
             peer = ?peer,
@@ -1432,6 +1461,30 @@ pub(crate) mod tests {
                     .send(AuthRevocation::Session { session_id });
             }
             Ok(())
+        }
+
+        async fn is_principal_active(
+            &self,
+            principal: &Principal,
+        ) -> std::result::Result<bool, HttpAuthError> {
+            let state = self.state.lock();
+            Ok(match principal {
+                Principal::Token { id, .. } => state.tokens.values().any(|caller| {
+                    matches!(
+                        &caller.auth.principal,
+                        Principal::Token { id: active, .. } if active == id
+                    )
+                }),
+                Principal::Session { id } => state.sessions.values().any(|caller| {
+                    matches!(
+                        &caller.auth.principal,
+                        Principal::Session { id: active } if active == id
+                    )
+                }),
+                Principal::Anonymous
+                | Principal::Desktop { .. }
+                | Principal::LocalSocket { .. } => true,
+            })
         }
 
         async fn subscribe_revocations(

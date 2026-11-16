@@ -82,6 +82,11 @@ pub(super) enum Message {
         cookie: SecretString,
         reply: Reply<()>,
     },
+    /// Whether a token or session stream principal is still valid.
+    PrincipalActive {
+        principal: Principal,
+        reply: Reply<bool>,
+    },
     /// The certificate of the HTTPS listener, generated on first use and when it has expired.
     TlsIdentity {
         addresses: Vec<IpAddr>,
@@ -306,6 +311,9 @@ impl Actor for RemoteAccessAuthActor {
             }
             Message::Logout { cookie, reply } => {
                 let _ = reply.send(state.logout(&cookie));
+            }
+            Message::PrincipalActive { principal, reply } => {
+                let _ = reply.send(Ok(state.is_principal_active(&principal)));
             }
         }
         state.arm_wake(&myself);
@@ -714,5 +722,22 @@ impl State {
             .map(|session| session.id.clone())
             .ok_or(RemoteAuthError::Unauthorized)?;
         self.close_session(&id)
+    }
+
+    /// Reports whether a token or session principal can still authenticate. Other principal
+    /// kinds are not owned by this actor and are not tracked by HTTP stream revocation.
+    fn is_principal_active(&self, principal: &Principal) -> bool {
+        match principal {
+            Principal::Token { id, .. } => TokenId::parse(id.clone())
+                .ok()
+                .and_then(|id| self.tokens.get(&id))
+                .is_some_and(|token| !token.is_expired_at(self.clock.now_unix_ms())),
+            Principal::Session { id } => SessionId::parse(id.clone())
+                .ok()
+                .is_some_and(|id| self.sessions.contains_key(&id)),
+            Principal::Anonymous | Principal::Desktop { .. } | Principal::LocalSocket { .. } => {
+                true
+            }
+        }
     }
 }

@@ -3,8 +3,9 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use nyanpasu_rpc_protocol::{
-    AuthContext, COMMAND_CATALOG, CommandKind, CommandMetadata, Principal, ResponseVisibility,
-    RpcDescribeResponse, RpcError, RpcOwner, RpcTarget, ServerInfo, ShellCapability,
+    AuthContext, CommandKind, Principal, ResponseVisibility, RpcDescribeResponse, RpcError,
+    RpcOwner, RpcTarget, ServerInfo, ShellCapability,
+    permission::{RESOURCES, ResourceMetadata},
 };
 use serde_json::Value;
 
@@ -267,22 +268,6 @@ pub type RpcHandler =
 /// }
 /// ```
 ///
-/// A mutation that names no scope does not compile:
-///
-/// ```compile_fail
-/// fn a_mutation_without_a_scope_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(http)]
-///     fn reorder() -> bool { true }
-/// }
-/// ```
-///
-/// Effect and scope are independent: a query may explicitly require `proxy` permission.
-///
-/// ```no_run
-/// #[nyanpasu_rpc::rpc(http, query, scope = proxy)]
-/// fn proxy_scoped_query() -> bool { true }
-/// ```
-///
 /// The name is checked in a constant, including declarations never called:
 ///
 /// ```compile_fail,E0080
@@ -295,8 +280,14 @@ pub type RpcHandler =
 ///     }
 /// }
 /// ```
+///
+/// The entry records what was implemented, never who may call it: authorization metadata comes
+/// only from the generated resource table, matched by name at registration.
 pub struct CommandEntry {
-    pub metadata: CommandMetadata,
+    pub name: &'static str,
+    pub kind: CommandKind,
+    /// Whether the neutral handler runs the implementation, as HTTP and local exposure require.
+    pub transport_neutral: bool,
     pub handler: RpcHandler,
 }
 
@@ -304,14 +295,14 @@ inventory::collect!(CommandEntry);
 
 #[derive(Clone)]
 pub(crate) struct RegisteredCommand {
-    metadata: CommandMetadata,
+    metadata: ResourceMetadata,
     capabilities_available: bool,
     native_linked: bool,
     handler: Option<RpcHandler>,
 }
 
 impl RegisteredCommand {
-    pub(crate) fn metadata(&self) -> &CommandMetadata {
+    pub(crate) fn metadata(&self) -> &ResourceMetadata {
         &self.metadata
     }
 
@@ -351,7 +342,7 @@ impl RegisteredCommand {
         ) {
             return Err(self.unavailable(target));
         }
-        if target == RpcTarget::Desktop && self.metadata.kind == CommandKind::Native {
+        if target == RpcTarget::Desktop && self.metadata.is_native_command() {
             return Err(self.unavailable(target));
         }
         self.handler.ok_or_else(|| self.unavailable(target))
@@ -360,13 +351,13 @@ impl RegisteredCommand {
 
 pub(crate) type CommandHandlers = Arc<HashMap<&'static str, RegisteredCommand>>;
 
-pub(crate) fn register_commands(
-    catalog: &[CommandMetadata],
+pub(crate) fn register_commands<'a>(
+    resources: impl IntoIterator<Item = &'a ResourceMetadata>,
     entries: impl IntoIterator<Item = &'static CommandEntry>,
     provided: &[ShellCapability],
 ) -> Result<CommandHandlers, SetupError> {
     let mut commands = HashMap::new();
-    for metadata in catalog {
+    for metadata in resources {
         if commands
             .insert(
                 metadata.name,
@@ -385,18 +376,12 @@ pub(crate) fn register_commands(
         }
     }
     for entry in entries {
+        // A handler without a table row has no authorization metadata, so it is never served.
         let command = commands
-            .entry(entry.metadata.name)
-            .or_insert(RegisteredCommand {
-                metadata: entry.metadata,
-                capabilities_available: false,
-                native_linked: false,
-                handler: None,
-            });
+            .get_mut(entry.name)
+            .ok_or(SetupError::UndeclaredCommand { name: entry.name })?;
         if command.handler.replace(entry.handler).is_some() {
-            return Err(SetupError::RegisterCommand {
-                name: entry.metadata.name,
-            });
+            return Err(SetupError::RegisterCommand { name: entry.name });
         }
     }
 
@@ -410,6 +395,16 @@ pub(crate) fn register_commands(
             .all(|capability| provided.contains(capability));
     }
     Ok(Arc::new(commands))
+}
+
+/// The production resource table, plus the rows of test-only declarations in builds that link
+/// them.
+fn resources() -> impl Iterator<Item = &'static ResourceMetadata> {
+    #[cfg(any(test, feature = "test-resources"))]
+    let test: &[ResourceMetadata] = test_resources::TEST_RESOURCES;
+    #[cfg(not(any(test, feature = "test-resources")))]
+    let test: &[ResourceMetadata] = &[];
+    RESOURCES.iter().chain(test)
 }
 
 #[derive(Clone)]
@@ -431,8 +426,7 @@ impl UnifiedRpc {
         server: ServerInfo,
         provided: &[ShellCapability],
     ) -> Result<Self, SetupError> {
-        let commands =
-            register_commands(COMMAND_CATALOG, inventory::iter::<CommandEntry>, provided)?;
+        let commands = register_commands(resources(), inventory::iter::<CommandEntry>, provided)?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
             server,
@@ -447,7 +441,7 @@ impl UnifiedRpc {
         let commands = Arc::make_mut(&mut self.commands);
         for name in names {
             if let Some(command) = commands.get_mut(name)
-                && command.metadata.kind == CommandKind::Native
+                && command.metadata.is_native_command()
             {
                 command.native_linked = true;
             }
@@ -593,7 +587,7 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
-                if command.metadata.kind != CommandKind::Native
+                if !command.metadata.is_native_command()
                     || !command.metadata.targets.contains(&RpcTarget::Desktop)
                     || !command.capabilities_available
                 {
@@ -641,6 +635,8 @@ pub enum SetupError {
     InstallTlsIdentity,
     #[snafu(display("duplicate RPC command: {name}"))]
     RegisterCommand { name: &'static str },
+    #[snafu(display("RPC command {name} is linked but has no resource table row"))]
+    UndeclaredCommand { name: &'static str },
 }
 
 #[cfg(all(test, feature = "http"))]
@@ -653,27 +649,45 @@ mod delivery_tests;
 mod observation_tests;
 #[cfg(all(test, feature = "http"))]
 mod settings_tests;
+#[cfg(any(test, feature = "test-resources"))]
+mod test_resources;
 #[cfg(all(test, feature = "http"))]
 mod tests;
 
-/// Verify linked shared/native metadata and known unlinked names in a host test.
+/// Verify, in a host test that links every production declaration, that each resource row has
+/// exactly one linked declaration of its kind, that exposed rows have transport-neutral handlers,
+/// and that unlinked native names stay known.
 #[cfg(feature = "test-support")]
 pub fn assert_command_category_inventory() {
+    // Every linked handler has a row, or registration fails.
     let commands = register_commands(
-        COMMAND_CATALOG,
+        resources(),
         inventory::iter::<CommandEntry>,
         crate::test_support::CAPABILITIES,
     )
     .unwrap();
-    for metadata in COMMAND_CATALOG {
+    for metadata in RESOURCES {
         let command = &commands[metadata.name];
-        let entry = inventory::iter::<CommandEntry>
+        let mut entries = inventory::iter::<CommandEntry>
             .into_iter()
-            .find(|entry| entry.metadata.name == metadata.name)
-            .unwrap();
+            .filter(|entry| entry.name == metadata.name);
+        let entry = entries
+            .next()
+            .unwrap_or_else(|| panic!("{} has no linked declaration", metadata.name));
+        assert!(entries.next().is_none(), "{} linked twice", metadata.name);
         assert_eq!(
-            entry.metadata, *metadata,
-            "{} catalog metadata",
+            metadata.kind,
+            nyanpasu_rpc_protocol::permission::ResourceKind::Command(entry.kind),
+            "{} kind",
+            metadata.name
+        );
+        let exposed = metadata
+            .targets
+            .iter()
+            .any(|target| *target != RpcTarget::Desktop);
+        assert!(
+            !exposed || entry.transport_neutral,
+            "{} is exposed beyond the desktop without a transport-neutral handler",
             metadata.name
         );
         assert!(
@@ -681,17 +695,17 @@ pub fn assert_command_category_inventory() {
             "{} neutral handler",
             metadata.name
         );
-        if metadata.kind == CommandKind::Shared {
+        if !metadata.is_native_command() {
             for target in metadata.targets {
                 assert!(command.neutral_handler(*target).is_ok());
             }
         }
     }
-    let unlinked = register_commands(COMMAND_CATALOG, [], &[]).unwrap();
-    assert_eq!(unlinked.len(), COMMAND_CATALOG.len());
-    for metadata in COMMAND_CATALOG
+    let unlinked = register_commands(RESOURCES, [], &[]).unwrap();
+    assert_eq!(unlinked.len(), RESOURCES.len());
+    for metadata in RESOURCES
         .iter()
-        .filter(|metadata| metadata.kind == CommandKind::Native)
+        .filter(|metadata| metadata.is_native_command())
     {
         let command = &unlinked[metadata.name];
         assert_eq!(command.metadata, *metadata);

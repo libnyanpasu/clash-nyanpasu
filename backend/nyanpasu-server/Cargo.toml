@@ -12,7 +12,12 @@ path = 'src/main.rs'
 
 # Test-only fault injection; never enable in production.
 [features]
-panic-injection = ['dep:inventory', 'dep:serde_json', 'dep:struct-patch']
+panic-injection = [
+  'dep:inventory',
+  'dep:serde_json',
+  'dep:struct-patch',
+  'nyanpasu-rpc/test-resources'
+]
 
 [dependencies]
 inventory = { version = '0.3', optional = true }

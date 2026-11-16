@@ -14,7 +14,7 @@ use std::{
     path::Path,
 };
 
-use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect, EventName, RpcTarget, Scope};
+use nyanpasu_rpc_protocol::{CommandEffect, EventName, RpcTarget, Scope, permission::RESOURCES};
 
 const BASELINE: &str = "tests/fixtures/permission-baseline.txt";
 /// The baseline is exported on Windows. These rows replace the commands whose declarations differ
@@ -89,7 +89,7 @@ fn routes() -> [(Kind, &'static str, Scope, &'static [RpcTarget]); 3] {
 /// The table the current code authorizes against.
 fn current() -> Table {
     let mut table = Table::new();
-    for command in COMMAND_CATALOG {
+    for command in RESOURCES {
         let row = Row {
             scope: command.scope.as_str().to_owned(),
             effect: match command.effect {
@@ -342,7 +342,7 @@ fn baseline_covers_every_resource_once() {
             .map(|(_, name)| name.clone())
             .collect()
     };
-    let commands: BTreeSet<_> = COMMAND_CATALOG
+    let commands: BTreeSet<_> = RESOURCES
         .iter()
         .map(|command| command.name.to_owned())
         .collect();
@@ -361,7 +361,7 @@ fn comparison_admits_like_the_production_policy() {
     use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let table = current();
-    for command in COMMAND_CATALOG {
+    for command in RESOURCES {
         let row = &table[&(Kind::Command, command.name.to_owned())];
         for transport in TRANSPORTS {
             for caller in callers() {

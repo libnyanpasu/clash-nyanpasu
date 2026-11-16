@@ -13,7 +13,7 @@ async fn current_failure_encoding_matches_the_contract_baseline() {
     .unwrap();
     let fixture = Fixture::new(false).await;
     for command_name in fixtures.as_object().unwrap().keys() {
-        let command = nyanpasu_rpc_protocol::COMMAND_CATALOG
+        let command = nyanpasu_rpc_protocol::permission::RESOURCES
             .iter()
             .find(|command| command.name == command_name)
             .unwrap_or_else(|| panic!("missing catalog entry for {command_name}"));
@@ -59,17 +59,14 @@ async fn current_failure_encoding_matches_the_contract_baseline() {
 
 #[tokio::test]
 async fn command_scope_is_identical_across_rpc_transports() {
-    use nyanpasu_rpc_protocol::{COMMAND_CATALOG, RpcTarget};
+    use nyanpasu_rpc_protocol::{RpcTarget, permission::RESOURCES};
 
     let fixture = Fixture::new(false).await;
     let local_fixtures: Value = serde_json::from_str(include_str!(
         "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
-    for metadata in COMMAND_CATALOG
-        .iter()
-        .filter(|command| command.targets.len() > 1)
-    {
+    for metadata in RESOURCES.iter().filter(|command| command.targets.len() > 1) {
         let command = &fixture.rpc.commands[metadata.name];
         assert_eq!(command.metadata, *metadata);
         let mut requests = vec![
@@ -521,9 +518,9 @@ fn scope_boundary_cases() -> Vec<(&'static str, nyanpasu_rpc_protocol::Scope, Va
 /// The catalog scope of a command is the class of the fields its request type can hold.
 #[tokio::test]
 async fn each_request_command_declares_the_scope_of_its_fields() {
-    use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect, Scope};
+    use nyanpasu_rpc_protocol::{CommandEffect, Scope, permission::RESOURCES};
     let scope = |name: &str| {
-        let metadata = COMMAND_CATALOG
+        let metadata = RESOURCES
             .iter()
             .find(|command| command.name == name)
             .unwrap();

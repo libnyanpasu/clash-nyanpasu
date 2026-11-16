@@ -685,12 +685,12 @@ mod tests {
     /// groups that become TanStack queries and mutations must agree with it for every command.
     #[test]
     fn query_mutation_split_agrees_with_the_declared_effect() {
-        use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect};
+        use nyanpasu_rpc_protocol::{CommandEffect, permission::RESOURCES};
 
         let (query_bindings, _) = build_specta_builder();
         let (_, rest) = query_bindings.split_once("export const queries =").unwrap();
         let (queries, mutations) = rest.split_once("export const mutations =").unwrap();
-        for command in COMMAND_CATALOG {
+        for command in RESOURCES {
             let mut camel = String::new();
             let mut upper = false;
             for character in command.name.chars() {

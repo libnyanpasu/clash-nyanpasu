@@ -1406,7 +1406,7 @@ async fn local_server_assigns_socket_user_principal_and_allows_the_reviewed_comm
         .commands
         .iter()
         .filter(|command| {
-            nyanpasu_rpc_protocol::COMMAND_CATALOG
+            nyanpasu_rpc_protocol::permission::RESOURCES
                 .iter()
                 .any(|meta| meta.name == command.name)
         })

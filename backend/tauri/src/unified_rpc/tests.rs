@@ -9,7 +9,7 @@ use nyanpasu_rpc::{
     registry::{RpcDependencies, UnifiedRpc},
     test_support::AuditSink,
 };
-use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandKind};
+use nyanpasu_rpc_protocol::permission::RESOURCES;
 
 use super::native;
 
@@ -18,10 +18,10 @@ fn dispatchers_cover_each_command_category() {
     nyanpasu_rpc::registry::assert_command_category_inventory();
     let native =
         native::register_native_commands(inventory::iter::<native::TauriCommandEntry>).unwrap();
-    for metadata in COMMAND_CATALOG {
+    for metadata in RESOURCES {
         assert_eq!(
             native.contains_key(metadata.name),
-            metadata.kind == CommandKind::Native,
+            metadata.is_native_command(),
             "{} native handler",
             metadata.name
         );

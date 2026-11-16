@@ -4,9 +4,7 @@ use std::sync::Arc;
 
 use nyanpasu_core::client::effects::ports::LogRotation;
 use nyanpasu_rpc::registry::{CommandEntry, RpcCallMeta, RpcCaller, RpcDependencies, RpcFuture};
-use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcTarget, Scope,
-};
+use nyanpasu_rpc_protocol::{CommandKind, RpcError};
 use serde_json::Value;
 
 const PANIC_PAYLOAD: &str = "e4b-fatal-original-payload-53fd73";
@@ -51,18 +49,18 @@ pub(crate) fn logger_refresh(rotation: Option<&LogRotation>) {
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_panic", kind: CommandKind::Shared,
-            effect: CommandEffect::Mutation, scope: Scope::Settings,
-            targets: &[RpcTarget::Http, RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
+        name: "e4b_test_panic",
+        kind: CommandKind::Shared,
+        transport_neutral: true,
         handler: panic_handler,
     }
 }
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
-            effect: CommandEffect::Mutation, scope: Scope::Settings,
-            targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
+        name: "e4b_test_owner_work",
+        kind: CommandKind::Shared,
+        transport_neutral: true,
         handler: owner_work,
     }
 }

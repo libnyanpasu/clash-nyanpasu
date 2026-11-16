@@ -6,7 +6,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use nyanpasu_rpc_protocol::{AuthContext, COMMAND_CATALOG, ServerInfo, ShellCapability};
+use nyanpasu_rpc_protocol::{AuthContext, ServerInfo, ShellCapability, permission::RESOURCES};
 use parking_lot::Mutex;
 use serde_json::Value;
 use tower::ServiceExt as _;
@@ -258,8 +258,8 @@ pub async fn test_client_args_with_endpoint(
 
 pub fn assert_duplicate_commands_rejected(entry: &'static crate::registry::CommandEntry) {
     assert!(matches!(
-        crate::registry::register_commands(COMMAND_CATALOG, [entry, entry], &[]),
-        Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.metadata.name
+        crate::registry::register_commands(RESOURCES, [entry, entry], &[]),
+        Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.name
     ));
 }
 

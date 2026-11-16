@@ -1,14 +1,12 @@
 //! Neutral RPC envelopes, caller labels and shared event identities.
 
 mod command;
-mod command_catalog;
 mod error;
 mod event;
 mod owner;
 mod request;
 
-pub use command::{CommandKind, CommandMetadata, ShellCapability};
-pub use command_catalog::COMMAND_CATALOG;
+pub use command::{CommandKind, ShellCapability};
 pub use error::{ResponseVisibility, RpcError, RpcValue};
 pub use event::EventName;
 /// Canonical authentication and scope domain types shared across core and transports.
@@ -22,6 +20,7 @@ pub use request::Request;
 pub use nyanpasu_rpc_wire::frame;
 pub mod operation;
 pub mod operations;
+pub mod permission;
 pub mod session;
 pub mod types;
 pub mod values;

@@ -29,10 +29,7 @@ use nyanpasu_ipc::api::{
     status::CoreControllerInfo,
 };
 use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
-use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcTarget, Scope, client::LocalClient,
-    frame::Reply,
-};
+use nyanpasu_rpc_protocol::{CommandKind, RpcError, client::LocalClient, frame::Reply};
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 use serde_json::{Value, json};
 use tokio::sync::{Notify, oneshot};
@@ -438,9 +435,9 @@ fn owner_work(
 
 inventory::submit! {
     CommandEntry {
-        metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
-            effect: CommandEffect::Mutation, scope: Scope::Settings,
-            targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
+        name: "e4b_test_owner_work",
+        kind: CommandKind::Shared,
+        transport_neutral: true,
         handler: owner_work,
     }
 }

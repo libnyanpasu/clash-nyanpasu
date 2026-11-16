@@ -4,9 +4,10 @@ use std::{
 };
 
 use nyanpasu_rpc_protocol::{
-    AuthContext, COMMAND_CATALOG, EventName, RpcOwner, RpcTarget,
+    AuthContext, EventName, RpcOwner, RpcTarget,
     client::{LocalCallError, LocalClient, LocalSubscription, SubscriptionState},
     frame::{Reply, SubscriptionErrorCode},
+    permission::RESOURCES,
     session::RECOVERABLE_EVENTS,
 };
 use serde_json::{Value, json};
@@ -263,7 +264,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "revoke_remote_browser_session",
     ];
     expected.sort_unstable();
-    let mut actual: Vec<_> = COMMAND_CATALOG
+    let mut actual: Vec<_> = RESOURCES
         .iter()
         .filter(|command| command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)
@@ -476,13 +477,13 @@ fn one_declaration_registers_one_command_entry() {
     let entries: Vec<_> = inventory::iter::<crate::registry::CommandEntry>
         .into_iter()
         .collect();
-    for command in COMMAND_CATALOG {
+    for command in RESOURCES {
         assert_eq!(
             entries
                 .iter()
-                .filter(|entry| entry.metadata.name == command.name)
+                .filter(|entry| entry.name == command.name)
                 .count(),
-            usize::from(command.kind == nyanpasu_rpc_protocol::CommandKind::Shared),
+            usize::from(!command.is_native_command()),
             "one shared entry (native supplementary table stays in the shell): {}",
             command.name
         );

@@ -17,13 +17,14 @@ use nyanpasu_config::application::HttpAccessConfig;
 use nyanpasu_owner_support::blocking;
 use snafu::{ResultExt as _, Snafu};
 use tokio::{
-    net::{TcpListener, TcpStream},
+    io::{AsyncRead, AsyncWrite},
+    net::TcpListener,
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    Frontend,
+    Frontend, HttpEndpoint,
     auth::{HttpAuthenticator, PrincipalStreams},
     build_http_app,
 };
@@ -91,7 +92,7 @@ impl LoopbackListener {
         let app = build_http_app(
             app,
             frontend,
-            authority.clone(),
+            HttpEndpoint::exact(authority.clone(), false),
             access,
             authenticator.clone(),
             streams.clone(),
@@ -165,12 +166,16 @@ impl LoopbackListener {
     }
 }
 
-async fn connection(
-    stream: TcpStream,
+/// Serves one accepted connection, over plain TCP or after a TLS handshake.
+pub(super) async fn connection<S>(
+    stream: S,
     peer_addr: SocketAddr,
     app: Router,
     stop: CancellationToken,
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     // Use Axum's Hyper adapter, but keep each connection future in our JoinSet.
     // Dropping only axum::serve would detach its internally spawned connections.
     let builder = Builder::new(TokioExecutor::new());

@@ -55,8 +55,8 @@ pub struct CommandMetadata {
     pub kind: CommandKind,
     /// Whether the command only reads.
     pub effect: CommandEffect,
-    /// The one scope a principal must hold to call the command. Queries default to
-    /// [`Scope::Read`]; every mutation names its scope explicitly.
+    /// The one scope a principal must hold to call the command, resolved from the declaration's
+    /// permission when it is expanded.
     pub scope: Scope,
     /// Explicit transport exposure.
     pub targets: &'static [RpcTarget],
@@ -169,6 +169,7 @@ mod tests {
                 "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
@@ -183,6 +184,7 @@ mod tests {
                 "get_local_socket_status",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
@@ -279,7 +281,7 @@ mod tests {
             .map(|command| command.name)
             .collect();
         local.sort_unstable();
-        assert_eq!(local.len(), 46);
+        assert_eq!(local.len(), 47);
         assert_eq!(
             local,
             [
@@ -320,6 +322,7 @@ mod tests {
                 "query_traffic_active_connection_ids",
                 "read_profile_file",
                 "remove_storage_item",
+                "reset_remote_access_tls",
                 "restart_sidecar",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",

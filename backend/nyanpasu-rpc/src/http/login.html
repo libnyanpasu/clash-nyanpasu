@@ -111,6 +111,20 @@
         opacity: 0.6;
       }
 
+      #fingerprint-note {
+        padding: 12px 14px;
+        margin: 0 0 20px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      #fingerprint-note[hidden] {
+        display: none;
+      }
+
       #error {
         min-height: 20px;
         margin-top: 12px;
@@ -126,6 +140,13 @@
         Enter an access token generated on the desktop app to open a browser
         session.
       </p>
+      <div id="fingerprint-note" role="note" hidden>
+        This connection uses a certificate the app made for itself, so your
+        browser cannot vouch for it. Before you enter a token, open the
+        certificate details in your browser and check that its SHA-256
+        fingerprint is the one shown in the desktop app under Settings &rarr;
+        Remote access. If the two differ, do not sign in.
+      </div>
       <form id="login-form">
         <label for="token">Access token</label>
         <input
@@ -147,6 +168,11 @@
       const input = document.getElementById('token')
       const button = document.getElementById('submit')
       const errorBox = document.getElementById('error')
+
+      // Only the HTTPS listener presents a certificate to compare.
+      if (location.protocol === 'https:') {
+        document.getElementById('fingerprint-note').hidden = false
+      }
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault()

@@ -302,6 +302,315 @@ test('local open warns, offers only anonymous scopes and keeps at least one', as
   expect(saved.mock.calls.length).toBe(writes)
 })
 
+const lan = {
+  enabled: true,
+  port: 8765,
+  strategy: 'lan_authenticated',
+  tls: 'self_signed',
+  lan_bind: null,
+}
+
+const fingerprint =
+  'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89'
+
+test('sharing on the local network brings HTTPS, warns and cannot drop HTTPS', async ({
+  onTestFinished,
+}) => {
+  const { view, saved } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {},
+    { enabled: true, port: 8765, strategy: 'local_authenticated' },
+  )
+  const https = view.getByRole('switch', {
+    name: m.settings_remote_access_tls_title(),
+  })
+  await expect.element(https).not.toBeChecked()
+
+  await view
+    .getByRole('button', {
+      name: m.settings_remote_access_strategy_title(),
+      exact: false,
+    })
+    .click()
+  await view
+    .getByRole('menuitemcheckbox', {
+      name: m.settings_remote_access_strategy_lan_authenticated(),
+      exact: false,
+    })
+    .click()
+
+  // One write carries both fields, so the committed value is never LAN without HTTPS.
+  expect(saved).toHaveBeenLastCalledWith({
+    config: {
+      http: {
+        enabled: true,
+        port: 8765,
+        strategy: 'lan_authenticated',
+        tls: 'self_signed',
+      },
+    },
+  })
+  await expect
+    .element(
+      view.getByText(
+        m.settings_remote_access_strategy_lan_authenticated_warning(),
+      ),
+    )
+    .toBeVisible()
+  await expect.element(https).toBeChecked()
+  await expect.element(https).toBeDisabled()
+})
+
+test('HTTPS can be chosen on its own for the loopback strategies', async ({
+  onTestFinished,
+}) => {
+  const { view, saved } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {},
+    { enabled: true, port: 8765, strategy: 'local_authenticated', tls: 'http' },
+  )
+  const https = view.getByRole('switch', {
+    name: m.settings_remote_access_tls_title(),
+  })
+  await expect.element(https).toBeEnabled()
+
+  await https.click()
+
+  expect(saved).toHaveBeenLastCalledWith({
+    config: {
+      http: {
+        enabled: true,
+        port: 8765,
+        strategy: 'local_authenticated',
+        tls: 'self_signed',
+      },
+    },
+  })
+})
+
+test('the LAN address is validated, saved, and cleared to every interface', async ({
+  onTestFinished,
+}) => {
+  const { view, saved } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {},
+    lan,
+  )
+  const address = view.getByRole('textbox', {
+    name: m.settings_remote_access_lan_bind_title(),
+  })
+  const save = view.getByRole('button', { name: m.common_save() }).first()
+  await expect.element(address).toBeEnabled()
+
+  await address.fill('300.1.1.1')
+  await expect
+    .element(view.getByRole('alert'))
+    .toHaveTextContent(m.settings_remote_access_lan_bind_invalid())
+  await expect.element(save).toBeDisabled()
+
+  await address.fill('192.168.1.20')
+  await save.click()
+  expect(saved).toHaveBeenLastCalledWith({
+    config: { http: { ...lan, lan_bind: '192.168.1.20' } },
+  })
+
+  await address.fill('fd00::5')
+  await expect.element(save).toBeEnabled()
+
+  await address.fill('')
+  await save.click()
+  expect(saved).toHaveBeenLastCalledWith({
+    config: { http: { ...lan, lan_bind: null } },
+  })
+})
+
+test('other devices are told where to connect while the server listens', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {
+      get_http_server_status: () => ({
+        ...on,
+        url: 'https://127.0.0.1:12345/',
+        tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
+      }),
+    },
+    lan,
+  )
+
+  await expect
+    .element(
+      view.getByText(m.settings_remote_access_lan_url_hint({ port: 12345 })),
+    )
+    .toBeVisible()
+})
+
+test('the certificate fingerprint is shown and replacing it asks first', async ({
+  onTestFinished,
+}) => {
+  const { view, testRpc } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {
+      get_http_server_status: () => ({
+        ...on,
+        tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
+      }),
+      reset_remote_access_tls: () => committed,
+    },
+    lan,
+  )
+  await expect.element(view.getByText(fingerprint)).toBeVisible()
+
+  dialogs.ask.mockResolvedValueOnce(false)
+  const replace = view.getByRole('button', {
+    name: m.settings_remote_access_certificate_reset(),
+  })
+  await replace.click()
+  expect(dialogs.ask).toHaveBeenLastCalledWith(
+    m.settings_remote_access_certificate_reset_confirm(),
+    { kind: 'warning' },
+  )
+  expect(testRpc.invoke).not.toHaveBeenCalledWith(
+    'reset_remote_access_tls',
+    expect.anything(),
+  )
+
+  await replace.click()
+  await vi.waitFor(() =>
+    expect(testRpc.invoke).toHaveBeenCalledWith(
+      'reset_remote_access_tls',
+      undefined,
+    ),
+  )
+})
+
+const listening = {
+  ...on,
+  tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
+}
+const onePort = { ...lan, lan_bind: '192.168.1.20' }
+
+test('an address the certificate does not cover is explained next to the replacement', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {
+      get_http_server_status: () => ({
+        ...listening,
+        bind_outside_certificate: true,
+      }),
+    },
+    onePort,
+  )
+
+  await expect
+    .element(
+      view.getByText(m.settings_remote_access_certificate_address_mismatch()),
+    )
+    .toBeVisible()
+  await expect
+    .element(
+      view.getByRole('button', {
+        name: m.settings_remote_access_certificate_reset(),
+      }),
+    )
+    .toBeEnabled()
+})
+
+test('no address warning is shown while the certificate covers the address', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {
+      get_http_server_status: () => ({
+        ...listening,
+        bind_outside_certificate: false,
+      }),
+    },
+    onePort,
+  )
+
+  await expect.element(view.getByText(fingerprint)).toBeVisible()
+  expect(
+    view
+      .getByText(m.settings_remote_access_certificate_address_mismatch())
+      .query(),
+  ).toBeNull()
+})
+
+test('a certificate the listener cannot serve can still be replaced', async ({
+  onTestFinished,
+}) => {
+  const { view, testRpc } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {
+      // The listener presents nothing, so the status carries no certificate.
+      get_http_server_status: () => ({ ...off, fault: 'tls_unavailable' }),
+      reset_remote_access_tls: () => committed,
+    },
+    lan,
+  )
+  await expect
+    .element(view.getByText(m.settings_remote_access_certificate_none()))
+    .toBeVisible()
+  expect(view.getByText(fingerprint).query()).toBeNull()
+
+  await view
+    .getByRole('button', {
+      name: m.settings_remote_access_certificate_reset(),
+    })
+    .click()
+  await vi.waitFor(() =>
+    expect(testRpc.invoke).toHaveBeenCalledWith(
+      'reset_remote_access_tls',
+      undefined,
+    ),
+  )
+})
+
+test('no fingerprint is shown while the server does not serve HTTPS', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(onTestFinished, <ServerSettings />, {
+    get_http_server_status: () => on,
+  })
+  await expect
+    .element(
+      view.getByRole('switch', { name: m.settings_remote_access_tls_title() }),
+    )
+    .toBeEnabled()
+
+  expect(
+    view.getByText(m.settings_remote_access_certificate_title()).query(),
+  ).toBeNull()
+})
+
+test('a certificate that cannot be prepared is reported while the setting stays on', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    { get_http_server_status: () => ({ ...off, fault: 'tls_unavailable' }) },
+    lan,
+  )
+
+  await expect
+    .element(view.getByRole('alert'))
+    .toHaveTextContent(m.settings_remote_access_fault_tls_unavailable())
+})
+
 const token = (over: Partial<AccessTokenSummary> = {}): AccessTokenSummary => ({
   id: 't1',
   name: 'laptop',

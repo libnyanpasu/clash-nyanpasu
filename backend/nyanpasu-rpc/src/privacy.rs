@@ -78,7 +78,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```compile_fail
 /// use nyanpasu_runtime_values::runtime::MutationOutcome;
 ///
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_macro::rpc(privacy, permission = "settings.storage_item:set")]
 /// fn raw_outcome() -> MutationOutcome<()> {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -93,7 +93,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 ///
 /// type RawMutationAlias = MutationOutcome<()>;
 ///
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_macro::rpc(privacy, permission = "settings.storage_item:set")]
 /// fn raw_alias_outcome() -> RawMutationAlias {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -104,7 +104,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```
 ///
 /// ```compile_fail
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_macro::rpc(privacy, permission = "settings.storage_item:set")]
 /// fn wrong_plain_type() -> String {
 ///     "not a dual-shape outcome".to_owned()
 /// }
@@ -919,6 +919,7 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
                 RemoteAccessError::UseDedicatedCommand => {
                     PublicRemoteAccessErrorKind::UseDedicatedCommand
                 }
+                RemoteAccessError::LanRequiresTls => PublicRemoteAccessErrorKind::LanRequiresTls,
             },
         },
         ConfigError::InvalidNetworkAutomation { .. } => PublicConfigError::InvalidNetworkAutomation,

@@ -948,6 +948,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationFn: (input: Parameters<typeof commands.setRemoteAccess>) =>
         commands.setRemoteAccess(...input),
     }),
+    resetRemoteAccessTls: mutationOptions({
+      mutationKey: ['resetRemoteAccessTls'],
+      mutationFn: (input: Parameters<typeof commands.resetRemoteAccessTls>) =>
+        commands.resetRemoteAccessTls(...input),
+    }),
     createHttpLaunchUrl: mutationOptions({
       mutationKey: ['createHttpLaunchUrl'],
       mutationFn: (input: Parameters<typeof commands.createHttpLaunchUrl>) =>

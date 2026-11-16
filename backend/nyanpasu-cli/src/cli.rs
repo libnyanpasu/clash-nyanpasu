@@ -3,10 +3,11 @@
 //! Subcommands that reach the shell map to curated operations (see `commands.rs`) through
 //! [`Command::plan`]; everything else is local to the CLI.
 
-use std::{path::PathBuf, time::Duration};
+use std::{net::IpAddr, path::PathBuf, time::Duration};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+use nyanpasu_contracts::auth::TlsFingerprint;
 use serde_json::{Value, json};
 
 use crate::{describe::Scope, error::CliError, target::TransportChoice};
@@ -271,6 +272,9 @@ pub enum RemoteCommand {
     /// Turn the local socket on or off. Turning it off ends this connection's access.
     #[command(subcommand)]
     Socket(SwitchOnOff),
+    /// Replace the certificate of the HTTPS server. Clients that pinned the old one must pin the
+    /// new fingerprint, which `remote status` shows.
+    ResetCertificate,
     /// Manage the access tokens that authenticate over HTTP.
     #[command(subcommand)]
     Token(TokenCommand),
@@ -288,10 +292,62 @@ pub enum HttpCommand {
     /// Choose how HTTP callers authenticate.
     Strategy {
         /// `local_authenticated` requires a credential; `local_open` lets every local
-        /// process of every OS user call the API with the configured open scopes.
+        /// process of every OS user call the API with the configured open scopes;
+        /// `lan_authenticated` listens on the LAN over HTTPS and requires a credential from
+        /// every caller, so it also turns HTTPS on.
         #[arg(value_enum)]
         strategy: HttpStrategy,
     },
+    /// Choose the address `lan_authenticated` listens on, or every IPv4 interface with `all`.
+    LanBind {
+        /// An IP address of this computer, or `all`.
+        #[arg(value_parser = parse_lan_bind)]
+        address: LanBind,
+    },
+    /// Serve plain HTTP or HTTPS with the self-signed certificate. The LAN strategy needs HTTPS.
+    Tls {
+        #[arg(value_enum)]
+        mode: HttpTlsMode,
+    },
+}
+
+/// Where `lan_authenticated` listens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LanBind {
+    /// Every IPv4 interface.
+    All,
+    /// One address of this computer.
+    Address(IpAddr),
+}
+
+fn parse_lan_bind(text: &str) -> Result<LanBind, String> {
+    if text.eq_ignore_ascii_case("all") {
+        return Ok(LanBind::All);
+    }
+    text.parse()
+        .map(LanBind::Address)
+        .map_err(|_| format!("`{text}` is neither an IP address nor `all`"))
+}
+
+/// Whether the HTTP server speaks TLS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HttpTlsMode {
+    /// Plain HTTP, loopback strategies only.
+    #[value(name = "http")]
+    Http,
+    /// HTTPS with the self-signed certificate.
+    #[value(name = "self_signed", alias = "self-signed")]
+    SelfSigned,
+}
+
+impl HttpTlsMode {
+    /// The persisted spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::SelfSigned => "self_signed",
+        }
+    }
 }
 
 /// How the HTTP server authenticates a caller.
@@ -301,6 +357,8 @@ pub enum HttpStrategy {
     LocalAuthenticated,
     #[value(name = "local_open", alias = "local-open")]
     LocalOpen,
+    #[value(name = "lan_authenticated", alias = "lan-authenticated")]
+    LanAuthenticated,
 }
 
 impl HttpStrategy {
@@ -309,6 +367,7 @@ impl HttpStrategy {
         match self {
             Self::LocalAuthenticated => "local_authenticated",
             Self::LocalOpen => "local_open",
+            Self::LanAuthenticated => "lan_authenticated",
         }
     }
 }
@@ -460,6 +519,19 @@ pub struct ContextAdd {
     /// Take the token from `NYANPASU_TOKEN`.
     #[arg(long, requires = "url")]
     pub token_from_env: bool,
+    /// Pin the server certificate by its SHA-256 fingerprint, as the app's remote access
+    /// settings show it. Only an https URL can be pinned.
+    #[arg(
+        long,
+        requires = "url",
+        conflicts_with = "system_trust",
+        value_name = "SHA256"
+    )]
+    pub fingerprint: Option<TlsFingerprint>,
+    /// Verify an https server with the system trust store, for a certificate from a real
+    /// authority such as a reverse proxy's, instead of pinning its certificate.
+    #[arg(long, requires = "url")]
+    pub system_trust: bool,
 }
 
 /// What the MCP server offers an agent. It always offers the read-only tools.
@@ -885,7 +957,9 @@ mod tests {
                 "--expires-in",
                 "soon",
             ],
-            &["remote", "http", "strategy", "lan_authenticated"],
+            &["remote", "http", "strategy", "internet_open"],
+            &["remote", "http", "lan-bind", "not-an-address"],
+            &["remote", "http", "tls", "plain"],
         ] {
             assert!(
                 Cli::try_parse_from(

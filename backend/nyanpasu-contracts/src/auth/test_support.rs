@@ -11,7 +11,10 @@ use std::{
 use async_trait::async_trait;
 use zeroize::Zeroizing;
 
-use super::{AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError};
+use super::{
+    AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError, TlsCertificateGenerator,
+    TlsCertificateRequest, TlsGenerateError, TlsIdentity,
+};
 
 const START_UNIX_MS: u64 = 1_700_000_000_000;
 
@@ -71,5 +74,47 @@ impl SecretStore for MemorySecretStore {
     async fn save(&self, bytes: &[u8]) -> Result<(), SecretStoreError> {
         *self.record.lock().expect("no holder of the record panics") = Some(bytes.to_vec());
         Ok(())
+    }
+}
+
+/// A generator of distinguishable placeholder identities that remembers what it was asked for.
+///
+/// The bytes are not a real certificate, so only code that never parses them may use it.
+#[derive(Debug, Default)]
+pub struct FakeTlsGenerator {
+    requests: Mutex<Vec<TlsCertificateRequest>>,
+}
+
+impl FakeTlsGenerator {
+    /// Every request so far, oldest first.
+    pub fn requests(&self) -> Vec<TlsCertificateRequest> {
+        self.requests
+            .lock()
+            .expect("no holder of the requests panics")
+            .clone()
+    }
+}
+
+#[async_trait]
+impl TlsCertificateGenerator for FakeTlsGenerator {
+    async fn generate(
+        &self,
+        request: TlsCertificateRequest,
+    ) -> Result<TlsIdentity, TlsGenerateError> {
+        let mut requests = self
+            .requests
+            .lock()
+            .expect("no holder of the requests panics");
+        let serial = requests.len() + 1;
+        let not_after_ms = request.not_after_ms;
+        let addresses = request.addresses.clone();
+        requests.push(request);
+        Ok(TlsIdentity::new(
+            format!("certificate-{serial}").into_bytes(),
+            format!("private-key-{serial}").into_bytes(),
+            vec!["localhost".to_owned()],
+            addresses,
+            not_after_ms,
+        ))
     }
 }

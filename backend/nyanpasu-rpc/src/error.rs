@@ -94,6 +94,7 @@ impl From<SetRemoteAccessError> for IpcErrorKind {
             SetRemoteAccessError::Server { source } => source.into(),
             SetRemoteAccessError::LocalSocket { source } => source.into(),
             SetRemoteAccessError::Client { source } => (*source).into(),
+            SetRemoteAccessError::Tls { source } => source.into(),
             SetRemoteAccessError::OwnerStopped => Self::Unknown,
         }
     }

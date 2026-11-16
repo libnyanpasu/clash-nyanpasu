@@ -13,7 +13,7 @@ use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
 use crate::{error::Result, registry::RpcState};
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetProfiles, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetProfiles, query, permission = "profile.items:reveal")]
 #[specta::specta]
 pub async fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<DomainProfiles> {
     Ok((*client.get_profiles().await?).clone())
@@ -21,13 +21,13 @@ pub async fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Domain
 
 /// The profile structure without subscription URLs, request headers, external paths or
 /// descriptions. The full document is [`get_profiles`].
-#[nyanpasu_macro::rpc(local, http, query)]
+#[nyanpasu_macro::rpc(local, http, query, permission = "profile.listing:view")]
 #[specta::specta]
 pub fn get_profiles_listing(client: RpcState<'_, NyanpasuClient>) -> ProfilesListing {
     client.get_profiles_listing()
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, permission = "app.portable:view")]
 #[specta::specta]
 pub fn is_portable(client: RpcState<'_, NyanpasuClient>) -> Result<bool> {
     Ok(client.is_portable())
@@ -35,14 +35,24 @@ pub fn is_portable(client: RpcState<'_, NyanpasuClient>) -> Result<bool> {
 
 /// Rebuild-only command: there is no prior state commit, so a failure is a
 /// plain error — the committed/degraded model (spec §6.2) does not apply.
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.items:enhance"
+)]
 #[specta::specta]
 pub async fn enhance_profiles(client: RpcState<'_, NyanpasuClient>) -> Result {
     client.reconcile_core().await?;
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    local,
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.item:import"
+)]
 #[specta::specta]
 pub async fn import_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -70,7 +80,9 @@ pub async fn import_profile(
     http,
     privacy,
     operation = nyanpasu_rpc_protocol::operations::CreateProfile,
-    optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.item:create",
+)]
 #[specta::specta]
 pub async fn create_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -81,7 +93,12 @@ pub async fn create_profile(
     Ok(client.create_profile(request, file_data).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.item:reorder"
+)]
 #[specta::specta]
 pub async fn reorder_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -91,7 +108,12 @@ pub async fn reorder_profile(
     Ok(client.reorder_profile(active_id, over_id).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.items:reorder"
+)]
 #[specta::specta]
 pub async fn reorder_profiles_by_list(
     client: RpcState<'_, NyanpasuClient>,
@@ -100,7 +122,12 @@ pub async fn reorder_profiles_by_list(
     Ok(client.reorder_profiles_by_list(list).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.layout:set"
+)]
 #[specta::specta]
 pub async fn set_profile_layout(
     client: RpcState<'_, NyanpasuClient>,
@@ -109,7 +136,12 @@ pub async fn set_profile_layout(
     Ok(client.set_profile_layout(layout).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.proxy_group_layout:set"
+)]
 #[specta::specta]
 pub async fn set_proxy_group_layout(
     client: RpcState<'_, NyanpasuClient>,
@@ -119,7 +151,12 @@ pub async fn set_proxy_group_layout(
     Ok(client.set_proxy_group_layout(profile, layout).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.proxy_group_folder:create"
+)]
 #[specta::specta]
 pub async fn create_proxy_group_folder(
     client: RpcState<'_, NyanpasuClient>,
@@ -133,7 +170,12 @@ pub async fn create_proxy_group_folder(
         .into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.folder:create"
+)]
 #[specta::specta]
 pub async fn create_profile_folder(
     client: RpcState<'_, NyanpasuClient>,
@@ -144,7 +186,7 @@ pub async fn create_profile_folder(
 }
 
 // Run logs and errors carry the failing request's URL, which can hold a subscription token.
-#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(http, query, permission = "profile.sync_status:reveal")]
 #[specta::specta]
 pub async fn get_profile_sync_status(
     client: RpcState<'_, NyanpasuClient>,
@@ -155,7 +197,7 @@ pub async fn get_profile_sync_status(
 
 /// The sync schedule and active runs without the registration error text. The full status is
 /// [`get_profile_sync_status`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, permission = "profile.sync_status_summary:view")]
 #[specta::specta]
 pub async fn get_profile_sync_status_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -166,7 +208,7 @@ pub async fn get_profile_sync_status_summary(
 
 /// One page of sync runs with each outcome reduced to its kind. The full page is
 /// [`get_profile_sync_runs`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, permission = "profile.sync_runs_summary:view")]
 #[specta::specta]
 pub async fn get_profile_sync_runs_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -176,7 +218,7 @@ pub async fn get_profile_sync_runs_summary(
     Ok(client.profile_sync_runs_summary(uid, after).await?)
 }
 
-#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(http, query, permission = "profile.sync_runs:reveal")]
 #[specta::specta]
 pub async fn get_profile_sync_runs(
     client: RpcState<'_, NyanpasuClient>,
@@ -186,7 +228,7 @@ pub async fn get_profile_sync_runs(
     Ok(client.profile_sync_runs(uid, after).await?)
 }
 
-#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(http, query, permission = "profile.sync_logs:reveal")]
 #[specta::specta]
 pub async fn get_profile_sync_logs(
     client: RpcState<'_, NyanpasuClient>,
@@ -197,7 +239,13 @@ pub async fn get_profile_sync_logs(
     Ok(client.profile_sync_logs(uid, run, after).await?)
 }
 
-#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    local,
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.item:update"
+)]
 #[specta::specta]
 pub async fn update_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -211,7 +259,9 @@ pub async fn update_profile(
     http,
     privacy,
     operation = nyanpasu_rpc_protocol::operations::DeleteProfile,
-    optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.item:delete",
+)]
 #[specta::specta]
 pub async fn delete_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -220,7 +270,13 @@ pub async fn delete_profile(
     Ok(client.delete_profile(uid).await?.into())
 }
 
-#[nyanpasu_macro::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    local,
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.item:activate"
+)]
 #[specta::specta]
 pub async fn activate_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -229,7 +285,12 @@ pub async fn activate_profile(
     Ok(client.activate_profile(uid).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.global_transforms:set"
+)]
 #[specta::specta]
 pub async fn set_global_transforms(
     client: RpcState<'_, NyanpasuClient>,
@@ -238,7 +299,12 @@ pub async fn set_global_transforms(
     Ok(client.set_global_transforms(ids).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.valid_fields:set"
+)]
 #[specta::specta]
 pub async fn set_profile_valid_fields(
     client: RpcState<'_, NyanpasuClient>,
@@ -247,7 +313,12 @@ pub async fn set_profile_valid_fields(
     Ok(client.set_profile_valid_fields(fields).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(presentation),
+    permission = "profile.metadata:patch"
+)]
 #[specta::specta]
 pub async fn patch_profile_metadata(
     client: RpcState<'_, NyanpasuClient>,
@@ -257,7 +328,12 @@ pub async fn patch_profile_metadata(
     Ok(client.patch_profile_metadata(uid, patch).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.remote_options:patch"
+)]
 #[specta::specta]
 pub async fn patch_remote_profile_options(
     client: RpcState<'_, NyanpasuClient>,
@@ -270,7 +346,12 @@ pub async fn patch_remote_profile_options(
         .into())
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.definition:replace"
+)]
 #[specta::specta]
 pub async fn replace_profile_definition(
     client: RpcState<'_, NyanpasuClient>,
@@ -283,7 +364,7 @@ pub async fn replace_profile_definition(
         .into())
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::ReadProfileFile, query, scope = sensitive_read)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::ReadProfileFile, query, permission = "profile.file:reveal")]
 #[specta::specta]
 pub async fn read_profile_file(
     client: RpcState<'_, NyanpasuClient>,
@@ -292,7 +373,12 @@ pub async fn read_profile_file(
     Ok(client.read_profile_file(uid).await?)
 }
 
-#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(
+    http,
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "profile.file:save"
+)]
 #[specta::specta]
 pub async fn save_profile_file(
     client: RpcState<'_, NyanpasuClient>,

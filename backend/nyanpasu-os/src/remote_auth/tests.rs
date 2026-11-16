@@ -95,3 +95,113 @@ async fn symlink_and_non_regular_targets_are_refused() {
         Err(SecretStoreError::NotRegularFile)
     ));
 }
+
+#[tokio::test]
+async fn a_generated_certificate_covers_loopback_and_the_requested_address() {
+    use nyanpasu_contracts::auth::{TlsCertificateGenerator as _, TlsCertificateRequest};
+
+    use super::RcgenCertificateGenerator;
+
+    let request = TlsCertificateRequest {
+        addresses: vec!["192.168.77.5".parse().unwrap()],
+        not_before_ms: 1_700_000_000_000,
+        not_after_ms: 1_700_000_000_000 + 86_400_000,
+    };
+    let identity = RcgenCertificateGenerator
+        .generate(request.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(identity.not_after_ms(), request.not_after_ms);
+    assert!(identity.dns_names().iter().any(|name| name == "localhost"));
+    // The identity reports the addresses the certificate really names.
+    for covered in ["127.0.0.1", "::1", "192.168.77.5"] {
+        assert!(
+            identity.covers_address(covered.parse().unwrap()),
+            "{covered}"
+        );
+    }
+    assert!(!identity.covers_address("192.168.77.6".parse().unwrap()));
+    assert!(!identity.certificate_der().is_empty());
+    assert!(rcgen::KeyPair::try_from(identity.private_key_der()).is_ok());
+
+    // Two identities are different certificates: the key is fresh every time.
+    let other = RcgenCertificateGenerator.generate(request).await.unwrap();
+    assert_ne!(identity.fingerprint(), other.fingerprint());
+}
+
+/// A TLS handshake in which the client trusts the generated certificate as its only root and
+/// checks the name, so the certificate's names and usages are the ones a real client enforces.
+async fn handshake(
+    identity: &nyanpasu_contracts::auth::TlsIdentity,
+    name: rustls::pki_types::ServerName<'static>,
+) -> Result<(), std::io::Error> {
+    use std::sync::Arc;
+
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let certificate = CertificateDer::from(identity.certificate_der().to_vec());
+    let server = rustls::ServerConfig::builder_with_provider(provider.clone())
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![certificate.clone()],
+            PrivateKeyDer::from(PrivatePkcs8KeyDer::from(
+                identity.private_key_der().to_vec(),
+            )),
+        )
+        .unwrap();
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(certificate).unwrap();
+    let client = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+
+    let (client_io, server_io) = tokio::io::duplex(16 * 1024);
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server));
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(client));
+    let (accepted, connected) = tokio::join!(
+        acceptor.accept(server_io),
+        connector.connect(name, client_io)
+    );
+    connected.map(drop)?;
+    accepted.map(drop)
+}
+
+#[tokio::test]
+async fn a_generated_certificate_is_valid_for_every_name_it_covers_and_no_other() {
+    use nyanpasu_contracts::auth::{TlsCertificateGenerator as _, TlsCertificateRequest};
+    use rustls::pki_types::ServerName;
+
+    use super::RcgenCertificateGenerator;
+
+    let identity = RcgenCertificateGenerator
+        .generate(TlsCertificateRequest {
+            addresses: vec!["192.168.77.5".parse().unwrap(), "fd00::5".parse().unwrap()],
+            not_before_ms: 1_700_000_000_000 - 86_400_000,
+            not_after_ms: i64::MAX / 1_000_000,
+        })
+        .await
+        .unwrap();
+
+    for covered in ["127.0.0.1", "::1", "192.168.77.5", "fd00::5", "localhost"] {
+        let name = ServerName::try_from(covered).unwrap().to_owned();
+        handshake(&identity, name)
+            .await
+            .unwrap_or_else(|error| panic!("{covered}: {error}"));
+    }
+    for host in identity.dns_names() {
+        let name = ServerName::try_from(host.clone()).unwrap();
+        handshake(&identity, name)
+            .await
+            .unwrap_or_else(|error| panic!("{host}: {error}"));
+    }
+    for foreign in ["10.9.9.9", "evil.example"] {
+        let name = ServerName::try_from(foreign).unwrap().to_owned();
+        assert!(handshake(&identity, name).await.is_err(), "{foreign}");
+    }
+}

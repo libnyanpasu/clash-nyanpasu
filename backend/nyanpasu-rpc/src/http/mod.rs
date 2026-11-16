@@ -6,8 +6,11 @@ mod icon_tests;
 pub mod listener;
 pub mod login;
 pub mod routes;
+pub mod tls;
+#[cfg(test)]
+mod tls_tests;
 use std::{
-    net::SocketAddr,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -25,14 +28,17 @@ use axum::{
     routing::{get, post},
 };
 use futures::{SinkExt, StreamExt};
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, Scope};
-use nyanpasu_contracts::auth::{SecretString, parse_access_token};
+use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Scope};
+use nyanpasu_contracts::auth::{
+    SecretString, TlsCertificateSummary, TlsIdentity, parse_access_token,
+};
 use nyanpasu_core::client::http_server::{
     Error, HttpServerControl, HttpServerFault, HttpServerStatus,
 };
 use nyanpasu_rpc_protocol::{AuthContext, Principal, RpcError};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
@@ -45,6 +51,7 @@ use self::{
         extract_cookie_value, is_json_content_type, login_logout, login_page, login_submit,
         session_set_cookie,
     },
+    tls::HttpTlsIdentitySource,
 };
 
 /// Production assets are supplied by the composition root's Tauri adapter.
@@ -72,6 +79,8 @@ pub struct HttpServerArgs {
     pub frontend: Option<Frontend>,
     pub routes: Arc<dyn HttpRoutes>,
     pub authenticator: Arc<dyn HttpAuthenticator>,
+    /// Without a source the listener cannot serve HTTPS and reports a TLS fault instead.
+    pub tls: Option<Arc<dyn HttpTlsIdentitySource>>,
 }
 
 pub enum Message {
@@ -86,6 +95,13 @@ pub enum Message {
 struct Running {
     generation: u64,
     port: u16,
+    /// The address the socket is bound to.
+    bind: IpAddr,
+    /// The certificate it presents, when it serves HTTPS.
+    tls: Option<TlsCertificateSummary>,
+    /// The address is not one the certificate covers, so a client that connects to it fails the
+    /// name check of the certificate.
+    bind_outside_certificate: bool,
     serve_webui: bool,
     strategy: HttpAccessStrategy,
     local_open_scopes: Vec<Scope>,
@@ -98,9 +114,36 @@ pub struct HttpServerState {
     frontend: Option<Frontend>,
     routes: Arc<dyn HttpRoutes>,
     authenticator: Arc<dyn HttpAuthenticator>,
+    tls: Option<Arc<dyn HttpTlsIdentitySource>>,
     running: Option<Running>,
     fault: Option<HttpServerFault>,
     generation: u64,
+}
+
+/// The address a configuration binds: the LAN strategy listens on the configured address, or on
+/// every IPv4 interface; the loopback strategies never leave this computer.
+fn bind_address(config: &HttpAccessConfig) -> IpAddr {
+    match config.strategy {
+        HttpAccessStrategy::LanAuthenticated => {
+            config.lan_bind.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        }
+        HttpAccessStrategy::LocalAuthenticated | HttpAccessStrategy::LocalOpen => {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        }
+    }
+}
+
+/// An address that reaches the listener from this computer, for the URL the settings show.
+fn reachable_address(bind: IpAddr) -> IpAddr {
+    if bind.is_unspecified() {
+        IpAddr::V4(Ipv4Addr::LOCALHOST)
+    } else {
+        bind
+    }
+}
+
+fn origin_of(scheme: &str, address: IpAddr, port: u16) -> String {
+    format!("{scheme}://{}/", SocketAddr::new(address, port))
 }
 
 impl HttpServerState {
@@ -108,44 +151,86 @@ impl HttpServerState {
         HttpServerStatus {
             enabled: self.running.is_some(),
             // Never carries a credential; launch URLs are generated on demand by RemoteAccessAuthClient.
-            url: self
+            url: self.running.as_ref().map(|r| {
+                let scheme = if r.tls.is_some() { "https" } else { "http" };
+                origin_of(scheme, reachable_address(r.bind), r.port)
+            }),
+            port: self.running.as_ref().map(|r| r.port),
+            tls: self.running.as_ref().and_then(|r| r.tls.clone()),
+            bind_outside_certificate: self
                 .running
                 .as_ref()
-                .map(|r| format!("http://127.0.0.1:{}/", r.port)),
-            port: self.running.as_ref().map(|r| r.port),
+                .is_some_and(|r| r.bind_outside_certificate),
             fault: self.fault,
         }
     }
 
-    /// Whether the running listener already satisfies `config`.
-    fn follows(&self, config: &HttpAccessConfig) -> bool {
+    /// Whether the running listener already satisfies `config` and presents `identity`.
+    ///
+    /// A replaced certificate has a new fingerprint, so a reset restarts the listener.
+    fn follows(&self, config: &HttpAccessConfig, identity: Option<&TlsIdentity>) -> bool {
         self.running.as_ref().is_some_and(|running| {
             running.serve_webui == config.serve_webui
                 && running.strategy == config.strategy
                 && running.local_open_scopes == config.local_open_scopes
+                && running.bind == bind_address(config)
+                && running.tls == identity.map(TlsIdentity::summary)
                 && config.port.is_none_or(|port| port == running.port)
         })
     }
 
-    async fn start(&mut self, myself: ActorRef<Message>, config: &HttpAccessConfig) {
-        let listener = match TcpListener::bind((
-            std::net::Ipv4Addr::LOCALHOST,
-            config.port.unwrap_or(0),
-        ))
-        .await
-        {
-            Ok(listener) => listener,
+    /// The certificate `config` serves with, or `None` for plain HTTP.
+    async fn identity(
+        &self,
+        config: &HttpAccessConfig,
+    ) -> Result<Option<TlsIdentity>, tls::HttpTlsUnavailable> {
+        match config.tls {
+            // Credentials must not cross the LAN in the clear, whatever was committed.
+            HttpTls::Http if config.strategy == HttpAccessStrategy::LanAuthenticated => {
+                Err(tls::HttpTlsUnavailable)
+            }
+            HttpTls::Http => Ok(None),
+            HttpTls::SelfSigned => match &self.tls {
+                Some(source) => source.identity().await.map(Some),
+                None => Err(tls::HttpTlsUnavailable),
+            },
+        }
+    }
+
+    async fn start(
+        &mut self,
+        myself: ActorRef<Message>,
+        config: &HttpAccessConfig,
+        identity: Option<TlsIdentity>,
+    ) {
+        // A certificate that cannot be served is as unavailable as a missing one, and checking it
+        // first keeps the fault from being taken for a bind failure.
+        let acceptor = match identity.as_ref().map(tls::acceptor).transpose() {
+            Ok(acceptor) => acceptor,
             Err(error) => {
-                tracing::warn!(%error, "the HTTP server could not bind");
-                self.fault = Some(if error.kind() == std::io::ErrorKind::AddrInUse {
-                    HttpServerFault::PortInUse
-                } else {
-                    HttpServerFault::BindFailed
-                });
+                tracing::warn!(
+                    target: "nyanpasu::remote_access",
+                    %error,
+                    "the TLS certificate cannot be served"
+                );
+                self.fault = Some(HttpServerFault::TlsUnavailable);
                 return;
             }
         };
-        match self.serve(myself, listener, config) {
+        let listener =
+            match TcpListener::bind((bind_address(config), config.port.unwrap_or(0))).await {
+                Ok(listener) => listener,
+                Err(error) => {
+                    tracing::warn!(%error, "the HTTP server could not bind");
+                    self.fault = Some(if error.kind() == std::io::ErrorKind::AddrInUse {
+                        HttpServerFault::PortInUse
+                    } else {
+                        HttpServerFault::BindFailed
+                    });
+                    return;
+                }
+            };
+        match self.serve(myself, listener, config, identity, acceptor) {
             Ok(running) => {
                 self.fault = None;
                 self.running = Some(running);
@@ -162,15 +247,32 @@ impl HttpServerState {
         myself: ActorRef<Message>,
         listener: TcpListener,
         config: &HttpAccessConfig,
+        identity: Option<TlsIdentity>,
+        acceptor: Option<TlsAcceptor>,
     ) -> Result<Running> {
         let local = listener.local_addr()?;
-        let authority = local.to_string();
+        let endpoint = match (&identity, config.strategy) {
+            (_, HttpAccessStrategy::LanAuthenticated) => HttpEndpoint::lan(
+                local.port(),
+                identity
+                    .as_ref()
+                    .map(|identity| identity.dns_names().to_vec())
+                    .unwrap_or_default(),
+            ),
+            (Some(_), _) if local.ip().is_loopback() => HttpEndpoint::secure_loopback(
+                SocketAddr::new(reachable_address(local.ip()), local.port()).to_string(),
+            ),
+            (identity, _) => HttpEndpoint::exact(
+                SocketAddr::new(reachable_address(local.ip()), local.port()).to_string(),
+                identity.is_some(),
+            ),
+        };
         let cancellation = CancellationToken::new();
         let streams = PrincipalStreams::default();
         let app = build_http_app(
             self.routes.build()?,
             self.frontend.clone(),
-            authority,
+            endpoint,
             config.clone(),
             self.authenticator.clone(),
             streams.clone(),
@@ -187,7 +289,9 @@ impl HttpServerState {
         let task = tokio::spawn(async move {
             // Dropping serve's connection tasks alone does not
             // stop upgraded sockets; frontend upgrades share this token.
-            if let Err(error) = axum::serve(
+            if let Some(acceptor) = acceptor {
+                tls::serve(listener, acceptor, app, shutdown).await;
+            } else if let Err(error) = axum::serve(
                 listener,
                 app.into_make_service_with_connect_info::<SocketAddr>(),
             )
@@ -203,6 +307,11 @@ impl HttpServerState {
         Ok(Running {
             generation,
             port: local.port(),
+            bind: local.ip(),
+            tls: identity.as_ref().map(TlsIdentity::summary),
+            bind_outside_certificate: identity.as_ref().is_some_and(|identity| {
+                !local.ip().is_unspecified() && !identity.covers_address(local.ip())
+            }),
             serve_webui: config.serve_webui,
             strategy: config.strategy,
             local_open_scopes: config.local_open_scopes.clone(),
@@ -245,6 +354,7 @@ impl Actor for HttpServerActor {
             frontend: args.frontend,
             routes: args.routes,
             authenticator: args.authenticator,
+            tls: args.tls,
             running: None,
             fault: None,
             generation: 0,
@@ -274,13 +384,24 @@ impl Actor for HttpServerActor {
                 if !config.enabled {
                     state.stop().await;
                     state.fault = None;
-                } else if state.follows(&config) {
-                    state.fault = None;
                 } else {
-                    // A changed port, asset mode, or strategy needs a new listener; the old one is
-                    // released first so a persisted port can be bound again.
-                    state.stop().await;
-                    state.start(myself, &config).await;
+                    match state.identity(&config).await {
+                        Ok(identity) if state.follows(&config, identity.as_ref()) => {
+                            state.fault = None;
+                        }
+                        Ok(identity) => {
+                            // A changed port, address, asset mode, strategy or certificate needs
+                            // a new listener; the old one is released first so a persisted port
+                            // can be bound again.
+                            state.stop().await;
+                            state.start(myself, &config, identity).await;
+                        }
+                        Err(tls::HttpTlsUnavailable) => {
+                            // Never fall back to plain HTTP: stop what may be serving.
+                            state.stop().await;
+                            state.fault = Some(HttpServerFault::TlsUnavailable);
+                        }
+                    }
                 }
                 let _ = reply.send(state.status());
             }
@@ -305,10 +426,21 @@ struct HttpServerClientInner {
     task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 impl HttpServerClient {
+    /// A server that cannot serve HTTPS: it reports a TLS fault when asked to.
     pub async fn spawn(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,
         authenticator: Arc<dyn HttpAuthenticator>,
+    ) -> std::result::Result<Self, Error> {
+        Self::spawn_with_tls(frontend, routes, authenticator, None).await
+    }
+
+    /// A server that serves HTTPS with the certificate `tls` provides.
+    pub async fn spawn_with_tls(
+        frontend: Option<Frontend>,
+        routes: Arc<dyn HttpRoutes>,
+        authenticator: Arc<dyn HttpAuthenticator>,
+        tls: Option<Arc<dyn HttpTlsIdentitySource>>,
     ) -> std::result::Result<Self, Error> {
         let (actor, task) = Actor::spawn(
             None,
@@ -317,6 +449,7 @@ impl HttpServerClient {
                 frontend,
                 routes,
                 authenticator,
+                tls,
             },
         )
         .await
@@ -387,9 +520,118 @@ pub(crate) struct HttpSessionRevocation(
     pub(crate) Arc<Option<StreamGuard>>,
 );
 
+/// Which `Host` values a listener answers to, and whether it serves HTTPS.
+///
+/// A name outside the policy is refused, so a page that resolves its own domain to this
+/// listener (DNS rebinding) cannot talk to it as same-origin.
+#[derive(Clone)]
+pub(crate) struct HttpEndpoint {
+    hosts: HostPolicy,
+    secure: bool,
+}
+
+#[derive(Clone)]
+enum HostPolicy {
+    /// Exactly this authority, for a loopback listener.
+    Exact {
+        authority: String,
+        aliases: Vec<String>,
+    },
+    /// A LAN listener: any IP literal on the port, or one of the names its certificate covers.
+    Lan { port: u16, names: Vec<String> },
+}
+
+fn authority_matches(host: &str, authority: &str, default_port: u16) -> bool {
+    host.eq_ignore_ascii_case(authority)
+        || authority
+            .strip_suffix(&format!(":{default_port}"))
+            .is_some_and(|bare| host.eq_ignore_ascii_case(bare))
+}
+
+fn same_authority(left: &str, right: &str, default_port: u16) -> bool {
+    authority_matches(left, right, default_port) || authority_matches(right, left, default_port)
+}
+
+impl HttpEndpoint {
+    /// A loopback listener answering to `authority` only.
+    pub(crate) fn exact(authority: String, secure: bool) -> Self {
+        Self {
+            hosts: HostPolicy::Exact {
+                authority,
+                aliases: Vec::new(),
+            },
+            secure,
+        }
+    }
+
+    /// A loopback HTTPS listener. Its certificate covers `localhost`, so a browser may address
+    /// the same bound port by that name.
+    pub(crate) fn secure_loopback(authority: String) -> Self {
+        let aliases = authority
+            .rsplit_once(':')
+            .filter(|(_, port)| !port.is_empty())
+            .map(|(_, port)| vec![format!("localhost:{port}")])
+            .unwrap_or_default();
+        Self {
+            hosts: HostPolicy::Exact { authority, aliases },
+            secure: true,
+        }
+    }
+
+    /// A LAN listener, which always serves HTTPS.
+    pub(crate) fn lan(port: u16, names: Vec<String>) -> Self {
+        Self {
+            hosts: HostPolicy::Lan { port, names },
+            secure: true,
+        }
+    }
+
+    fn scheme(&self) -> &'static str {
+        if self.secure { "https" } else { "http" }
+    }
+
+    /// The port a browser leaves out of `Host` and `Origin` for this scheme.
+    fn default_port(&self) -> u16 {
+        if self.secure { 443 } else { 80 }
+    }
+
+    fn allows(&self, host: &str) -> bool {
+        match &self.hosts {
+            HostPolicy::Exact { authority, aliases } => {
+                authority_matches(host, authority, self.default_port())
+                    || aliases
+                        .iter()
+                        .any(|alias| authority_matches(host, alias, self.default_port()))
+            }
+            HostPolicy::Lan { port, names } => {
+                let (name, host_port) = match host.strip_prefix('[') {
+                    Some(rest) => match rest.split_once(']') {
+                        Some((address, "")) => (address, None),
+                        Some((address, tail)) => match tail.strip_prefix(':') {
+                            Some(host_port) => (address, Some(host_port)),
+                            None => return false,
+                        },
+                        None => return false,
+                    },
+                    None => match host.rsplit_once(':') {
+                        // An IPv6 address is only valid in brackets.
+                        Some((name, _)) if name.contains(':') => return false,
+                        Some((name, host_port)) => (name, Some(host_port)),
+                        None => (host, None),
+                    },
+                };
+                host_port.map_or(Some(self.default_port()), |text| text.parse::<u16>().ok())
+                    == Some(*port)
+                    && (name.parse::<IpAddr>().is_ok()
+                        || names.iter().any(|known| known.eq_ignore_ascii_case(name)))
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct HttpAuthMiddlewareState {
-    pub(crate) authority: String,
+    pub(crate) endpoint: HttpEndpoint,
     pub(crate) access: HttpAccessConfig,
     pub(crate) authenticator: Arc<dyn HttpAuthenticator>,
     pub(crate) streams: PrincipalStreams,
@@ -399,7 +641,7 @@ pub(crate) struct HttpAuthMiddlewareState {
 pub(crate) fn build_http_app(
     routes: Router,
     frontend: Option<Frontend>,
-    authority: String,
+    endpoint: HttpEndpoint,
     access: HttpAccessConfig,
     authenticator: Arc<dyn HttpAuthenticator>,
     streams: PrincipalStreams,
@@ -407,6 +649,7 @@ pub(crate) fn build_http_app(
 ) -> Result<Router> {
     let login_state = LoginState {
         authenticator: authenticator.clone(),
+        secure_cookie: endpoint.secure,
     };
     let login_router = Router::new()
         .route(LOGIN_PATH, get(login_page).head(login_page))
@@ -421,7 +664,7 @@ pub(crate) fn build_http_app(
     }
     Ok(app.layer(middleware::from_fn_with_state(
         HttpAuthMiddlewareState {
-            authority,
+            endpoint,
             access,
             authenticator,
             streams,
@@ -537,6 +780,45 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 /// Reject foreign origins and DNS rebinding, resolve credentials in strict precedence order,
 /// enforce JSON on `/bridge/rpc`, and wire per-principal stream cancellation.
+/// The authority the caller addressed. HTTP/1 sends it as `Host`; HTTP/2, which TLS negotiates,
+/// sends `:authority` and no `Host`. When both are present they must agree, so neither can be
+/// used to smuggle a name past the policy.
+fn request_host(request: &Request, default_port: u16) -> Option<&str> {
+    let header = request.headers().get("host").and_then(|v| v.to_str().ok());
+    let authority = request
+        .uri()
+        .authority()
+        .map(|authority| authority.as_str());
+    match (header, authority) {
+        (Some(header), Some(authority)) if !same_authority(header, authority, default_port) => None,
+        (Some(host), _) | (None, Some(host)) => Some(host),
+        (None, None) => None,
+    }
+}
+
+/// Whether an `Origin` header names exactly the scheme and authority the caller addressed.
+///
+/// The host part is normalized by `url` and compared by [`authority_matches`], so DNS names
+/// keep their case-insensitive meaning. A path, query, fragment, user info, or another scheme
+/// is not an origin and is refused.
+fn origin_matches(origin: &str, scheme: &str, host: &str, default_port: u16) -> bool {
+    let Ok(origin) = url::Url::parse(origin) else {
+        return false;
+    };
+    if !origin.scheme().eq_ignore_ascii_case(scheme)
+        || !origin.username().is_empty()
+        || origin.password().is_some()
+        || !origin.has_host()
+        || origin.path() != "/"
+        || origin.query().is_some()
+        || origin.fragment().is_some()
+    {
+        return false;
+    }
+    let authority = &origin[url::Position::BeforeHost..url::Position::AfterPort];
+    same_authority(host, authority, default_port)
+}
+
 pub(crate) async fn http_auth_middleware(
     State(state): State<HttpAuthMiddlewareState>,
     request: Request,
@@ -548,15 +830,19 @@ pub(crate) async fn http_auth_middleware(
         .map(|ConnectInfo(addr)| *addr);
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
-    let authority = &state.authority;
-    let host = request.headers().get("host").and_then(|v| v.to_str().ok());
+    let host = request_host(&request, state.endpoint.default_port());
     let origin = request
         .headers()
         .get("origin")
         .and_then(|v| v.to_str().ok());
-    if host != Some(authority.as_str())
-        || origin.is_some_and(|o| o != format!("http://{authority}"))
-    {
+    let scheme = state.endpoint.scheme();
+    let host_allowed = host.is_some_and(|host| state.endpoint.allows(host));
+    let origin_allowed = host.is_some_and(|host| {
+        origin.is_none_or(|origin| {
+            origin_matches(origin, scheme, host, state.endpoint.default_port())
+        })
+    });
+    if !host_allowed || !origin_allowed {
         tracing::warn!(
             target: "nyanpasu::remote_access",
             peer = ?peer,
@@ -588,7 +874,9 @@ pub(crate) async fn http_auth_middleware(
                 let mut response = axum::response::Redirect::to("/").into_response();
                 response.headers_mut().append(
                     "set-cookie",
-                    session_set_cookie(&established.cookie).parse().unwrap(),
+                    session_set_cookie(&established.cookie, state.endpoint.secure)
+                        .parse()
+                        .unwrap(),
                 );
                 response
                     .headers_mut()
@@ -707,7 +995,9 @@ pub(crate) async fn http_auth_middleware(
                 Principal::Anonymous,
                 clamp_local_open_scopes(&state.access.local_open_scopes),
             ),
-            HttpAccessStrategy::LocalAuthenticated => {
+            // The LAN strategy never trusts the peer address, so a loopback peer (a reverse proxy,
+            // for one) needs a credential as well.
+            HttpAccessStrategy::LocalAuthenticated | HttpAccessStrategy::LanAuthenticated => {
                 tracing::warn!(
                     target: "nyanpasu::remote_access",
                     peer = ?peer,
@@ -1171,6 +1461,30 @@ pub(crate) mod tests {
                     .send(AuthRevocation::Session { session_id });
             }
             Ok(())
+        }
+
+        async fn is_principal_active(
+            &self,
+            principal: &Principal,
+        ) -> std::result::Result<bool, HttpAuthError> {
+            let state = self.state.lock();
+            Ok(match principal {
+                Principal::Token { id, .. } => state.tokens.values().any(|caller| {
+                    matches!(
+                        &caller.auth.principal,
+                        Principal::Token { id: active, .. } if active == id
+                    )
+                }),
+                Principal::Session { id } => state.sessions.values().any(|caller| {
+                    matches!(
+                        &caller.auth.principal,
+                        Principal::Session { id: active } if active == id
+                    )
+                }),
+                Principal::Anonymous
+                | Principal::Desktop { .. }
+                | Principal::LocalSocket { .. } => true,
+            })
         }
 
         async fn subscribe_revocations(
@@ -2010,7 +2324,7 @@ pub(crate) mod tests {
         let direct_app = build_http_app(
             routes.build().unwrap(),
             Some(Frontend::Embedded(Arc::new(Assets))),
-            authority.clone(),
+            HttpEndpoint::exact(authority.clone(), false),
             HttpAccessConfig {
                 enabled: true,
                 ..Default::default()
@@ -2478,6 +2792,51 @@ pub(crate) mod tests {
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
     use super::*;
+
+    /// A real self-signed identity covering `localhost`, `names` and the loopback addresses,
+    /// valid for a day.
+    pub fn self_signed_identity(names: &[&str]) -> TlsIdentity {
+        let mut subject_alt_names: Vec<String> = vec!["localhost".to_owned()];
+        subject_alt_names.extend(names.iter().map(|name| (*name).to_owned()));
+        let mut params = rcgen::CertificateParams::new(subject_alt_names.clone()).unwrap();
+        params
+            .subject_alt_names
+            .push(rcgen::SanType::IpAddress(IpAddr::V4(Ipv4Addr::LOCALHOST)));
+        let key = rcgen::KeyPair::generate().unwrap();
+        let certificate = params.self_signed(&key).unwrap();
+        TlsIdentity::new(
+            certificate.der().to_vec(),
+            key.serialize_der(),
+            subject_alt_names,
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            i64::MAX,
+        )
+    }
+
+    /// A certificate source a test can swap, like a reset of the real owner.
+    pub struct StaticTlsIdentity(parking_lot::Mutex<Option<TlsIdentity>>);
+
+    impl StaticTlsIdentity {
+        pub fn new(identity: TlsIdentity) -> Self {
+            Self(parking_lot::Mutex::new(Some(identity)))
+        }
+
+        pub fn replace(&self, identity: TlsIdentity) {
+            *self.0.lock() = Some(identity);
+        }
+
+        /// Makes the certificate unavailable, as a failing store would.
+        pub fn withdraw(&self) {
+            *self.0.lock() = None;
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl HttpTlsIdentitySource for StaticTlsIdentity {
+        async fn identity(&self) -> std::result::Result<TlsIdentity, tls::HttpTlsUnavailable> {
+            self.0.lock().clone().ok_or(tls::HttpTlsUnavailable)
+        }
+    }
     pub fn control_factory(
         frontend: Option<Frontend>,
         routes: Arc<dyn HttpRoutes>,

@@ -80,6 +80,7 @@ impl Shell {
             },
             context: None,
             token_backend: None,
+            fingerprint: None,
         }
     }
 
@@ -292,6 +293,7 @@ async fn the_local_principal_holds_remote_admin_for_its_reviewed_commands_only()
             "get_local_socket_status",
             "list_remote_access_tokens",
             "list_remote_browser_sessions",
+            "reset_remote_access_tls",
             "revoke_remote_access_token",
             "revoke_remote_browser_session",
             "set_remote_access",

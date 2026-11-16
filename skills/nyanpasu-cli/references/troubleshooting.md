@@ -10,7 +10,10 @@ A context names one target in `cli.toml`:
 
 Only add or remove contexts when the user asks. Adding an HTTP context with a token
 reads the token from standard input (`--token-stdin`) or from `NYANPASU_TOKEN`
-(`--token-from-env`), never from an argument.
+(`--token-from-env`), never from an argument. An `https` context pins the server's
+self-signed certificate: the user passes the fingerprint the app shows with
+`--fingerprint`, or `--system-trust` for a certificate the system already trusts.
+Never pin a fingerprint the user has not confirmed.
 
 ## Exit code 3: not reachable
 

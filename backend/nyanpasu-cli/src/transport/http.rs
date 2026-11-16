@@ -7,13 +7,17 @@
 
 use std::{net::IpAddr, time::Duration};
 
+use nyanpasu_contracts::auth::TlsFingerprint;
 use nyanpasu_rpc_wire::RpcError;
 use reqwest::{Method, RequestBuilder, Response, StatusCode, Url};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::{EventFeed, StreamKind, Transport, error_chain};
+use super::{
+    EventFeed, StreamKind, Transport, error_chain,
+    pin::{Presented, pinned_config},
+};
 use crate::error::CliError;
 
 /// The header that keeps concurrent clients of one principal independent.
@@ -22,7 +26,7 @@ pub const CLIENT_ID_HEADER: &str = "X-Nyanpasu-Client-Id";
 const RPC_PATH: &str = "bridge/rpc";
 const EVENTS_PATH: &str = "bridge/events";
 const CONNECTION_DETAILS_PATH: &str = "bridge/connection-details";
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const STREAM_CAPACITY: usize = 32;
 
 /// One HTTP connection target with its credential and process identity.
@@ -31,6 +35,8 @@ pub struct HttpTransport {
     base: Url,
     token: Option<String>,
     client_id: String,
+    /// The pinned certificate and what a refused handshake saw, for an `https` target that pins.
+    pin: Option<(TlsFingerprint, Presented)>,
 }
 
 impl HttpTransport {
@@ -38,19 +44,40 @@ impl HttpTransport {
     ///
     /// A redirect is never followed, so a bearer token cannot be carried to another
     /// origin. A token is also never sent over plain `http` to a non-loopback host.
+    /// With `pin`, the server must present exactly that certificate; without it an `https`
+    /// server is verified against the system trust store.
     ///
     /// # Errors
-    /// Fails if the token would travel in the clear, or the HTTP client cannot be built.
-    pub fn new(base: Url, token: Option<String>) -> Result<Self, CliError> {
+    /// Fails if the token would travel in the clear, a pin is given for a plain `http` URL, or
+    /// the HTTP client cannot be built.
+    pub fn new(
+        base: Url,
+        token: Option<String>,
+        pin: Option<TlsFingerprint>,
+    ) -> Result<Self, CliError> {
         if token.is_some() && base.scheme() == "http" && !is_loopback_host(&base) {
             return Err(CliError::usage(format!(
                 "refusing to send a token over plain http to {base}; use an https URL"
             )));
         }
-        let client = reqwest::Client::builder()
+        if pin.is_some() && base.scheme() != "https" {
+            return Err(CliError::usage(format!(
+                "a certificate can only be pinned for an https URL, not {base}"
+            )));
+        }
+        let mut builder = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(CONNECT_TIMEOUT)
+            .connect_timeout(CONNECT_TIMEOUT);
+        let pin = match pin {
+            Some(fingerprint) => {
+                let (config, presented) = pinned_config(fingerprint)?;
+                builder = builder.tls_backend_preconfigured(config);
+                Some((fingerprint, presented))
+            }
+            None => None,
+        };
+        let client = builder
             .build()
             .map_err(|error| CliError::failed(format!("cannot build the HTTP client: {error}")))?;
         Ok(Self {
@@ -58,6 +85,7 @@ impl HttpTransport {
             base,
             token,
             client_id: Uuid::new_v4().to_string(),
+            pin,
         })
     }
 
@@ -82,6 +110,18 @@ impl HttpTransport {
     }
 
     fn unreachable(&self, error: &reqwest::Error) -> CliError {
+        // A pinned handshake that was refused is a trust failure, not a network one.
+        if let Some((pinned, presented)) = &self.pin
+            && let Some(presented) = *presented
+                .lock()
+                .expect("no holder of the mismatch slot panics")
+        {
+            return CliError::CertificateMismatch {
+                target: self.base.to_string(),
+                pinned: pinned.to_string(),
+                presented: presented.to_string(),
+            };
+        }
         CliError::Unreachable {
             target: self.base.to_string(),
             detail: error_chain(error),
@@ -302,7 +342,7 @@ mod tests {
     #[tokio::test]
     async fn a_call_sends_the_bearer_token_client_id_and_envelope() {
         let (url, server) = serve_once(OK_JSON).await;
-        let transport = HttpTransport::new(url, Some("npk_1_secret".to_owned())).unwrap();
+        let transport = HttpTransport::new(url, Some("npk_1_secret".to_owned()), None).unwrap();
         let client_id = transport.client_id().to_owned();
 
         let result = transport
@@ -334,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn without_a_token_no_authorization_header_is_sent() {
         let (url, server) = serve_once(OK_JSON).await;
-        let transport = HttpTransport::new(url, None).unwrap();
+        let transport = HttpTransport::new(url, None, None).unwrap();
         transport.call("get_core_status", json!({})).await.unwrap();
         let request = server.await.unwrap().to_ascii_lowercase();
         assert!(!request.contains("authorization:"), "{request}");
@@ -345,7 +385,7 @@ mod tests {
     fn a_token_is_never_sent_in_the_clear_to_a_remote_host() {
         let token = || Some("npk_1_secret".to_owned());
         for remote in ["http://example.com/", "http://192.168.1.5:9090/"] {
-            let Err(error) = HttpTransport::new(Url::parse(remote).unwrap(), token()) else {
+            let Err(error) = HttpTransport::new(Url::parse(remote).unwrap(), token(), None) else {
                 panic!("plain http to {remote} must be refused");
             };
             assert!(matches!(error, CliError::Usage { .. }), "{remote}: {error}");
@@ -356,10 +396,10 @@ mod tests {
             "http://[::1]:9090/",
             "https://example.com/",
         ] {
-            HttpTransport::new(Url::parse(allowed).unwrap(), token())
+            HttpTransport::new(Url::parse(allowed).unwrap(), token(), None)
                 .unwrap_or_else(|error| panic!("{allowed}: {error}"));
         }
-        HttpTransport::new(Url::parse("http://example.com/").unwrap(), None)
+        HttpTransport::new(Url::parse("http://example.com/").unwrap(), None, None)
             .expect("no token, nothing to leak");
     }
 
@@ -370,7 +410,7 @@ mod tests {
              content-length: 0\r\nconnection: close\r\n\r\n",
         )
         .await;
-        let transport = HttpTransport::new(url, Some("npk_1_secret".to_owned())).unwrap();
+        let transport = HttpTransport::new(url, Some("npk_1_secret".to_owned()), None).unwrap();
         let error = transport
             .call("get_core_status", json!({}))
             .await
@@ -382,8 +422,8 @@ mod tests {
     #[tokio::test]
     async fn every_process_generates_its_own_client_id() {
         let url = Url::parse("http://127.0.0.1:1/").unwrap();
-        let first = HttpTransport::new(url.clone(), None).unwrap();
-        let second = HttpTransport::new(url, None).unwrap();
+        let first = HttpTransport::new(url.clone(), None, None).unwrap();
+        let second = HttpTransport::new(url, None, None).unwrap();
         assert_ne!(first.client_id(), second.client_id());
         assert!(Uuid::parse_str(first.client_id()).is_ok());
     }
@@ -393,7 +433,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
         drop(listener);
-        let transport = HttpTransport::new(url, None).unwrap();
+        let transport = HttpTransport::new(url, None, None).unwrap();
         let error = transport
             .call("get_core_status", json!({}))
             .await
@@ -407,7 +447,7 @@ mod tests {
             "HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
         )
         .await;
-        let transport = HttpTransport::new(url, None).unwrap();
+        let transport = HttpTransport::new(url, None, None).unwrap();
         let error = transport
             .call("get_core_status", json!({}))
             .await
@@ -424,7 +464,7 @@ mod tests {
             .into_boxed_str(),
         );
         let (url, _server) = serve_once(response).await;
-        let transport = HttpTransport::new(url, None).unwrap();
+        let transport = HttpTransport::new(url, None, None).unwrap();
         let error = transport.call("open_that", json!({})).await.unwrap_err();
         assert_eq!(
             error.exit_status(),

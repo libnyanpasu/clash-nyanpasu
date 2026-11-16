@@ -14,7 +14,7 @@ use nyanpasu_config::application::Scope;
 use nyanpasu_contracts::auth::{
     AccessTokenStatus, AuthClock, AuthRevocation, CreateAccessTokenRequest, EntropyError,
     EntropySource, Principal, RemoteAuthPolicy, ScopeSet, SecretStore, SecretStoreError,
-    SecretString, TokenName,
+    SecretString, TokenName, test_support::FakeTlsGenerator,
 };
 use parking_lot::Mutex;
 use tokio::{sync::broadcast, time::Instant};
@@ -82,6 +82,7 @@ impl SecretStore for MemoryStore {
 struct Harness {
     client: RemoteAccessAuthClient,
     store: Arc<MemoryStore>,
+    generator: Arc<FakeTlsGenerator>,
     revocations: broadcast::Receiver<AuthRevocation>,
 }
 
@@ -91,11 +92,13 @@ impl Harness {
     }
 
     async fn start_with(policy: RemoteAuthPolicy, store: Arc<MemoryStore>) -> Self {
-        let client = Self::spawn(policy, &store).await.unwrap();
+        let generator = Arc::<FakeTlsGenerator>::default();
+        let client = Self::spawn(policy, &store, &generator).await.unwrap();
         let revocations = client.subscribe_revocations();
         Self {
             client,
             store,
+            generator,
             revocations,
         }
     }
@@ -103,6 +106,7 @@ impl Harness {
     async fn spawn(
         policy: RemoteAuthPolicy,
         store: &Arc<MemoryStore>,
+        generator: &Arc<FakeTlsGenerator>,
     ) -> Result<RemoteAccessAuthClient, RemoteAuthError> {
         let ports = RemoteAccessAuthPorts {
             clock: Arc::new(PausedClock {
@@ -110,6 +114,7 @@ impl Harness {
             }),
             entropy: Arc::new(CountingEntropy(AtomicU8::new(1))),
             store: store.clone(),
+            tls_generator: generator.clone(),
             policy,
         };
         RemoteAccessAuthClient::spawn(ports, CancellationToken::new(), &TaskTracker::new()).await
@@ -338,7 +343,7 @@ async fn a_corrupt_record_fails_startup_closed() {
     let store = Arc::new(MemoryStore::default());
     *store.record.lock() = Some(b"{ not json".to_vec());
 
-    let result = Harness::spawn(RemoteAuthPolicy::default(), &store).await;
+    let result = Harness::spawn(RemoteAuthPolicy::default(), &store, &Arc::default()).await;
 
     assert!(matches!(
         result,
@@ -491,6 +496,120 @@ async fn revoking_a_token_closes_its_sessions_and_announces_them() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn principal_activity_tracks_logout_token_revocation_and_expiry() {
+    let harness = Harness::start().await;
+    let token = harness.create_token(Some(10 * MINUTE)).await;
+    let token_id = harness.client.list_access_tokens().await.unwrap()[0]
+        .id
+        .clone();
+    let token_principal = Principal::Token {
+        id: token_id.as_str().to_owned(),
+        name: "unused".to_owned(),
+    };
+
+    let session = harness
+        .client
+        .login_with_token(token.clone())
+        .await
+        .unwrap();
+    let session_principal = Principal::Session {
+        id: session.summary.id.as_str().to_owned(),
+    };
+    assert!(
+        harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+
+    harness.client.logout(session.cookie).await.unwrap();
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+
+    let session = harness.client.login_with_token(token).await.unwrap();
+    let session_principal = Principal::Session {
+        id: session.summary.id.as_str().to_owned(),
+    };
+    tokio::time::advance(10 * MINUTE).await;
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&token_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&session_principal)
+            .await
+            .unwrap()
+    );
+
+    let revoked_token = harness.create_token(None).await;
+    let revoked_token_id = harness
+        .client
+        .list_access_tokens()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|summary| summary.id != token_id)
+        .expect("the second token is listed")
+        .id;
+    let revoked_principal = Principal::Token {
+        id: revoked_token_id.as_str().to_owned(),
+        name: "unused".to_owned(),
+    };
+    let revoked_session = harness
+        .client
+        .login_with_token(revoked_token)
+        .await
+        .unwrap();
+    let revoked_session_principal = Principal::Session {
+        id: revoked_session.summary.id.as_str().to_owned(),
+    };
+    harness
+        .client
+        .revoke_access_token(revoked_token_id)
+        .await
+        .unwrap();
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&revoked_principal)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !harness
+            .client
+            .is_principal_active(&revoked_session_principal)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn an_expiring_token_closes_its_sessions_without_a_request() {
     let mut harness = Harness::start().await;
     let token = harness.create_token(Some(10 * MINUTE)).await;
@@ -513,7 +632,7 @@ async fn an_expiring_token_closes_its_sessions_without_a_request() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn logout_and_revoke_close_one_session_and_the_session_limit_holds() {
+async fn logout_and_revoke_close_one_session_and_a_full_table_evicts_the_oldest() {
     let mut harness = Harness::start_with(
         RemoteAuthPolicy {
             max_sessions: 2,
@@ -534,51 +653,128 @@ async fn logout_and_revoke_close_one_session_and_the_session_limit_holds() {
         }
     };
     let first = open(&harness).await.unwrap();
+    tokio::time::advance(MINUTE).await;
     let second = open(&harness).await.unwrap();
+    tokio::time::advance(MINUTE).await;
 
     let spare = harness
         .client
         .issue_launch_code(ScopeSet::empty())
         .await
         .unwrap();
-    assert!(matches!(
-        harness
-            .client
-            .exchange_launch_code(spare.code.clone())
-            .await,
-        Err(RemoteAuthError::CapacityExceeded { .. })
-    ));
-
-    harness.client.logout(first.cookie.clone()).await.unwrap();
+    let third = harness
+        .client
+        .exchange_launch_code(spare.code)
+        .await
+        .expect("a full session table must not refuse a new login");
     assert_eq!(
         harness.revocations.recv().await.unwrap(),
         AuthRevocation::Session {
             session_id: first.summary.id.clone()
         }
     );
+
     assert_eq!(
-        harness.client.logout(first.cookie).await.unwrap_err(),
+        harness
+            .client
+            .logout(first.cookie)
+            .await
+            .expect_err("the evicted session is already gone"),
         RemoteAuthError::Unauthorized
     );
 
-    // The refused exchange did not spend the code.
-    let third = harness
-        .client
-        .exchange_launch_code(spare.code)
-        .await
-        .unwrap();
+    harness.client.logout(second.cookie).await.unwrap();
+    assert_eq!(
+        harness.revocations.recv().await.unwrap(),
+        AuthRevocation::Session {
+            session_id: second.summary.id.clone()
+        }
+    );
+    assert_eq!(
+        harness
+            .client
+            .revoke_browser_session(second.summary.id.clone())
+            .await
+            .unwrap_err(),
+        RemoteAuthError::NotFound
+    );
     harness
         .client
-        .revoke_browser_session(second.summary.id.clone())
+        .revoke_browser_session(third.summary.id.clone())
         .await
         .unwrap();
     assert_eq!(
         harness
             .client
-            .revoke_browser_session(second.summary.id)
+            .revoke_browser_session(third.summary.id)
             .await
             .unwrap_err(),
         RemoteAuthError::NotFound
+    );
+    assert_eq!(
+        harness
+            .client
+            .resolve_browser_session(third.cookie)
+            .await
+            .unwrap_err(),
+        RemoteAuthError::Unauthorized
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_token_cannot_fill_the_session_table_and_lock_out_login() {
+    let mut harness = Harness::start_with(
+        RemoteAuthPolicy {
+            max_sessions: 2,
+            ..RemoteAuthPolicy::default()
+        },
+        Arc::default(),
+    )
+    .await;
+    let read_token = harness.create_token(None).await;
+    let other_token = harness.create_token(None).await;
+    let first = harness
+        .client
+        .login_with_token(read_token.clone())
+        .await
+        .unwrap();
+    tokio::time::advance(MINUTE).await;
+    let second = harness
+        .client
+        .login_with_token(read_token.clone())
+        .await
+        .unwrap();
+    tokio::time::advance(MINUTE).await;
+
+    // The other credential still logs in. The table evicts one of the read token's own
+    // sessions instead of returning a capacity error that would deny every login.
+    let third = harness
+        .client
+        .login_with_token(other_token)
+        .await
+        .expect("filling the table with one token must not deny another login");
+    let AuthRevocation::Session { session_id } = harness.revocations.recv().await.unwrap() else {
+        panic!("expected a session eviction");
+    };
+    assert_eq!(
+        session_id, first.summary.id,
+        "the least recently active read-token session is evicted first"
+    );
+
+    // A further login from that token drops its remaining own session before another
+    // principal's session.
+    let fourth = harness.client.login_with_token(read_token).await.unwrap();
+    let AuthRevocation::Session { session_id } = harness.revocations.recv().await.unwrap() else {
+        panic!("expected a session eviction");
+    };
+    assert_eq!(
+        session_id, second.summary.id,
+        "the second read-token session is evicted before another principal"
+    );
+
+    assert_eq!(
+        harness.client.list_browser_sessions().await.unwrap().len(),
+        2
     );
     assert!(
         harness
@@ -587,4 +783,136 @@ async fn logout_and_revoke_close_one_session_and_the_session_limit_holds() {
             .await
             .is_ok()
     );
+    assert!(
+        harness
+            .client
+            .resolve_browser_session(fourth.cookie)
+            .await
+            .is_ok()
+    );
+}
+
+const TWO_YEARS_PLUS: Duration = Duration::from_secs(731 * 24 * 60 * 60);
+
+#[tokio::test(start_paused = true)]
+async fn the_certificate_is_generated_once_and_survives_a_restart() {
+    let harness = Harness::start().await;
+    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+
+    let addresses = vec!["192.168.1.20".parse().unwrap()];
+    let first = harness
+        .client
+        .tls_identity(addresses.clone())
+        .await
+        .unwrap();
+    let again = harness.client.tls_identity(Vec::new()).await.unwrap();
+
+    assert_eq!(first.fingerprint(), again.fingerprint());
+    let requests = harness.generator.requests();
+    assert_eq!(requests.len(), 1, "a valid certificate is not regenerated");
+    assert_eq!(requests[0].addresses, addresses);
+    // A device whose clock is a few hours behind still accepts it, and it stays within the
+    // 825 days some platforms allow.
+    assert_eq!(requests[0].not_before_ms, START_UNIX_MS - 86_400_000);
+    assert_eq!(requests[0].not_after_ms, START_UNIX_MS + 730 * 86_400_000);
+    assert!(requests[0].not_after_ms - requests[0].not_before_ms <= 825 * 86_400_000);
+    assert_eq!(
+        harness.client.tls_summary().await.unwrap(),
+        Some(first.summary())
+    );
+
+    let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
+    let reloaded = restarted.client.tls_identity(Vec::new()).await.unwrap();
+    assert_eq!(reloaded.fingerprint(), first.fingerprint());
+    assert_eq!(reloaded.private_key_der(), first.private_key_der());
+    // What it covers is kept too, so the settings can tell a later address it misses.
+    assert_eq!(reloaded.addresses(), addresses);
+    assert!(reloaded.covers_address(addresses[0]));
+    assert!(!reloaded.covers_address("192.168.1.21".parse().unwrap()));
+    assert!(restarted.generator.requests().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_expired_certificate_is_replaced() {
+    let harness = Harness::start().await;
+    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+
+    tokio::time::advance(TWO_YEARS_PLUS).await;
+    let second = harness.client.tls_identity(Vec::new()).await.unwrap();
+
+    assert_ne!(first.fingerprint(), second.fingerprint());
+    assert_eq!(harness.generator.requests().len(), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_reset_changes_the_fingerprint_and_keeps_the_tokens() {
+    let harness = Harness::start().await;
+    let token = harness.create_token(None).await;
+    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+
+    let reset = harness.client.reset_tls(Vec::new()).await.unwrap();
+
+    assert_ne!(reset.fingerprint, first.fingerprint());
+    // Saving the certificate rewrote the whole record; the token is still in it.
+    let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
+    assert!(restarted.client.authenticate_token(token).await.is_ok());
+    assert_eq!(restarted.client.tls_summary().await.unwrap(), Some(reset));
+}
+
+#[tokio::test(start_paused = true)]
+async fn creating_a_token_keeps_the_certificate_in_the_record() {
+    let harness = Harness::start().await;
+    let identity = harness.client.tls_identity(Vec::new()).await.unwrap();
+    harness.create_token(None).await;
+
+    let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
+    assert_eq!(
+        restarted.client.tls_summary().await.unwrap(),
+        Some(identity.summary())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_certificate_that_cannot_be_saved_is_not_kept() {
+    let harness = Harness::start().await;
+    harness.store.fail_saves.store(true, Ordering::SeqCst);
+
+    let failed = harness.client.tls_identity(Vec::new()).await;
+    assert!(matches!(
+        failed,
+        Err(RemoteAuthError::PersistenceFailed { .. })
+    ));
+    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+
+    harness.store.fail_saves.store(false, Ordering::SeqCst);
+    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+
+    // A failed reset leaves the certificate clients pinned in place.
+    harness.store.fail_saves.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        harness.client.reset_tls(Vec::new()).await,
+        Err(RemoteAuthError::PersistenceFailed { .. })
+    ));
+    assert_eq!(
+        harness.client.tls_summary().await.unwrap(),
+        Some(first.summary())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_record_without_a_certificate_still_loads_and_a_malformed_one_fails_closed() {
+    let store = Arc::new(MemoryStore::default());
+    *store.record.lock() = Some(br#"{"version":1,"tokens":[]}"#.to_vec());
+    let harness = Harness::start_with(RemoteAuthPolicy::default(), store.clone()).await;
+    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+
+    *store.record.lock() = Some(
+        br#"{"version":1,"tokens":[],"tls":{"certificate_hex":"zz","private_key_hex":"00","dns_names":[],"not_after_ms":1}}"#
+            .to_vec(),
+    );
+    let result = Harness::spawn(RemoteAuthPolicy::default(), &store, &Arc::default()).await;
+    assert!(matches!(
+        result,
+        Err(RemoteAuthError::PersistenceFailed { .. })
+    ));
 }

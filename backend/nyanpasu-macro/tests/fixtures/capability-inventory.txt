@@ -150,6 +150,7 @@ report_frontend_events | desktop,http | - | - | mutation | settings
 report_issue | desktop | opener | - | mutation | system
 report_window_ready | desktop | caller_webview | - | mutation | system
 request_wifi_name_access | desktop | - | - | mutation | system
+reset_remote_access_tls | desktop,local | http_server | - | mutation | remote_admin
 restart_application | desktop | lifecycle | - | mutation | system
 restart_service | desktop | elevation | presentation | mutation | system
 restart_sidecar | desktop,http,local | - | elevation,os_integration,presentation | mutation | system

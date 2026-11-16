@@ -632,7 +632,7 @@ fn canary_degraded_outcome(
     }
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = read)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "log.session:follow")]
 fn privacy_canary_read_mutation(
     secret_path: String,
     secret_url: String,
@@ -641,7 +641,7 @@ fn privacy_canary_read_mutation(
     canary_degraded_outcome("read-committed-ok", &secret_path, &secret_url, &secret_diag).into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = proxy)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "proxy.mode:set")]
 fn privacy_canary_proxy_mutation(
     secret_path: String,
     secret_url: String,
@@ -656,7 +656,7 @@ fn privacy_canary_proxy_mutation(
     .into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "profile.item:update")]
 fn privacy_canary_profile_mutation(
     secret_path: String,
     secret_url: String,
@@ -671,7 +671,7 @@ fn privacy_canary_profile_mutation(
     .into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = settings)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "settings.storage_item:set")]
 fn privacy_canary_settings_mutation(
     secret_path: String,
     secret_url: String,
@@ -686,7 +686,7 @@ fn privacy_canary_settings_mutation(
     .into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "system.crash:simulate")]
 fn privacy_canary_system_mutation(
     secret_path: String,
     secret_url: String,
@@ -701,7 +701,7 @@ fn privacy_canary_system_mutation(
     .into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = remote_admin)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "remote_admin.token:create")]
 fn privacy_canary_remote_admin_mutation(
     secret_path: String,
     secret_url: String,
@@ -716,7 +716,7 @@ fn privacy_canary_remote_admin_mutation(
     .into()
 }
 
-#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "system.crash:simulate")]
 fn privacy_canary_app_update_mutation(
     secret_err: String,
     secret_endpoint: String,
@@ -749,7 +749,7 @@ fn privacy_canary_app_update_mutation(
 
 /// The live network reading of the host and the rule that matched it, with a refusal text that
 /// echoes both: everything `NetworkAutomationStatus` can hold that names the user's network.
-#[nyanpasu_macro::rpc(http, privacy, scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, permission = "system.wifi_name_access:ask")]
 fn privacy_canary_network_status(
     secret_ssid: String,
     secret_mac: String,

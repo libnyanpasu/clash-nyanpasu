@@ -35,6 +35,8 @@ pub(crate) const SESSION_COOKIE_NAME: &str = "nyanpasu_session";
 #[derive(Clone)]
 pub(crate) struct LoginState {
     pub(crate) authenticator: Arc<dyn HttpAuthenticator>,
+    /// Whether the listener serves HTTPS, which makes the session cookie `Secure`.
+    pub(crate) secure_cookie: bool,
 }
 
 #[derive(Deserialize)]
@@ -74,13 +76,16 @@ pub(crate) fn extract_cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Op
     None
 }
 
-pub(crate) fn session_set_cookie(cookie: &SecretString) -> String {
+pub(crate) fn session_set_cookie(cookie: &SecretString, secure: bool) -> String {
     format!(
-        "{SESSION_COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/",
-        cookie.expose_secret()
+        "{SESSION_COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Path=/{}",
+        cookie.expose_secret(),
+        if secure { "; Secure" } else { "" }
     )
 }
 
+/// Clears the cookie. Over HTTPS this response comes from a secure origin, which may overwrite a
+/// `Secure` cookie, so the attribute is not needed here.
 pub(crate) fn clear_session_set_cookie() -> String {
     format!("{SESSION_COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/")
 }
@@ -129,7 +134,9 @@ pub(crate) async fn login_submit(
                 .into_response();
             response.headers_mut().append(
                 "set-cookie",
-                session_set_cookie(&established.cookie).parse().unwrap(),
+                session_set_cookie(&established.cookie, state.secure_cookie)
+                    .parse()
+                    .unwrap(),
             );
             response
                 .headers_mut()

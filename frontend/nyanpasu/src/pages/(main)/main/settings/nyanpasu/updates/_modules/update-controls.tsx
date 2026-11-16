@@ -271,9 +271,7 @@ export default function UpdateControls() {
 
   const canUpdate = isDesktop && snapshot?.supported !== false
   const snapshotSource = sourceLabel(snapshot?.source)
-  const snapshotError = snapshot?.has_error
-    ? m.settings_about_update_failed()
-    : null
+  const snapshotError = snapshot?.error ?? null
   const isTransitioning = SPINNING_PHASES.includes(phase)
   const showMore =
     canUpdate &&
@@ -421,6 +419,7 @@ export default function UpdateControls() {
                               <AppUpdateChangelog
                                 from={currentVersion}
                                 to={release.version}
+                                fallbackBody={release.body}
                               />
                             </ScrollArea>
                           </CardContent>

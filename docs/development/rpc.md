@@ -58,7 +58,8 @@ carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sen
 mutations that return the status as `RpcNetworkAutomationStatus`: a caller without `sensitive_read`
 receives `NetworkAutomationSummary` (supported, whether a rule matched and what each switch did),
 with no Wi-Fi name, gateway, rule id or refusal text, and a refused policy reaches it only as the
-fixed `invalid_network_automation` public error. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
+fixed `invalid_network_automation` public error. All three are Desktop-only, declared as
+`network_automation.status:reveal`, `system.network_automation:apply` and `system.wifi_name_access:ask`. The rules themselves name Wi-Fi networks and gateway
 MAC addresses, so the safe settings view (`get_app_settings`) reduces them to
 `network_automation_enabled`; the rule editor reads the full config (`sensitive_read`) and
 writes through `patch_system_settings`.
@@ -84,25 +85,49 @@ fields. For an ordinary field `null` is a no-op; only the double-option fields
 schema is derived from the fields of the request type and never advertises a field of
 another class.
 
-`remote_access` is written only by `set_remote_access`, a `scope = remote_admin` mutation reachable
+`remote_access` is written only by `set_remote_access`, a `remote_admin` mutation reachable
 from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
-them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, or
-`local_open_scopes` changes), and a listener that cannot follow is a
+them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, `lan_bind`, `tls`,
+`local_open_scopes` or certificate changes), and a listener that cannot follow is a
 `http_server_unavailable` degradation, never a rollback. A single serial owner
 (`RemoteAccessClient` in core) runs the whole operation, so concurrent edits cannot
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
 `local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
-scopes) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+scopes, and `lan_authenticated` without `tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
 `remote_admin` query on Desktop and Local only. Access tokens and browser sessions are managed
-through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
+through `remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
 socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
+When the bounded browser-session table is full, a login evicts the caller's least recently
+active session first (or the least recently active session overall) and announces its
+revocation; capacity never turns into a global login denial.
 `create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
 launch codes are not kept in a client cache.
+
+`tls: self_signed` serves HTTPS with the application's own certificate. The remote-access
+authentication owner generates it on first use (an `HttpTlsIdentitySource` port, installed late
+like the authenticator; `nyanpasu-os` implements the generator) and keeps it with the token hashes
+in `auth-secrets.json`; it is replaced only on expiry or by `reset_remote_access_tls`
+(`remote_admin`, Desktop and Local only), because a new certificate breaks every pinned client.
+A listener that must serve HTTPS and has no usable certificate, or one it cannot build a TLS
+configuration from, stops with the `tls_unavailable` fault; it never falls back to plain HTTP, and
+`reset_remote_access_tls` repairs it. A certificate is valid from one day before it was made, so a
+device whose clock runs behind does not reject it. The certificate keeps the addresses it covers,
+and the status reports `bind_outside_certificate` when `lan_bind` names one it does not. `get_http_server_status` carries the certificate's SHA-256
+fingerprint and expiry, which are public to every TLS client. `lan_authenticated` binds `lan_bind`
+(every IPv4 interface when unset), always serves HTTPS and requires a credential from every caller,
+loopback peers included. Its `Host` policy accepts an IP literal on the bound port or a name the
+certificate covers (`localhost`, the host name and `<host>.local`); a `Host` without a port names
+the scheme's default port (443 under TLS), as browsers send it; HTTP/2 carries the authority as
+`:authority` instead of `Host`, so the policy reads either and refuses a request in which they
+differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the fingerprint per context
+(`context add --fingerprint`, or an interactive trust on first use that prints it), sends nothing,
+not even the token, to a server with another certificate, and exits with status 4. `nyanpasu-server`
+keeps its plain loopback listener.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
 `patch_app_config` command's validating decode rejects `Some` for `hotkeys` or
@@ -233,8 +258,31 @@ cargo test -p nyanpasu-macro --features syn/full rpc_command_catalog_is_fresh
 cargo test -p nyanpasu-macro --features syn/full export_capability_inventory -- --ignored
 ```
 
-The exporter writes explicitly; the freshness test only compares. Regenerate
-after changing names, targets, capabilities or declaration guards. The registry
+The aggregate permission table (`name | permission | scope | effect | targets`, a Linux baseline
+plus `+`/`-` rows per platform) is generated by cargo itself. `backend/tauri/src/unified_rpc/permission_table.rs`
+invokes `nyanpasu_macro::rpc_permission_table!()`, which runs the same extractor and rendering as
+the tests whenever the `clash-nyanpasu` crate compiles (`cargo check -p clash-nyanpasu --lib`
+or any build of it), writes `OUT_DIR/rpc_permission_table.txt` and declares it as
+`RPC_PERMISSION_TABLE`. It writes only under `OUT_DIR`, only when the content changes, never
+shared source, and tracks every declaration file with `include_str!` so a changed declaration
+recompiles the invoking crate. The invoking package needs a build script for `OUT_DIR`; the
+protocol crate has none and, per [Backend packages](backend-packages.md), reads no application
+declarations, so the shell crate that owns both declaration roots hosts the invocation. The
+expander resolves the invoking crate's `CARGO_MANIFEST_DIR` at build time and emits only relative
+source paths plus `OUT_DIR`, never the checkout that compiled the proc macro, so a copied Cargo
+target remains usable from another worktree. The runtime catalog keeps the resolved scope and
+effect; the generated table is the review surface for the permission labels. The reviewed
+snapshot is `backend/nyanpasu-macro/tests/fixtures/rpc-permission-table.txt`. Two tests
+compare against it: `rpc_permission_table_snapshot_is_fresh` in `nyanpasu-macro`, and
+`generated_table_is_the_reviewed_snapshot` in `clash-nyanpasu`, which compares the table the
+build produced. Update the snapshot after reviewing a permission change:
+
+```sh
+cargo test -p nyanpasu-macro --features syn/full export_rpc_permission_table -- --ignored
+```
+
+The exporters write explicitly; the freshness tests only compare. Regenerate
+the catalog after changing names, targets, capabilities, permissions or declaration guards. The registry
 loads catalog metadata before associating linked handlers, so an unlinked native
 wrapper leaves a known command returning `unsupported`. Coverage tests distinguish
 native wrappers, shared handlers and unlinked catalog entries. Regenerate the
@@ -257,22 +305,43 @@ service-install prompt formatting and accent queries use consumer-owned ports in
 ### Declare effect and scope
 
 Every `rpc` declaration states what the command does and which scope a principal must hold
-to call it. The declaration is the single source: it generates the `effect` and `scope`
-fields of the committed catalog (`command_catalog.rs`) and the capability inventory, and the
-Specta query/mutation groups that become the frontend bindings are checked against it.
+to call it. The declaration is the single source: it generates the `effect`, `permission` and
+`scope` fields of the committed catalog (`command_catalog.rs`) and the capability inventory, and
+the Specta query/mutation groups that become the frontend bindings are checked against it.
 
-- `query` marks a command that only reads and changes nothing. It defaults to the `read`
-  scope. Declare another scope when the operation needs it: secret-bearing reads use
-  `sensitive_read`, latency measurements use `proxy`, and management queries can use
-  `remote_admin`. Effect and authorization class are independent.
-- Everything else is a mutation and MUST declare `scope = ...`; a mutation without one does
-  not compile. A mutation may hold `read` when it only allocates a resource the caller owns
-  (a log session, a subscription). Operations that read but advance a cursor, allocate a
-  session or otherwise change application state are mutations. Observational queries may
-  refresh read models or measure network latency; their scope still limits who may request them.
+- A command declares `permission = "group.name:action"`, as in
+  `#[nyanpasu_macro::rpc(http, query, permission = "profile.listing:view")]`. The `rpc` macro
+  resolves the scope from the permission at expansion, so the scope is never written next to a
+  command and `scope = ...` does not compile. A command without a permission, or with a malformed,
+  unknown or ambiguous one, does not compile; there is no default scope, wildcard or inheritance.
+- The only mapping is the closed table in `backend/nyanpasu-macro/src/permission.rs`. Both the
+  `group` and the `action` must appear in it, so a typo in either (`remot_admin.token:list`,
+  `system.service:instal`) does not compile instead of resolving to a default. `name` is a free
+  label with no authority. Each group lists the exact actions it accepts. The **read actions**
+  select a read scope in the groups that list them: `view` is a `read` query, `reveal` a
+  `sensitive_read` query, `follow` a `read` mutation (opens or advances a resource the caller owns:
+  a log session, a subscription), and `reveal_follow` the same for a `sensitive_read` mutation. Any
+  other listed action requires the write scope of its group: `profile`, `proxy`, `settings`,
+  `system` or `remote_admin`. The action, never the group, decides between a read and a write
+  scope: `profile.items:reveal` is `sensitive_read` and `profile.item:delete` is `profile`. The
+  read-action names are reserved, so no write action can shadow one, and `remote_admin` and
+  `settings` list no read action, so no verb can lower them. A read-only domain (`core`,
+  `clipboard`, `storage`, ...) lists only its own read actions; a sensitive domain lists only
+  `reveal*`.
+- `query` stays an independent effect declaration and is checked against the permission, never
+  inferred from it: `view` and `reveal` require `query`; `follow` and `reveal_follow` forbid it. A
+  write action is either a mutation or, when the table lists it as a query (`proxy.*:measure`,
+  `remote_admin.*:list` and `status`), a `query`.
+  A command that reads but advances a cursor, allocates a session or otherwise changes application
+  state is a mutation. Observational queries may refresh read models or measure network latency;
+  their scope still limits who may request them.
+- `sensitive_read` and `remote_admin` are explicit exceptions: a command reaches them only through
+  `reveal`/`reveal_follow` or a `remote_admin.*` resource, never through its function name or verb.
+  Adding a group or an action is a reviewed edit to `permission.rs` and its tests.
 - The scopes are `nyanpasu_config::application::Scope` (re-exported by the protocol), the one
   definition used by config validation, token storage and command metadata: `read`,
-  `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`.
+  `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`. Tokens and
+  authorization keep requiring exactly the scope of the command's metadata.
 - Classify by actual payload and effect. A response with a secret (the Clash secret,
   subscription URLs, profile or runtime contents, generic storage, clipboard, sync logs that
   echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
@@ -286,12 +355,14 @@ Specta query/mutation groups that become the frontend bindings are checked again
   need the original value use the `sensitive_read` query. The failures of a non-sensitive scope
   are part of its contract: use a small typed error with fixed messages, carried as its own
   domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
-- Scope is independent of target. `scope = system` never makes a command HTTP- or
+- Scope is independent of target. A `system` permission never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
   capability admission still apply. `remote_admin` commands are never HTTP: only Desktop and
   the same-user local socket, whose principal holds every scope, may call them.
 - The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
-  `remote_admin` set with its Local subset, so changing any of them is a reviewed change.
+  `remote_admin` set with its Local subset, and check that every committed permission agrees with its
+  scope and that one permission string never stands for two scopes or effects, so changing any of
+  them is a reviewed change.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -386,7 +457,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
 - Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given `ResponseVisibility::for_auth`) walks the source chain and preserves domain payloads and core retry metadata for `SensitiveRead` (`Full`) callers, while projecting non-`SensitiveRead` (`Public`) callers to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on settings-scoped core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
-- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
+- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback, except under `lan_authenticated`, which listens on the LAN over HTTPS only. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.

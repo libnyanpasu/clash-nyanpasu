@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
 import { unwrapResult } from '@nyanpasu/rpc'
-import type { AppUpdateSummary } from '@nyanpasu/rpc/types'
+import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 
-export const APP_UPDATE_QUERY_KEY = ['getAppUpdateSummary'] as const
+export const APP_UPDATE_QUERY_KEY = ['getAppUpdateState'] as const
 
 export function acceptAppUpdateSnapshot<T extends { revision: number }>(
   previous: T | undefined,
@@ -13,7 +13,7 @@ export function acceptAppUpdateSnapshot<T extends { revision: number }>(
   return previous && previous.revision >= next.revision ? previous : next
 }
 
-/** Shares backend-owned update summary state and operations with application surfaces. */
+/** Shares the desktop update state and operations; browser surfaces disable updates. */
 export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const api = useQueryApi()
   const queryClient = useQueryClient()
@@ -21,16 +21,16 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: APP_UPDATE_QUERY_KEY,
     enabled,
     queryFn: async () => {
-      const next = unwrapResult(await api.getAppUpdateSummary())
+      const next = unwrapResult(await api.getAppUpdateState())
       return acceptAppUpdateSnapshot(
-        queryClient.getQueryData<AppUpdateSummary>(APP_UPDATE_QUERY_KEY),
+        queryClient.getQueryData<AppUpdateSnapshot>(APP_UPDATE_QUERY_KEY),
         next,
       )
     },
     structuralSharing: (previous, next) =>
       acceptAppUpdateSnapshot(
-        previous as AppUpdateSummary | undefined,
-        next as AppUpdateSummary,
+        previous as AppUpdateSnapshot | undefined,
+        next as AppUpdateSnapshot,
       ),
   })
 
@@ -38,10 +38,10 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
     if (!enabled) return
     let disposed = false
     let unlisten: (() => void) | undefined
-    api.events.appUpdateSummaryChanged
+    api.events.appUpdateStateChanged
       .listen(({ payload }) => {
         if (disposed) return
-        queryClient.setQueryData<AppUpdateSummary>(
+        queryClient.setQueryData<AppUpdateSnapshot>(
           APP_UPDATE_QUERY_KEY,
           (previous) => acceptAppUpdateSnapshot(previous, payload),
         )

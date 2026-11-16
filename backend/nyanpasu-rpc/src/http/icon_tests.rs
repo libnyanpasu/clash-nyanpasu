@@ -26,7 +26,7 @@ fn listener(fixture: &Fixture) -> Router {
     build_http_app(
         fixture.rpc.clone().router(),
         None,
-        "127.0.0.1:1234".into(),
+        super::HttpEndpoint::exact("127.0.0.1:1234".into(), false),
         HttpAccessConfig {
             enabled: true,
             ..Default::default()

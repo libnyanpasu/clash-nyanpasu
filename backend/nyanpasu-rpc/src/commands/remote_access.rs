@@ -32,7 +32,7 @@ pub struct CreatedRemoteAccessToken {
     pub token: String,
 }
 
-#[nyanpasu_macro::rpc(local, query, permission = "remote_admin.token:list")]
+#[nyanpasu_macro::rpc(local, query, scope = remote_admin)]
 #[specta::specta]
 pub async fn list_remote_access_tokens(
     client: RpcState<'_, NyanpasuClient>,
@@ -40,7 +40,7 @@ pub async fn list_remote_access_tokens(
     Ok(client.list_remote_access_tokens().await?)
 }
 
-#[nyanpasu_macro::rpc(local, permission = "remote_admin.token:create")]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn create_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -59,7 +59,7 @@ pub async fn create_remote_access_token(
     })
 }
 
-#[nyanpasu_macro::rpc(local, permission = "remote_admin.token:revoke")]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn revoke_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -68,7 +68,7 @@ pub async fn revoke_remote_access_token(
     Ok(client.revoke_remote_access_token(id).await?)
 }
 
-#[nyanpasu_macro::rpc(local, query, permission = "remote_admin.browser_session:list")]
+#[nyanpasu_macro::rpc(local, query, scope = remote_admin)]
 #[specta::specta]
 pub async fn list_remote_browser_sessions(
     client: RpcState<'_, NyanpasuClient>,
@@ -76,7 +76,7 @@ pub async fn list_remote_browser_sessions(
     Ok(client.list_remote_browser_sessions().await?)
 }
 
-#[nyanpasu_macro::rpc(local, permission = "remote_admin.browser_session:revoke")]
+#[nyanpasu_macro::rpc(local, scope = remote_admin)]
 #[specta::specta]
 pub async fn revoke_remote_browser_session(
     client: RpcState<'_, NyanpasuClient>,
@@ -88,10 +88,7 @@ pub async fn revoke_remote_browser_session(
 /// A URL that logs the caller into the running HTTP server. It is a credential, so it is a
 /// desktop-only mutation: a query would keep it in a client cache, and no remote transport may
 /// return it.
-#[nyanpasu_macro::rpc(
-    capabilities(http_server),
-    permission = "remote_admin.http_launch_url:create"
-)]
+#[nyanpasu_macro::rpc(capabilities(http_server), scope = remote_admin)]
 #[specta::specta]
 pub async fn create_http_launch_url(
     client: RpcState<'_, NyanpasuClient>,

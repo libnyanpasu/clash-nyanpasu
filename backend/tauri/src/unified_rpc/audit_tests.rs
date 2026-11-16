@@ -11,11 +11,7 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 type NativeOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<String>;
 
-#[nyanpasu_macro::rpc(
-    privacy,
-    capabilities(presentation),
-    permission = "settings.storage_item:set"
-)]
+#[nyanpasu_macro::rpc(privacy, capabilities(presentation), scope = settings)]
 #[tauri::command]
 #[specta::specta]
 async fn audit_native_echo(

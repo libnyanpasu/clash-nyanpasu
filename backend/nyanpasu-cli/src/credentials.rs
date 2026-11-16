@@ -226,10 +226,6 @@ fn write_private(path: &std::path::Path, secret: &str) -> io::Result<()> {
 fn write_private(path: &Path, secret: &str) -> io::Result<()> {
     use std::io::Write as _;
 
-    use windows_sys::Win32::Storage::FileSystem::{
-        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-    };
-
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "token path has no parent"))?;
@@ -247,36 +243,24 @@ fn write_private(path: &Path, secret: &str) -> io::Result<()> {
     let written = file
         .write_all(secret.as_bytes())
         .and_then(|()| file.sync_all());
-    drop(file);
     if let Err(error) = written {
+        drop(file);
         let _ = fs::remove_file(&temporary);
         return Err(error);
     }
 
     if let Err(error) = prepare_token_replacement(path) {
+        drop(file);
         let _ = fs::remove_file(&temporary);
         return Err(error);
     }
 
-    let source = wide(temporary.as_os_str());
-    let target = wide(path.as_os_str());
-    // The replacement's protected DACL was applied at creation, and moving within the volume
-    // keeps that descriptor. Reassert it by handle after publication so an old, permissive
-    // target descriptor cannot survive a platform merge.
-    // SAFETY: both paths are valid, null-terminated UTF-16 strings for the duration of the call.
-    if unsafe {
-        MoveFileExW(
-            source.as_ptr(),
-            target.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    } == 0
-    {
-        let error = io::Error::last_os_error();
+    let replaced = replace_private_file(&file, path, &security);
+    drop(file);
+    if let Err(error) = replaced {
         let _ = fs::remove_file(&temporary);
         return Err(error);
     }
-    secure_existing_file(path, &security)?;
     Ok(())
 }
 
@@ -465,14 +449,72 @@ fn create_inherited_directory(path: &Path) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-fn secure_existing_file(path: &Path, security: &PrivateSecurity) -> io::Result<()> {
-    use std::os::windows::io::AsRawHandle as _;
+fn replace_private_file(
+    file: &fs::File,
+    path: &Path,
+    security: &PrivateSecurity,
+) -> io::Result<()> {
+    use std::{mem, os::windows::io::AsRawHandle as _, ptr};
 
-    use windows_sys::Win32::Storage::FileSystem::{READ_CONTROL, WRITE_DAC};
+    use windows_sys::Win32::{
+        Storage::FileSystem::{FILE_RENAME_INFO, FileRenameInfoEx, SetFileInformationByHandle},
+        System::WindowsProgramming::{
+            FILE_RENAME_FLAG_POSIX_SEMANTICS, FILE_RENAME_FLAG_REPLACE_IF_EXISTS,
+        },
+    };
 
-    let handle = open_regular_token_file(path, READ_CONTROL | WRITE_DAC)?
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "token file disappeared"))?;
-    set_private_dacl(handle.as_raw_handle(), security)
+    let target = wide(path.as_os_str());
+    let name_length = target
+        .len()
+        .checked_sub(1)
+        .and_then(|length| length.checked_mul(size_of::<u16>()))
+        .and_then(|length| u32::try_from(length).ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "token path is too long"))?;
+    let size = mem::offset_of!(FILE_RENAME_INFO, FileName)
+        .checked_add(target.len() * size_of::<u16>())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "token path is too long"))?;
+    let mut buffer = vec![0usize; size.div_ceil(size_of::<usize>())];
+    let rename = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+
+    // SAFETY: the usize buffer is aligned for FILE_RENAME_INFO and large enough for the
+    // header plus the target name. The target is null-terminated by `wide`.
+    unsafe {
+        ptr::write(rename, FILE_RENAME_INFO::default());
+        (*rename).Anonymous.Flags =
+            FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+        (*rename).RootDirectory = ptr::null_mut();
+        (*rename).FileNameLength = name_length;
+        ptr::copy_nonoverlapping(
+            target.as_ptr(),
+            ptr::addr_of_mut!((*rename).FileName).cast::<u16>(),
+            target.len(),
+        );
+    }
+
+    // FileRenameInfoEx replaces the directory entry atomically and keeps an existing open
+    // handle on the old file. Unlike MoveFileExW, it succeeds when that handle shares delete.
+    // The source handle must allow DELETE; create_private_file requests it.
+    // SAFETY: `file` is a valid handle for the temporary regular file, and the buffer remains
+    // alive for the call with the size stated in its header.
+    if unsafe {
+        SetFileInformationByHandle(
+            file.as_raw_handle(),
+            FileRenameInfoEx,
+            rename.cast(),
+            u32::try_from(size).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidInput, "token path is too long")
+            })?,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+
+    // The source carried this protected DACL from creation, so publication never exposed a
+    // broader descriptor. Reassert it by the published handle rather than resolving the path
+    // again, then flush the metadata before reporting success.
+    set_private_dacl(file.as_raw_handle(), security)?;
+    file.sync_all()
 }
 
 #[cfg(windows)]
@@ -515,17 +557,21 @@ fn create_private_file(path: &Path, security: &PrivateSecurity) -> io::Result<fs
 
     use windows_sys::Win32::{
         Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE},
-        Storage::FileSystem::{CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_NONE},
+        Storage::FileSystem::{
+            CREATE_NEW, CreateFileW, DELETE, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_NONE, READ_CONTROL,
+            WRITE_DAC,
+        },
     };
 
     let path = wide(path.as_os_str());
     let attributes = security.attributes();
     // SAFETY: the path and security descriptor are valid for the call. The returned handle is
-    // converted to an owner that closes it.
+    // converted to an owner that closes it. DELETE permits the handle-based POSIX rename;
+    // READ_CONTROL and WRITE_DAC permit reasserting the protected DACL after publication.
     let handle = unsafe {
         CreateFileW(
             path.as_ptr(),
-            GENERIC_WRITE,
+            GENERIC_WRITE | DELETE | READ_CONTROL | WRITE_DAC,
             FILE_SHARE_NONE,
             &attributes,
             CREATE_NEW,
@@ -1068,6 +1114,8 @@ mod tests {
             &path,
             &format!("D:P(A;;FA;;;{})(A;;FR;;;WD)", current_user_sid().unwrap()),
         );
+        // Delete sharing makes the replacement legal under POSIX semantics. The reader
+        // deliberately keeps this handle open, and the old file must remain its file.
         let mut old_handle = fs::File::from(
             open_existing_handle(
                 &path,

@@ -5,14 +5,14 @@ use crate::error::Result;
 use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
-use nyanpasu_runtime_values::runtime::MutationOutcome;
+use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
 
 use crate::{
     ports::{AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt},
     registry::RpcState,
 };
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub fn get_core_dir(resolver: RpcState<'_, dyn CoreDirectoryResolver>) -> Result<String> {
     resolver.core_directory()
@@ -24,7 +24,7 @@ pub fn is_appimage(environment: RpcState<'_, HostEnvironment>) -> Result<bool> {
     Ok(environment.is_appimage)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_service_install_prompt(
     prompt: RpcState<'_, dyn ServiceInstallPrompt>,
@@ -34,24 +34,24 @@ pub async fn get_service_install_prompt(
 }
 
 // See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_macro::rpc(optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn set_service_mode(
     client: RpcState<'_, NyanpasuClient>,
     enabled: bool,
-) -> Result<MutationOutcome<()>> {
-    Ok(client.set_service_mode(enabled).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_service_mode(enabled).await?.into())
 }
 
 /// Remote access widens who can reach the application, so it has its own desktop-only command;
 /// `patch_app_config` rejects the section.
-#[nyanpasu_macro::rpc(capabilities(http_server), scope = remote_admin)]
+#[nyanpasu_macro::rpc(privacy, capabilities(http_server), scope = remote_admin)]
 #[specta::specta]
 pub async fn set_remote_access(
     client: RpcState<'_, NyanpasuClient>,
     config: RemoteAccessConfig,
-) -> Result<MutationOutcome<()>> {
-    Ok(client.set_remote_access(config).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_remote_access(config).await?.into())
 }
 
 #[nyanpasu_macro::rpc(http, capabilities(accent_color), query)]

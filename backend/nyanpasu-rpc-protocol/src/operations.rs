@@ -8,7 +8,6 @@ use nyanpasu_logging::{
 use nyanpasu_runtime_values::{
     configuration::ConfigurationStatus,
     core_status::CoreStatusInfo,
-    runtime::MutationOutcome,
     storage::{StorageItem, StorageRevision},
 };
 use serde::{Deserialize, Serialize};
@@ -113,9 +112,9 @@ macro_rules! operations {
 operations! {
     GetProfiles: "get_profiles", () => Profiles, Profiles, types::IpcError;
     CreateProfile: "create_profile", CreateProfileRequest =>
-        MutationOutcome<ProfileId>, types::MutationOutcome<ProfileId>, types::IpcError;
+        types::RpcProfileMutationOutcome, types::ReceivedMutationOutcome<ProfileId>, types::IpcError;
     DeleteProfile: "delete_profile", DeleteProfileRequest =>
-        MutationOutcome<()>, types::MutationOutcome<()>, types::IpcError;
+        types::RpcUnitMutationOutcome, types::ReceivedMutationOutcome<()>, types::IpcError;
     ReadProfileFile: "read_profile_file", ReadProfileFileRequest => String, String, types::IpcError;
     GetConfigurationStatus: "get_configuration_status", () =>
         ConfigurationStatus, ConfigurationStatus, NoDomainError;
@@ -131,6 +130,8 @@ operations! {
     OpenLogSession: "open_log_session", OpenLogSessionRequest => LogSession, LogSession, LogError;
     QueryLogs: "query_logs", QueryLogsRequest => LogPage, LogPage, LogError;
     CloseLogSession: "close_log_session", CloseLogSessionRequest => (), (), LogError;
+    RpcDescribe: "rpc_describe", () =>
+        crate::RpcDescribeResponse, crate::RpcDescribeResponse, NoDomainError;
 }
 
 #[cfg(test)]

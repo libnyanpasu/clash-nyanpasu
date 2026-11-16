@@ -1,9 +1,13 @@
 //! Declaration metadata, independent of linked command implementations.
 
-use nyanpasu_config::application::Scope;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+use crate::Scope;
 
 /// A command's explicitly enabled transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum RpcTarget {
     /// The complete desktop command surface.
     Desktop,
@@ -19,7 +23,8 @@ pub enum RpcTarget {
 /// does not change application configuration. Mutations perform application operations, including
 /// allocating caller-owned resources. Scope independently controls who may request either effect.
 /// The declaration is the source of truth; the generated frontend's split is checked against it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum CommandEffect {
     /// Returns data and changes nothing.
     Query,
@@ -132,12 +137,16 @@ mod tests {
                 "clash_api_get_configs",
                 "get_all_storage_items",
                 "get_app_config",
+                "get_app_update_state",
                 "get_clash_config",
                 "get_clash_info",
                 "get_configuration_status",
+                "get_core_agent_skills",
+                "get_core_dir",
                 "get_core_log",
                 "get_core_log_status",
                 "get_core_status",
+                "get_custom_app_dir",
                 "get_network_automation_status",
                 "get_postprocessing_output",
                 "get_profile_sync_logs",
@@ -147,10 +156,13 @@ mod tests {
                 "get_proxy_group_icons",
                 "get_runtime_config",
                 "get_runtime_yaml",
+                "get_service_install_prompt",
                 "get_storage_item",
+                "get_transparent_proxy_status",
                 "inspect_applied_runtime",
                 "inspect_runtime",
                 "inspect_runtime_node",
+                "inspect_updater",
                 "probe_profile_url",
                 "query_core_logs",
                 "query_logs",
@@ -262,7 +274,7 @@ mod tests {
                 .iter()
                 .filter(|command| command.targets.contains(&RpcTarget::Local))
                 .count(),
-            13
+            14
         );
         let patch = COMMAND_CATALOG
             .iter()

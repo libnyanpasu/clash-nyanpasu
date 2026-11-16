@@ -22,6 +22,7 @@ use nyanpasu_runtime_values::network_automation::NetworkAutomationStatus;
 
 use super::types::GetSysProxyResponse;
 use crate::registry::RpcState;
+use nyanpasu_rpc_protocol::types::{RpcNetworkAutomationStatus, RpcUnitMutationOutcome};
 
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
@@ -134,25 +135,27 @@ pub async fn get_network_automation_status(
 
 /// Applies the network rules to the current network again, overwriting
 /// capture switches changed by hand since. Switching the capture mechanisms
-/// reaches the same optional effects as a configuration patch.
-#[nyanpasu_macro::rpc(scope = system, optional_capabilities(os_integration, presentation, elevation))]
+/// reaches the same optional effects as a configuration patch. A caller without
+/// `sensitive_read` gets the status without the network reading and the matched rule.
+#[nyanpasu_macro::rpc(privacy, scope = system, optional_capabilities(os_integration, presentation, elevation))]
 #[specta::specta]
 pub async fn apply_network_automation(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<NetworkAutomationStatus> {
-    Ok(client.apply_network_automation().await)
+) -> Result<RpcNetworkAutomationStatus> {
+    Ok(client.apply_network_automation().await.into())
 }
 
 /// Reads the Wi-Fi name once, which the network rules do not until a rule
 /// matches on it. Where the platform gates the name behind location access,
 /// this asks the user for it. The status holds that reading, or why there is
-/// none. Desktop-only: the status holds the live Wi-Fi name and gateway.
-#[nyanpasu_macro::rpc(scope = system)]
+/// none, except that a caller without `sensitive_read` gets neither the name nor the gateway.
+/// Desktop-only: the status holds the live Wi-Fi name and gateway.
+#[nyanpasu_macro::rpc(privacy, scope = system)]
 #[specta::specta]
 pub async fn request_wifi_name_access(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<NetworkAutomationStatus> {
-    Ok(client.request_wifi_name_access().await)
+) -> Result<RpcNetworkAutomationStatus> {
+    Ok(client.request_wifi_name_access().await.into())
 }
 
 #[nyanpasu_macro::rpc(http, scope = settings)]
@@ -184,26 +187,26 @@ pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<Nyan
 }
 
 /// Patch the ordinary application preferences.
-#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = settings)]
 #[specta::specta]
 pub async fn patch_app_config(
     client: RpcState<'_, NyanpasuClient>,
     patch: ApplicationPreferencesPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+) -> Result<RpcUnitMutationOutcome> {
     // The request type holds only ordinary preferences: fields of another class are refused while
     // decoding, before this handler is admitted. Each class has its own command.
-    Ok(client.patch_app_config(patch.into()).await?)
+    Ok(client.patch_app_config(patch.into()).await?.into())
 }
 
 /// Patch the application settings that change how the host behaves: autostart, the system proxy
 /// and its guard, the bypass list and the PAC URL.
-#[nyanpasu_macro::rpc(http, optional_capabilities(os_integration, presentation, elevation), scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(os_integration, presentation, elevation), scope = system)]
 #[specta::specta]
 pub async fn patch_system_settings(
     client: RpcState<'_, NyanpasuClient>,
     patch: SystemSettingsPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch.into()).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.patch_app_config(patch.into()).await?.into())
 }
 
 /// The persistent Clash settings without the controller secret and the web UI URL templates. The
@@ -227,34 +230,34 @@ pub async fn get_config_features(client: RpcState<'_, NyanpasuClient>) -> Result
 }
 
 /// Patch the ordinary Clash settings: profile expansion and connection breaking.
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 pub async fn patch_clash_config(
     client: RpcState<'_, NyanpasuClient>,
     patch: ClashSettingsPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch.into()).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.patch_clash_config(patch.into()).await?.into())
 }
 
 /// Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
 /// the web UI templates and the field filter.
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 pub async fn patch_clash_system_config(
     client: RpcState<'_, NyanpasuClient>,
     patch: ClashSystemPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_clash_config(patch.into()).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.patch_clash_config(patch.into()).await?.into())
 }
 
 /// Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency).
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = settings)]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
 pub async fn patch_runtime_overrides(
     client: RpcState<'_, NyanpasuClient>,
     patch: ClashOverridesSettingsPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+) -> Result<RpcUnitMutationOutcome> {
     // Explicit-field whitelist so future patch fields never auto-leak into logs.
     tracing::debug!(
         log_level = ?patch.log_level,
@@ -263,34 +266,34 @@ pub async fn patch_runtime_overrides(
         ipv6 = ?patch.ipv6,
         "patch_runtime_overrides"
     );
-    Ok(client.patch_runtime_overrides(patch.into()).await?)
+    Ok(client.patch_runtime_overrides(patch.into()).await?.into())
 }
 
 /// Patch the controller exposure: LAN access and the controller secret.
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
 #[specta::specta]
 #[tracing_attributes::instrument(skip_all)]
 pub async fn patch_runtime_access(
     client: RpcState<'_, NyanpasuClient>,
     patch: ClashAccessPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+) -> Result<RpcUnitMutationOutcome> {
     // The secret is reported by presence only.
     tracing::debug!(
         allow_lan = ?patch.allow_lan,
         secret = patch.secret.is_some(),
         "patch_runtime_access"
     );
-    Ok(client.patch_runtime_overrides(patch.into()).await?)
+    Ok(client.patch_runtime_overrides(patch.into()).await?.into())
 }
 
 /// Switch the proxy mode (rule, global, direct).
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = proxy)]
 #[specta::specta]
 pub async fn set_proxy_mode(
     client: RpcState<'_, NyanpasuClient>,
     mode: Mode,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_proxy_mode(mode).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_proxy_mode(mode).await?.into())
 }
 
 #[nyanpasu_macro::rpc(http, query)]

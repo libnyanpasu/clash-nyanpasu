@@ -971,6 +971,18 @@ impl NyanpasuClient {
         agent_skills::core_agent_skills(&self.inner.paths, core).await
     }
 
+    /// Safe agent skill availability summary without exposing host directories.
+    pub async fn core_agent_skills_summary(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Vec<agent_skills::CoreAgentSkillSummary> {
+        self.core_agent_skills(core)
+            .await
+            .iter()
+            .map(agent_skills::CoreAgentSkillSummary::from)
+            .collect()
+    }
+
     pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
         self.inner
             .network_diagnostics

@@ -16,6 +16,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![unified_rpc::native::call_rpc])
         .events(collect_events![
             events::AppUpdateStateChanged,
+            events::AppUpdateSummaryChanged,
             events::CoreLogsChangedEvent,
             events::CoreLogsSummaryChangedEvent,
             events::ClashWsEvent,
@@ -47,6 +48,7 @@ macro_rules! schema_commands {
 pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wry>) {
     let command_set = CommandSet::<tauri::Wry>::new(
         schema_commands![
+            commands::describe::rpc_describe,
             commands::status::get_http_server_status,
             commands::status::get_configuration_status,
             commands::status::get_configuration_status_summary,
@@ -79,6 +81,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::clash::clash_api_get_providers_proxies,
             commands::updater::fetch_latest_core_versions,
             commands::updater::inspect_updater,
+            commands::updater::inspect_updater_summary,
             ipc::get_core_version,
             commands::runtime::get_app_settings,
             commands::runtime::get_app_config,
@@ -114,6 +117,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::storage::get_hotkeys,
             commands::host::get_core_dir,
             commands::updater::get_core_agent_skills,
+            commands::updater::get_core_agent_skills_summary,
             commands::traffic::get_clash_ws_snapshot,
             commands::traffic::get_traffic_summary,
             commands::traffic::query_traffic_report,
@@ -122,10 +126,12 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::traffic::query_traffic_closed_connections,
             commands::traffic::query_traffic_active_connection_ids,
             ipc::get_app_update_state,
+            ipc::get_app_update_summary,
             ipc::get_app_update_changelog,
             ipc::get_release_channel,
             commands::host::get_system_accent_color,
             ipc::get_transparent_proxy_status,
+            ipc::get_transparent_proxy_status_summary,
         ],
         schema_commands![
             ipc::write_clipboard_text,
@@ -236,6 +242,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
     .events(collect_events![
         events::AppUpdateStateChanged,
+        events::AppUpdateSummaryChanged,
         events::CoreLogsChangedEvent,
         events::ClashWsEvent,
         window::WindowMessageEvent,
@@ -530,6 +537,10 @@ mod tests {
                 EventName::AppUpdateStateChanged,
                 events::AppUpdateStateChanged::NAME,
             ),
+            (
+                EventName::AppUpdateSummaryChanged,
+                events::AppUpdateSummaryChanged::NAME,
+            ),
             (EventName::ClashWs, events::ClashWsEvent::NAME),
             (
                 EventName::CoreLogsChanged,
@@ -630,7 +641,13 @@ mod tests {
         for name in ["getProfiles", "openLogSession", "isTrayIconSet"] {
             assert!(generated.contains(name), "missing external schema: {name}");
         }
-        for dependency in ["RpcState", "RpcCaller", "HostIconFiles", "PathResolver"] {
+        for dependency in [
+            "RpcState",
+            "RpcCaller",
+            "RpcDescribeContext",
+            "HostIconFiles",
+            "PathResolver",
+        ] {
             assert!(
                 !generated.contains(dependency),
                 "injected dependency leaked: {dependency}"
@@ -811,6 +828,27 @@ mod tests {
             "RemoteProfileOptionsPatch",
             "ProfileValidationError",
             "MutationOutcome",
+            "RpcMutationOutcome",
+            "RpcUnitMutationOutcome",
+            "RpcProfileMutationOutcome",
+            "RpcFolderMutationOutcome",
+            "PublicMutationOutcome",
+            "PublicDegradation",
+            "PublicDegradationReason",
+            "RpcAppUpdateOutcome",
+            "RpcNetworkAutomationStatus",
+            "NetworkAutomationSummary",
+            "NetworkAutomationApplicationSummary",
+            "MechanismOutcomeKinds",
+            "MechanismOutcomeKind",
+            "AppUpdateSummary",
+            "AppUpdateReleaseSummary",
+            "TransparentProxyStatusSummary",
+            "UpdaterProgressSummary",
+            "UpdaterProgressState",
+            "DownloadProgressSummary",
+            "DownloadProgressState",
+            "CoreAgentSkillSummary",
             "Degradation",
             "DegradationPhase",
             "DegradationReason",
@@ -1101,15 +1139,55 @@ mod tests {
             "nothing constructs the legacy_mirror phase, so it may not return to the wire"
         );
 
-        // create/import must return the instantiated generic carrying ProfileId.
+        let (commands_section, _) = generated
+            .split_once("/* Types */")
+            .expect("expected generated Types section");
+        // create/import must return the concrete wrapper carrying ProfileId.
         assert!(
-            generated.contains("MutationOutcome<ProfileId>"),
-            "createProfile/importProfile must return MutationOutcome<ProfileId>"
+            commands_section.contains("RpcProfileMutationOutcome_Serialize"),
+            "createProfile/importProfile must return RpcProfileMutationOutcome_Serialize"
         );
-        // Unit mutations must keep a stable MutationOutcome<()> shape (TS null).
+        // Folder creation must return the concrete wrapper carrying FolderId.
         assert!(
-            generated.contains("MutationOutcome<null>"),
-            "unit profile mutations must return MutationOutcome<null>"
+            commands_section.contains("RpcFolderMutationOutcome_Serialize"),
+            "folder mutations must return RpcFolderMutationOutcome_Serialize"
+        );
+        // Unit mutations must return the concrete wrapper carrying null.
+        assert!(
+            commands_section.contains("RpcUnitMutationOutcome_Serialize"),
+            "unit profile mutations must return RpcUnitMutationOutcome_Serialize"
+        );
+        let profile_outcome = exported_type(&generated, "RpcProfileMutationOutcome_Serialize");
+        assert!(
+            profile_outcome.contains("RpcMutationOutcome_Serialize<ProfileId>"),
+            "expected RpcProfileMutationOutcome_Serialize to instantiate ProfileId, got: {profile_outcome}"
+        );
+        let folder_outcome = exported_type(&generated, "RpcFolderMutationOutcome_Serialize");
+        assert!(
+            folder_outcome.contains("RpcMutationOutcome_Serialize<FolderId>"),
+            "expected RpcFolderMutationOutcome_Serialize to instantiate FolderId, got: {folder_outcome}"
+        );
+        let unit_outcome = exported_type(&generated, "RpcUnitMutationOutcome_Serialize");
+        assert!(
+            unit_outcome.contains("RpcMutationOutcome_Serialize<null>"),
+            "expected RpcUnitMutationOutcome_Serialize to instantiate null, got: {unit_outcome}"
+        );
+        // Generic instantiation must never leave unbound `<T>` in command signatures.
+        assert!(
+            !commands_section.contains("RpcMutationOutcome_Serialize<T>")
+                && !commands_section.contains("RpcMutationOutcome<T>"),
+            "command return types must not leak unbound generic <T>"
+        );
+        // App update mutations must expose safe/full outcomes rather than full snapshot only.
+        assert!(
+            commands_section.contains("RpcAppUpdateOutcome"),
+            "app update mutations must return RpcAppUpdateOutcome"
+        );
+        // Bounded ClashCore wire enum must remain preserved in public error variants.
+        assert_contains_all(
+            exported_type(&generated, "PublicInstallCoreBinaryKind_Serialize"),
+            "PublicInstallCoreBinaryKind_Serialize",
+            &["core: ClashCore_Serialize"],
         );
 
         // A2: the connection-detail Channel payload wraps clash-api's
@@ -1264,6 +1342,110 @@ mod tests {
                 "kind: 'proxy_providers_unavailable'",
                 "kind: 'streams_unavailable'",
             ],
+        );
+    }
+
+    #[test]
+    fn specta_transparent_and_inline_asymmetric_generic_regression() {
+        #[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+        #[serde(rename_all = "snake_case")]
+        #[allow(dead_code)]
+        enum ProbeCore {
+            #[serde(alias = "alias-only")]
+            Mihomo,
+            ClashRs,
+        }
+
+        #[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+        #[serde(rename_all = "snake_case")]
+        struct ProbePayload<T> {
+            value: T,
+            core: ProbeCore,
+        }
+
+        #[derive(serde::Serialize, specta::Type)]
+        #[serde(untagged)]
+        #[allow(dead_code)]
+        enum ProbeOutcome<T> {
+            Full(ProbePayload<T>),
+            Public { code: &'static str, core: ProbeCore },
+        }
+
+        #[derive(serde::Serialize, specta::Type)]
+        #[serde(transparent)]
+        struct ProbeConcreteU32(ProbeOutcome<u32>);
+
+        #[derive(serde::Serialize, specta::Type)]
+        #[serde(transparent)]
+        struct ProbeConcreteString(ProbeOutcome<String>);
+
+        #[derive(serde::Serialize, specta::Type)]
+        #[serde(untagged)]
+        #[specta(inline)]
+        #[allow(dead_code)]
+        enum ProbeInlineOutcome<T> {
+            Full(#[specta(inline)] ProbePayload<T>),
+            Public { code: &'static str, core: ProbeCore },
+        }
+
+        #[tauri::command]
+        #[specta::specta]
+        fn probe_u32_cmd() -> ProbeConcreteU32 {
+            unreachable!("type-export regression only")
+        }
+
+        #[tauri::command]
+        #[specta::specta]
+        fn probe_string_cmd() -> ProbeConcreteString {
+            unreachable!("type-export regression only")
+        }
+
+        #[tauri::command]
+        #[specta::specta]
+        fn probe_inline_u32_cmd() -> ProbeInlineOutcome<u32> {
+            unreachable!("type-export regression only")
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("probe.ts");
+        tauri_specta::Builder::<tauri::Wry>::new()
+            .commands(tauri_specta::collect_commands![
+                probe_u32_cmd,
+                probe_string_cmd,
+                probe_inline_u32_cmd,
+            ])
+            .export(Typescript::default(), &path)
+            .expect("original Typescript exporter handles transparent + inline phased generics");
+
+        let generated = std::fs::read_to_string(&path).expect("read exported probe.ts");
+        let (commands_section, _) = generated
+            .split_once("/* Types */")
+            .expect("expected Types section");
+        assert!(
+            !commands_section.contains("<T>") && !commands_section.contains("any"),
+            "command signatures must stay concrete without <T> or any:\n{commands_section}"
+        );
+        let concrete_u32 = exported_type(&generated, "ProbeConcreteU32_Serialize");
+        assert!(
+            concrete_u32.contains("ProbeOutcome_Serialize<number>"),
+            "ProbeConcreteU32_Serialize must bind number:\n{concrete_u32}"
+        );
+        let concrete_str = exported_type(&generated, "ProbeConcreteString_Serialize");
+        assert!(
+            concrete_str.contains("ProbeOutcome_Serialize<string>"),
+            "ProbeConcreteString_Serialize must bind string:\n{concrete_str}"
+        );
+        assert!(
+            commands_section.contains("value: number")
+                && commands_section.contains("ProbeCore_Serialize"),
+            "ProbeInlineOutcome<u32> must inline concrete value and bounded ProbeCore_Serialize:\n{commands_section}"
+        );
+        let core_serialize = exported_type(&generated, "ProbeCore_Serialize");
+        assert!(
+            !core_serialize.contains("alias-only")
+                && core_serialize.contains("mihomo")
+                && core_serialize.contains("clash_rs"),
+            "serialize-only ProbeCore_Serialize must keep canonical variants without deserialize alias:\n{core_serialize}"
         );
     }
 }

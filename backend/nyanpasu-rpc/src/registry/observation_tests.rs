@@ -84,7 +84,10 @@ async fn summary_queries_project_the_full_values() {
 #[tokio::test]
 async fn log_summary_queries_drop_diagnostic_text_and_secrets() {
     let fixture = Fixture::new(false).await;
-    let app = fixture.rpc.clone().router();
+    let app = crate::test_support::with_http_auth(
+        fixture.rpc.clone().router(),
+        crate::test_support::test_http_auth(),
+    );
     let cookie = format!("nyanpasu_http_session={}", uuid::Uuid::new_v4());
     let app_log = fixture
         .rpc
@@ -258,6 +261,7 @@ async fn summary_queries_have_no_diagnostic_text_keys() {
             "server",
             "controller_url",
             "secret",
+            "dir",
         ] {
             assert!(
                 !names.iter().any(|name| name == forbidden),
@@ -265,5 +269,42 @@ async fn summary_queries_have_no_diagnostic_text_keys() {
             );
         }
     }
+    let mut skills_names = Vec::new();
+    let (status, skills_summary) = fixture
+        .call(
+            "get_core_agent_skills_summary",
+            json!({ "coreType": "mihomo" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{skills_summary}");
+    keys(&skills_summary, &mut skills_names);
+    assert!(
+        !skills_names
+            .iter()
+            .any(|name| name == "dir" || name == "error"),
+        "get_core_agent_skills_summary: {skills_names:?}"
+    );
+    let mut tp_names = Vec::new();
+    let tp_summary = serde_json::to_value(
+        nyanpasu_runtime_values::observation::TransparentProxyStatusSummary::from(
+            &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus {
+                supported: true,
+                active: true,
+                mode: Some(
+                    nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode::Redir,
+                ),
+                revision: Some(nyanpasu_ipc::api::status::RevisionIdInfo {
+                    epoch: 1,
+                    generation: 2,
+                    effective_hash: "abc".into(),
+                }),
+                error: Some("raw host stderr /var/run/nft failed".into()),
+            },
+        ),
+    )
+    .unwrap();
+    assert_eq!(tp_summary["has_error"], true);
+    keys(&tp_summary, &mut tp_names);
+    assert!(!tp_names.iter().any(|name| name == "error"), "{tp_names:?}");
     fixture.shutdown().await;
 }

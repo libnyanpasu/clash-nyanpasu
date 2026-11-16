@@ -1,7 +1,6 @@
 import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   FolderId,
-  MutationOutcome,
   NewProfileRequest_Deserialize,
   ProfileDefinition_Deserialize,
   ProfileId,
@@ -14,6 +13,7 @@ import type {
   ProfileSource_Serialize,
   ProxyGroupLayout,
   RemoteProfileOptionsPatch_Deserialize,
+  RpcProfileMutationOutcome_Serialize,
   TransformKind,
 } from '@nyanpasu/rpc/types'
 import {
@@ -243,7 +243,7 @@ export const useProfileMutations = () => {
     mutationKey: createProfile.mutationKey,
     mutationFn: async (
       params: CreateParams,
-    ): Promise<MutationOutcome<ProfileId>> => {
+    ): Promise<RpcProfileMutationOutcome_Serialize> => {
       if (params.type === 'url') {
         return unwrapResult(
           await invokeMutation(importProfile, [

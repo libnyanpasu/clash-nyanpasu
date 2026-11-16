@@ -4,6 +4,7 @@ import {
   degradationReasonMessage,
   effectFailureMessage,
   ipcErrorMessage,
+  publicDegradationReasonMessage,
 } from '@/utils/ipc-error'
 import type {
   ClashReadError,
@@ -844,4 +845,214 @@ test('a listener that cannot follow the settings has its own degradation message
   expect(degradationReasonMessage({ code: 'http_server_unavailable' })).toBe(
     m.mutation_degradation_reason_http_server_unavailable(),
   )
+})
+
+test('public failure envelopes localize without detail and keep the commit cause', () => {
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'profiles',
+          error: {
+            kind: 'fetch_subscription',
+            reason: { kind: 'subscription_http_status', status: 503 },
+          },
+        },
+      },
+      message: 'subscription request failed',
+    }),
+  ).toBe(m.error_public_profiles_fetch_subscription_status({ status: 503 }))
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'profiles',
+          error: {
+            kind: 'commit',
+            source: {
+              kind: 'runtime_refused',
+              runtime_causes: [
+                {
+                  kind: 'core_rejected_config',
+                  core_kind: 'invalid_config',
+                },
+              ],
+            },
+          },
+        },
+      },
+      message: 'profile update failed',
+    }),
+  ).toBe(
+    m.error_commit_runtime_refused({
+      reason: `${m.error_runtime_core_rejected_config()} (${m.error_runtime_core_reason_invalid_config()})`,
+    }),
+  )
+
+  // A refused network policy names its rules and networks, so the public form carries no reason.
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'config',
+          error: { kind: 'invalid_network_automation' },
+        },
+      },
+      message: 'invalid configuration',
+    }),
+  ).toBe(m.error_public_config_invalid_network_automation())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'runtime',
+          error: {
+            kind: 'build_runtime',
+            source: {
+              kind: 'run_pipeline',
+              stage: 'execute_script',
+            },
+          },
+        },
+      },
+      message: 'runtime operation failed',
+      detail: null,
+    }),
+  ).toBe(m.error_public_runtime_build_script_failed())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'config',
+          error: {
+            kind: 'validate_hotkeys',
+            reason: 'duplicate_accelerator',
+          },
+        },
+      },
+      message: 'configuration operation failed',
+    }),
+  ).toBe(m.error_public_config_hotkey_duplicate_accelerator())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'core_log_read',
+          error: { kind: 'unavailable' },
+        },
+      },
+      message: 'core log storage is unavailable',
+    }),
+  ).toBe(m.error_core_log_read_unavailable())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'system_dns',
+          error: { kind: 'flush_rejected', exit_code: 1 },
+        },
+      },
+      message: 'system DNS operation failed',
+    }),
+  ).toBe(m.error_public_system_dns_flush_rejected_code({ code: 1 }))
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'system_proxy',
+          error: { kind: 'write_os_proxy', enable: true, port: 7890 },
+        },
+      },
+      message: 'system proxy operation failed',
+    }),
+  ).toBe(m.error_public_system_proxy_write_os_proxy())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'core',
+          error: { kind: 'binary_not_found' },
+        },
+      },
+      message: 'core operation failed',
+    }),
+  ).toBe(m.error_runtime_core_reason_binary_not_found())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'internal error',
+    }),
+  ).toBe(m.error_public_internal_error())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'internal error',
+      detail: null,
+    }),
+  ).toBe(m.error_public_internal_error())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'explicit host diagnostic',
+      detail: 'full cause',
+    }),
+  ).toBe('explicit host diagnostic')
+})
+
+test('public degradation reasons localize safely without raw host diagnostics', () => {
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'configuration_not_in_effect' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: m.error_runtime_configuration_not_in_effect(),
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'apply_runtime', core_kind: 'binary_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: `${m.error_runtime_apply_runtime()} (${m.error_runtime_core_reason_binary_not_found()})`,
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'profile_auto_activation_failed',
+      cause: { kind: 'profile_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_profile_auto_activation_failed({
+      reason: m.error_profiles_profile_not_found(),
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({ code: 'http_server_unavailable' }),
+  ).toBe(m.mutation_degradation_reason_http_server_unavailable())
 })

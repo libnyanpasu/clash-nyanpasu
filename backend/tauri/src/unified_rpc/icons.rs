@@ -96,10 +96,14 @@ async fn response(
     dev_origin: Option<&str>,
 ) -> Response<Vec<u8>> {
     let mut origin = None;
+    let principal = nyanpasu_rpc_protocol::Principal::Desktop {
+        window: owner.label().to_owned(),
+    };
     let result = dispatch_audited(
         &dependencies.audit,
         RpcTransport::TauriProtocol,
         owner,
+        Some(&principal),
         || "icon_fetch",
         None,
         || {
@@ -111,7 +115,11 @@ async fn response(
             }
             origin = cors_origin(&request, dev_origin)?;
             let input = icons::parse(request.uri().path(), request.uri().query())?;
-            Ok(unreported(icons::read(&dependencies, input)))
+            Ok(unreported(icons::read(
+                &dependencies,
+                nyanpasu_rpc_protocol::ResponseVisibility::Full,
+                input,
+            )))
         },
     )
     .await;

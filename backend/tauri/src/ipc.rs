@@ -472,7 +472,7 @@ pub fn open_that(path: String) -> Result {
 }
 
 #[cfg(windows)]
-#[nyanpasu_macro::rpc(query)]
+#[nyanpasu_macro::rpc(query, scope = sensitive_read)]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -484,7 +484,7 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(not(windows))]
-#[nyanpasu_macro::rpc(query)]
+#[nyanpasu_macro::rpc(query, scope = sensitive_read)]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -722,23 +722,36 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
     })
 }
 
-#[nyanpasu_macro::rpc(scope = settings)]
+#[nyanpasu_macro::rpc(privacy, scope = settings)]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_release_channel(
     client: State<'_, NyanpasuClient>,
     channel: ReleaseChannel,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_release_channel(channel).await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome> {
+    Ok(client.set_release_channel(channel).await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), query)]
+#[nyanpasu_macro::rpc(capabilities(app_update), query, scope = sensitive_read)]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_state(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
     Ok(client.get_app_update_state().await?)
+}
+
+/// Safe application update phase, progress, and release metadata without raw error diagnostics.
+/// The full snapshot is [`get_app_update_state`].
+#[nyanpasu_macro::rpc(capabilities(app_update), query)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_app_update_summary(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSummary> {
+    Ok(nyanpasu_runtime_values::app_update::AppUpdateSummary::from(
+        &client.get_app_update_state().await?,
+    ))
 }
 
 #[nyanpasu_macro::rpc(query)]
@@ -752,49 +765,49 @@ pub async fn get_app_update_changelog(
     Ok(client.get_app_update_changelog(&from, &to).await?)
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), scope = system)]
+#[nyanpasu_macro::rpc(privacy, capabilities(app_update), scope = system)]
 #[tauri::command]
 #[specta::specta]
 pub async fn check_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.check_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.check_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), scope = system)]
+#[nyanpasu_macro::rpc(privacy, capabilities(app_update), scope = system)]
 #[tauri::command]
 #[specta::specta]
 pub async fn download_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.download_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.download_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), scope = system)]
+#[nyanpasu_macro::rpc(privacy, capabilities(app_update), scope = system)]
 #[tauri::command]
 #[specta::specta]
 pub async fn cancel_app_update_download(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.cancel_app_update_download().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.cancel_app_update_download().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), scope = system)]
+#[nyanpasu_macro::rpc(privacy, capabilities(app_update), scope = system)]
 #[tauri::command]
 #[specta::specta]
 pub async fn install_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.install_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.install_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update), scope = system)]
+#[nyanpasu_macro::rpc(privacy, capabilities(app_update), scope = system)]
 #[tauri::command]
 #[specta::specta]
 pub async fn discard_app_update_package(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.discard_app_update_package().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.discard_app_update_package().await?.into())
 }
 
 #[nyanpasu_macro::rpc(capabilities(window), scope = system)]
@@ -1345,11 +1358,26 @@ mod tests {
     }
 }
 
-#[nyanpasu_macro::rpc(query)]
+#[nyanpasu_macro::rpc(query, scope = sensitive_read)]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_transparent_proxy_status(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus> {
     Ok(client.get_transparent_proxy_status().await?)
+}
+
+/// Safe transparent proxy capture status without raw host error diagnostics. The full status is
+/// [`get_transparent_proxy_status`].
+#[nyanpasu_macro::rpc(query)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transparent_proxy_status_summary(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::observation::TransparentProxyStatusSummary> {
+    Ok(
+        nyanpasu_runtime_values::observation::TransparentProxyStatusSummary::from(
+            &client.get_transparent_proxy_status().await?,
+        ),
+    )
 }

@@ -18,6 +18,9 @@ export const events = {
   appUpdateStateChanged: makeEvent<AppUpdateStateChanged>(
     'app-update-state-changed',
   ),
+  appUpdateSummaryChanged: makeEvent<AppUpdateSummaryChanged>(
+    'app-update-summary-changed',
+  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
@@ -73,6 +76,12 @@ export type AppUpdateRelease = {
   body: string | null
 }
 
+/**  Safe release summary without release note bodies or source endpoints. */
+export type AppUpdateReleaseSummary = {
+  version: string
+  date: string | null
+}
+
 export type AppUpdateSnapshot = {
   revision: number
   phase: AppUpdatePhase
@@ -88,6 +97,22 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**  Safe app-update state summary for callers without `Scope::SensitiveRead`. */
+export type AppUpdateSummary = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateReleaseSummary | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  has_error: boolean
+  last_checked_at: string | null
+  supported: boolean
+}
+
+export type AppUpdateSummaryChanged = AppUpdateSummary
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'

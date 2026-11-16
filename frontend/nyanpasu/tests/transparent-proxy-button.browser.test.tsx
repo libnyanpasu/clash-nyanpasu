@@ -50,8 +50,8 @@ vi.mock('@nyanpasu/query', () => ({
   },
   useQueryApi: () => ({
     queries: {
-      getTransparentProxyStatus: () => ({
-        queryKey: ['getTransparentProxyStatus'],
+      getTransparentProxyStatusSummary: () => ({
+        queryKey: ['getTransparentProxyStatusSummary'],
         queryFn: () => Promise.resolve({ supported: backend.supported }),
       }),
     },
@@ -64,7 +64,7 @@ vi.mock('@tanstack/react-query', () => ({
       supported: backend.supported,
       active: backend.actualActive,
       mode: backend.actualMode,
-      error: null,
+      has_error: false,
     },
     isError: false,
     isPending: false,

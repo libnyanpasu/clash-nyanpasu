@@ -10,6 +10,7 @@ pub struct Options {
     optional_capabilities: Vec<syn::Ident>,
     result: bool,
     owner: bool,
+    privacy: bool,
     operation: Option<syn::Path>,
     /// A query only reads. Every other command is a mutation.
     query: bool,
@@ -36,6 +37,7 @@ impl syn::parse::Parse for Options {
                 }
                 "result" => options.result = true,
                 "owner" => options.owner = true,
+                "privacy" => options.privacy = true,
                 "query" => options.query = true,
                 "scope" => {
                     input.parse::<syn::Token![=]>()?;
@@ -54,7 +56,7 @@ impl syn::parse::Parse for Options {
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner, query, scope = name, operation = path, capabilities(...) or optional_capabilities(...)",
+                        "expected http, local, result, owner, privacy, query, scope = name, operation = path, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -173,13 +175,29 @@ fn scope_variant(options: &Options) -> syn::Ident {
 }
 
 pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
+    let original = &item.sig;
+    if !options.privacy
+        && success_output_type(&original.output, options.result).is_some_and(|ty| {
+            is_context_type(ty, "RpcMutationOutcome")
+                || is_context_type(ty, "RpcUnitMutationOutcome")
+                || is_context_type(ty, "RpcProfileMutationOutcome")
+                || is_context_type(ty, "RpcFolderMutationOutcome")
+                || is_context_type(ty, "RpcAppUpdateOutcome")
+                || is_context_type(ty, "RpcNetworkAutomationStatus")
+                || is_context_type(ty, "MutationOutcome")
+        })
+    {
+        return Err(Error::new(
+            original.output.span(),
+            "commands returning `RpcMutationOutcome`, `RpcAppUpdateOutcome` or `RpcNetworkAutomationStatus` must specify `privacy` (and raw `MutationOutcome` must wrap via `RpcMutationOutcome` + `privacy`)",
+        ));
+    }
     if options.scope.is_none() && !options.query {
         return Err(Error::new(
             item.sig.ident.span(),
             "a mutation requires an explicit `scope = ...`; a read-only command declares `query`",
         ));
     }
-    let original = &item.sig;
     let native = is_native(item);
     let neutral_compatible = can_share_with_neutral(original, options.owner);
     if !native && (!neutral_compatible || original.inputs.iter().any(|argument| {
@@ -250,6 +268,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut tauri_field_names = Vec::new();
     let mut neutral_supported = neutral_compatible && (options.http || options.local || !native);
     let mut tauri_supported = true;
+    let mut uses_dependencies = false;
+    let mut uses_meta = false;
 
     for argument in implementation.sig.inputs.iter_mut() {
         let FnArg::Typed(argument) = argument else {
@@ -271,14 +291,19 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             argument.ty = Box::new(syn::parse_quote!(&#state_type));
             wrapper_args.push(quote!(&*#ident));
             if state_name.as_deref() == Some("NyanpasuClient") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.client));
             } else if state_name.as_deref() == Some("Storage") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.storage));
             } else if state_name.as_deref() == Some("PathResolver") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.paths));
             } else if state_name.as_deref() == Some("HostEnvironment") {
+                uses_dependencies = true;
                 neutral_args.push(quote!(&dependencies.host_environment));
             } else if let Some(slot) = host_port_slot(state_name.as_deref()) {
+                uses_dependencies = true;
                 let slot = format_ident!("{slot}");
                 dependency_bindings.push(quote! {
                     let #ident = dependencies.#slot.clone().ok_or_else(||
@@ -291,13 +316,19 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         } else if options.owner && is_context_type(&argument.ty, "RpcCaller") {
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(#ident.into_owner()));
+            dependency_bindings.push(quote!(let owner = caller.owner().clone();));
             neutral_args.push(quote!(owner.clone()));
+        } else if is_context_type(&argument.ty, "RpcDescribeContext") {
+            uses_meta = true;
+            wrapper_args.push(quote!(#ident));
+            neutral_args.push(quote!(meta.describe_context(caller.auth())));
         } else if is_context_type(&argument.ty, "AppHandle") {
             wrapper_args.push(quote!(#ident));
             neutral_supported = false;
         } else if options.owner && is_context_type(&argument.ty, "Window") {
             *argument.ty = syn::parse_quote!(::nyanpasu_rpc_protocol::RpcOwner);
             wrapper_args.push(quote!(::nyanpasu_rpc_protocol::RpcOwner::desktop(#ident.label())));
+            dependency_bindings.push(quote!(let owner = caller.owner().clone();));
             neutral_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "Window")
             || is_context_type(&argument.ty, "Webview")
@@ -359,26 +390,23 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         original.asyncness.is_some(),
         None,
     );
-    let neutral_handler_body = if neutral_supported
-        && !matches!(original.output, ReturnType::Default)
-    {
+    let neutral_enabled = neutral_supported && !matches!(original.output, ReturnType::Default);
+    let neutral_handler_body = if neutral_enabled {
         let output = output_value(&neutral_call, &original.output, options.result);
         let response_type =
             operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
-        let completion = completion_summary(&original.output, options.result);
+        let finish_output = finish_output_expr(options.privacy);
         quote! {
+            let visibility = ::nyanpasu_rpc_protocol::ResponseVisibility::for_auth(
+                ::std::option::Option::Some(caller.auth()),
+            );
             #(#dependency_bindings)*
             #neutral_parse
             Ok(::std::boxed::Box::pin(async move {
                 match #output {
                     Ok(output) => {
                         let output #response_type = output;
-                        let completion = #completion;
-                        ::nyanpasu_rpc::registry::RpcCompletion {
-                            result: ::serde_json::to_value(output)
-                                .map_err(::nyanpasu_rpc::error::application_error),
-                            completion,
-                        }
+                        #finish_output
                     }
                     Err(error) => ::nyanpasu_rpc::registry::RpcCompletion::unreported(Err(error)),
                 }
@@ -439,13 +467,14 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         let parser = parser(&tauri_fields, &tauri_field_names, operation);
         let response_type =
             operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
-        let completion = completion_summary(&original.output, options.result);
+        let finish_output = finish_output_expr(options.privacy);
         quote! {
             #(#cfg_attrs)*
             fn #tauri_handler(
                 app: ::tauri::AppHandle,
                 window: ::tauri::Window,
                 webview: ::tauri::Webview,
+                visibility: ::nyanpasu_rpc_protocol::ResponseVisibility,
                 params: ::serde_json::Value,
             ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
                 #parser
@@ -454,12 +483,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                     match #output {
                         Ok(output) => {
                             let output #response_type = output;
-                            let completion = #completion;
-                            ::nyanpasu_rpc::registry::RpcCompletion {
-                                result: ::serde_json::to_value(output)
-                                    .map_err(::nyanpasu_rpc::error::application_error),
-                                completion,
-                            }
+                            #finish_output
                         }
                         Err(error) => ::nyanpasu_rpc::registry::RpcCompletion::unreported(Err(error)),
                     }
@@ -473,6 +497,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
                 _app: ::tauri::AppHandle,
                 _window: ::tauri::Window,
                 _webview: ::tauri::Webview,
+                _visibility: ::nyanpasu_rpc_protocol::ResponseVisibility,
                 _params: ::serde_json::Value,
             ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
                 Err(::nyanpasu_rpc_protocol::RpcError::unsupported(stringify!(#name)))
@@ -492,6 +517,27 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         }
     });
 
+    let deps_param = if neutral_enabled && uses_dependencies {
+        format_ident!("dependencies")
+    } else {
+        format_ident!("_dependencies")
+    };
+    let meta_param = if neutral_enabled && uses_meta {
+        format_ident!("meta")
+    } else {
+        format_ident!("_meta")
+    };
+    let caller_param = if neutral_enabled {
+        format_ident!("caller")
+    } else {
+        format_ident!("_caller")
+    };
+    let params_param = if neutral_enabled {
+        format_ident!("params")
+    } else {
+        format_ident!("_params")
+    };
+
     Ok(quote! {
         #implementation
         #wrapper
@@ -500,9 +546,10 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
 
         #(#cfg_attrs)*
         fn #neutral_handler(
-            dependencies: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
-            owner: ::nyanpasu_rpc_protocol::RpcOwner,
-            params: ::serde_json::Value,
+            #deps_param: ::std::sync::Arc<::nyanpasu_rpc::registry::RpcDependencies>,
+            #meta_param: ::nyanpasu_rpc::registry::RpcCallMeta,
+            #caller_param: ::nyanpasu_rpc::registry::RpcCaller,
+            #params_param: ::serde_json::Value,
         ) -> ::std::result::Result<::nyanpasu_rpc::registry::RpcFuture, ::nyanpasu_rpc_protocol::RpcError> {
             #neutral_handler_body
         }
@@ -539,18 +586,18 @@ fn call(
 fn output_value(call: &TokenStream, output: &ReturnType, result: bool) -> TokenStream {
     match output {
         ReturnType::Type(_, ty) if result || is_result(ty) => {
-            quote!(#call.map_err(::nyanpasu_rpc::error::application_error))
+            quote!(#call.map_err(|error| ::nyanpasu_rpc::error::application_error_for(visibility, error)))
         }
         ReturnType::Type(_, _) => quote!(Ok(#call)),
         ReturnType::Default => quote!(Ok(#call)),
     }
 }
 
-fn completion_summary(output: &ReturnType, result: bool) -> TokenStream {
-    let success = match output {
+fn success_output_type(output: &ReturnType, result: bool) -> Option<&Type> {
+    match output {
         ReturnType::Type(_, ty) if result || is_result(ty) => {
             let Type::Path(path) = ty.as_ref() else {
-                return quote!(::nyanpasu_rpc::audit::CompletionSummary::NotReported);
+                return None;
             };
             let segment = path
                 .path
@@ -570,11 +617,29 @@ fn completion_summary(output: &ReturnType, result: bool) -> TokenStream {
         }
         ReturnType::Type(_, ty) => Some(ty.as_ref()),
         ReturnType::Default => None,
-    };
-    if success.is_some_and(|ty| is_context_type(ty, "MutationOutcome")) {
-        quote!(::nyanpasu_rpc::audit::summarize_mutation(&output))
+    }
+}
+
+fn finish_output_expr(privacy: bool) -> TokenStream {
+    if privacy {
+        quote! {
+            let completion = ::nyanpasu_rpc::privacy::RpcResponseProjection::summarize_completion(&output);
+            ::nyanpasu_rpc::registry::RpcCompletion {
+                result: ::nyanpasu_rpc::privacy::RpcResponseProjection::encode_for_visibility(
+                    output,
+                    visibility,
+                ),
+                completion,
+            }
+        }
     } else {
-        quote!(::nyanpasu_rpc::audit::CompletionSummary::NotReported)
+        quote! {
+            ::nyanpasu_rpc::registry::RpcCompletion::unreported(
+                ::serde_json::to_value(&output).map_err(|error| {
+                    ::nyanpasu_rpc::error::application_error_for(visibility, error)
+                }),
+            )
+        }
     }
 }
 
@@ -592,7 +657,10 @@ fn parser(
         });
         quote! {
             if !params.is_null() && !matches!(&params, ::serde_json::Value::Object(map) if map.is_empty()) {
-                return Err(::nyanpasu_rpc_protocol::RpcError::invalid_params("expected an empty input object"));
+                return Err(::nyanpasu_rpc_protocol::RpcError::invalid_params_for(
+                    visibility,
+                    "expected an empty input object",
+                ));
             }
             #unit_check
         }
@@ -609,7 +677,7 @@ fn parser(
         quote! {
             #args
             let Args { #(#names,)* } = ::serde_json::from_value(params)
-                .map_err(|error| ::nyanpasu_rpc_protocol::RpcError::invalid_params(error.to_string()))?;
+                .map_err(|error| ::nyanpasu_rpc_protocol::RpcError::invalid_params_for(visibility, error.to_string()))?;
         }
     }
 }
@@ -647,11 +715,10 @@ fn can_share_with_neutral(signature: &syn::Signature, owner: bool) -> bool {
             {
                 return false;
             }
-        } else if owner && is_context_type(&argument.ty, "RpcCaller") {
-            continue;
-        } else if is_context_type(&argument.ty, "AppHandle") {
-            return false;
-        } else if owner && is_context_type(&argument.ty, "Window") {
+        } else if (owner && is_context_type(&argument.ty, "RpcCaller"))
+            || is_context_type(&argument.ty, "RpcDescribeContext")
+            || (owner && is_context_type(&argument.ty, "Window"))
+        {
             continue;
         } else if contains_reference(&argument.ty) || is_tauri_context(&argument.ty) {
             return false;
@@ -811,41 +878,73 @@ mod tests {
     }
 
     #[test]
-    fn mutation_summary_requires_an_explicit_success_type() {
-        for (output, reports) in [
-            (quote::quote!(MutationOutcome<()>), true),
-            (quote::quote!(Result<values::MutationOutcome<String>>), true),
-            (quote::quote!(CommandResult<MutationOutcome<()>>), true),
-            (quote::quote!(MutationAlias), false),
-            (quote::quote!(Result<MutationAlias>), false),
-            (quote::quote!(Result<()>), false),
-            (quote::quote!(CommitReceipt), false),
+    fn privacy_projection_requires_explicit_option_and_binds_via_trait() {
+        for output in [
+            quote::quote!(RpcMutationOutcome<()>),
+            quote::quote!(Result<types::RpcMutationOutcome<String>>),
+            quote::quote!(CommandResult<RpcAppUpdateOutcome>),
+            quote::quote!(WrappedOutcomeAlias),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_macro::rpc(result, scope = settings)]
+                #[nyanpasu_macro::rpc(privacy, scope = settings)]
                 #[tauri::command]
                 fn test() -> #output { todo!() }
             })
             .unwrap();
-            // The explicit Result hint applies only to the result-shaped signatures.
             let mut options = super::options(&item).unwrap();
             options.result = output.to_string().starts_with("CommandResult");
             let expanded = super::expand_with_options(item, options)
                 .unwrap()
                 .to_string();
-            assert_eq!(expanded.contains("summarize_mutation"), reports, "{output}");
+            assert!(
+                expanded.contains("RpcResponseProjection :: summarize_completion"),
+                "{output}"
+            );
+            assert!(
+                expanded.contains("RpcResponseProjection :: encode_for_visibility"),
+                "{output}"
+            );
+        }
+
+        for output in [
+            quote::quote!(RpcMutationOutcome<()>),
+            quote::quote!(Result<RpcMutationOutcome<String>>),
+            quote::quote!(Result<RpcAppUpdateOutcome>),
+            quote::quote!(Result<MutationOutcome<()>>),
+        ] {
+            let item = syn::parse2(quote::quote! {
+                #[nyanpasu_macro::rpc(scope = settings)]
+                fn missing_privacy() -> #output { todo!() }
+            })
+            .unwrap();
+            let options = super::options(&item).unwrap();
+            assert!(
+                super::expand_with_options(item, options).is_err(),
+                "{output} without `privacy` must be rejected"
+            );
+        }
+
+        for output in [quote::quote!(Result<()>), quote::quote!(CommitReceipt)] {
+            let item = syn::parse2(quote::quote! {
+                #[nyanpasu_macro::rpc(scope = settings)]
+                fn ordinary() -> #output { todo!() }
+            })
+            .unwrap();
+            let expanded = expand(item).unwrap().to_string();
+            assert!(!expanded.contains("RpcResponseProjection"), "{output}");
+            assert!(expanded.contains("unreported"), "{output}");
         }
     }
 
     #[test]
-    fn production_mutation_summary_commands_are_fixed() {
+    fn production_privacy_projection_commands_are_fixed() {
         let mut reported = crate::command_catalog::production_declarations()
             .into_iter()
             .filter(|item| {
                 expand(item.clone())
                     .unwrap()
                     .to_string()
-                    .contains("summarize_mutation")
+                    .contains("RpcResponseProjection :: summarize_completion")
             })
             .map(|item| item.sig.ident.to_string())
             .collect::<Vec<_>>();
@@ -854,12 +953,18 @@ mod tests {
             reported,
             [
                 "activate_profile",
+                "apply_network_automation",
+                "cancel_app_update_download",
+                "check_app_update",
                 "clear_proxy_fixed",
                 "create_profile",
                 "create_profile_folder",
                 "create_proxy_group_folder",
                 "delete_profile",
+                "discard_app_update_package",
+                "download_app_update",
                 "import_profile",
+                "install_app_update",
                 "patch_app_config",
                 "patch_clash_config",
                 "patch_clash_system_config",
@@ -871,6 +976,7 @@ mod tests {
                 "reorder_profile",
                 "reorder_profiles_by_list",
                 "replace_profile_definition",
+                "request_wifi_name_access",
                 "save_profile_file",
                 "select_proxy",
                 "set_global_transforms",
@@ -1327,7 +1433,7 @@ mod tests {
         assert!(expanded.contains("owner . clone ()"));
         assert!(!expanded.contains("caller : RpcCaller , page_size : usize , }"));
         assert!(expanded.contains("rename_all = \"camelCase\""));
-        assert!(expanded.contains("map_err (:: nyanpasu_rpc :: error :: application_error)"));
+        assert!(expanded.contains("application_error_for (visibility"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
             #[nyanpasu_macro::rpc(http, scope = settings)] fn empty() -> bool { true }
@@ -1419,7 +1525,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 180, "{platform} command inventory");
+            assert_eq!(rows.len(), 185, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

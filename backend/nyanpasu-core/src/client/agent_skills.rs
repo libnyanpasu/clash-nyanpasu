@@ -1,6 +1,6 @@
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_paths::PathResolver;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// An agent skill a core's release archive ships. The core updater keeps it in the
 /// core's data directory, beside the executable it drives.
@@ -12,6 +12,27 @@ pub struct CoreAgentSkill {
     pub dir: String,
     /// Whether a core update has installed the skill.
     pub installed: bool,
+}
+
+/// Safe agent skill availability summary without host filesystem paths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct CoreAgentSkillSummary {
+    pub name: String,
+    pub installed: bool,
+}
+
+impl From<&CoreAgentSkill> for CoreAgentSkillSummary {
+    fn from(skill: &CoreAgentSkill) -> Self {
+        let CoreAgentSkill {
+            name,
+            dir: _,
+            installed,
+        } = skill;
+        Self {
+            name: name.clone(),
+            installed: *installed,
+        }
+    }
 }
 
 /// The agent skills `core` ships, and whether a core update has installed each one.

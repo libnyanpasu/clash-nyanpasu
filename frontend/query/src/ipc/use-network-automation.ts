@@ -1,4 +1,8 @@
 import { unwrapResult } from '@nyanpasu/rpc'
+import type {
+  NetworkAutomationStatus,
+  RpcNetworkAutomationStatus,
+} from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
@@ -6,6 +10,15 @@ import { useFullSystemSetting } from './use-settings'
 
 /** The status is read by polling: the host has no network-change event. */
 const STATUS_REFETCH_INTERVAL = 5_000
+
+/**
+ * The network reading a command reply holds. A caller without `sensitive_read`
+ * is answered with a summary that leaves out the Wi-Fi name, the gateway and
+ * the matched rule, so there is no reading to use.
+ */
+export const networkReadingOf = (
+  reply: RpcNetworkAutomationStatus,
+): NetworkAutomationStatus | null => ('network' in reply ? reply : null)
 
 /**
  * The saved network rules. A patch replaces the policy as a whole, so `save`
@@ -64,7 +77,7 @@ export const useNetworkAutomationStatus = () => {
   const requestWifiName = useMutation({
     mutationKey: requestMutation.mutationKey,
     mutationFn: async () =>
-      unwrapResult(await invokeMutation(requestMutation, [])),
+      networkReadingOf(unwrapResult(await invokeMutation(requestMutation, []))),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: statusQuery.queryKey }),
   })

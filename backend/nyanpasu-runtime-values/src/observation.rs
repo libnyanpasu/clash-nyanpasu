@@ -370,6 +370,39 @@ impl From<&CoreStatusInfo> for CoreStatusSummary {
     }
 }
 
+/// Safe view of transparent proxy status without raw host error messages or revision hashes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct TransparentProxyStatusSummary {
+    pub supported: bool,
+    pub active: bool,
+    pub mode: Option<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode>,
+    pub revision: Option<RevisionSummary>,
+    pub has_error: bool,
+}
+
+impl From<&nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus>
+    for TransparentProxyStatusSummary
+{
+    fn from(
+        status: &nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus,
+    ) -> Self {
+        let nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus {
+            supported,
+            active,
+            mode,
+            revision,
+            error,
+        } = status;
+        Self {
+            supported: *supported,
+            active: *active,
+            mode: *mode,
+            revision: revision.as_ref().map(RevisionSummary::from),
+            has_error: error.is_some(),
+        }
+    }
+}
+
 /// [`ServiceCompat`] with the daemon's version only where it parsed as a version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -788,5 +821,56 @@ mod tests {
         assert!(
             !ServiceStatusSummary::from(&service(ServiceCompat::Unknown, false)).server_reported
         );
+    }
+
+    #[test]
+    fn transparent_proxy_and_app_update_summaries_strip_secret_fields() {
+        use crate::app_update::{
+            AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot, AppUpdateSummary,
+        };
+        let raw_tp = nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus {
+            supported: true,
+            active: false,
+            mode: Some(
+                nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyMode::Redir,
+            ),
+            revision: Some(nyanpasu_ipc::api::status::RevisionIdInfo {
+                epoch: 2,
+                generation: 5,
+                effective_hash: hostile(),
+            }),
+            error: Some(hostile()),
+        };
+        let safe_tp = TransparentProxyStatusSummary::from(&raw_tp);
+        assert_clean(&safe_tp);
+        assert!(safe_tp.has_error);
+        assert_eq!(safe_tp.revision.unwrap().generation, 5);
+
+        let snapshot = AppUpdateSnapshot {
+            revision: 9,
+            phase: AppUpdatePhase::Failed,
+            release: Some(AppUpdateRelease {
+                version: "2.1.0".into(),
+                date: Some("2026-11-14".into()),
+                body: Some(hostile()),
+            }),
+            downloaded: 512,
+            total: Some(1024),
+            speed: 128.0,
+            source: Some(nyanpasu_config::application::UpdateSource::Github),
+            error: Some(hostile()),
+            last_checked_at: Some("2026-11-14T00:00:00Z".into()),
+            supported: true,
+            endpoints: vec![hostile()],
+        };
+        let safe_update = AppUpdateSummary::from(&snapshot);
+        assert_clean(&safe_update);
+        assert!(safe_update.has_error);
+        assert_eq!(safe_update.phase, AppUpdatePhase::Failed);
+        assert_eq!(
+            safe_update.source,
+            Some(nyanpasu_config::application::UpdateSource::Github)
+        );
+        assert_eq!(safe_update.release.unwrap().version, "2.1.0");
     }
 }

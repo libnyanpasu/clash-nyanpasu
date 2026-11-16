@@ -24,6 +24,7 @@ vi.mock('@nyanpasu/query', async (original) => ({
   ...(await original<typeof import('@nyanpasu/query')>()),
   useSetting: () => ({ value: state.core }),
   useCoreAgentSkills: (core: string) => ({ data: agentSkills[core] }),
+  useCoreAgentSkillsSummary: (core: string) => ({ data: agentSkills[core] }),
 }))
 
 const renderAt = async (path: string) => {

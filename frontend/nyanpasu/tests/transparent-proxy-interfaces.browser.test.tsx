@@ -10,6 +10,7 @@ const backend = vi.hoisted(() => ({
   upsert: vi.fn(),
   invalidate: vi.fn(),
   message: vi.fn(),
+  hasError: false,
 }))
 
 vi.mock('@nyanpasu/query', () => ({
@@ -26,8 +27,8 @@ vi.mock('@nyanpasu/query', () => ({
   }),
   useQueryApi: () => ({
     queries: {
-      getTransparentProxyStatus: () => ({
-        queryKey: ['getTransparentProxyStatus'],
+      getTransparentProxyStatusSummary: () => ({
+        queryKey: ['getTransparentProxyStatusSummary'],
         queryFn: () => Promise.resolve(),
       }),
     },
@@ -36,7 +37,7 @@ vi.mock('@nyanpasu/query', () => ({
 }))
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
-    data: { supported: true, active: false, error: null },
+    data: { supported: true, active: false, has_error: backend.hasError },
     isPending: false,
     isError: false,
   }),
@@ -106,4 +107,21 @@ test('keeps the dialog and edited value when saving fails', async ({
   await view.getByRole('button', { name: m.common_apply() }).click()
   await expect.poll(() => backend.message.mock.calls.length).toBe(1)
   await expect.element(input).toHaveValue('wlan0')
+})
+
+test('shows a localized unavailable fallback when transparent proxy status summary reports has_error', async ({
+  onTestFinished,
+}) => {
+  backend.hasError = true
+  onTestFinished(() => {
+    backend.hasError = false
+  })
+  const view = await render(<TransparentProxyConfigSettings />)
+  onTestFinished(() => view.unmount())
+
+  await expect
+    .element(
+      view.getByText(m.settings_clash_transparent_proxy_status_unavailable()),
+    )
+    .toBeVisible()
 })

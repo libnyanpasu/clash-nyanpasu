@@ -6,6 +6,9 @@ use nyanpasu_config::profile::{
     TransformKind,
 };
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_rpc_protocol::types::{
+    RpcFolderMutationOutcome, RpcProfileMutationOutcome, RpcUnitMutationOutcome,
+};
 use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
 
 use crate::{error::Result, registry::RpcState};
@@ -39,7 +42,7 @@ pub async fn enhance_profiles(client: RpcState<'_, NyanpasuClient>) -> Result {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn import_profile(
     client: RpcState<'_, NyanpasuClient>,
@@ -48,7 +51,7 @@ pub async fn import_profile(
     option: Option<RemoteProfileOptionsPatch>,
     transform: Option<TransformKind>,
     folder: Option<FolderId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
+) -> Result<RpcProfileMutationOutcome> {
     let url = snafu::ResultExt::context(
         url::Url::parse(&url),
         InvalidSubscriptionUrlSnafu { url: &url },
@@ -58,12 +61,14 @@ pub async fn import_profile(
     // MutationOutcome so a degraded post-import rebuild still carries the uid.
     Ok(client
         .import_profile(url, name, option, transform, folder)
-        .await?)
+        .await?
+        .into())
 }
 
 /// create a new profile
 #[nyanpasu_macro::rpc(local,
     http,
+    privacy,
     operation = nyanpasu_rpc_protocol::operations::CreateProfile,
     optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
@@ -71,70 +76,71 @@ pub async fn create_profile(
     client: RpcState<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<ProfileId>> {
+) -> Result<RpcProfileMutationOutcome> {
     // Must return the created ProfileId; never drop it on the wire.
-    Ok(client.create_profile(request, file_data).await?)
+    Ok(client.create_profile(request, file_data).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn reorder_profile(
     client: RpcState<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.reorder_profile(active_id, over_id).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.reorder_profile(active_id, over_id).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn reorder_profiles_by_list(
     client: RpcState<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.reorder_profiles_by_list(list).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.reorder_profiles_by_list(list).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn set_profile_layout(
     client: RpcState<'_, NyanpasuClient>,
     layout: ProfileLayout,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_layout(layout).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_profile_layout(layout).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn set_proxy_group_layout(
     client: RpcState<'_, NyanpasuClient>,
     profile: ProfileId,
     layout: ProxyGroupLayout,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_proxy_group_layout(profile, layout).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_proxy_group_layout(profile, layout).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn create_proxy_group_folder(
     client: RpcState<'_, NyanpasuClient>,
     profile: ProfileId,
     name: String,
     members: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
+) -> Result<RpcFolderMutationOutcome> {
     Ok(client
         .create_proxy_group_folder(profile, name, members)
-        .await?)
+        .await?
+        .into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn create_profile_folder(
     client: RpcState<'_, NyanpasuClient>,
     name: String,
     members: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
-    Ok(client.create_profile_folder(name, members).await?)
+) -> Result<RpcFolderMutationOutcome> {
+    Ok(client.create_profile_folder(name, members).await?.into())
 }
 
 // Run logs and errors carry the failing request's URL, which can hold a subscription token.
@@ -191,83 +197,90 @@ pub async fn get_profile_sync_logs(
     Ok(client.profile_sync_logs(uid, run, after).await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn update_profile(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.refresh_profile(uid, option).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.refresh_profile(uid, option).await?.into())
 }
 
 #[nyanpasu_macro::rpc(local,
     http,
+    privacy,
     operation = nyanpasu_rpc_protocol::operations::DeleteProfile,
     optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn delete_profile(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.delete_profile(uid).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.delete_profile(uid).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn activate_profile(
     client: RpcState<'_, NyanpasuClient>,
     uid: Option<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.activate_profile(uid).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.activate_profile(uid).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn set_global_transforms(
     client: RpcState<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_global_transforms(ids).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_global_transforms(ids).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn set_profile_valid_fields(
     client: RpcState<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_profile_valid_fields(fields).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_profile_valid_fields(fields).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(presentation), scope = profile)]
 #[specta::specta]
 pub async fn patch_profile_metadata(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_profile_metadata(uid, patch).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.patch_profile_metadata(uid, patch).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn patch_remote_profile_options(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.patch_remote_profile_options(uid, patch).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client
+        .patch_remote_profile_options(uid, patch)
+        .await?
+        .into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn replace_profile_definition(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.replace_profile_definition(uid, definition).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client
+        .replace_profile_definition(uid, definition)
+        .await?
+        .into())
 }
 
 #[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::ReadProfileFile, query, scope = sensitive_read)]
@@ -279,12 +292,12 @@ pub async fn read_profile_file(
     Ok(client.read_profile_file(uid).await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
+#[nyanpasu_macro::rpc(http, privacy, optional_capabilities(elevation, os_integration, presentation), scope = profile)]
 #[specta::specta]
 pub async fn save_profile_file(
     client: RpcState<'_, NyanpasuClient>,
     uid: ProfileId,
     file_data: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.save_profile_file(uid, file_data).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.save_profile_file(uid, file_data).await?.into())
 }

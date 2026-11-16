@@ -575,5 +575,41 @@
         "domain_error": "unavailable"
       }
     ]
+  },
+  "rpc_describe": {
+    "request": null,
+    "successes": [
+      {
+        "protocol": 1,
+        "server": {
+          "kind": "headless",
+          "version": "2.0.0"
+        },
+        "transport": "local",
+        "principal": {
+          "kind": "local_socket",
+          "user": "1000"
+        },
+        "scopes": ["read"],
+        "commands": [
+          {
+            "name": "rpc_describe",
+            "effect": "query",
+            "scope": "read",
+            "allowed": true
+          }
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "kind": "invalid_params",
+        "message": "expected an empty input object",
+        "code": null,
+        "retryable": null,
+        "operation_id": null,
+        "domain_error": null
+      }
+    ]
   }
 }

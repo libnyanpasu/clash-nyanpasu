@@ -7,8 +7,8 @@ import type {
   ClashSettingsPatch_Deserialize,
   ClashSystemPatch_Deserialize,
   IpcError,
-  MutationOutcome,
   NyanpasuAppConfig_Serialize,
+  RpcUnitMutationOutcome_Serialize,
   SystemSettingsPatch_Deserialize,
 } from '@nyanpasu/rpc/types'
 import {
@@ -33,7 +33,7 @@ type ConfigMutation<TPatch> = {
   mutationFn?: (
     input: [TPatch],
     context: never,
-  ) => Promise<Result<MutationOutcome<null>, IpcError>>
+  ) => Promise<Result<RpcUnitMutationOutcome_Serialize, IpcError>>
 }
 
 type QueryApi = ReturnType<typeof useQueryApi>

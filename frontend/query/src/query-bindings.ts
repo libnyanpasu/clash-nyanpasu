@@ -6,6 +6,11 @@ export function createQueryBindings(rpc: RpcClient) {
   const commands = rpc
 
   const queries = {
+    rpcDescribe: (...args: Parameters<typeof commands.rpcDescribe>) =>
+      queryOptions({
+        queryKey: ['rpcDescribe', ...args],
+        queryFn: () => commands.rpcDescribe(...args),
+      }),
     getHttpServerStatus: (
       ...args: Parameters<typeof commands.getHttpServerStatus>
     ) =>
@@ -198,6 +203,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['inspectUpdater', ...args],
         queryFn: () => commands.inspectUpdater(...args),
+      }),
+    inspectUpdaterSummary: (
+      ...args: Parameters<typeof commands.inspectUpdaterSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['inspectUpdaterSummary', ...args],
+        queryFn: () => commands.inspectUpdaterSummary(...args),
       }),
     getCoreVersion: (...args: Parameters<typeof commands.getCoreVersion>) =>
       queryOptions({
@@ -402,6 +414,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getCoreAgentSkills', ...args],
         queryFn: () => commands.getCoreAgentSkills(...args),
       }),
+    getCoreAgentSkillsSummary: (
+      ...args: Parameters<typeof commands.getCoreAgentSkillsSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreAgentSkillsSummary', ...args],
+        queryFn: () => commands.getCoreAgentSkillsSummary(...args),
+      }),
     getClashWsSnapshot: (
       ...args: Parameters<typeof commands.getClashWsSnapshot>
     ) =>
@@ -458,6 +477,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getAppUpdateState', ...args],
         queryFn: () => commands.getAppUpdateState(...args),
       }),
+    getAppUpdateSummary: (
+      ...args: Parameters<typeof commands.getAppUpdateSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getAppUpdateSummary', ...args],
+        queryFn: () => commands.getAppUpdateSummary(...args),
+      }),
     getAppUpdateChangelog: (
       ...args: Parameters<typeof commands.getAppUpdateChangelog>
     ) =>
@@ -485,6 +511,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getTransparentProxyStatus', ...args],
         queryFn: () => commands.getTransparentProxyStatus(...args),
+      }),
+    getTransparentProxyStatusSummary: (
+      ...args: Parameters<typeof commands.getTransparentProxyStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getTransparentProxyStatusSummary', ...args],
+        queryFn: () => commands.getTransparentProxyStatusSummary(...args),
       }),
   }
   const mutations = {

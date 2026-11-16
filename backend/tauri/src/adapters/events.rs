@@ -6,7 +6,7 @@ use specta::Type;
 use tauri_specta::Event;
 
 use nyanpasu_runtime_values::{
-    app_update::AppUpdateSnapshot,
+    app_update::{AppUpdateSnapshot, AppUpdateSummary},
     core_status::{CoreStatusInfo, ServiceHostStatus},
     observation::{CoreStatusSummary, ServiceStatusSummary},
     storage::StorageRevision,
@@ -20,6 +20,10 @@ pub struct StateChangedEvent(pub StateChanged);
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 #[serde(transparent)]
 pub struct AppUpdateStateChanged(pub AppUpdateSnapshot);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(transparent)]
+pub struct AppUpdateSummaryChanged(pub AppUpdateSummary);
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct CoreStatusChangedEvent(pub CoreStatusInfo);

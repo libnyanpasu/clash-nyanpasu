@@ -212,6 +212,7 @@ fn browser_debug_page_and_real_rpc() {
             paths,
             events: events.clone(),
         },
+        nyanpasu_rpc_protocol::ServerInfo::desktop("0.0.0-test"),
         crate::setup::DESKTOP_RPC_CAPABILITIES,
     )
     .unwrap();

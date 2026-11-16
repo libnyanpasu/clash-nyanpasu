@@ -126,23 +126,23 @@ pub async fn mutate_proxies(
     Ok(client.refresh_proxies().await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = proxy)]
+#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), privacy, scope = proxy)]
 #[specta::specta]
 pub async fn select_proxy(
     client: RpcState<'_, NyanpasuClient>,
     group: String,
     name: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.select_proxy(group, name).await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome> {
+    Ok(client.select_proxy(group, name).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = proxy)]
+#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), privacy, scope = proxy)]
 #[specta::specta]
 pub async fn clear_proxy_fixed(
     client: RpcState<'_, NyanpasuClient>,
     group: String,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.clear_proxy_fixed(group).await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome> {
+    Ok(client.clear_proxy_fixed(group).await?.into())
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation), scope = profile)]

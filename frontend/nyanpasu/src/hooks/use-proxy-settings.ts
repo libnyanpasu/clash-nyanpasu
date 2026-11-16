@@ -61,7 +61,7 @@ export const useTransparentProxy = () => {
   const config = clash.query.data
   const mode = config?.transparent_proxy?.mode ?? 'disabled'
   const isActive = mode !== 'disabled'
-  const statusOptions = api.queries.getTransparentProxyStatus()
+  const statusOptions = api.queries.getTransparentProxyStatusSummary()
   const status = useQuery({
     ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
     enabled: visible && Boolean(serviceMode.value),

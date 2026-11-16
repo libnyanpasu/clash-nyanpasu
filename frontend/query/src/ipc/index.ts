@@ -30,6 +30,7 @@ export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-core-agent-skills'
+export * from './use-core-agent-skills-summary'
 export * from './use-app-update'
 export * from './use-app-update-changelog'
 export * from './use-system-accent-color'
@@ -46,6 +47,8 @@ export {
   MutationUnconfirmedError,
   invokeMutation,
   invokeQuery,
+  isNonRetryableRpcFailure,
+  shouldRetryRpcQuery,
   unwrapQueryOptions,
 } from './query-options'
 export type {

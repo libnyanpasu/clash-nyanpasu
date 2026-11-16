@@ -242,8 +242,8 @@ importers:
         specifier: 8.5.33
         version: 8.5.33
       postcss-html:
-        specifier: 2.0.0
-        version: 2.0.0(postcss@8.5.33)
+        specifier: 2.0.1
+        version: 2.0.1(postcss@8.5.33)
       prettier:
         specifier: 3.10.1
         version: 3.10.1
@@ -267,7 +267,7 @@ importers:
         version: 18.0.0
       stylelint-config-html:
         specifier: 2.0.0
-        version: 2.0.0(postcss-html@2.0.0(postcss@8.5.33))(stylelint@18.0.0)
+        version: 2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.0.0)
       stylelint-config-recess-order:
         specifier: 7.10.0
         version: 7.10.0(stylelint-order@8.1.3(stylelint@18.0.0))(stylelint@18.0.0)
@@ -5996,17 +5996,11 @@ packages:
   points-on-path@0.2.1:
     resolution: {integrity: sha512-25ClnWWuw7JbWZcgqY/gJ4FQWadKxGWk+3kR/7kD0tCaDtPPMj7oHu2ToLaVhfpnHrZzYby2w6tUA0eOIuUg8g==}
 
-  postcss-html@2.0.0:
-    resolution: {integrity: sha512-f2Rvw5FCollEfVj3wfN7JdQb7n2rNIthW+epw2EByio7M6P7RH0BTj8a/ODHrUXd0cmO7ychb6YniymV93182Q==}
+  postcss-html@2.0.1:
+    resolution: {integrity: sha512-FqutI3u6D7j28ZgviEFjGCbId174THaVxFAMe/yd6Y/+BSQidYYh2nRCxFk8btwEV64f3TvfNz7ureGnkzqtmA==}
     engines: {node: ^22.12 || >=24}
     peerDependencies:
       postcss: ^8.5.0
-
-  postcss-safe-parser@7.0.1:
-    resolution: {integrity: sha512-0AioNCJZ2DPYz5ABT6bddIqlhgwhpHZ/l65YAYo0BCIn0xiDpsnTHz0gnoTGk0OXZW0JRs+cDwL8u/teRdz+8A==}
-    engines: {node: '>=18.0'}
-    peerDependencies:
-      postcss: ^8.4.31
 
   postcss-safe-parser@7.1.0:
     resolution: {integrity: sha512-1WzZxRLaAFwEh6Do+zyGpjWV3nGJNxxhuh7Ubu/q1ICImMgZJnLwhoaEpRbG4pJppp2Y1ncL9ffA2f+LhrefQg==}
@@ -12489,16 +12483,12 @@ snapshots:
       path-data-parser: 0.1.0
       points-on-curve: 0.2.0
 
-  postcss-html@2.0.0(postcss@8.5.33):
+  postcss-html@2.0.1(postcss@8.5.33):
     dependencies:
       htmlparser2: 9.1.0
       js-tokens: 9.0.1
       postcss: 8.5.33
-      postcss-safe-parser: 7.0.1(postcss@8.5.33)
-
-  postcss-safe-parser@7.0.1(postcss@8.5.33):
-    dependencies:
-      postcss: 8.5.33
+      postcss-safe-parser: 7.1.0(postcss@8.5.33)
 
   postcss-safe-parser@7.1.0(postcss@8.5.33):
     dependencies:
@@ -13062,9 +13052,9 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@2.0.0(postcss-html@2.0.0(postcss@8.5.33))(stylelint@18.0.0):
+  stylelint-config-html@2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.0.0):
     dependencies:
-      postcss-html: 2.0.0(postcss@8.5.33)
+      postcss-html: 2.0.1(postcss@8.5.33)
       stylelint: 18.0.0
 
   stylelint-config-recess-order@7.10.0(stylelint-order@8.1.3(stylelint@18.0.0))(stylelint@18.0.0):

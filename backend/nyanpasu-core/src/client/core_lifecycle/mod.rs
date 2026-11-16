@@ -6,30 +6,20 @@ mod workflow;
 #[cfg(test)]
 use crate::actor_v2::HandoffReport;
 use crate::actor_v2::facade::{ReconcileReport, StopReport};
-#[cfg(test)]
-use nyanpasu_runtime_values::execution_host::ExecutionHost;
-use nyanpasu_updater::PreparedCoreBinary;
 use std::time::Duration;
 pub(crate) use workflow::Ownership;
 pub(in crate::client) use workflow::{
-    CoreLifecycleWorkflow, RuntimeSubmission, ServiceRecovery, effective_host,
+    CoreLifecycleWorkflow, RestartIntent, RuntimeSubmission, ServiceRecovery, effective_host,
 };
 
 pub(in crate::client) const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 
-pub(in crate::client) enum Command {
-    Reconcile,
-    /// Test seam: user-initiated host changes go through the enable_service_mode mutation.
-    #[cfg(test)]
-    ChangeHost(ExecutionHost),
-    ReplaceCoreBinary(PreparedCoreBinary),
-    StopCore,
-    InstallService,
-    StartService,
-    StopService,
-    RestartService,
-    UninstallService,
-    RecoverServiceEndpoint,
+pub(in crate::client) enum ServiceOperation {
+    Install,
+    Start,
+    Stop,
+    Restart,
+    Uninstall,
 }
 
 pub(in crate::client) enum Output {
@@ -39,10 +29,6 @@ pub(in crate::client) enum Output {
     #[cfg(test)]
     Handoff(HandoffReport),
     Stop(StopReport),
-    /// The binary was installed, and the restart it owed was left to the
-    /// open reestablish target: no host is proven to own the runtime
-    /// (T10 §1.7 #7). Never leaves the workflow.
-    RestartWithheld,
-    /// StartupReconcile's report (T10 §1.6).
+    /// The cached result of the first startup round.
     Startup(Box<super::application_workflow::startup::StartupReport>),
 }

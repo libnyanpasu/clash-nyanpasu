@@ -177,6 +177,7 @@ impl RuntimeSnapshotStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
@@ -231,6 +232,31 @@ impl RuntimeSnapshotStore {
     pub(in crate::client) fn accept_transition(&self) {
         self.0.send_modify(|state| {
             state.transition = false;
+        });
+    }
+
+    /// Refreshes a verified application's process identity and availability, retaining its inspection.
+    pub(in crate::client) fn reconfirm_observed_apply(
+        &self,
+        generation: u64,
+        instance_id: Option<String>,
+    ) {
+        self.0.send_if_modified(|state| {
+            let changed = state.confirmed.as_ref().is_some_and(|c| {
+                c.receipt.binding.generation != generation || c.receipt.instance_id != instance_id
+            }) || state.transition
+                || state
+                    .confirmed
+                    .as_ref()
+                    .is_some_and(|record| !record.available);
+            if let Some(confirmed) = &mut state.confirmed {
+                confirmed.available = true;
+                let receipt = Arc::make_mut(&mut confirmed.receipt);
+                receipt.binding.generation = generation;
+                receipt.instance_id = instance_id;
+            }
+            state.transition = false;
+            changed
         });
     }
 
@@ -649,12 +675,29 @@ pub(crate) mod tests {
         assert_eq!(first.revision.get(), 1);
     }
 
+    #[test]
+    fn reconfirmation_rebinds_the_receipt_to_the_observed_connection() {
+        let store = RuntimeSnapshotStore::default();
+        store.confirm_applied(Arc::new(receipt(1)));
+        store.begin_transition();
+        store.reconfirm_observed_apply(42, Some("observed-process".into()));
+        let confirmed = store.confirmed().unwrap();
+        assert_eq!(confirmed.receipt.binding.generation, 42);
+        assert_eq!(
+            confirmed.receipt.instance_id.as_deref(),
+            Some("observed-process")
+        );
+        assert!(confirmed.available);
+        assert!(store.accepted_binding().is_some());
+        assert!(matches!(confirmed.inspection, InspectionState::Unavailable));
+    }
+
     pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
+            instance_id: None,
             revision: RuntimeRevision(revision),
             target_core: ClashCore::default(),
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
-            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
                 .resolve_candidate(&crate::client::test_support::test_clash_config())

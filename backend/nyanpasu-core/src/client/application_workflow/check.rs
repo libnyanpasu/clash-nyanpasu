@@ -58,14 +58,8 @@ impl CandidateCheck {
             validator,
             workflow,
         } = args;
-        let preparation = RuntimePreparation::new(
-            application.clone(),
-            clash.clone(),
-            profile_content,
-            builder,
-            ports,
-        )
-        .with_revisions(revisions);
+        let preparation =
+            RuntimePreparation::new(profile_content, builder, ports).with_revisions(revisions);
         Self {
             application,
             clash,

@@ -23,6 +23,7 @@ impl ProfileContentSource for FrozenProfileContent {
     }
 }
 
+#[derive(Clone)]
 pub struct RuntimeInputs {
     pub app: NyanpasuAppConfig,
     pub clash: ClashConfig,

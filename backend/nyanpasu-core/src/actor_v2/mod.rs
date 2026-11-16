@@ -1298,6 +1298,10 @@ impl CoreObserver {
     pub fn status(&self) -> CoreStatusProjection {
         self.status.borrow().clone()
     }
+    /// Subscribes to the latest status, including repeated endpoint observations.
+    pub fn subscribe(&self) -> watch::Receiver<CoreStatusProjection> {
+        self.status.clone()
+    }
     pub fn subscribe_events(&self) -> broadcast::Receiver<CoreStatusProjection> {
         self.events.subscribe()
     }

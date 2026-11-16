@@ -4,7 +4,6 @@ use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
 };
 use nyanpasu_core_manager::{CoreSpec, LocalIpcPolicy, LocalIpcSettings};
-use nyanpasu_state_engine::StateSnapshot;
 use snafu::ResultExt;
 
 use super::{
@@ -25,8 +24,6 @@ use nyanpasu_runtime_values::{
 /// state handles, never a domain client: build capture must not write the source
 /// domains it reads.
 pub(super) struct RuntimePreparation {
-    application: StateSnapshot<NyanpasuAppConfig>,
-    clash: StateSnapshot<ClashConfig>,
     profile_content: crate::state::mutation::ProfileContentReader,
     builder: Arc<dyn RuntimeBuildPort>,
     ports: Arc<SessionPortResolver>,
@@ -35,15 +32,11 @@ pub(super) struct RuntimePreparation {
 
 impl RuntimePreparation {
     pub fn new(
-        application: StateSnapshot<NyanpasuAppConfig>,
-        clash: StateSnapshot<ClashConfig>,
         profile_content: crate::state::mutation::ProfileContentReader,
         builder: Arc<dyn RuntimeBuildPort>,
         ports: Arc<SessionPortResolver>,
     ) -> Self {
         Self {
-            application,
-            clash,
             profile_content,
             builder,
             ports,
@@ -168,30 +161,10 @@ impl RuntimePreparation {
             target,
         })
     }
-
-    #[cfg(test)]
-    pub async fn prepare_committed(
-        &self,
-        profiles: Arc<Profiles>,
-        clash: ClashConfig,
-    ) -> Result<PreparedRuntime, RuntimeError> {
-        let app = self.application.load().state.clone();
-        self.prepare(profiles, clash, app).await
-    }
 }
 
 #[async_trait::async_trait]
 impl RuntimePreparationPort for RuntimePreparation {
-    async fn prepare_latest(&self) -> Result<PreparedRuntime, RuntimeError> {
-        let (_, inputs) = self
-            .capture_committed_inputs(
-                self.application.load().state.clone(),
-                self.clash.load().state.clone(),
-            )
-            .await;
-        self.prepare_inputs(inputs).await
-    }
-
     async fn publish(
         &self,
         snapshot: &runtime::RuntimeSnapshot,

@@ -517,9 +517,12 @@ mod tests {
         #[cfg(windows)]
         {
             let expected = canonical_sddl(&format!("D:P(A;;FA;;;{})", current_user_sid().unwrap()));
-            assert_eq!(file_sddl(&store.path("a")), expected);
+            // Windows can report the auto-inherited flag even for a protected DACL.
+            // It does not change the ACEs, which must still match exactly.
+            let comparable = |sddl: String| sddl.replacen("D:PAI(", "D:P(", 1);
+            assert_eq!(comparable(file_sddl(&store.path("a"))), expected);
             assert_eq!(
-                file_sddl(&directory.path().join("tokens")),
+                comparable(file_sddl(&directory.path().join("tokens"))),
                 expected,
                 "the token directory must not inherit broader grants"
             );

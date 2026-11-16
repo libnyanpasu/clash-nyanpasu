@@ -363,6 +363,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getCoreStatus', ...args],
         queryFn: () => commands.getCoreStatus(...args),
       }),
+    getNetworkAutomationStatus: (
+      ...args: Parameters<typeof commands.getNetworkAutomationStatus>
+    ) =>
+      queryOptions({
+        queryKey: ['getNetworkAutomationStatus', ...args],
+        queryFn: () => commands.getNetworkAutomationStatus(...args),
+      }),
     urlDelayTest: (...args: Parameters<typeof commands.urlDelayTest>) =>
       queryOptions({
         queryKey: ['urlDelayTest', ...args],
@@ -721,6 +728,16 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['patchClashSystemConfig'],
       mutationFn: (input: Parameters<typeof commands.patchClashSystemConfig>) =>
         commands.patchClashSystemConfig(...input),
+    }),
+    applyNetworkAutomation: mutationOptions({
+      mutationKey: ['applyNetworkAutomation'],
+      mutationFn: (input: Parameters<typeof commands.applyNetworkAutomation>) =>
+        commands.applyNetworkAutomation(...input),
+    }),
+    requestWifiNameAccess: mutationOptions({
+      mutationKey: ['requestWifiNameAccess'],
+      mutationFn: (input: Parameters<typeof commands.requestWifiNameAccess>) =>
+        commands.requestWifiNameAccess(...input),
     }),
     patchRuntimeOverrides: mutationOptions({
       mutationKey: ['patchRuntimeOverrides'],

@@ -167,13 +167,7 @@ test('server composition retains refusal, concrete effects and all server musl t
     new URL('backend/nyanpasu-server/src/compose/tests.rs', root),
     'utf8',
   )
-  for (const suffix of [
-    'config_on',
-    'config_off',
-    'retry',
-    'compensation',
-    'copy_fallback',
-  ]) {
+  for (const suffix of ['config_on', 'config_off', 'retry', 'copy_fallback']) {
     assert.ok(
       tests.includes(
         `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_${suffix}`,

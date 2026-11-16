@@ -12,8 +12,8 @@ use nyanpasu_config::{
 use nyanpasu_core_metadata::CoreErrorKind;
 use nyanpasu_runtime_values::{
     app_update::{AppUpdateSnapshot, AppUpdateSummary},
-    check::EvidenceGap,
     execution_host::ExecutionHost,
+    network_automation::{NetworkAutomationStatus, NetworkAutomationSummary},
     ports::PortField,
     runtime::{CommitReceipt, DegradationPhase, InterruptFailure, MutationOutcome},
 };
@@ -102,29 +102,14 @@ pub enum PublicCommitAbortedKind {
     RecoverAfterWriteFailure,
     RuntimeRefused,
     RuntimeFailed,
-    ValidateState,
-}
-
-/// Public summary of what became of the runtime after an aborted commit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum PublicRuntimeAftermathKind {
-    Untouched,
-    RolledBack,
-    RollbackFailed,
-    Unknown,
 }
 
 /// Safe public commit-aborted decision metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct PublicCommitAborted {
     pub kind: PublicCommitAbortedKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime: Option<PublicRuntimeAftermathKind>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runtime_causes: Vec<PublicRuntimeError>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub aftermath_cause: Option<Box<PublicRuntimeError>>,
 }
 
 /// Safe public transparent proxy mode discriminant.
@@ -222,9 +207,6 @@ pub enum PublicInstallCoreBinaryKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PublicRuntimeCheckUnavailableKind {
-    NoEndpoint,
-    HostUnsupported { host: ExecutionHost },
-    CandidateUnavailable,
     Backend { core_kind: Option<CoreErrorKind> },
 }
 
@@ -233,10 +215,7 @@ pub enum PublicRuntimeCheckUnavailableKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PublicRuntimeError {
     ShuttingDown,
-    Isolated,
     OwnerUnresponsive,
-    OwnerUnavailable,
-    SourceSettled,
     ApplyRuntime {
         core_kind: Option<CoreErrorKind>,
     },
@@ -275,8 +254,7 @@ pub enum PublicRuntimeError {
         core_kind: Option<CoreErrorKind>,
     },
     ServiceHostsCore,
-    CoreNotStarted,
-    RecoveryUnresolved,
+    ConfigurationNotInEffect,
     BuildRuntime {
         source: PublicRuntimeBuildKind,
     },
@@ -294,9 +272,6 @@ pub enum PublicRuntimeError {
     ReadCoreVersion {
         core: ClashCore,
     },
-    UnsettledBaseline {
-        gap: EvidenceGap,
-    },
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
     },
@@ -304,10 +279,6 @@ pub enum PublicRuntimeError {
         reason: PublicRuntimeCheckUnavailableKind,
     },
     CoreRolledBack,
-    HandoffOwnerMismatch,
-    HandoffNotRestored,
-    RestoreFailed,
-    CommittedAfterRefusal,
     NoRuntimeConfig,
     SerializeRuntimeConfig,
     ConvertRuntimeConfig,
@@ -349,6 +320,9 @@ pub enum PublicConfigError {
     InvalidRemoteAccess {
         reason: PublicRemoteAccessErrorKind,
     },
+    /// A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
+    /// a caller without `SensitiveRead` learns only that the policy was invalid.
+    InvalidNetworkAutomation,
     ValidateHotkeyCapability,
     ValidateHotkeys {
         reason: PublicHotkeyErrorKind,
@@ -477,36 +451,18 @@ pub struct PublicDegradation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum PublicDegradationReason {
-    RuntimeRecoveryRequired {
-        operation_id: Option<String>,
-        cause: Option<PublicRuntimeError>,
-    },
-    RuntimeDeferred {
-        cause: PublicRuntimeError,
-    },
-    RuntimeProductPublishFailed {
-        cause: PublicRuntimeError,
-    },
-    ServiceStopFailed {
-        cause: PublicRuntimeError,
-    },
-    ModeInterruptionFailed {
-        cause: InterruptFailure,
-    },
-    ProfileInterruptionFailed {
-        cause: InterruptFailure,
-    },
-    ProxyInterruptionFailed {
-        cause: InterruptFailure,
-    },
+    RuntimeDeferred { cause: PublicRuntimeError },
+    RuntimeProductPublishFailed { cause: PublicRuntimeError },
+    ServiceStopFailed { cause: PublicRuntimeError },
+    ModeInterruptionFailed { cause: InterruptFailure },
+    ProfileInterruptionFailed { cause: InterruptFailure },
+    ProxyInterruptionFailed { cause: InterruptFailure },
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
     MaterializationDeferred,
     CleanupDeferred,
-    ProfileAutoActivationFailed {
-        cause: PublicProfilesError,
-    },
+    ProfileAutoActivationFailed { cause: PublicProfilesError },
     HttpServerUnavailable,
     LocalSocketUnavailable,
 }
@@ -627,5 +583,23 @@ pub enum RpcAppUpdateOutcome {
 impl From<AppUpdateSnapshot> for RpcAppUpdateOutcome {
     fn from(snapshot: AppUpdateSnapshot) -> Self {
         Self::Full(snapshot)
+    }
+}
+
+/// Canonical command reply union for the network automation commands.
+///
+/// Callers holding `Scope::SensitiveRead` receive [`NetworkAutomationStatus`], which holds the
+/// live Wi-Fi name and gateway MAC address; all other callers receive
+/// [`NetworkAutomationSummary`].
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(untagged)]
+pub enum RpcNetworkAutomationStatus {
+    Full(NetworkAutomationStatus),
+    Public(NetworkAutomationSummary),
+}
+
+impl From<NetworkAutomationStatus> for RpcNetworkAutomationStatus {
+    fn from(status: NetworkAutomationStatus) -> Self {
+        Self::Full(status)
     }
 }

@@ -5,7 +5,7 @@
 //! the subscription pump, projection channels, and revocable API leases.
 //! Lifecycle truth, transactions, compensation and quarantine live only inside
 //! each host's `CoreControl`. Application workflows are serialized above this
-//! router by `ApplicationWorkflowActor`; direct router submissions still obey I-R1.
+//! router by `RuntimeReconcilerActor`; direct router submissions still obey I-R1.
 //!
 //! Invariants:
 //! - **I-R1**: at most one `Connected` endpoint. A handoff moves the slot to
@@ -1297,6 +1297,10 @@ pub struct CoreObserver {
 impl CoreObserver {
     pub fn status(&self) -> CoreStatusProjection {
         self.status.borrow().clone()
+    }
+    /// Subscribes to the latest status, including repeated endpoint observations.
+    pub fn subscribe(&self) -> watch::Receiver<CoreStatusProjection> {
+        self.status.clone()
     }
     pub fn subscribe_events(&self) -> broadcast::Receiver<CoreStatusProjection> {
         self.events.subscribe()

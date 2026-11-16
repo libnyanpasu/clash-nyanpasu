@@ -930,7 +930,7 @@ mod tests {
     };
     use nyanpasu_runtime_values::{
         effects::EffectsError,
-        mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+        mutation::{CommitAborted, WriteConfigSnafu},
         runtime_error::RuntimeError,
     };
 
@@ -982,8 +982,11 @@ mod tests {
             })
         );
         assert_eq!(
-            serde_json::to_value(IpcError::from(RuntimeError::Isolated)).unwrap()["kind"],
-            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+            serde_json::to_value(IpcError::from(RuntimeError::ConfigurationNotInEffect {
+                reason: "waiting for a stable runtime".into()
+            }))
+            .unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "configuration_not_in_effect", "reason": "waiting for a stable runtime" } })
         );
     }
 
@@ -1144,16 +1147,10 @@ mod tests {
     }
 
     #[test]
-    fn an_aborted_commit_names_what_became_of_the_runtime() {
+    fn an_aborted_commit_names_the_write_failure() {
         let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
-        let aborted = WriteConfigSnafu {
-            runtime: RuntimeAftermath::RollbackFailed {
-                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
-                    operation_id: "op1".into(),
-                }),
-            },
-        }
-        .into_error(Box::new(cause) as nyanpasu_contracts::BoxedCause);
+        let aborted =
+            WriteConfigSnafu.into_error(Box::new(cause) as nyanpasu_contracts::BoxedCause);
         assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
 
         let wire = wire(ProfilesError::Commit {
@@ -1170,10 +1167,6 @@ mod tests {
                 "path": "r1.yaml",
                 "source": {
                     "kind": "write_config",
-                    "runtime": {
-                        "kind": "rollback_failed",
-                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
-                    },
                 },
             })
         );
@@ -1337,7 +1330,7 @@ mod tests {
             unavailable.store(true, Ordering::SeqCst);
 
             let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.core = Some(core);
+            patch.enable_service_mode = Some(true);
             let config_error = client.patch_app_config(patch).await.unwrap_err();
             let profile_error = client
                 .activate_profile(Some(uid.clone()))
@@ -1358,7 +1351,7 @@ mod tests {
                 }
                 let commit = &source_error["source"];
                 assert_eq!(commit["kind"], "runtime_refused");
-                assert_eq!(commit["runtime"], serde_json::json!({"kind": "untouched"}));
+                assert!(commit.get("runtime").is_none());
                 assert_eq!(
                     commit["errors"],
                     serde_json::json!([{

@@ -8,10 +8,11 @@ use nyanpasu_runtime_values::publish::{
 };
 
 use std::{
-    fs::OpenOptions,
-    io::Write,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
@@ -36,20 +37,22 @@ impl RuntimeRevision {
     }
 }
 
-#[derive(Default)]
-pub struct RuntimeRevisionAllocator(u64);
+#[derive(Clone, Default)]
+pub struct RuntimeRevisionAllocator(Arc<AtomicU64>);
 
 impl RuntimeRevisionAllocator {
     pub fn new() -> Self {
-        Self(0)
+        Self::default()
     }
 
-    pub fn allocate(&mut self) -> RuntimeRevision {
-        self.0 = self
+    pub fn allocate(&self) -> RuntimeRevision {
+        let previous = self
             .0
-            .checked_add(1)
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(1)
+            })
             .expect("a session cannot exhaust the u64 runtime revision space");
-        RuntimeRevision(self.0)
+        RuntimeRevision(previous + 1)
     }
 }
 
@@ -174,6 +177,7 @@ impl RuntimeSnapshotStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn generated(&self, snapshot: Arc<RuntimeSnapshot>) {
         self.0.send_modify(|state| state.promoted = Some(snapshot));
     }
@@ -228,6 +232,31 @@ impl RuntimeSnapshotStore {
     pub(in crate::client) fn accept_transition(&self) {
         self.0.send_modify(|state| {
             state.transition = false;
+        });
+    }
+
+    /// Refreshes a verified application's process identity and availability, retaining its inspection.
+    pub(in crate::client) fn reconfirm_observed_apply(
+        &self,
+        generation: u64,
+        instance_id: Option<String>,
+    ) {
+        self.0.send_if_modified(|state| {
+            let changed = state.confirmed.as_ref().is_some_and(|c| {
+                c.receipt.binding.generation != generation || c.receipt.instance_id != instance_id
+            }) || state.transition
+                || state
+                    .confirmed
+                    .as_ref()
+                    .is_some_and(|record| !record.available);
+            if let Some(confirmed) = &mut state.confirmed {
+                confirmed.available = true;
+                let receipt = Arc::make_mut(&mut confirmed.receipt);
+                receipt.binding.generation = generation;
+                receipt.instance_id = instance_id;
+            }
+            state.transition = false;
+            changed
         });
     }
 
@@ -349,51 +378,6 @@ impl RuntimePaths {
         &self.candidate_dir
     }
 
-    pub async fn create_candidate(&self, bytes: &[u8]) -> anyhow::Result<CandidateFile> {
-        let names = (0..16)
-            .map(|_| nanoid::nanoid!(16, &nanoid::alphabet::SAFE))
-            .collect();
-        self.create_candidate_with_names(bytes, names).await
-    }
-
-    async fn create_candidate_with_names(
-        &self,
-        bytes: &[u8],
-        names: Vec<String>,
-    ) -> anyhow::Result<CandidateFile> {
-        prepare_private_dir(&self.candidate_dir).await?;
-        let candidate_dir = self.candidate_dir.clone();
-        let bytes = bytes.to_vec();
-        tokio::task::spawn_blocking(move || {
-            for name in names {
-                let path = candidate_dir.join(format!("candidate-{name}.yaml"));
-                let mut options = OpenOptions::new();
-                options.write(true).create_new(true);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::OpenOptionsExt;
-                    options.mode(0o600);
-                }
-                match options.open(&path) {
-                    Ok(mut file) => {
-                        file.write_all(&bytes)?;
-                        file.sync_all()?;
-                        let bytes_sha256 = Sha256::digest(&bytes).into();
-                        return Ok(CandidateFile {
-                            path,
-                            bytes_sha256,
-                            cleaned: false,
-                        });
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(error) => return Err(error.into()),
-                }
-            }
-            anyhow::bail!("failed to allocate a unique runtime candidate after 16 attempts")
-        })
-        .await?
-    }
-
     pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> Result<usize, Error> {
         prepare_private_dir(&self.candidate_dir).await?;
         let path = self.candidate_dir.clone();
@@ -439,45 +423,6 @@ fn cleanup_candidates(path: &Utf8Path, max_age: Duration) -> Result<usize, Error
         }
     }
     Ok(removed)
-}
-
-#[derive(Debug)]
-pub struct CandidateFile {
-    path: Utf8PathBuf,
-    bytes_sha256: [u8; 32],
-    cleaned: bool,
-}
-
-impl CandidateFile {
-    pub fn path(&self) -> &Utf8Path {
-        &self.path
-    }
-
-    pub fn bytes_sha256(&self) -> [u8; 32] {
-        self.bytes_sha256
-    }
-
-    pub async fn cleanup(mut self) -> anyhow::Result<()> {
-        match tokio::fs::remove_file(&self.path).await {
-            Ok(()) => {
-                self.cleaned = true;
-                Ok(())
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                self.cleaned = true;
-                Ok(())
-            }
-            Err(error) => Err(error.into()),
-        }
-    }
-}
-
-impl Drop for CandidateFile {
-    fn drop(&mut self) {
-        if !self.cleaned {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
 }
 
 #[derive(Debug, Snafu)]
@@ -592,13 +537,28 @@ pub(crate) mod tests {
 
     #[test]
     fn runtime_revision_allocator_is_monotonic() {
-        let mut allocator = RuntimeRevisionAllocator::new();
+        let allocator = RuntimeRevisionAllocator::new();
         let first = allocator.allocate();
         let second = allocator.allocate();
 
         assert_eq!(first.get(), 1);
         assert_eq!(second.get(), 2);
         assert!(second > first);
+    }
+
+    #[test]
+    fn runtime_revision_allocator_clones_share_monotonic_revisions() {
+        let allocator = RuntimeRevisionAllocator::new();
+        let cloned = allocator.clone();
+        let revisions = [
+            allocator.allocate(),
+            cloned.allocate(),
+            allocator.allocate(),
+            cloned.allocate(),
+        ];
+
+        assert_eq!(revisions.map(RuntimeRevision::get), [1, 2, 3, 4]);
+        assert!(revisions.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[tokio::test]
@@ -715,24 +675,29 @@ pub(crate) mod tests {
         assert_eq!(first.revision.get(), 1);
     }
 
+    #[test]
+    fn reconfirmation_rebinds_the_receipt_to_the_observed_connection() {
+        let store = RuntimeSnapshotStore::default();
+        store.confirm_applied(Arc::new(receipt(1)));
+        store.begin_transition();
+        store.reconfirm_observed_apply(42, Some("observed-process".into()));
+        let confirmed = store.confirmed().unwrap();
+        assert_eq!(confirmed.receipt.binding.generation, 42);
+        assert_eq!(
+            confirmed.receipt.instance_id.as_deref(),
+            Some("observed-process")
+        );
+        assert!(confirmed.available);
+        assert!(store.accepted_binding().is_some());
+        assert!(matches!(confirmed.inspection, InspectionState::Unavailable));
+    }
+
     pub(super) fn receipt(revision: u64) -> RuntimeApplyReceipt {
         RuntimeApplyReceipt {
+            instance_id: None,
             revision: RuntimeRevision(revision),
-            config_text: Arc::from("mode: rule\n"),
-            config_digest: nyanpasu_core_manager::payload_digest(b"mode: rule\n"),
             target_core: ClashCore::default(),
-            core_spec: nyanpasu_core_manager::CoreSpec {
-                kind: nyanpasu_core_manager::CoreKind::Mihomo,
-                binary_path: camino::Utf8PathBuf::from("fake-core"),
-                version: None,
-                features: Vec::new(),
-            },
             host: nyanpasu_runtime_values::execution_host::ExecutionHost::Local,
-            run_intent: crate::state::mutation::intent::CoreRunIntent::Running,
-            local_ipc: nyanpasu_core_manager::LocalIpcSettings {
-                policy: nyanpasu_core_manager::LocalIpcPolicy::Disable,
-                keep_http_controller: true,
-            },
             binding: binding(),
             ports: crate::client::ports::SessionPortResolver::default()
                 .resolve_candidate(&crate::client::test_support::test_clash_config())
@@ -790,75 +755,12 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn candidate_is_private_hashed_and_removed_on_drop() {
+    async fn stale_cleanup_removes_candidates() {
         let dir = tempfile::tempdir().unwrap();
         let paths = temp_runtime_paths(&dir);
-        let candidate = paths.create_candidate(b"mode: rule\n").await.unwrap();
-        let path = candidate.path().to_owned();
-        assert_eq!(
-            candidate.bytes_sha256(),
-            <[u8; 32]>::from(Sha256::digest(b"mode: rule\n"))
-        );
-        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"mode: rule\n");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                tokio::fs::metadata(paths.candidate_dir())
-                    .await
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o700
-            );
-            assert_eq!(
-                tokio::fs::metadata(&path)
-                    .await
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o600
-            );
-        }
-        drop(candidate);
-        assert!(!path.exists());
-    }
-
-    #[tokio::test]
-    async fn candidate_collision_retries_with_exclusive_create() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = temp_runtime_paths(&dir);
-        prepare_private_dir(paths.candidate_dir()).await.unwrap();
-        let collision = paths.candidate_dir().join("candidate-collision.yaml");
-        tokio::fs::write(&collision, b"do not replace")
-            .await
-            .unwrap();
-
-        let candidate = paths
-            .create_candidate_with_names(b"new bytes", vec!["collision".into(), "fresh".into()])
-            .await
-            .unwrap();
-        assert_eq!(
-            tokio::fs::read(&collision).await.unwrap(),
-            b"do not replace"
-        );
-        assert_eq!(candidate.path().file_name(), Some("candidate-fresh.yaml"));
-    }
-
-    #[tokio::test]
-    async fn explicit_cleanup_and_stale_cleanup_remove_candidates() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = temp_runtime_paths(&dir);
-        let explicit = paths.create_candidate(b"explicit").await.unwrap();
-        let explicit_path = explicit.path().to_owned();
-        explicit.cleanup().await.unwrap();
-        assert!(!explicit_path.exists());
-
-        let stale = paths.create_candidate(b"stale").await.unwrap();
-        let stale_path = stale.path().to_owned();
-        std::mem::forget(stale);
+        std::fs::create_dir_all(paths.candidate_dir()).unwrap();
+        let stale_path = paths.candidate_dir().join("candidate-stale.yaml");
+        std::fs::write(&stale_path, b"stale").unwrap();
         assert_eq!(
             paths
                 .cleanup_stale_candidates(Duration::ZERO)
@@ -887,8 +789,7 @@ pub(crate) mod tests {
         );
         assert_eq!(evidence.len(), 1);
         assert_eq!(std::fs::read(&evidence[0]).unwrap(), b"original node");
-        let candidate = paths.create_candidate(b"usable").await.unwrap();
-        assert_eq!(std::fs::read(candidate.path()).unwrap(), b"usable");
+        assert!(paths.candidate_dir().is_dir());
     }
 
     #[tokio::test(start_paused = true)]
@@ -978,8 +879,7 @@ pub(crate) mod tests {
             .cleanup_stale_candidates(Duration::ZERO)
             .await
             .unwrap();
-        let candidate = paths.create_candidate(b"usable").await.unwrap();
-        assert_eq!(std::fs::read(candidate.path()).unwrap(), b"usable");
+        assert!(paths.candidate_dir().is_dir());
         let evidence = crate::client::test_support::startup_recovery::evidence(
             paths.candidate_dir().as_std_path(),
         );

@@ -433,7 +433,9 @@ async fn a_stopped_actor_reports_an_unsupported_status() {
 }
 
 async fn config_switches(dir: &TempDir) -> ConfigCaptureSwitches {
-    let (application, _session_state, clash_config) = test_typed_config_clients(dir).await;
+    let (application, _session_state, clash_config) =
+        test_typed_config_clients(dir, crate::state::mutation::MutationCoordinator::isolated())
+            .await;
     let (core, _service) = test_v2_clients().await;
     ConfigCaptureSwitches {
         application,

@@ -68,7 +68,6 @@ const domainError: IpcError = {
       path: 'p1.yaml',
       source: {
         kind: 'runtime_refused',
-        runtime: { kind: 'untouched' },
         errors: [
           {
             kind: 'build_runtime',

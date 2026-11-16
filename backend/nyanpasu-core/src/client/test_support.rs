@@ -9,8 +9,6 @@ pub mod workflow;
 
 #[cfg(test)]
 use super::Result;
-#[cfg(test)]
-use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
     net::{ChangelogHttp, MockDirectEgressProbe, MockIconFetcher, MockNetworkDiagnostics},
@@ -27,17 +25,18 @@ use nyanpasu_config::{
     },
 };
 use nyanpasu_paths::PathResolver;
-#[cfg(test)]
-use struct_patch::Patch as _;
 use tempfile::TempDir;
 
 use super::{
     ClientSetupArgs, NyanpasuClient, RuntimePaths, application::ApplicationClient,
-    application_workflow, clash_config::ClashConfigClient, effects,
-    host_adapters::ClientHostAdapters, hotkey, jobs, logs, session_state::SessionStateClient,
+    clash_config::ClashConfigClient, effects, host_adapters::ClientHostAdapters, hotkey, jobs,
+    logs, reconciler, session_state::SessionStateClient,
 };
 use crate::{
-    actor_v2::test_support::{successful_reconcile, test_v2_clients_with_endpoint},
+    actor_v2::{
+        endpoint::{CheckSubmission, CheckSupport},
+        test_support::{successful_reconcile, test_v2_clients_with_endpoint},
+    },
     client::test_support::workflow::{Installer, NoopSystemDnsCache},
     storage::Storage,
     utils::test_support::test_paths,
@@ -95,7 +94,7 @@ pub struct TestControlEndpoint {
     )>,
     /// Scripts whether the next `Recover` submission fails (R6a): the
     /// death-proof step must abort
-    /// `ApplicationWorkflowClient::replace_binary` before the installer
+    /// `RuntimeReconcilerClient::replace_binary` before the installer
     /// runs when recovery itself cannot prove the core is dead.
     /// Defaults to `false` so existing tests, which never scripted
     /// `Recover` before it became an unconditional step, keep seeing it
@@ -119,6 +118,8 @@ pub struct TestControlEndpoint {
     /// answering looks like to a caller that needs a fresh observation.
     status_fails: std::sync::atomic::AtomicBool,
     status_reads: std::sync::atomic::AtomicUsize,
+    instance_id: StdMutex<String>,
+    reconcile_outcome: StdMutex<nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind>,
 }
 
 /// The three things a host can say about a candidate document.
@@ -127,9 +128,6 @@ pub enum TestCheckAnswer {
     Pass,
     Reject(nyanpasu_core_manager::CoreError),
     Unsupported,
-    /// The host accepts the request and never answers, the shape of a
-    /// wedged binary or a daemon that stopped responding.
-    Hang,
 }
 
 impl TestControlEndpoint {
@@ -159,6 +157,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -178,10 +180,17 @@ impl TestControlEndpoint {
         let report = client.startup_reconcile().await;
         assert_eq!(
             report.outcome,
-            application_workflow::startup::StartupOutcome::Ready,
+            reconciler::startup::StartupOutcome::Ready,
             "fixture boot: {report:?}"
         );
+        #[cfg(test)]
+        client.inner.reconciler.settle_core_changes().await;
         self.fail.store(failed, std::sync::atomic::Ordering::SeqCst);
+        self.reset_tracking();
+    }
+
+    /// Clears observations after a fixture has established its running or stopped intent.
+    pub(crate) fn reset_tracking(&self) {
         self.submissions
             .store(0, std::sync::atomic::Ordering::SeqCst);
         self.checks.lock().unwrap().clear();
@@ -209,6 +218,10 @@ impl TestControlEndpoint {
             rolls_back: std::sync::atomic::AtomicBool::new(false),
             status_fails: std::sync::atomic::AtomicBool::new(false),
             status_reads: std::sync::atomic::AtomicUsize::new(0),
+            instance_id: StdMutex::new(uuid::Uuid::new_v4().to_string()),
+            reconcile_outcome: StdMutex::new(
+                nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started,
+            ),
         })
     }
 
@@ -296,7 +309,31 @@ impl TestControlEndpoint {
         state: Option<nyanpasu_ipc::api::status::CoreStateDetail>,
         applied_kind: Option<nyanpasu_core_manager::CoreKind>,
     ) {
-        *self.status_override.lock().unwrap() = (state, applied_kind);
+        let mut status = self.status_override.lock().unwrap();
+        if matches!(
+            state,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) && !matches!(
+            status.0,
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
+        *status = (state, applied_kind);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_reconcile_outcome(
+        &self,
+        outcome: nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind,
+    ) {
+        *self.reconcile_outcome.lock().unwrap() = outcome;
+    }
+
+    /// Replaces the running process without changing its revision or connection.
+    #[cfg(test)]
+    pub(crate) fn respawn_process(&self) {
+        *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
     }
 
     /// Scripts whether the next `Recover` submission fails (R6a tests).
@@ -352,7 +389,7 @@ impl TestControlEndpoint {
                 error: None,
             };
         }
-        // R6a: `ApplicationWorkflowClient::replace_binary` now submits
+        // `RuntimeReconcilerClient::replace_binary` submits
         // `Recover` unconditionally as the death proof, and the facade
         // rejects any other output for it. Scriptable to fail so a test
         // can prove the replacement aborts before its installer runs when
@@ -392,7 +429,12 @@ impl TestControlEndpoint {
         self.reconciled.lock().unwrap().push(bytes.clone());
         let mut current = self.revision.lock().unwrap();
         if let Some(expected) = &request.expected_applied {
-            let stale = expected.epoch.get() != current.epoch
+            let stopped = matches!(
+                self.status_override.lock().unwrap().0,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { .. })
+            );
+            let stale = stopped
+                || expected.epoch.get() != current.epoch
                 || expected.generation != current.generation
                 || expected.effective_hash != current.effective_hash;
             if stale {
@@ -402,23 +444,40 @@ impl TestControlEndpoint {
                     output: None,
                     error: Some(nyanpasu_ipc::api::core::v2::OperationErrorInfo {
                         kind: Some("revision_conflict".into()),
-                        message: format!(
-                            "revision conflict: expected epoch={} generation={} \
+                        message: if stopped {
+                            "revision conflict: actual revision is absent".to_owned()
+                        } else {
+                            format!(
+                                "revision conflict: expected epoch={} generation={} \
                              effective_hash={}, actual epoch={} generation={} \
                              effective_hash={}",
-                            expected.epoch.get(),
-                            expected.generation,
-                            expected.effective_hash,
-                            current.epoch,
-                            current.generation,
-                            current.effective_hash,
-                        ),
+                                expected.epoch.get(),
+                                expected.generation,
+                                expected.effective_hash,
+                                current.epoch,
+                                current.generation,
+                                current.effective_hash,
+                            )
+                        },
                         retryable: true,
                     }),
                 };
             }
         }
         let rolled_back = self.rolls_back.load(std::sync::atomic::Ordering::SeqCst);
+        let outcome = if rolled_back {
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
+        } else {
+            *self.reconcile_outcome.lock().unwrap()
+        };
+        if matches!(
+            outcome,
+            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Restarted
+                | nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Switched
+        ) {
+            *self.instance_id.lock().unwrap() = uuid::Uuid::new_v4().to_string();
+        }
         if !rolled_back {
             current.generation += 1;
             *self.source_hash.lock().unwrap() = nyanpasu_core_manager::payload_digest(bytes);
@@ -437,11 +496,7 @@ impl TestControlEndpoint {
             output: Some(
                 nyanpasu_ipc::api::core::v2::OperationOutputInfo::Reconciled(
                     nyanpasu_ipc::api::core::v2::ReconcileOutcomeInfo {
-                        outcome: if rolled_back {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::RolledBack
-                        } else {
-                            nyanpasu_ipc::api::core::v2::ReconcileOutcomeKind::Started
-                        },
+                        outcome,
                         revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                             epoch: applied.epoch,
                             generation: applied.generation,
@@ -465,11 +520,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         self.host
     }
 
-    async fn check_config(
-        &self,
-        submission: crate::actor_v2::endpoint::CheckSubmission,
-    ) -> crate::actor_v2::endpoint::CheckSupport {
-        use crate::actor_v2::endpoint::CheckSupport;
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
         let answer = self.check_answer.lock().unwrap().clone();
         self.checks.lock().unwrap().push(submission);
         match answer {
@@ -478,7 +529,6 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
             TestCheckAnswer::Unsupported => CheckSupport::Unsupported {
                 reason: "scripted: this host exposes no config check".into(),
             },
-            TestCheckAnswer::Hang => std::future::pending().await,
         }
     }
 
@@ -536,7 +586,7 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let current = self.revision.lock().unwrap().clone();
         Ok(Some(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
-            instance_id: "test-instance".into(),
+            instance_id: self.instance_id.lock().unwrap().clone(),
             revision: nyanpasu_ipc::api::status::ConfigRevisionInfo {
                 epoch: current.epoch,
                 generation: current.generation,
@@ -564,6 +614,11 @@ impl crate::actor_v2::endpoint::ControlEndpoint for TestControlEndpoint {
         }
         let (state, applied_kind) = self.status_override.lock().unwrap().clone();
         Ok(crate::actor_v2::endpoint::CoreStatusSnapshot {
+            instance_id: matches!(
+                state,
+                Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+            )
+            .then(|| self.instance_id.lock().unwrap().clone()),
             controller: None,
             state,
             state_changed_at: 0,
@@ -610,6 +665,9 @@ impl HostTransitionEndpoint {
 impl crate::actor_v2::endpoint::ControlEndpoint for HostTransitionEndpoint {
     fn host(&self) -> ExecutionHost {
         self.host
+    }
+    async fn check_config(&self, submission: CheckSubmission) -> CheckSupport {
+        self.delegate.check_config(submission).await
     }
     async fn submit(
         &self,
@@ -692,6 +750,7 @@ pub fn write_clash_config(path: impl AsRef<std::path::Path>, config: &ClashConfi
 
 pub(crate) async fn test_typed_config_clients(
     dir: &TempDir,
+    clash_mutations: crate::state::mutation::MutationCoordinator,
 ) -> (ApplicationClient, SessionStateClient, ClashConfigClient) {
     let application = ApplicationClient::new(
         crate::state::mutation::MutationCoordinator::isolated(),
@@ -711,7 +770,7 @@ pub(crate) async fn test_typed_config_clients(
     .expect("session state client should be created");
     seed_test_clash_config(dir.path().join("clash-config.yaml"));
     let clash_config = ClashConfigClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        clash_mutations,
         temp_config_path(dir, "clash-config.yaml"),
         tokio_util::sync::CancellationToken::new(),
         &tokio_util::task::TaskTracker::new(),
@@ -807,9 +866,7 @@ pub(crate) async fn set_service_mode(
     client: &NyanpasuClient,
     enabled: bool,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    let mut patch = NyanpasuAppConfig::new_empty_patch();
-    patch.enable_service_mode = Some(enabled);
-    client.patch_app_config(patch).await
+    client.set_service_mode(enabled).await
 }
 
 pub fn minimal_file_profile_request() -> NewProfileRequest {
@@ -921,7 +978,7 @@ impl ChangelogHttp for UnconfiguredChangelogHttp {
 
 pub fn test_adapters(
     profile_files: Arc<super::host_adapters::ProfileFileFactory>,
-    runtime_build: Arc<dyn super::application_workflow::ports::RuntimeBuildPort>,
+    runtime_build: Arc<dyn super::reconciler::ports::RuntimeBuildPort>,
 ) -> ClientHostAdapters {
     ClientHostAdapters {
         icon_fetcher: Arc::new(MockIconFetcher::new()),
@@ -939,8 +996,8 @@ pub fn test_adapters(
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub fn workflow(client: &NyanpasuClient) -> application_workflow::ApplicationWorkflowClient {
-    client.inner.application_workflow.clone()
+pub fn workflow(client: &NyanpasuClient) -> reconciler::RuntimeReconcilerClient {
+    client.inner.reconciler.clone()
 }
 #[cfg(any(test, feature = "test-support"))]
 pub fn clash_snapshot(client: &NyanpasuClient) -> crate::state::clash_config::ClashConfigSnapshot {
@@ -970,4 +1027,53 @@ pub fn profile_test_adapters(dir: &TempDir) -> ClientHostAdapters {
         profile_files::fixed_profile_file_factory(ports),
         Arc::new(runtime_build),
     )
+}
+
+#[cfg(test)]
+mod revision_precondition_tests {
+    use super::*;
+
+    #[test]
+    fn a_stopped_core_rejects_a_historical_revision_precondition() {
+        use nyanpasu_core_manager::{
+            ConfigInput, CoreCommand, CoreCommandEnvelope, CoreKind, CoreSpec, Epoch,
+            InstanceOptions, OperationId, ReconcileRequest, RevisionId,
+        };
+        let endpoint = TestControlEndpoint::succeeding();
+        endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped {
+                reason: Some("crashed".into()),
+            }),
+            None,
+        );
+        let revision = endpoint.revision.lock().unwrap().clone();
+        let result = endpoint.operation(&crate::actor_v2::endpoint::CoreSubmission {
+            expected_owner: None,
+            core_type: None,
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: CoreSpec {
+                        kind: CoreKind::Mihomo,
+                        binary_path: "mihomo".into(),
+                        version: None,
+                        features: vec![],
+                    },
+                    config: ConfigInput::Inline {
+                        bytes: b"proxies: []".to_vec(),
+                        expected_digest: None,
+                    },
+                    options: InstanceOptions::default(),
+                    expected_applied: Some(RevisionId {
+                        epoch: Epoch::new(revision.epoch).unwrap(),
+                        generation: revision.generation,
+                        effective_hash: revision.effective_hash,
+                    }),
+                })),
+            },
+        });
+        let error = result.error.unwrap();
+        assert_eq!(error.kind.as_deref(), Some("revision_conflict"));
+        assert!(error.message.contains("actual revision is absent"));
+    }
 }

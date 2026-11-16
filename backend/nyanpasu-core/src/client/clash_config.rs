@@ -30,12 +30,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -48,7 +43,7 @@ pub struct ClashConfigClient {
 
 struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<ClashConfig>,
 }
@@ -56,7 +51,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator<ClashConfig>,
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -71,12 +66,19 @@ impl ClashConfigClient {
                 .await
                 .context(LoadStateSnafu { path: &config_path })?
         } else {
-            setup
-                .from_state(ClashConfig::default())
-                .await
-                .context(InitializeStateSnafu { path: &config_path })?
+            setup.from_state(ClashConfig::default())
         };
 
+        Self::from_manager(mutations, manager, shutdown, tasks).await
+    }
+
+    /// Takes ownership of an initialized store before spawning its actor.
+    pub(crate) async fn from_manager(
+        mutations: MutationCoordinator,
+        manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self, Error> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
@@ -100,8 +102,8 @@ impl ClashConfigClient {
         })
     }
 
-    /// The last committed clash config. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// The last committed Clash config. Reads bypass the mailbox, so
+    /// an independent check or a source write cannot delay them.
     pub fn snapshot(&self) -> ClashConfigSnapshot {
         ClashConfigSnapshot::from_versioned(&self.inner.snapshot.load())
     }
@@ -185,6 +187,33 @@ impl ClashConfigClient {
 impl Drop for ClashConfigClientInner {
     fn drop(&mut self) {
         self.actor_ref.stop(None);
+    }
+}
+
+impl super::NyanpasuClient {
+    pub(super) async fn clash_outcome(
+        &self,
+        committed: ClashConfigSnapshot,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(ConfigDomain::Clash, committed.version)
+                    .await,
+            )
+        } else {
+            None
+        };
+        super::reconciler::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "clash".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        )
     }
 }
 

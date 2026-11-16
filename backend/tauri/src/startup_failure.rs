@@ -89,9 +89,7 @@ impl StartupFailure {
             ),
             Error::BuildClient { source } => match source {
                 SetupError::LoadApplication {
-                    source:
-                        nyanpasu_core::client::application::Error::LoadState { path, .. }
-                        | nyanpasu_core::client::application::Error::InitializeState { path, .. },
+                    source: nyanpasu_core::client::application::Error::LoadState { path, .. },
                 } => (
                     FailureKind::UserConfig,
                     Some(path.clone().into_std_path_buf()),

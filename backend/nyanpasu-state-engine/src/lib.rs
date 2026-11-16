@@ -1,22 +1,13 @@
-//! Generic state coordination, persistence and transaction settlement.
+//! Atomic document persistence and versioned read-only snapshots.
 
-pub mod ack;
-pub mod builder;
-pub mod coordinator;
-pub mod decision;
 pub mod error;
 pub mod manager;
 mod snapshot;
-mod transaction;
 mod version;
 
 #[cfg(test)]
 mod tests;
 
-pub use ack::*;
-pub use builder::*;
-pub use coordinator::*;
-pub use decision::{AbortResourceState, DecisionHandle, PersistenceIncident, StateDecision};
 pub use manager::*;
 pub use snapshot::*;
 pub use version::*;
@@ -25,16 +16,6 @@ pub use version::*;
 pub struct VersionedState<T: Clone + Send + Sync + 'static> {
     pub version: Version,
     pub state: T,
-}
-
-#[cfg(test)]
-impl<T> PartialEq<T> for VersionedState<T>
-where
-    T: Clone + Send + Sync + PartialEq + 'static,
-{
-    fn eq(&self, other: &T) -> bool {
-        self.state.eq(other)
-    }
 }
 
 impl<T> core::ops::Deref for VersionedState<T>

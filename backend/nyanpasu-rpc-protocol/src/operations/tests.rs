@@ -36,7 +36,7 @@ fn sample<T: DeserializeOwned>(value: Value) -> T {
 
 fn request<O: RpcOperation>(expected: Value) {
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/contracts/2026-11-12.json"
+        "../../tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     assert_eq!(expected, fixtures[O::NAME]["request"], "{}", O::NAME);
@@ -89,7 +89,7 @@ where
 {
     let expected = serde_json::to_value(&response).unwrap();
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../tests/fixtures/contracts/2026-11-12.json"
+        "../../tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     assert!(
@@ -143,7 +143,7 @@ fn operation_receivers_decode_existing_success_values() {
     receive::<operations::GetConfigurationStatus>(sample(json!({
         "event_seq": 1, "maintenance": null, "active": null, "effects": [], "sources": [],
         "recent_operations": [], "source_versions": {"application": 1, "clash": 2, "session": 3, "profiles": 4},
-        "runtime": {"health": "healthy", "operation_id": null, "attempts": 0, "automatic_remaining": 0, "message": null}
+        "runtime": {"health": "healthy", "operation_id": null, "message": null}
     })));
     receive::<operations::GetCoreStatus>(sample(json!({
         "controller": null, "host": "local", "connectivity": {"kind": "shut_down"},

@@ -144,11 +144,7 @@ APIs for callers that do not exist.
 - Avoid `impl Into<T>` parameters in application code unless several real call sites
   pass different types.
 - Replace a `bool` parameter whose meaning is unclear at the call site with an enum.
-  Opposing conventions such as `automatic: bool`
-  (`nyanpasu-core/src/client/app_update/`) and
-  `explicit: bool` (`nyanpasu-core/src/client/application_workflow/tcc.rs`) for
-  the same idea should share one
-  enum. A clear binary setting, such as `set_service_mode(enabled: bool)` or a
+  A clear binary setting, such as `set_service_mode(enabled: bool)` or a
   serialized `enabled` field, stays a `bool`.
 - Use a newtype when values with the same representation mean different things:
   `ProfileId` and `FolderId`, `EffectRevision`, `Version`. Use a type alias only as a
@@ -412,16 +408,14 @@ behavior verification; do not mix it into feature work.
    `unwrap_or_else(PoisonError::into_inner)` (`budget.rs`, `version.rs`,
    `storage/memory.rs`, `storage/redb.rs`, `storage/redb/disk.rs`). Consider replacing these locks with `parking_lot` and removing
    the recovery.
-5. **Ambiguous booleans.** Replace the opposing `automatic`/`explicit` retry
-   parameters with one shared enum.
-6. **Failure contracts.** Replace production bare `unwrap()` and check-then-unwrap
+5. **Failure contracts.** Replace production bare `unwrap()` and check-then-unwrap
    with pattern matching, `Result`, or an `expect()` that states the invariant.
-7. **Module dependencies.** Qualify non-local free functions and move substantial
+6. **Module dependencies.** Qualify non-local free functions and move substantial
    implementations out of non-leaf modules (`nyanpasu-core/src/client/mod.rs`,
    `use crate::core::*` in `tauri/src/ipc.rs`).
-8. **Logging and errors.** Replace remaining `log` macros with `tracing`, and replace
+7. **Logging and errors.** Replace remaining `log` macros with `tracing`, and replace
    string-bucket error variants with domain variants.
-9. **Documentation.** Document exported cross-crate APIs crate by crate. Only a crate
+8. **Documentation.** Document exported cross-crate APIs crate by crate. Only a crate
    that is clean may opt into `missing_docs`.
 
 A migration change is complete when its area meets the rule, the relevant behavior

@@ -54,12 +54,15 @@ pub(crate) async fn test_client_with_ports(
     system_dns: Arc<dyn SystemDnsCache>,
     os_proxy: Arc<dyn OsProxyPort>,
 ) -> NyanpasuClient {
-    let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+    let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
+    let (application, session_state, clash_config) =
+        test_typed_config_clients(dir, clash_mutations.clone()).await;
     test_client_from_typed_clients(
         dir,
         application,
         session_state,
         clash_config,
+        Some(clash_mutations),
         system_dns,
         Arc::new(MockDirectEgressProbe::new()),
         Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
@@ -73,13 +76,15 @@ pub(crate) async fn test_client_from_typed_clients(
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
+    clash_mutations: Option<crate::state::mutation::MutationCoordinator>,
     system_dns: Arc<dyn SystemDnsCache>,
     direct_egress: Arc<dyn DirectEgressProbe>,
     geo_index: Arc<dyn nyanpasu_observers::geo::CountryIndexSource>,
     os_proxy: Arc<dyn OsProxyPort>,
 ) -> NyanpasuClient {
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
@@ -92,7 +97,7 @@ pub(crate) async fn test_client_from_typed_clients(
     let ports = Arc::new(SessionPortResolver::default());
     let (core_v2, service) = test_v2_clients().await;
     let (backup_paths, storage) = test_backup_deps(&dir);
-    NyanpasuClient::with_parts(
+    let client = NyanpasuClient::with_parts(
         None,
         BundleMetadata {
             is_portable: false,
@@ -117,7 +122,6 @@ pub(crate) async fn test_client_from_typed_clients(
         PathBuf::new(),
         backup_paths,
         Arc::new(storage),
-        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(
                 crate::client::test_support::runtime_build::TestRuntimeBuildPort::from_directory(
@@ -147,7 +151,12 @@ pub(crate) async fn test_client_from_typed_clients(
         tokio_util::task::TaskTracker::new(),
     )
     .await
-    .unwrap()
+    .unwrap();
+    connect_source(&client, profiles_mutations);
+    if let Some(mutations) = clash_mutations {
+        connect_source(&client, mutations);
+    }
+    client
 }
 
 #[cfg(test)]
@@ -155,12 +164,15 @@ pub(crate) async fn test_client_with_direct_egress(
     dir: &TempDir,
     direct_egress: Arc<dyn DirectEgressProbe>,
 ) -> NyanpasuClient {
-    let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+    let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
+    let (application, session_state, clash_config) =
+        test_typed_config_clients(dir, clash_mutations.clone()).await;
     test_client_from_typed_clients(
         dir,
         application,
         session_state,
         clash_config,
+        Some(clash_mutations),
         Arc::new(NoopSystemDnsCache),
         direct_egress,
         Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
@@ -174,12 +186,15 @@ pub async fn test_client_with_profile_ports(
     dir: &TempDir,
     host_adapters: ClientHostAdapters,
 ) -> NyanpasuClient {
-    let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+    let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
+    let (application, session_state, clash_config) =
+        test_typed_config_clients(dir, clash_mutations.clone()).await;
     let paths = test_paths(dir.path(), dir.path().join("data"));
     let ports = Arc::new(SessionPortResolver::default());
     let file_ports = (host_adapters.profile_files)(ports.clone());
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         file_ports.fs.clone(),
         file_ports.fetcher,
@@ -216,7 +231,6 @@ pub async fn test_client_with_profile_ports(
         PathBuf::new(),
         backup_paths,
         Arc::new(storage),
-        RuntimePaths::from_resolver(&paths),
         host_adapters,
         Arc::new(crate::client::event_sink::NoopUiEventSink),
         Arc::new(|_| Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))),
@@ -239,6 +253,8 @@ pub async fn test_client_with_profile_ports(
     )
     .await
     .unwrap();
+    connect_source(&client, profiles_mutations);
+    connect_source(&client, clash_mutations);
     client
 }
 
@@ -289,9 +305,12 @@ pub async fn test_client_with_materialization(
     dir: &TempDir,
     materialization: Arc<dyn ProfileMaterializationPort>,
 ) -> NyanpasuClient {
-    let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+    let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
+    let (application, session_state, clash_config) =
+        test_typed_config_clients(dir, clash_mutations.clone()).await;
+    let profiles_mutations = crate::state::mutation::MutationCoordinator::pending();
     let profiles = profiles::ProfilesClient::new(
-        crate::state::mutation::MutationCoordinator::isolated(),
+        profiles_mutations.clone(),
         temp_config_path(dir, "profiles.yaml"),
         Arc::new(MockProfileFsPort::new()),
         Arc::new(MockSubscriptionFetcher::new()),
@@ -304,7 +323,7 @@ pub async fn test_client_with_materialization(
     let ports = Arc::new(SessionPortResolver::default());
     let (core_v2, service) = test_v2_clients().await;
     let (backup_paths, storage) = test_backup_deps(dir);
-    NyanpasuClient::with_parts(
+    let client = NyanpasuClient::with_parts(
         None,
         BundleMetadata {
             is_portable: false,
@@ -329,7 +348,6 @@ pub async fn test_client_with_materialization(
         PathBuf::new(),
         backup_paths,
         Arc::new(storage),
-        RuntimePaths::from_resolver(&test_paths(dir.path(), dir.path().join("data"))),
         ClientHostAdapters {
             runtime_build: Arc::new(
                 crate::client::test_support::runtime_build::TestRuntimeBuildPort::from_directory(
@@ -359,5 +377,37 @@ pub async fn test_client_with_materialization(
         tokio_util::task::TaskTracker::new(),
     )
     .await
-    .unwrap()
+    .unwrap();
+    connect_source(&client, profiles_mutations);
+    connect_source(&client, clash_mutations);
+    client
+}
+
+// These facade fixtures keep the core inactive and bypass candidate validation;
+// committed versions still have to reach the real status watch before responding.
+struct SavedRuntimeGate(crate::client::reconciler::RuntimeReconcilerClient);
+
+#[async_trait::async_trait]
+impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
+    async fn check(
+        &self,
+        _: crate::state::mutation::ports::RuntimeCandidate,
+    ) -> Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
+        Ok(())
+    }
+
+    fn committed(
+        &self,
+        domain: nyanpasu_runtime_values::mutation::ConfigDomain,
+        version: nyanpasu_state_engine::Version,
+    ) {
+        self.0.source_committed(domain, version);
+    }
+}
+
+fn connect_source(client: &NyanpasuClient, mutations: crate::state::mutation::MutationCoordinator) {
+    mutations.connect(
+        Arc::new(effects::ports::NoopCommitNotifications),
+        Arc::new(SavedRuntimeGate(client.inner.reconciler.clone())),
+    );
 }

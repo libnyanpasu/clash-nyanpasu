@@ -14,11 +14,8 @@ use serde::Serialize;
 use snafu::Snafu;
 
 use super::{
-    check::{EvidenceGap, RuntimeCheckUnavailable},
-    core_spec::CoreSpecError,
-    execution_host::ExecutionHost,
-    ports::PortResolveError,
-    publish::PublishRuntimeError,
+    check::RuntimeCheckUnavailable, core_spec::CoreSpecError, execution_host::ExecutionHost,
+    ports::PortResolveError, publish::PublishRuntimeError,
 };
 
 /// The wire mirror of a `CoreError`, which is a foreign type without serde.
@@ -51,23 +48,11 @@ pub enum RuntimeError {
     /// Refused at admission: nothing ran.
     #[snafu(display("the application is shutting down"))]
     ShuttingDown,
-    /// Refused at admission: nothing ran.
-    #[snafu(display(
-        "a previous operation left the runtime unsettled; verify the runtime from the \
-         configuration status before anything else"
-    ))]
-    Isolated,
     /// The workflow took the command and never answered, so it may have run.
     #[snafu(display(
         "the runtime owner did not answer; the outcome of operation {operation_id} is unknown"
     ))]
     OwnerUnresponsive { operation_id: String },
-    /// Refused at admission: the runtime owner is gone, so nothing ran.
-    #[snafu(display("the runtime owner is unavailable; nothing was committed"))]
-    OwnerUnavailable,
-    /// Refused at admission: the source transaction had already been decided.
-    #[snafu(display("the source transaction settled before its Try ran"))]
-    SourceSettled,
 
     #[snafu(display("could not apply the runtime configuration: {failure}"))]
     ApplyRuntime {
@@ -131,13 +116,9 @@ pub enum RuntimeError {
     ))]
     ServiceHostsCore,
 
-    /// An explicit start that could not put the core on its host; `reason` is
-    /// the diagnostic text of the convergence that gave up.
-    #[snafu(display("the core was not started: {reason}"))]
-    CoreNotStarted { reason: String, retryable: bool },
-    /// An explicit recovery that could not settle the runtime.
-    #[snafu(display("the runtime could not be recovered: {reason}"))]
-    RecoveryUnresolved { reason: String },
+    /// The committed configuration is waiting or has not taken effect.
+    #[snafu(display("the committed configuration is not in effect: {reason}"))]
+    ConfigurationNotInEffect { reason: String },
 
     #[snafu(display("could not build the runtime configuration: {source}"))]
     BuildRuntime { source: RuntimeBuildError },
@@ -154,10 +135,6 @@ pub enum RuntimeError {
     #[snafu(display("could not read the version of the core: {source}"))]
     ReadCoreVersion { source: CoreVersionError },
 
-    /// A candidate was refused before anything was submitted, for want of a
-    /// baseline to apply against.
-    #[snafu(display("the runtime has no settled baseline to apply against ({gap:?})"))]
-    UnsettledBaseline { gap: EvidenceGap },
     #[snafu(display("the core rejected the configuration: {message}"))]
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
@@ -174,21 +151,6 @@ pub enum RuntimeError {
         #[snafu(source)]
         failure: CoreFailure,
     },
-    #[snafu(display("the handoff did not leave the {expected:?} host as the owner"))]
-    HandoffOwnerMismatch { expected: ExecutionHost },
-    /// A mutation that moved the runtime to the other host and failed there
-    /// could not put it back.
-    #[snafu(display("the runtime could not be put back on its original host: {failure}"))]
-    HandoffNotRestored { failure: RestoreFailure },
-    /// A cancelled mutation could not put the runtime back.
-    #[snafu(display("the runtime baseline could not be restored: {failure}"))]
-    RestoreFailed { failure: RestoreFailure },
-    /// The store committed a mutation whose runtime target the workflow had
-    /// refused.
-    #[snafu(display(
-        "operation {operation_id} was committed after its runtime target was refused"
-    ))]
-    CommittedAfterRefusal { operation_id: String },
 
     /// No runtime configuration has been built yet.
     #[snafu(display("there is no runtime configuration yet"))]
@@ -210,33 +172,6 @@ pub enum RuntimeError {
     RuntimeNodeNotFound { node_id: u32 },
 }
 
-/// Why the runtime baseline could not be put back.
-#[derive(Debug, Snafu, Serialize, serde::Deserialize, specta::Type)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[snafu(visibility(pub))]
-pub enum RestoreFailure {
-    #[snafu(display("could not move the runtime back to the {host:?} execution host: {failure}"))]
-    MoveHostBack {
-        host: ExecutionHost,
-        #[snafu(source)]
-        failure: CoreFailure,
-    },
-    #[snafu(display("could not read the runtime: {failure}"))]
-    ReadStatus {
-        #[snafu(source)]
-        failure: CoreFailure,
-    },
-    /// The runtime could not be read once the restore request had answered;
-    /// `failure` is that request's own failure, if it had one.
-    #[snafu(display("the runtime could not be read after the restore"))]
-    Unobserved { failure: Option<CoreFailure> },
-    #[snafu(display("the restored runtime does not match the baseline"))]
-    Unverified { failure: Option<CoreFailure> },
-    /// The configuration the core ran before was never recorded.
-    #[snafu(display("the previous configuration is not recorded"))]
-    NotRecorded,
-}
-
 impl RuntimeError {
     /// The core's own failure this error carries, if the core produced it.
     fn core_failure(&self) -> Option<&CoreFailure> {
@@ -254,21 +189,12 @@ impl RuntimeError {
             | Self::MoveHost { failure, .. }
             | Self::SubmissionUnobserved { failure } => Some(failure),
             Self::ShuttingDown
-            | Self::Isolated
             | Self::OwnerUnresponsive { .. }
-            | Self::OwnerUnavailable
-            | Self::SourceSettled
-            | Self::UnsettledBaseline { .. }
             | Self::CoreRejectedConfig { .. }
             | Self::CheckUnavailable { .. }
             | Self::CoreRolledBack { .. }
-            | Self::HandoffOwnerMismatch { .. }
-            | Self::HandoffNotRestored { .. }
-            | Self::RestoreFailed { .. }
-            | Self::CommittedAfterRefusal { .. }
             | Self::ServiceHostsCore
-            | Self::CoreNotStarted { .. }
-            | Self::RecoveryUnresolved { .. }
+            | Self::ConfigurationNotInEffect { .. }
             | Self::BuildRuntime { .. }
             | Self::PublishRuntime { .. }
             | Self::ResolvePort { .. }
@@ -296,10 +222,7 @@ impl RuntimeError {
 
     /// Whether repeating the same operation can plausibly succeed.
     pub fn retryable(&self) -> bool {
-        match self {
-            Self::CoreNotStarted { retryable, .. } => *retryable,
-            _ => self.core_failure().is_some_and(|failure| failure.retryable),
-        }
+        self.core_failure().is_some_and(|failure| failure.retryable)
     }
 }
 
@@ -307,9 +230,27 @@ impl RuntimeError {
 mod tests {
     use serde_json::json;
 
-    use super::{CoreFailure, RestoreFailure, RuntimeError};
+    use super::{CoreFailure, RuntimeError};
     use crate::{check::RuntimeCheckUnavailable, execution_host::ExecutionHost};
     use nyanpasu_core_metadata::CoreErrorKind;
+
+    #[test]
+    fn committed_configuration_cause_names_what_is_not_in_effect() {
+        let error = RuntimeError::ConfigurationNotInEffect {
+            reason: "waiting for a stable runtime".into(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "the committed configuration is not in effect: waiting for a stable runtime"
+        );
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            json!({
+                "kind": "configuration_not_in_effect",
+                "reason": "waiting for a stable runtime",
+            })
+        );
+    }
 
     #[test]
     fn runtime_error_serialization_preserves_existing_tags_and_fields() {
@@ -403,20 +344,6 @@ mod tests {
             })
             .unwrap(),
             json!({"kind": "move_host", "host": "service", "failure": wire_failure})
-        );
-        assert_eq!(
-            serde_json::to_value(RuntimeError::RestoreFailed {
-                failure: RestoreFailure::MoveHostBack {
-                    host: ExecutionHost::Local,
-                    failure: failure.clone()
-                },
-            })
-            .unwrap(),
-            json!({"kind": "restore_failed", "failure": {"kind": "move_host_back", "host": "local", "failure": wire_failure}})
-        );
-        assert_eq!(
-            serde_json::to_value(RestoreFailure::ReadStatus { failure }).unwrap(),
-            json!({"kind": "read_status", "failure": wire_failure})
         );
         assert_eq!(
             serde_json::to_value(RuntimeError::CheckUnavailable {

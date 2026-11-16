@@ -13,7 +13,7 @@ function check(
     'state.rs': '',
     'service.rs': 'pub struct Bridge;',
     'client.rs': `pub struct NyanpasuClient;
-      pub mod application_workflow { pub struct ApplicationWorkflowClient; pub struct Intent; }
+      pub mod reconciler { pub struct RuntimeReconcilerClient; pub struct Intent; }
       pub mod effects { pub struct CommitNotifications; pub struct EffectKind; }
       pub mod jobs { pub struct Job; }
       pub mod validation { pub struct Contract; }`,
@@ -54,12 +54,9 @@ test('control_cannot_import_client', () => {
 })
 
 test('source_owners_cannot_import_workflow', () => {
-  for (const name of ['ApplicationWorkflowClient', 'Intent']) {
+  for (const name of ['RuntimeReconcilerClient', 'Intent']) {
     assert.match(
-      check(
-        'state.rs',
-        `use crate::client::application_workflow::${name};`,
-      ).join('\n'),
+      check('state.rs', `use crate::client::reconciler::${name};`).join('\n'),
       /forbidden state import/,
     )
   }
@@ -101,7 +98,7 @@ test('module_policy_resolves_grouped_relative_and_aliased_paths', () => {
   assert.match(
     check(
       'state.rs',
-      `fn a() { use crate::client::application_workflow as other; other::Intent; } fn b() { use crate::service as other; other::Bridge; }`,
+      `fn a() { use crate::client::reconciler as other; other::Intent; } fn b() { use crate::service as other; other::Bridge; }`,
     ).join('\n'),
     /forbidden state/,
   )
@@ -115,7 +112,7 @@ test('module_policy_resolves_grouped_relative_and_aliased_paths', () => {
   assert.match(
     check(
       'state.rs',
-      `use crate::client as app; fn f() { { use crate::service as app; app::Bridge; } app::application_workflow::Intent; }`,
+      `use crate::client as app; fn f() { { use crate::service as app; app::Bridge; } app::reconciler::Intent; }`,
     ).join('\n'),
     /forbidden state/,
   )
@@ -166,7 +163,7 @@ test('module_policy_allows_self_and_super_globs_within_policed_modules', () => {
     assert.match(
       check(
         `${module}.rs`,
-        `use crate::client::application_workflow::ApplicationWorkflowClient;
+        `use crate::client::reconciler::RuntimeReconcilerClient;
         mod tests { use super::*; }`,
       ).join('\n'),
       new RegExp(`${module}.rs:1: forbidden`),
@@ -196,10 +193,10 @@ test('module_policy_resolves_aliases_inherited_through_globs', () => {
         'state.rs',
         `use crate::client as app;
         mod tests { use super::*;
-          mod nested { use super::*; use ${prefix}app::application_workflow::ApplicationWorkflowClient; }
+          mod nested { use super::*; use ${prefix}app::reconciler::RuntimeReconcilerClient; }
         }`,
       ).join('\n'),
-      /forbidden state import client::application_workflow/,
+      /forbidden state import client::reconciler/,
     )
   }
   for (const glob of ['super::*', 'self::*']) {
@@ -208,10 +205,10 @@ test('module_policy_resolves_aliases_inherited_through_globs', () => {
         'state.rs',
         `use crate::client as app;
         mod tests { use super::*;
-          ${glob === 'super::*' ? 'mod nested' : 'fn f()'} { use ${glob}; use app::application_workflow::ApplicationWorkflowClient; }
+          ${glob === 'super::*' ? 'mod nested' : 'fn f()'} { use ${glob}; use app::reconciler::RuntimeReconcilerClient; }
         }`,
       ).join('\n'),
-      /forbidden state import client::application_workflow/,
+      /forbidden state import client::reconciler/,
     )
     assert.match(
       check(
@@ -250,8 +247,8 @@ test('module_policy_rejects_raw_identifiers_anywhere_in_paths', () => {
     [],
   )
   for (const source of [
-    'use crate::client::r#application_workflow::ApplicationWorkflowClient;',
-    'fn f(_: crate::client::r#application_workflow::ApplicationWorkflowClient) {}',
+    'use crate::client::r#reconciler::RuntimeReconcilerClient;',
+    'fn f(_: crate::client::r#reconciler::RuntimeReconcilerClient) {}',
     'use crate::service as provider; use provider::r#Bridge;',
     'use crate::service as provider; fn f(_: provider::r#Bridge) {}',
     'use crate::service::{r#Bridge};',
@@ -266,7 +263,7 @@ test('module_policy_rejects_raw_identifiers_anywhere_in_paths', () => {
   assert.match(
     check('state.rs', 'use crate::service::Bridge;', {
       'service.rs':
-        'pub use crate::client::r#ApplicationWorkflowClient as Bridge;',
+        'pub use crate::client::r#RuntimeReconcilerClient as Bridge;',
     }).join('\n'),
     /service.rs:1: unsupported raw identifier path; use explicit imports/,
   )
@@ -277,7 +274,7 @@ test('module_policy_rejects_indirect_forbidden_reexports', () => {
     assert.match(
       check(consumer, 'use crate::service::Bridge;', {
         'service.rs':
-          'pub(crate) use crate::client::application_workflow::ApplicationWorkflowClient as Bridge;',
+          'pub(crate) use crate::client::reconciler::RuntimeReconcilerClient as Bridge;',
       }).join('\n'),
       /forbidden/,
     )
@@ -285,8 +282,7 @@ test('module_policy_rejects_indirect_forbidden_reexports', () => {
       check(consumer, 'use crate::Bridge;', {
         'lib.rs':
           'mod actor_v2; mod state; mod client; mod service; pub use service::Bridge;',
-        'service.rs':
-          'pub use crate::client::application_workflow::Intent as Bridge;',
+        'service.rs': 'pub use crate::client::reconciler::Intent as Bridge;',
       }).join('\n'),
       /forbidden/,
     )
@@ -303,7 +299,7 @@ test('module_policy_rejects_indirect_forbidden_reexports', () => {
     if (hops === 8) assert.deepEqual(result, [])
     else assert.match(result.join('\n'), /exceeds 8 hops/)
     const forbidden = check('state.rs', 'fn f(_: crate::Alias0) {}', {
-      'lib.rs': `mod state; mod client; ${chain.replace('crate::service::Bridge', 'crate::client::application_workflow::Intent')}`,
+      'lib.rs': `mod state; mod client; ${chain.replace('crate::service::Bridge', 'crate::client::reconciler::Intent')}`,
     })
     assert.match(
       forbidden.join('\n'),
@@ -313,7 +309,7 @@ test('module_policy_rejects_indirect_forbidden_reexports', () => {
   assert.match(
     check('state.rs', 'use crate::Alias0;', {
       'lib.rs':
-        'mod state; mod client; pub use self::Alias1 as Alias0; pub use client::application_workflow::Intent as Alias1;',
+        'mod state; mod client; pub use self::Alias1 as Alias0; pub use client::reconciler::Intent as Alias1;',
     }).join('\n'),
     /forbidden state/,
   )
@@ -414,14 +410,13 @@ test('module_policy_rejects_globs_cycles_and_unsupported_forms', () => {
   )
   assert.match(
     check('state.rs', 'use crate::service::Bridge;', {
-      'service.rs': 'pub use crate::client::application_workflow::*;',
+      'service.rs': 'pub use crate::client::reconciler::*;',
     }).join('\n'),
     /glob/,
   )
   assert.match(
     check('state.rs', 'use crate::service::Bridge;', {
-      'service.rs':
-        'pub type Bridge = crate::client::application_workflow::Intent;',
+      'service.rs': 'pub type Bridge = crate::client::reconciler::Intent;',
     }).join('\n'),
     /unsupported type alias/,
   )
@@ -432,7 +427,7 @@ test('module_policy_rejects_globs_cycles_and_unsupported_forms', () => {
     /unsupported qualified/,
   )
   assert.match(
-    check('state.rs', 'use hidden::client::application_workflow::Intent;', {
+    check('state.rs', 'use hidden::client::reconciler::Intent;', {
       'lib.rs': 'extern crate self as hidden; mod state; mod client;',
     }).join('\n'),
     /unsupported extern crate/,
@@ -440,7 +435,7 @@ test('module_policy_rejects_globs_cycles_and_unsupported_forms', () => {
   assert.match(
     check('state.rs', 'use crate::service::Bridge;', {
       'service.rs':
-        '#[cfg(a)] pub use crate::client::application_workflow::Intent as Bridge; #[cfg(b)] pub struct Bridge;',
+        '#[cfg(a)] pub use crate::client::reconciler::Intent as Bridge; #[cfg(b)] pub struct Bridge;',
     }).join('\n'),
     /ambiguous/,
   )

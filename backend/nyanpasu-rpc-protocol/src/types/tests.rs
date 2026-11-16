@@ -95,8 +95,7 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
     use super::{
         PublicCommitAborted, PublicCommitAbortedKind, PublicConfigError, PublicCoreLogReadError,
         PublicFailure, PublicHotkeyErrorKind, PublicOsProxyError, PublicProfilesError,
-        PublicRuntimeAftermathKind, PublicRuntimeError, PublicStorageError,
-        PublicSubscriptionFetchKind, PublicSystemDnsError,
+        PublicRuntimeError, PublicStorageError, PublicSubscriptionFetchKind, PublicSystemDnsError,
     };
     use crate::{
         AuthContext, Principal, ResponseVisibility, RpcError as ServerRpcError, Scope, ScopeSet,
@@ -107,11 +106,9 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
             PublicProfilesError::Commit {
                 source: PublicCommitAborted {
                     kind: PublicCommitAbortedKind::RuntimeRefused,
-                    runtime: Some(PublicRuntimeAftermathKind::RolledBack),
                     runtime_causes: vec![PublicRuntimeError::CoreRejectedConfig {
                         core_kind: Some(nyanpasu_core_metadata::CoreErrorKind::InvalidConfig),
                     }],
-                    aftermath_cause: None,
                 },
             },
         ))),
@@ -133,11 +130,9 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
         PublicFailure::Profiles(PublicProfilesError::Commit {
             source: PublicCommitAborted {
                 kind: PublicCommitAbortedKind::RuntimeRefused,
-                runtime: Some(PublicRuntimeAftermathKind::RolledBack),
                 runtime_causes: vec![PublicRuntimeError::CoreRejectedConfig {
                     core_kind: Some(nyanpasu_core_metadata::CoreErrorKind::InvalidConfig),
                 }],
-                aftermath_cause: None,
             },
         })
     );
@@ -292,13 +287,11 @@ fn public_and_received_mutation_outcomes_decode_full_and_public_payloads() {
                     cause: super::PublicProfilesError::Commit {
                         source: super::PublicCommitAborted {
                             kind: super::PublicCommitAbortedKind::RuntimeFailed,
-                            runtime: Some(super::PublicRuntimeAftermathKind::RolledBack),
                             runtime_causes: vec![super::PublicRuntimeError::CoreRejectedConfig {
                                 core_kind: Some(
                                     nyanpasu_core_metadata::CoreErrorKind::InvalidConfig,
                                 ),
                             }],
-                            aftermath_cause: None,
                         },
                     },
                 },

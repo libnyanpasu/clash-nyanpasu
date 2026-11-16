@@ -157,7 +157,7 @@ pub enum ProfilesError {
         #[serde(skip)]
         cleanup_failures: Vec<ProfilesError>,
     },
-    #[snafu(context(false), display("the application workflow is not ready"))]
+    #[snafu(context(false), display("the runtime reconciler is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]
         source: NotReady,
@@ -195,16 +195,11 @@ impl ProfilesError {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use serde_json::json;
 
     use super::{ProfileContentError, ProfilesError};
-    use crate::{
-        mutation::{CommitAborted, RuntimeAftermath},
-        runtime_error::RuntimeError,
-    };
+    use crate::mutation::CommitAborted;
 
     #[test]
     fn profile_commit_error_serialization_omits_operational_sources() {
@@ -212,11 +207,6 @@ mod tests {
             uid: Some(ProfileId("p1".into())),
             path: Some(ManagedProfilePath::new("p1.yaml").unwrap()),
             source: CommitAborted::WriteConfig {
-                runtime: RuntimeAftermath::RollbackFailed {
-                    detail: Arc::new(RuntimeError::OwnerUnresponsive {
-                        operation_id: "operation-1".into(),
-                    }),
-                },
                 source: Box::new(std::io::Error::other("private operational cause")),
             },
             cleanup_failures: vec![ProfilesError::ShuttingDown],
@@ -225,9 +215,7 @@ mod tests {
             serde_json::to_value(error).unwrap(),
             json!({
                 "kind": "commit", "uid": "p1", "path": "p1.yaml",
-                "source": { "kind": "write_config", "runtime": {
-                    "kind": "rollback_failed", "detail": { "kind": "owner_unresponsive", "operation_id": "operation-1" },
-                } },
+                "source": { "kind": "write_config" },
             })
         );
         let source = yaml_serde::from_str::<yaml_serde::Value>("[").unwrap_err();
@@ -237,13 +225,6 @@ mod tests {
             })
             .unwrap(),
             json!({"kind": "profile_content_rejected", "source": {"kind": "not_yaml_mapping"}})
-        );
-        assert_eq!(
-            serde_json::to_value(CommitAborted::ValidateState {
-                source: Box::new(std::io::Error::other("private validation cause")),
-            })
-            .unwrap(),
-            json!({"kind": "validate_state"})
         );
     }
 }

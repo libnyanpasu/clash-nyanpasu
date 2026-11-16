@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 
-use nyanpasu_config::application::{NyanpasuAppConfigPatch, RemoteAccessConfig};
+use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
@@ -40,13 +40,7 @@ pub async fn set_service_mode(
     client: RpcState<'_, NyanpasuClient>,
     enabled: bool,
 ) -> Result<RpcUnitMutationOutcome> {
-    Ok(client
-        .patch_app_config(NyanpasuAppConfigPatch {
-            enable_service_mode: Some(enabled),
-            ..Default::default()
-        })
-        .await?
-        .into())
+    Ok(client.set_service_mode(enabled).await?.into())
 }
 
 /// Remote access widens who can reach the application, so it has its own command, reachable from

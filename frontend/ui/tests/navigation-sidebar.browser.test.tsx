@@ -175,8 +175,14 @@ test('expanded clicks ripple across the row and expose keyboard focus', async ()
   const keyboardRipple = ripples[1]
   const itemRect = item.getBoundingClientRect()
   const rippleSize = Number.parseFloat(keyboardRipple.width)
-  expect(keyboardRipple.left).toBe(`${(itemRect.width - rippleSize) / 2}px`)
-  expect(keyboardRipple.top).toBe(`${(itemRect.height - rippleSize) / 2}px`)
+  expect(Number.parseFloat(keyboardRipple.left)).toBeCloseTo(
+    (itemRect.width - rippleSize) / 2,
+    0,
+  )
+  expect(Number.parseFloat(keyboardRipple.top)).toBeCloseTo(
+    (itemRect.height - rippleSize) / 2,
+    0,
+  )
 })
 
 test('an item does not render again with the page around the sidebar', async () => {

@@ -2,8 +2,11 @@ use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use nyanpasu_config::clash::config::{
-    ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
+use nyanpasu_config::{
+    application::NyanpasuAppConfig,
+    clash::config::{
+        ClashConfig, ClashConfigPatch, TransparentProxyMode, overrides::ClashGuardOverridesPatch,
+    },
 };
 use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
 use nyanpasu_state_engine::{
@@ -11,6 +14,7 @@ use nyanpasu_state_engine::{
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
+use struct_patch::Patch as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::{
@@ -26,12 +30,7 @@ pub enum Error {
     #[snafu(display("failed to load persistent state from {path}"))]
     LoadState {
         path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
-    },
-    #[snafu(display("failed to initialize persistent state at {path}"))]
-    InitializeState {
-        path: Utf8PathBuf,
-        source: LoadError<PersistentStateManager<ClashConfig, ClashConfigFormat>>,
+        source: LoadError,
     },
     #[snafu(display("failed to spawn actor"))]
     SpawnActor { source: ractor::SpawnErr },
@@ -44,7 +43,7 @@ pub struct ClashConfigClient {
 
 struct ClashConfigClientInner {
     actor_ref: ActorRef<ClashConfigActorMessage>,
-    /// Committed state, read straight from the coordinator's store so a reader
+    /// Committed state, read straight from the snapshot store so a reader
     /// never queues behind a mutation the actor is still holding open.
     snapshot: StateSnapshot<ClashConfig>,
 }
@@ -52,7 +51,7 @@ struct ClashConfigClientInner {
 #[allow(dead_code)]
 impl ClashConfigClient {
     pub(crate) async fn new(
-        mutations: MutationCoordinator<ClashConfig>,
+        mutations: MutationCoordinator,
         config_path: Utf8PathBuf,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
@@ -67,12 +66,19 @@ impl ClashConfigClient {
                 .await
                 .context(LoadStateSnafu { path: &config_path })?
         } else {
-            setup
-                .from_state(ClashConfig::default())
-                .await
-                .context(InitializeStateSnafu { path: &config_path })?
+            setup.from_state(ClashConfig::default())
         };
 
+        Self::from_manager(mutations, manager, shutdown, tasks).await
+    }
+
+    /// Takes ownership of an initialized store before spawning its actor.
+    pub(crate) async fn from_manager(
+        mutations: MutationCoordinator,
+        manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
+        shutdown: CancellationToken,
+        tasks: &TaskTracker,
+    ) -> Result<Self, Error> {
         let snapshot = manager.snapshot_handle();
         let actor_ref = Actor::spawn(
             None,
@@ -96,8 +102,8 @@ impl ClashConfigClient {
         })
     }
 
-    /// The last committed clash config. Reads bypass the mailbox, so an
-    /// in-flight transaction parked in `on_prepare` cannot delay them.
+    /// The last committed Clash config. Reads bypass the mailbox, so
+    /// an independent check or a source write cannot delay them.
     pub fn snapshot(&self) -> ClashConfigSnapshot {
         ClashConfigSnapshot::from_versioned(&self.inner.snapshot.load())
     }
@@ -114,6 +120,26 @@ impl ClashConfigClient {
             None,
         )
         .await
+    }
+
+    /// Patches after checking what only both configs together can decide:
+    /// transparent capture against the selected core and service mode.
+    pub(crate) async fn patch_validated(
+        &self,
+        application: &NyanpasuAppConfig,
+        patch: ClashConfigPatch,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
+        let mut candidate = self.snapshot().state;
+        candidate.apply(patch.clone());
+        candidate
+            .validate_transparent_proxy(application.core, cfg!(target_os = "linux"))
+            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
+        if candidate.transparent_proxy.mode != TransparentProxyMode::Disabled
+            && !application.enable_service_mode
+        {
+            return Err(ConfigError::TransparentProxyRequiresServiceMode);
+        }
+        self.patch(patch).await
     }
 
     pub async fn patch_overrides(
@@ -161,6 +187,33 @@ impl ClashConfigClient {
 impl Drop for ClashConfigClientInner {
     fn drop(&mut self) {
         self.actor_ref.stop(None);
+    }
+}
+
+impl super::NyanpasuClient {
+    pub(super) async fn clash_outcome(
+        &self,
+        committed: ClashConfigSnapshot,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(ConfigDomain::Clash, committed.version)
+                    .await,
+            )
+        } else {
+            None
+        };
+        super::reconciler::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "clash".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        )
     }
 }
 

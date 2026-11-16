@@ -245,6 +245,13 @@ async fn an_uncurated_command_outside_the_allowlist_is_refused_by_the_shell() {
         "get_app_config",
         "patch_clash_config",
         "create_http_launch_url",
+        // The network rules name the user's Wi-Fi networks and gateways, and applying them
+        // switches the proxy, TUN and transparent proxy: they stay with the desktop.
+        "get_network_automation_status",
+        "apply_network_automation",
+        "request_wifi_name_access",
+        // The settings action that links the CLI onto `PATH` runs the bundled executable.
+        "install_cli",
     ] {
         assert!(
             matches!(
@@ -405,6 +412,8 @@ async fn config_patch_works_over_the_socket_and_keeps_its_privilege_separation()
         r#"{"remote_access": {"local_socket": {"enabled": true}}}"#,
         r#"{"enable_service_mode": true}"#,
         r#"{"hotkeys": []}"#,
+        // Network rules are a `system` setting: a rule writes the proxy switches.
+        r#"{"network_automation": {"enabled": true}}"#,
     ] {
         let run = shell.cli(&["config", "patch", refused]).await;
         assert_eq!(run.status, ExitStatus::Usage, "{refused}: {}", run.stderr);
@@ -542,6 +551,61 @@ async fn the_default_mcp_session_offers_only_read_tools_and_refuses_the_rest() {
         assert!(
             refused["error"].is_object(),
             "not offered, not callable: {refused}"
+        );
+    }
+    shell.stop().await;
+}
+
+/// The desktop-only network commands are not on the local allowlist, so no MCP session can
+/// offer them, with every scope requested and `--raw`; the settings view an agent reads
+/// carries a flag instead of the rules.
+#[tokio::test]
+async fn mcp_never_offers_the_desktop_only_network_commands() {
+    let shell = Shell::start().await;
+    let options = McpOptions {
+        scopes: Scope::ALL.to_vec(),
+        raw: true,
+    };
+    let desktop_only = [
+        "get_network_automation_status",
+        "apply_network_automation",
+        "request_wifi_name_access",
+        "install_cli",
+    ];
+    let mut requests = vec![json!({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})];
+    for (id, method) in (1..).zip(desktop_only) {
+        requests.push(tool_call(id, RAW_TOOL, json!({"method": method})));
+    }
+    let replies = mcp_session(&shell, &options, &requests).await;
+
+    let tools = replies[0]["result"]["tools"].as_array().unwrap();
+    let raw = tools
+        .iter()
+        .find(|tool| tool["name"] == RAW_TOOL)
+        .expect("call_method is offered with --raw");
+    let description = raw["description"].as_str().unwrap();
+    for method in desktop_only {
+        assert!(!description.contains(method), "{method} is advertised");
+        assert!(
+            !tool_names(&replies[0]).iter().any(|name| name == method),
+            "{method} has a tool of its own"
+        );
+    }
+    for (method, reply) in desktop_only.iter().zip(&replies[1..]) {
+        assert_eq!(reply["result"]["isError"], true, "{method}: {reply}");
+        let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("unsupported on this target"),
+            "{method} was refused for the wrong reason: {text}"
+        );
+    }
+
+    let settings = shell.cli(&["--json", "config", "get"]).await.json();
+    assert_eq!(settings["network_automation_enabled"], false, "{settings}");
+    for private in ["network_automation\"", "rules", "wifi_ssid", "gateway_mac"] {
+        assert!(
+            !settings.to_string().contains(private),
+            "{private} reached the read view: {settings}"
         );
     }
     shell.stop().await;

@@ -151,7 +151,6 @@ test('portable archives reuse the application and differ only by bundled runtime
     await mkdir(path.join(buildDir, 'completions'), { recursive: true })
     const binaryNames = [
       'Clash Nyanpasu.exe',
-      'clash.exe',
       'mihomo.exe',
       'mihomo-alpha.exe',
       'nyanpasu-service.exe',

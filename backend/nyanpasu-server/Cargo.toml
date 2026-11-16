@@ -39,6 +39,7 @@ nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
 nyanpasu-os = { path = '../nyanpasu-os', default-features = false }
 nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
+nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-scripts = { path = '../nyanpasu-scripts', default-features = false, features = [
   'javascript',
   'lua'

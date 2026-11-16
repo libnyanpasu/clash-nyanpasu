@@ -65,7 +65,7 @@ pub trait UpdaterBackend: Send + Sync + 'static {
 }
 
 #[async_trait]
-/// Installs a prepared artifact through the application workflow.
+/// Installs a prepared artifact through the runtime reconciler.
 pub trait CoreUpdateInstaller: Send + Sync + 'static {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()>;
 }

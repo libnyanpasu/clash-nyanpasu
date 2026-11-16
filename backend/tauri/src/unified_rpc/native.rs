@@ -100,7 +100,7 @@ impl DesktopRpc {
 }
 
 // This is the transport entrypoint, not an application operation. All
-// application commands must use #[nyanpasu_macro::rpc] and its registry.
+// application commands must use #[nyanpasu_rpc::rpc] and its registry.
 #[tauri::command]
 #[specta::specta]
 pub async fn call_rpc(

@@ -114,7 +114,7 @@ When touching code under `backend/tauri/src/client/` or the actors, services, an
 
 Read [Unified RPC](docs/development/rpc.md) before adding or changing a command, an HTTP capability, a frontend backend call, or a shared event.
 
-- Declare application commands with `#[nyanpasu_macro::rpc(...)]` and register them in `backend/tauri/src/specta_export.rs` (queries vs. mutations by effect, not by name). Regenerate bindings; never hand-edit them.
+- Declare application commands with `#[nyanpasu_rpc::rpc(...)]` and register them in `backend/tauri/src/specta_export.rs` (queries vs. mutations by effect, not by name). Regenerate bindings; never hand-edit them.
 - Commands are thin adapters: parse the DTO, call `NyanpasuClient`, map errors. No business orchestration in commands.
 - HTTP is explicit opt-in via `rpc(http)`. Never inject `AppHandle` into an HTTP-enabled command or `RpcDependencies`.
 - The frontend calls the backend only through `@nyanpasu/rpc` and `@nyanpasu/query`; no raw `invoke` or ad hoc HTTP fetches.

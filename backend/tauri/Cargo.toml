@@ -70,7 +70,6 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
 ] }
 nyanpasu-core-manager = { workspace = true }
 clash-api = { workspace = true }
-nyanpasu-macro = { path = '../nyanpasu-macro' }
 nyanpasu-core = { path = '../nyanpasu-core', default-features = false }
 nyanpasu-paths = { path = '../nyanpasu-paths' }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [

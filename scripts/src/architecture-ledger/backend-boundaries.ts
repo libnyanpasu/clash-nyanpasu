@@ -215,6 +215,13 @@ const DEPENDENCY_RULES: readonly DependencyRule[] = [
     forbids: GUI,
     allowedWorkspace: ['nyanpasu-single-instance'],
   },
+  // The catalog generator lives in its tests and rewrites protocol source, so it
+  // must build while that source is stale: syntax libraries only.
+  {
+    package: 'nyanpasu-rpc-macro',
+    forbids: GUI,
+    allowedWorkspace: ['nyanpasu-rpc-macro'],
+  },
   {
     package: 'nyanpasu-diagnose',
     forbids: [...CORE_FAMILY, ...IMPLEMENTATION],

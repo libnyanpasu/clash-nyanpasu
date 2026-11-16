@@ -2,6 +2,8 @@
 
 extern crate self as nyanpasu_rpc;
 
+pub use nyanpasu_rpc_macro::rpc;
+
 pub mod audit;
 pub mod commands;
 pub mod error;

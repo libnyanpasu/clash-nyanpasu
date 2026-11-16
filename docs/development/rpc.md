@@ -15,7 +15,7 @@ Application commands use the neutral `nyanpasu-rpc` registry, with Tauri IPC, HT
 Allowed shape:
 
 ```rust
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_rpc::rpc(http)]
 pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
     patch: ApplicationPreferencesPatch,
@@ -153,11 +153,11 @@ The Local allowlist, which includes `patch_app_config`, is listed under
 `get_configuration_status` is a query; the two dedicated setters are mutations in
 the hand-maintained Specta metadata.
 
-- Declare new application commands with `#[nyanpasu_macro::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
-- Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, `RpcAppUpdateOutcome`, or `RpcNetworkAutomationStatus`) and pass `privacy` on `#[nyanpasu_macro::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
+- Declare new application commands with `#[nyanpasu_rpc::rpc(...)]`; the macro generates transport handlers and registers them with `UnifiedRpc`. Do not add standalone `#[tauri::command]` application APIs, direct `generate_handler!` registration, or a separate HTTP implementation of the same operation.
+- Commands returning committed mutation outcomes or sensitive-filtered update snapshots must declare canonical union reply types (`RpcUnitMutationOutcome`, `RpcProfileMutationOutcome`, `RpcFolderMutationOutcome` wrapping `RpcMutationOutcome<T>`, `RpcAppUpdateOutcome`, or `RpcNetworkAutomationStatus`) and pass `privacy` on `#[nyanpasu_rpc::rpc(..., privacy)]`. The macro extracts original completion metadata before projecting `Public` shapes so aliases resolve through `RpcResponseProjection` while raw domain outcome returns under `privacy` fail compilation.
 - Keep command metadata in `backend/tauri/src/specta_export.rs`. Register read-only operations as queries and side-effecting operations as mutations, even if their names start with `get` or `query`. Regenerate TypeScript bindings through the existing export workflow; do not hand-edit generated bindings.
 - Frontend application calls use generated protocol types and transport adapters from `@nyanpasu/rpc`, then query/mutation bindings from `@nyanpasu/query`. The app injects the RPC client/context into query providers. Transport selection belongs in the RPC package. Do not call raw Tauri `invoke`, import legacy transport bindings for application commands, or add ad hoc HTTP fetches in pages/hooks.
-- Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_macro::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
+- Native Tauri plugin APIs and frame delivery remain boundary-specific adapters. Channel subscription control is an application operation: declare it with `#[nyanpasu_rpc::rpc]`, register it as a mutation, and call it through `rpc`. The desktop dispatcher binds Channel descriptors to the invoking webview; a Channel does not opt an operation into HTTP. Browser-accessible UI must guard native capabilities and provide an appropriate browser path or explicit unsupported state.
 
 ### Neutral declarations and native wrappers
 
@@ -243,7 +243,7 @@ The allowlist is independent of HTTP; signature compatibility never grants expos
 
 The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
 the same declarations as handler metadata. Its development-only extractor in
-`nyanpasu-macro` follows the explicitly listed production roots (currently
+`nyanpasu-rpc-macro` follows the explicitly listed production roots (currently
 `tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`) through inline and ordinary
 external modules, inherits
 ancestor `cfg`/`cfg_attr` guards and excludes test fixtures. It does not resolve
@@ -252,9 +252,9 @@ code. When commands move, migrate the roots, schema and handler inventories
 together. Run from `backend/`:
 
 ```sh
-cargo test -p nyanpasu-macro --features syn/full export_rpc_command_catalog -- --ignored
-cargo test -p nyanpasu-macro --features syn/full rpc_command_catalog_is_fresh
-cargo test -p nyanpasu-macro --features syn/full export_capability_inventory -- --ignored
+cargo test -p nyanpasu-rpc-macro --features syn/full export_rpc_command_catalog -- --ignored
+cargo test -p nyanpasu-rpc-macro --features syn/full rpc_command_catalog_is_fresh
+cargo test -p nyanpasu-rpc-macro --features syn/full export_capability_inventory -- --ignored
 ```
 
 The exporter writes explicitly; the freshness test only compares. Regenerate
@@ -799,7 +799,7 @@ To bind a local command after its exposure has been separately reviewed:
    `RpcState` and caller/owner values are not fields. Preserve optional and
    unknown-field handling.
 2. Add `operation = nyanpasu_rpc_protocol::operations::YourOperation` to the
-   existing `#[nyanpasu_macro::rpc(...)]` declaration. Keep target, capability,
+   existing `#[nyanpasu_rpc::rpc(...)]` declaration. Keep target, capability,
    `owner` and Result-alias hints. The existing generator decodes the contract's
    `Request`, destructures its fields into handler parameters, assigns success to
    `Response`, and checks `NAME` against the function name in a constant. It emits

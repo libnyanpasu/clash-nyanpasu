@@ -226,6 +226,8 @@ export function configErrorMessage(
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
     case 'invalid_remote_access':
       return remoteAccessErrorMessage(error.reason)
+    case 'invalid_network_automation':
+      return m.error_config_invalid_network_automation({ reason: error.reason })
     case 'validate_hotkey_capability':
       return m.error_config_hotkey_capability_unsupported()
     case 'validate_hotkeys':

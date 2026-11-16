@@ -44,6 +44,7 @@ pub mod hotkey;
 pub mod http_server;
 pub mod jobs;
 pub mod logs;
+pub mod network_automation;
 #[cfg(test)]
 mod network_tests;
 pub(crate) mod ports;
@@ -197,6 +198,8 @@ pub enum SetupError {
     StartGeoIndex {
         source: nyanpasu_observers::geo::SpawnError,
     },
+    #[snafu(display("failed to start network automation"))]
+    StartNetworkAutomation { source: network_automation::Error },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -320,6 +323,8 @@ struct NyanpasuClientInner {
     geo_index: nyanpasu_observers::geo::GeoIndexClient,
     os_proxy: Arc<dyn nyanpasu_contracts::system_proxy::OsProxyPort>,
     effects: effects::actor::EffectsClient,
+    /// `None` on a host that cannot observe its network.
+    network_automation: Option<network_automation::NetworkAutomationClient>,
     window: Option<Arc<dyn hotkey::ports::WindowControl>>,
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
@@ -698,6 +703,20 @@ impl NyanpasuClient {
             }
             None => None,
         };
+        let network_automation = match host_adapters.network_environment {
+            Some(environment) => Some(
+                Self::spawn_network_automation(
+                    environment,
+                    &application,
+                    &clash_config,
+                    &core_v2,
+                    &shutdown,
+                    &tasks,
+                )
+                .await?,
+            ),
+            None => None,
+        };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 remote_access,
@@ -733,12 +752,63 @@ impl NyanpasuClient {
                 geo_index,
                 os_proxy,
                 effects,
+                network_automation,
                 window,
                 accelerators,
                 shutdown,
                 tasks,
             }),
         })
+    }
+
+    /// Starts the network automation owner and forwards each committed
+    /// policy to it. The owner writes the capture switches through the same
+    /// config owners a settings change uses.
+    async fn spawn_network_automation(
+        environment: Arc<dyn nyanpasu_contracts::network_environment::NetworkEnvironmentPort>,
+        application: &ApplicationClient,
+        clash_config: &ClashConfigClient,
+        core: &CoreClientV2,
+        shutdown: &tokio_util::sync::CancellationToken,
+        tasks: &tokio_util::task::TaskTracker,
+    ) -> std::result::Result<network_automation::NetworkAutomationClient, SetupError> {
+        let mut settings = application.subscribe_settings_changes();
+        // The borrow guard is not `Send`, so it must not live across the spawn's await.
+        let policy = settings.borrow_and_update().network_automation.clone();
+        let automation = network_automation::NetworkAutomationClient::spawn(
+            network_automation::NetworkAutomationArgs {
+                environment,
+                switches: Arc::new(network_automation::ConfigCaptureSwitches {
+                    application: application.clone(),
+                    clash_config: clash_config.clone(),
+                    core: core.clone(),
+                }),
+                policy,
+                schedule_polls: true,
+                shutdown: shutdown.child_token(),
+            },
+            tasks,
+        )
+        .await
+        .context(StartNetworkAutomationSnafu)?;
+
+        let (policies, token) = (automation.clone(), shutdown.child_token());
+        tasks.spawn(async move {
+            loop {
+                tokio::select! {
+                    () = token.cancelled() => break,
+                    changed = settings.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let policy = settings.borrow_and_update().network_automation.clone();
+                        policies.set_policy(policy);
+                    }
+                }
+            }
+        });
+
+        Ok(automation)
     }
 
     pub async fn http_server_status(
@@ -1080,6 +1150,17 @@ impl NyanpasuClient {
             }
             .into());
         }
+        if self.inner.network_automation.is_none()
+            && patch
+                .network_automation
+                .as_ref()
+                .is_some_and(|policy| policy.enabled)
+        {
+            return Err(ConfigError::InvalidNetworkAutomation {
+                reason: "this host cannot observe its network".into(),
+            }
+            .into());
+        }
         let mut candidate = self.inner.application.snapshot().state;
         candidate.apply(patch.clone());
         let clash = self.inner.clash_config.snapshot().state;
@@ -1229,20 +1310,9 @@ impl NyanpasuClient {
         &self,
         patch: ClashConfigPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-        let mut candidate = self.inner.clash_config.snapshot().state;
-        candidate.apply(patch.clone());
         let application = self.inner.application.snapshot().state;
-        candidate
-            .validate_transparent_proxy(application.core, cfg!(target_os = "linux"))
-            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
-        if candidate.transparent_proxy.mode
-            != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
-            && !application.enable_service_mode
-        {
-            return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
-        }
         let client = self.inner.clash_config.clone();
-        Ok(client.patch(patch).await?.outcome())
+        Ok(client.patch_validated(&application, patch).await?.outcome())
     }
 
     // ---- profiles domain (PR-3 T07) ----

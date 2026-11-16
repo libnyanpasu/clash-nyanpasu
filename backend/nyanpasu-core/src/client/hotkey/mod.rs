@@ -7,8 +7,7 @@ mod tests;
 use nyanpasu_config::{
     application::NyanpasuAppConfigPatch,
     clash::config::{
-        ClashConfig, ClashConfigPatch, TransparentProxyConfigPatch, TransparentProxyMode,
-        clash_strategy::{PortStrategy, PortStrategyKind},
+        ClashConfigPatch, TransparentProxyMode,
         overrides::{ClashGuardOverridesPatch, Mode},
     },
 };
@@ -16,7 +15,7 @@ use nyanpasu_runtime_values::{hotkey::HotkeyAction, runtime::MutationOutcome};
 use snafu::ResultExt as _;
 
 use self::ports::{HotkeyBindings, WindowError};
-use super::{NyanpasuClient, Result};
+use super::{NyanpasuClient, Result, transparent_proxy};
 use crate::state::config_error::{ConfigError, ValidateHotkeysSnafu};
 
 /// Rejects a hotkey list before anything is written.
@@ -106,7 +105,7 @@ impl NyanpasuClient {
             }
         }
         let outcome = self
-            .patch_clash_config(transparent_proxy_patch(&config, enabled))
+            .patch_clash_config(transparent_proxy::switch_patch(&config, enabled))
             .await?;
         log_degradations(&outcome);
         Ok(())
@@ -121,29 +120,6 @@ impl NyanpasuClient {
             .await?;
         log_degradations(&outcome);
         Ok(())
-    }
-}
-
-fn transparent_proxy_patch(config: &ClashConfig, enabled: bool) -> ClashConfigPatch {
-    let mode = if enabled {
-        match config.transparent_proxy.mode {
-            TransparentProxyMode::Disabled => TransparentProxyMode::Tproxy,
-            mode => mode,
-        }
-    } else {
-        TransparentProxyMode::Disabled
-    };
-    ClashConfigPatch {
-        transparent_proxy: TransparentProxyConfigPatch {
-            mode: Some(mode),
-            ..Default::default()
-        },
-        tproxy_port: (mode == TransparentProxyMode::Tproxy && config.tproxy_port.is_none())
-            .then_some(Some(PortStrategy {
-                kind: PortStrategyKind::Fixed,
-                start_port: 7894,
-            })),
-        ..Default::default()
     }
 }
 

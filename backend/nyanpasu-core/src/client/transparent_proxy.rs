@@ -1,7 +1,10 @@
 //! Execution-host adapter for the privileged network owner. No system commands
 //! run in the GUI process; the host verifies the complete applied revision.
 use crate::actor_v2::CoreClient;
-use nyanpasu_config::clash::config::TransparentProxyMode;
+use nyanpasu_config::clash::config::{
+    ClashConfig, ClashConfigPatch, TransparentProxyConfigPatch, TransparentProxyMode,
+    clash_strategy::{PortStrategy, PortStrategyKind},
+};
 use nyanpasu_ipc::api::network::transparent_proxy::{
     NetworkTransparentProxyMode, NetworkTransparentProxyRequest, NetworkTransparentProxyStatus,
 };
@@ -62,23 +65,54 @@ pub(crate) async fn reconcile(
     Ok(())
 }
 
+/// What the execution host says about transparent capture; a host other than
+/// the service does not support it.
+pub(super) async fn status(core: &CoreClient) -> anyhow::Result<NetworkTransparentProxyStatus> {
+    let endpoint = core.connected_endpoint().await?;
+    if endpoint.host() != ExecutionHost::Service {
+        return Ok(NetworkTransparentProxyStatus {
+            supported: false,
+            active: false,
+            mode: None,
+            revision: None,
+            error: None,
+        });
+    }
+    endpoint
+        .transparent_proxy_status()
+        .await
+        .map_err(Into::into)
+}
+
+/// The patch that switches transparent capture on, keeping a mode the user
+/// already chose, or off.
+pub(super) fn switch_patch(config: &ClashConfig, enabled: bool) -> ClashConfigPatch {
+    let mode = if enabled {
+        match config.transparent_proxy.mode {
+            TransparentProxyMode::Disabled => TransparentProxyMode::Tproxy,
+            mode => mode,
+        }
+    } else {
+        TransparentProxyMode::Disabled
+    };
+    ClashConfigPatch {
+        transparent_proxy: TransparentProxyConfigPatch {
+            mode: Some(mode),
+            ..Default::default()
+        },
+        tproxy_port: (mode == TransparentProxyMode::Tproxy && config.tproxy_port.is_none())
+            .then_some(Some(PortStrategy {
+                kind: PortStrategyKind::Fixed,
+                start_port: 7894,
+            })),
+        ..Default::default()
+    }
+}
+
 impl NyanpasuClient {
     pub async fn get_transparent_proxy_status(
         &self,
     ) -> anyhow::Result<NetworkTransparentProxyStatus> {
-        let endpoint = self.inner.core_api.connected_endpoint().await?;
-        if endpoint.host() != ExecutionHost::Service {
-            return Ok(NetworkTransparentProxyStatus {
-                supported: false,
-                active: false,
-                mode: None,
-                revision: None,
-                error: None,
-            });
-        }
-        endpoint
-            .transparent_proxy_status()
-            .await
-            .map_err(Into::into)
+        status(&self.inner.core_api).await
     }
 }

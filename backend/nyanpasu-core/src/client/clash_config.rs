@@ -2,8 +2,11 @@ use crate::state::mutation::MutationCoordinator;
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use nyanpasu_config::clash::config::{
-    ClashConfig, ClashConfigPatch, overrides::ClashGuardOverridesPatch,
+use nyanpasu_config::{
+    application::NyanpasuAppConfig,
+    clash::config::{
+        ClashConfig, ClashConfigPatch, TransparentProxyMode, overrides::ClashGuardOverridesPatch,
+    },
 };
 use nyanpasu_migration::modules::clash_config::ClashConfigFormat;
 use nyanpasu_state_engine::{
@@ -11,6 +14,7 @@ use nyanpasu_state_engine::{
 };
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 use snafu::ResultExt as _;
+use struct_patch::Patch as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::state::{
@@ -114,6 +118,26 @@ impl ClashConfigClient {
             None,
         )
         .await
+    }
+
+    /// Patches after checking what only both configs together can decide:
+    /// transparent capture against the selected core and service mode.
+    pub(crate) async fn patch_validated(
+        &self,
+        application: &NyanpasuAppConfig,
+        patch: ClashConfigPatch,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
+        let mut candidate = self.snapshot().state;
+        candidate.apply(patch.clone());
+        candidate
+            .validate_transparent_proxy(application.core, cfg!(target_os = "linux"))
+            .map_err(|source| ConfigError::InvalidTransparentProxy { source })?;
+        if candidate.transparent_proxy.mode != TransparentProxyMode::Disabled
+            && !application.enable_service_mode
+        {
+            return Err(ConfigError::TransparentProxyRequiresServiceMode);
+        }
+        self.patch(patch).await
     }
 
     pub async fn patch_overrides(

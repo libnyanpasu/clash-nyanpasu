@@ -135,6 +135,7 @@ mod tests {
                 "get_clash_config",
                 "get_clash_info",
                 "get_core_log",
+                "get_network_automation_status",
                 "get_postprocessing_output",
                 "get_profile_sync_logs",
                 "get_profile_sync_runs",

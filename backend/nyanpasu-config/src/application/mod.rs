@@ -8,6 +8,7 @@ mod clash_core;
 mod core_logs;
 mod i18n;
 mod logging;
+mod network_automation;
 mod preferences;
 mod public_ip_probe;
 mod remote_access;
@@ -21,6 +22,7 @@ pub use clash_core::*;
 pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
+pub use network_automation::*;
 pub use preferences::*;
 pub use public_ip_probe::*;
 pub use remote_access::*;
@@ -242,6 +244,11 @@ pub struct NyanpasuAppConfig {
     #[serde(default)]
     pub ip_lookup_providers: Vec<IpLookupProvider>,
 
+    /// Rules that switch system proxy, TUN and transparent proxy when the
+    /// machine arrives on a network. Replaced as a whole by a patch.
+    #[serde(default)]
+    pub network_automation: NetworkAutomation,
+
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -336,6 +343,7 @@ impl Default for NyanpasuAppConfig {
             enable_local_ip_probe: false,
             stun_servers: default_stun_servers(),
             ip_lookup_providers: Vec::new(),
+            network_automation: NetworkAutomation::default(),
             pac_url: None,
             enable_tray_text: false,
             enable_tray_traffic: false,
@@ -368,6 +376,28 @@ mod patch_tests {
         assert!(validate_latency_timeout(30000).is_ok());
         assert!(validate_latency_timeout(999).is_err());
         assert!(validate_latency_timeout(30001).is_err());
+    }
+
+    #[test]
+    fn network_automation_defaults_when_missing_and_is_replaced_by_a_patch() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("network_automation");
+        let mut config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.network_automation, NetworkAutomation::default());
+
+        let patch = serde_json::from_str(
+            r#"{"network_automation":{"enabled":true,"default_actions":{"tun":"disable"}}}"#,
+        )
+        .unwrap();
+        config.apply(patch);
+        assert!(config.network_automation.enabled);
+        assert_eq!(
+            config.network_automation.default_actions,
+            MechanismActions {
+                tun: MechanismAction::Disable,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]

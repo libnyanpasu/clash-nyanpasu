@@ -930,6 +930,9 @@ cases!(
     InvalidRemoteAccess {
         reason: nyanpasu_config::application::RemoteAccessError::PortZero,
     },
+    InvalidNetworkAutomation {
+        reason: "field-58/路徑\\file.yaml".to_owned(),
+    },
     ValidateHotkeys {
         source: hotkey_parse_error_cases(present).remove(0),
     },

@@ -219,6 +219,14 @@ export function createRpcClient(
       ),
     getCoreStatus: () =>
       typedError<CoreStatusInfo, IpcError>(__RPC_INVOKE('get_core_status')),
+    /**
+     *  The network the host is on and what the network rules last did about it.
+     *  Desktop-only: the status holds the live Wi-Fi name and gateway address.
+     */
+    getNetworkAutomationStatus: () =>
+      typedError<NetworkAutomationStatus, IpcError>(
+        __RPC_INVOKE('get_network_automation_status'),
+      ),
     urlDelayTest: (url: string, expectedStatus: number) =>
       typedError<number | null, IpcError>(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
@@ -474,6 +482,25 @@ export function createRpcClient(
     patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
       typedError<MutationOutcome<null>, IpcError>(
         __RPC_INVOKE('patch_clash_system_config', { patch }),
+      ),
+    /**
+     *  Applies the network rules to the current network again, overwriting
+     *  capture switches changed by hand since. Switching the capture mechanisms
+     *  reaches the same optional effects as a configuration patch.
+     */
+    applyNetworkAutomation: () =>
+      typedError<NetworkAutomationStatus, IpcError>(
+        __RPC_INVOKE('apply_network_automation'),
+      ),
+    /**
+     *  Reads the Wi-Fi name once, which the network rules do not until a rule
+     *  matches on it. Where the platform gates the name behind location access,
+     *  this asks the user for it. The status holds that reading, or why there is
+     *  none. Desktop-only: the status holds the live Wi-Fi name and gateway.
+     */
+    requestWifiNameAccess: () =>
+      typedError<NetworkAutomationStatus, IpcError>(
+        __RPC_INVOKE('request_wifi_name_access'),
       ),
     /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
     patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
@@ -1571,6 +1598,7 @@ export type ConfigError =
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
   | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
+  | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'validate_hotkey_capability' }
   | { kind: 'workflow_not_ready' }
@@ -2789,6 +2817,9 @@ export type InstallCoreBinaryError =
     }
   | { kind: 'path_not_utf8'; path: ErrorPath }
 
+/**  The link type of the primary network interface. */
+export type InterfaceKind = 'wifi' | 'ethernet' | 'other'
+
 /**  How closing the source instance's connections failed. */
 export type InterruptFailure =
   /**  The Clash API belongs to a core instance that has since been retired. */
@@ -3091,6 +3122,38 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
+/**  What a rule does to one capture mechanism when it starts to apply. */
+export type MechanismAction =
+  /**  Leaves the switch as the user set it. */
+  'keep' | 'enable' | 'disable'
+
+/**  One action per capture mechanism. */
+export type MechanismActions = {
+  system_proxy?: MechanismAction
+  tun?: MechanismAction
+  transparent_proxy?: MechanismAction
+}
+
+/**  What applying one action did to its mechanism's switch. */
+export type MechanismOutcome =
+  /**  The action was `keep`, or the switch already had the requested value. */
+  | { kind: 'unchanged' }
+  | { kind: 'enabled' }
+  /**
+   *  Switched off, by its own action or because the rule enabled the
+   *  mechanism that excludes it.
+   */
+  | { kind: 'disabled' }
+  /**  The switch was not written; `message` is the refusal. */
+  | { kind: 'failed'; message: string }
+
+/**  One outcome per capture mechanism. */
+export type MechanismOutcomes = {
+  system_proxy: MechanismOutcome
+  tun: MechanismOutcome
+  transparent_proxy: MechanismOutcome
+}
+
 /**  What a topology orders and merges its nodes by. */
 export type Metric = 'bytes' | 'connections'
 
@@ -3142,6 +3205,84 @@ export type NativeDialogButtons =
   | { type: 'yes_no_cancel_custom'; yes: string; no: string; cancel: string }
 
 export type NativeDialogKind = 'info' | 'warning' | 'error'
+
+/**
+ *  The persisted policy. Disabled and empty by default, so an installation
+ *  that never opens the feature behaves as before.
+ */
+export type NetworkAutomation = {
+  enabled?: boolean
+  /**  Applied on a network no rule matches. */
+  default_actions?: MechanismActions
+  /**  Tested in order; the first enabled match decides. */
+  rules?: NetworkRule[]
+}
+
+/**  The last time the policy wrote the switches, and for which match. */
+export type NetworkAutomationApplication = {
+  matched: NetworkMatch
+  outcomes: MechanismOutcomes
+}
+
+/**  A full value: the receiver replaces what it held. */
+export type NetworkAutomationStatus = {
+  /**  Whether this host can observe its network at all. */
+  supported: boolean
+  /**
+   *  The latest reading; `None` before the first one and on an unsupported
+   *  host.
+   */
+  network: NetworkState | null
+  /**  `None` until the enabled policy has applied once. */
+  applied: NetworkAutomationApplication | null
+}
+
+/**
+ *  The facts a rule requires of the primary network. Every present field must
+ *  hold, and a field whose fact the observation lacks never holds.
+ */
+export type NetworkConditions = {
+  /**  Exact Wi-Fi name. */
+  wifi_ssid?: string | null
+  /**  Default gateway MAC address, `aa:bb:cc:dd:ee:ff`. */
+  gateway_mac?: string | null
+  interface_kind?: InterfaceKind | null
+}
+
+/**  Which part of the policy decided the actions. */
+export type NetworkMatch =
+  | { kind: 'rule'; id: string }
+  /**  No rule matched; the default actions apply. */
+  | { kind: 'default' }
+
+/**
+ *  The primary network: the physical interface that carries the default
+ *  route, never this application's own TUN device.
+ */
+export type NetworkObservation = {
+  interface_kind: InterfaceKind
+  wifi: WifiName
+  /**
+   *  The default gateway's link-layer address, as lowercase
+   *  `aa:bb:cc:dd:ee:ff`, when the neighbour table has it.
+   */
+  gateway_mac: string | null
+}
+
+/**  A named network and what arriving on it does to each mechanism. */
+export type NetworkRule = {
+  /**  Stable identity, so renaming or reordering a rule is not a new match. */
+  id: string
+  name: string
+  enabled?: boolean
+  conditions: NetworkConditions
+  actions?: MechanismActions
+}
+
+/**  What the host reports about its network right now. */
+export type NetworkState =
+  /**  No physical interface has a default gateway. */
+  { state: 'offline' } | { state: 'online'; network: NetworkObservation }
 
 export type NetworkStatisticWidgetConfig =
   { kind: 'disabled' } | { kind: 'enabled'; value: StatisticWidgetVariant }
@@ -3301,6 +3442,11 @@ export type NyanpasuAppConfig_Deserialize = {
    */
   ip_lookup_providers?: IpLookupProvider[]
   /**
+   *  Rules that switch system proxy, TUN and transparent proxy when the
+   *  machine arrives on a network. Replaced as a whole by a patch.
+   */
+  network_automation?: NetworkAutomation
+  /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
    */
@@ -3427,6 +3573,11 @@ export type NyanpasuAppConfig_Serialize = {
    *  provider is listed only after the user accepted its privacy notice.
    */
   ip_lookup_providers: IpLookupProvider[]
+  /**
+   *  Rules that switch system proxy, TUN and transparent proxy when the
+   *  machine arrives on a network. Replaced as a whole by a patch.
+   */
+  network_automation: NetworkAutomation
   /**
    *  PAC URL for automatic proxy configuration
    *  This field is used to set PAC proxy without exposing it to the frontend UI
@@ -5845,6 +5996,10 @@ export type SystemDnsError =
 /**
  *  A patch of the system-affecting application settings.
  *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
  *  aliases behave as before, and a field of another class refuses the whole patch instead of being
@@ -5855,6 +6010,10 @@ export type SystemSettingsPatch =
 
 /**
  *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
@@ -5868,10 +6027,15 @@ export type SystemSettingsPatch_Deserialize = {
   system_proxy_bypass?: string | null
   proxy_guard_interval?: number | null
   pac_url?: string | null
+  network_automation?: NetworkAutomation | null
 }
 
 /**
  *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
  *
  *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
  *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
@@ -5885,6 +6049,7 @@ export type SystemSettingsPatch_Serialize = {
   system_proxy_bypass?: string | null
   proxy_guard_interval?: number | null
   pac_url?: string | null
+  network_automation?: NetworkAutomation | null
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -6149,6 +6314,43 @@ export type WebGpuAdapter = {
   device?: string | null
   description?: string | null
 }
+
+/**  The name of the Wi-Fi network behind the primary interface. */
+export type WifiName =
+  /**  The primary interface is not Wi-Fi. */
+  | { kind: 'not_wifi' }
+  /**
+   *  The interface is Wi-Fi, but the name was not read: no enabled rule
+   *  asks for it, and reading it is what makes macOS and Windows ask the
+   *  user for location access.
+   */
+  | { kind: 'not_read' }
+  | { kind: 'known'; ssid: string }
+  /**
+   *  The interface is Wi-Fi and its name was asked for, but could not be
+   *  read.
+   */
+  | { kind: 'unavailable'; reason: WifiUnavailable }
+
+/**  Why the name of a Wi-Fi network could not be read. */
+export type WifiUnavailable =
+  /**
+   *  The platform gates the name behind location access the user has not
+   *  decided on yet. Asking can show the system prompt.
+   */
+  | 'permission_required'
+  /**
+   *  The user, the device policy or a global location switch refused
+   *  location access. Only the system settings can change that.
+   */
+  | 'permission_denied'
+  /**
+   *  The platform answered without a name: the interface is not
+   *  associated, or the name service is missing or failed.
+   */
+  | 'unreadable'
+  /**  This host has no way to read a Wi-Fi name. */
+  | 'unsupported'
 
 /**  What closing a window does. */
 export type WindowCloseBehavior =

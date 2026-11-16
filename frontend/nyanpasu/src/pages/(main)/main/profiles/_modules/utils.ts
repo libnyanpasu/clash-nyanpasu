@@ -1,14 +1,21 @@
 import { isConfigItem, isTransformItem } from '@nyanpasu/query'
-import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
+import {
+  type ProfileItem_Serialize,
+  type ProfileListingItem_Serialize,
+} from '@nyanpasu/rpc/types'
 import { ProfileType } from './consts'
 
-export type ConfigProfile = Extract<ProfileItem_Serialize, { type: 'config' }>
-export type TransformProfile = Extract<
-  ProfileItem_Serialize,
-  { type: 'transform' }
->
+export type ProfileSummaryLike =
+  ProfileItem_Serialize | ProfileListingItem_Serialize
 
-export const transformLabelOf = (profile: ProfileItem_Serialize) => {
+export type ConfigProfile<
+  T extends ProfileSummaryLike = ProfileItem_Serialize,
+> = Extract<T, { type: 'config' }>
+export type TransformProfile<
+  T extends ProfileSummaryLike = ProfileItem_Serialize,
+> = Extract<T, { type: 'transform' }>
+
+export const transformLabelOf = (profile: ProfileSummaryLike) => {
   if (profile.type !== 'transform') return undefined
   if (profile.transform.type === 'overlay') return 'YAML'
 
@@ -23,32 +30,32 @@ export type CategoryProfiles = {
 }
 
 /** Activatable = Config definition (File / Composition). */
-export const isProxyProfile = (
-  profile: ProfileItem_Serialize,
-): profile is ConfigProfile => isConfigItem(profile)
+export const isProxyProfile = <T extends ProfileSummaryLike>(
+  profile: T,
+): profile is ConfigProfile<T> => isConfigItem(profile)
 
 /** Chain candidate = Transform definition (Overlay / Script). */
-export const isChainProfile = (
-  profile: ProfileItem_Serialize,
-): profile is TransformProfile => isTransformItem(profile)
+export const isChainProfile = <T extends ProfileSummaryLike>(
+  profile: T,
+): profile is TransformProfile<T> => isTransformItem(profile)
 
-export const isJavaScriptProfile = (
-  profile: ProfileItem_Serialize,
-): profile is TransformProfile =>
+export const isJavaScriptProfile = <T extends ProfileSummaryLike>(
+  profile: T,
+): profile is TransformProfile<T> =>
   isTransformItem(profile) &&
   profile.transform.type === 'script' &&
   profile.transform.runtime === 'javascript'
 
-export const isLuaProfile = (
-  profile: ProfileItem_Serialize,
-): profile is TransformProfile =>
+export const isLuaProfile = <T extends ProfileSummaryLike>(
+  profile: T,
+): profile is TransformProfile<T> =>
   isTransformItem(profile) &&
   profile.transform.type === 'script' &&
   profile.transform.runtime === 'lua'
 
-export const isMergeProfile = (
-  profile: ProfileItem_Serialize,
-): profile is TransformProfile =>
+export const isMergeProfile = <T extends ProfileSummaryLike>(
+  profile: T,
+): profile is TransformProfile<T> =>
   isTransformItem(profile) && profile.transform.type === 'overlay'
 
 export const categoryProfiles = (
@@ -77,7 +84,7 @@ export const categoryProfiles = (
 }
 
 /** The `$type` route segment a profile's detail page lives under. */
-export const profileTypeOf = (profile: ProfileItem_Serialize): ProfileType => {
+export const profileTypeOf = (profile: ProfileSummaryLike): ProfileType => {
   if (isJavaScriptProfile(profile)) return ProfileType.JavaScript
   if (isLuaProfile(profile)) return ProfileType.Lua
   if (isMergeProfile(profile)) return ProfileType.Merge
@@ -89,6 +96,6 @@ export const profileTypeOf = (profile: ProfileItem_Serialize): ProfileType => {
  * viewing or opening them would hit `ProfileHasNoFile`; file configs and
  * transforms both own one.
  */
-export const hasMaterializedFile = (profile: ProfileItem_Serialize) =>
+export const hasMaterializedFile = (profile: ProfileSummaryLike) =>
   isTransformItem(profile) ||
   (profile.type === 'config' && profile.config.type === 'file')

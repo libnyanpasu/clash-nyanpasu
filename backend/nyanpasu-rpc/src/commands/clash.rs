@@ -11,10 +11,23 @@ pub async fn clash_api_get_proxy_delay(
     client: RpcState<'_, NyanpasuClient>,
     name: String,
     provider: Option<String>,
+    group: Option<String>,
     url: Option<String>,
     expected: Option<String>,
 ) -> Result<clash_api::Delay> {
-    Ok(client.proxy_delay(name, provider, url, expected).await?)
+    Ok(client
+        .proxy_delay(name, provider, group, url, expected)
+        .await?)
+}
+
+/// The live Clash configuration without the controller secret. The full one is
+/// [`clash_api_get_configs`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn clash_api_get_settings(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_core::clash::api::ClashApiSettings> {
+    Ok(client.clash_api_settings().await?)
 }
 
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
@@ -85,6 +98,16 @@ pub async fn clash_api_get_providers_proxies(
 ) -> Result<IndexMap<clash_api::ProviderName, nyanpasu_core::clash::proxies::ProxyProviderSummary>>
 {
     Ok(client.proxy_providers().await?)
+}
+
+/// Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
+/// credential, so `get_proxies` only reports whether a group has one.
+#[nyanpasu_macro::rpc(http, optional_capabilities(presentation), query, scope = sensitive_read)]
+#[specta::specta]
+pub async fn get_proxy_group_icons(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<IndexMap<clash_api::ProxyName, String>> {
+    Ok(client.proxy_group_icons().await?)
 }
 
 #[nyanpasu_macro::rpc(http, optional_capabilities(presentation), query)]

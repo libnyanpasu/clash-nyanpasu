@@ -7,7 +7,10 @@ import type {
   ProfileId,
   ProfileItem_Serialize,
   ProfileLayout,
+  ProfileListingItem_Serialize,
+  ProfileListingSource_Serialize,
   ProfileMetadataPatch_Deserialize,
+  ProfilesListing_Serialize,
   ProfileSource_Serialize,
   ProxyGroupLayout,
   RemoteProfileOptionsPatch_Deserialize,
@@ -26,39 +29,56 @@ import { invokeMutation, invokeQuery } from './query-options'
 
 // ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
 
-export const isConfigItem = (
-  item: ProfileItem_Serialize,
-): item is Extract<ProfileItem_Serialize, { type: 'config' }> =>
-  item.type === 'config'
+type ProfileAnyItem = ProfileItem_Serialize | ProfileListingItem_Serialize
 
-export const isTransformItem = (
-  item: ProfileItem_Serialize,
-): item is Extract<ProfileItem_Serialize, { type: 'transform' }> =>
-  item.type === 'transform'
+export const isConfigItem = <T extends ProfileAnyItem>(
+  item: T,
+): item is Extract<T, { type: 'config' }> => item.type === 'config'
+
+export const isTransformItem = <T extends ProfileAnyItem>(
+  item: T,
+): item is Extract<T, { type: 'transform' }> => item.type === 'transform'
 
 /** The source of a File config or a Transform; Composition has none. */
-export const getProfileSource = (
+export function getProfileSource(
   item: ProfileItem_Serialize,
-): ProfileSource_Serialize | undefined => {
+): ProfileSource_Serialize | undefined
+export function getProfileSource(
+  item: ProfileListingItem_Serialize,
+): ProfileListingSource_Serialize | undefined
+export function getProfileSource(
+  item: ProfileAnyItem,
+): ProfileSource_Serialize | ProfileListingSource_Serialize | undefined
+export function getProfileSource(
+  item: ProfileAnyItem,
+): ProfileSource_Serialize | ProfileListingSource_Serialize | undefined {
   if (isTransformItem(item)) return item.transform.source
   return item.config.type === 'file' ? item.config.source : undefined
 }
 
 /** Remote = a File config or Transform whose source is a remote URL. */
-export const getRemoteSource = (
+export function getRemoteSource(
   item: ProfileItem_Serialize,
-): Extract<ProfileSource_Serialize, { type: 'remote' }> | undefined => {
+): Extract<ProfileSource_Serialize, { type: 'remote' }> | undefined
+export function getRemoteSource(
+  item: ProfileListingItem_Serialize,
+): Extract<ProfileListingSource_Serialize, { type: 'remote' }> | undefined
+export function getRemoteSource(
+  item: ProfileAnyItem,
+):
+  | Extract<ProfileSource_Serialize, { type: 'remote' }>
+  | Extract<ProfileListingSource_Serialize, { type: 'remote' }>
+  | undefined
+export function getRemoteSource(item: ProfileAnyItem) {
   const source = getProfileSource(item)
   return source?.type === 'remote' ? source : undefined
 }
 
-export const isRemoteItem = (item: ProfileItem_Serialize): boolean =>
+export const isRemoteItem = (item: ProfileAnyItem): boolean =>
   getRemoteSource(item) !== undefined
 
 /** Scoped transforms of the current config item (File or Composition). */
-export const scopedTransformsOf = (
-  item: ProfileItem_Serialize,
-): ProfileId[] => {
+export const scopedTransformsOf = (item: ProfileAnyItem): ProfileId[] => {
   if (!isConfigItem(item)) return []
   return item.config.transforms ?? []
 }
@@ -70,6 +90,9 @@ export type ProfileQueryResult = NonNullable<
 type ProfileQueryData = Awaited<
   ReturnType<ReturnType<typeof profilesQuery>['queryFn']>
 >
+
+/** The profiles without any source secret, for readers that only show them. */
+export type ProfileListingResult = ProfilesListing_Serialize
 
 /** Layout commits are queued under this scope so they run one at a time. */
 const PROFILE_LAYOUT_SCOPE = 'profile-layout'
@@ -110,6 +133,28 @@ const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
       }
     },
   }
+}
+
+const listingQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
+  const listingOptions = queries.getProfilesListing()
+  return {
+    queryKey: listingOptions.queryKey,
+    queryFn: async () => invokeQuery(listingOptions),
+  }
+}
+
+/**
+ * The profile list for ordinary readers: names, kinds, ordering, folders and
+ * the structural state of each source, with no subscription URL, header, path
+ * or description. The pages that edit a profile read the full document through
+ * `useProfile`.
+ */
+export const useProfileListing = (
+  options: { refetchInterval?: number | false } = {},
+) => {
+  const api = useQueryApi()
+
+  return useQuery({ ...listingQuery(api.queries), ...options })
 }
 
 export const useProfile = (
@@ -156,8 +201,8 @@ export const useProfileUrlProbe = (
 export const useCurrentProfileUid = () => {
   const api = useQueryApi()
   return useQuery({
-    ...profilesQuery(api.queries),
-    select: (data) => data?.current,
+    ...listingQuery(api.queries),
+    select: (data) => data.current,
   }).data
 }
 
@@ -180,10 +225,16 @@ export const useProfileMutations = () => {
   const createProxyGroupFolderCommand = api.mutations.createProxyGroupFolder
   const createProfileFolder = api.mutations.createProfileFolder
   const deleteProfile = api.mutations.deleteProfile
+  // The full document and its secret-free listing change together.
   const invalidate = () =>
-    queryClient.invalidateQueries({
-      queryKey: api.queries.getProfiles().queryKey,
-    })
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: api.queries.getProfiles().queryKey,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: api.queries.getProfilesListing().queryKey,
+      }),
+    ])
 
   // Profile mutations return the full MutationOutcome so MutationCache can
   // observe `committed_degraded`. Do not collapse to bare values or legacy
@@ -310,20 +361,39 @@ export const useProfileMutations = () => {
     mutationFn: async (layout: ProfileLayout) =>
       unwrapResult(await invokeMutation(setProfileLayout, [layout])),
     onMutate: async (layout) => {
-      const queryKey: QueryKey = api.queries.getProfiles().queryKey
-      await queryClient.cancelQueries({ queryKey })
+      const fullKey: QueryKey = api.queries.getProfiles().queryKey
+      const listingKey: QueryKey = api.queries.getProfilesListing().queryKey
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: fullKey }),
+        queryClient.cancelQueries({ queryKey: listingKey }),
+      ])
 
-      const previous = queryClient.getQueryData<ProfileQueryData>(queryKey)
+      const previous = queryClient.getQueryData<ProfileQueryData>(fullKey)
+      const previousListing =
+        queryClient.getQueryData<ProfileListingResult>(listingKey)
       if (previous) {
-        queryClient.setQueryData(queryKey, applyProfileLayout(previous, layout))
+        queryClient.setQueryData(fullKey, applyProfileLayout(previous, layout))
+      }
+      if (previousListing) {
+        queryClient.setQueryData(
+          listingKey,
+          applyProfileLayout(previousListing, layout),
+        )
       }
 
-      return { previous }
+      return { previous, previousListing }
     },
     onError: (_error, _layout, context) => {
       if (context?.previous) {
         const queryKey: QueryKey = api.queries.getProfiles().queryKey
         queryClient.setQueryData<ProfileQueryData>(queryKey, context.previous)
+      }
+      if (context?.previousListing) {
+        const queryKey: QueryKey = api.queries.getProfilesListing().queryKey
+        queryClient.setQueryData<ProfileListingResult>(
+          queryKey,
+          context.previousListing,
+        )
       }
     },
     onSettled: () => {
@@ -363,23 +433,43 @@ export const useProfileMutations = () => {
         await invokeMutation(setProxyGroupLayoutCommand, [profile, layout]),
       ),
     onMutate: async ({ profile, layout }) => {
-      const queryKey: QueryKey = api.queries.getProfiles().queryKey
-      await queryClient.cancelQueries({ queryKey })
+      const fullKey: QueryKey = api.queries.getProfiles().queryKey
+      const listingKey: QueryKey = api.queries.getProfilesListing().queryKey
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: fullKey }),
+        queryClient.cancelQueries({ queryKey: listingKey }),
+      ])
 
-      const previous = queryClient.getQueryData<ProfileQueryData>(queryKey)
+      // The editors read the full document and the sidebar reads the listing.
+      const previous = queryClient.getQueryData<ProfileQueryData>(fullKey)
+      const previousListing =
+        queryClient.getQueryData<ProfileListingResult>(listingKey)
       if (previous) {
         queryClient.setQueryData(
-          queryKey,
+          fullKey,
           applyProxyGroupLayout(previous, profile, layout),
         )
       }
+      if (previousListing) {
+        queryClient.setQueryData(
+          listingKey,
+          applyProxyGroupLayout(previousListing, profile, layout),
+        )
+      }
 
-      return { previous }
+      return { previous, previousListing }
     },
     onError: (_error, _variables, context) => {
       if (context?.previous) {
         const queryKey: QueryKey = api.queries.getProfiles().queryKey
         queryClient.setQueryData<ProfileQueryData>(queryKey, context.previous)
+      }
+      if (context?.previousListing) {
+        const queryKey: QueryKey = api.queries.getProfilesListing().queryKey
+        queryClient.setQueryData<ProfileListingResult>(
+          queryKey,
+          context.previousListing,
+        )
       }
     },
     onSettled: () => {

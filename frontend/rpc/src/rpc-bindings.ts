@@ -18,11 +18,29 @@ export function createRpcClient(
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
+    /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
+    getConfigurationStatusSummary: () =>
+      __RPC_INVOKE<ConfigurationStatusSummary>(
+        'get_configuration_status_summary',
+      ),
+    /**  The service daemon's version, install state and phase, without its server details. */
+    getServiceStatusSummary: () =>
+      __RPC_INVOKE<ServiceStatusSummary>('get_service_status_summary'),
+    /**  Which core is running and in what state, without controller endpoints or failure text. */
+    getCoreStatusSummary: () =>
+      typedError<CoreStatusSummary, IpcError>(
+        __RPC_INVOKE('get_core_status_summary'),
+      ),
     readClipboardText: () =>
       typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
     queryCoreLogs: (query: CoreLogQuery) =>
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
+      ),
+    /**  Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text. */
+    queryCoreLogsSummary: (query: CoreLogSummaryQuery) =>
+      typedError<CoreLogPageSummary, IpcError>(
+        __RPC_INVOKE('query_core_logs_summary', { query }),
       ),
     getCoreLog: (cursor: CoreLogCursor) =>
       typedError<CoreLogRecord, CoreLogError>(
@@ -31,6 +49,11 @@ export function createRpcClient(
     getCoreLogStatus: () =>
       typedError<CoreLogStatus, CoreLogError>(
         __RPC_INVOKE('get_core_log_status'),
+      ),
+    /**  Public core-log status summary without raw storage error messages. */
+    getCoreLogStatusSummary: () =>
+      typedError<CoreLogStatusSummary, IpcError>(
+        __RPC_INVOKE('get_core_log_status_summary'),
       ),
     listLogFiles: (source: LogSource) =>
       typedError<LogFileInfo[], LogError>(
@@ -100,6 +123,7 @@ export function createRpcClient(
     clashApiGetProxyDelay: (
       name: string,
       provider: string | null,
+      group: string | null,
       url: string | null,
       expected: string | null,
     ) =>
@@ -107,9 +131,18 @@ export function createRpcClient(
         __RPC_INVOKE('clash_api_get_proxy_delay', {
           name,
           provider,
+          group,
           url,
           expected,
         }),
+      ),
+    /**
+     *  The live Clash configuration without the controller secret. The full one is
+     *  [`clash_api_get_configs`].
+     */
+    clashApiGetSettings: () =>
+      typedError<ClashApiSettings, IpcError>(
+        __RPC_INVOKE('clash_api_get_settings'),
       ),
     clashApiGetConfigs: () =>
       typedError<ClashApiConfig, IpcError>(
@@ -148,10 +181,24 @@ export function createRpcClient(
       typedError<string, IpcError>(
         __RPC_INVOKE('get_core_version', { coreType }),
       ),
+    /**
+     *  The application settings without the URLs that can carry credentials. The full config is
+     *  [`get_app_config`].
+     */
+    getAppSettings: () =>
+      typedError<ApplicationSettings_Serialize, IpcError>(
+        __RPC_INVOKE('get_app_settings'),
+      ),
     getAppConfig: () =>
       typedError<NyanpasuAppConfig_Serialize, IpcError>(
         __RPC_INVOKE('get_app_config'),
       ),
+    /**
+     *  The persistent Clash settings without the controller secret and the web UI URL templates. The
+     *  full config is [`get_clash_config`].
+     */
+    getClashSettings: () =>
+      typedError<ClashSettings, IpcError>(__RPC_INVOKE('get_clash_settings')),
     getClashConfig: () =>
       typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
     getConfigFeatures: () =>
@@ -165,6 +212,12 @@ export function createRpcClient(
       typedError<ProfileDocument_Serialize, IpcError>(
         __RPC_INVOKE('get_profiles'),
       ),
+    /**
+     *  The profile structure without subscription URLs, request headers, external paths or
+     *  descriptions. The full document is [`get_profiles`].
+     */
+    getProfilesListing: () =>
+      __RPC_INVOKE<ProfilesListing_Serialize>('get_profiles_listing'),
     /**
      *  Downloads a profile URL and suggests how to import it, for the user to
      *  confirm. Desktop-only: it sends a request to any URL the caller names.
@@ -195,6 +248,28 @@ export function createRpcClient(
       typedError<RunPageDto, IpcError>(
         __RPC_INVOKE('get_profile_sync_runs', { uid, after }),
       ),
+    /**
+     *  The sync schedule and active runs without the registration error text. The full status is
+     *  [`get_profile_sync_status`].
+     */
+    getProfileSyncStatusSummary: (uid: ProfileId) =>
+      typedError<ProfileSyncSummary, IpcError>(
+        __RPC_INVOKE('get_profile_sync_status_summary', { uid }),
+      ),
+    /**
+     *  One page of sync runs with each outcome reduced to its kind. The full page is
+     *  [`get_profile_sync_runs`].
+     */
+    getProfileSyncRunsSummary: (
+      uid: ProfileId,
+      after: {
+        sequence: string
+        id: string
+      } | null,
+    ) =>
+      typedError<SyncRunPageSummary, IpcError>(
+        __RPC_INVOKE('get_profile_sync_runs_summary', { uid, after }),
+      ),
     getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
       typedError<LogPageDto, IpcError>(
         __RPC_INVOKE('get_profile_sync_logs', { uid, run, after }),
@@ -211,6 +286,14 @@ export function createRpcClient(
       typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
       typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
+    /**
+     *  Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
+     *  credential, so `get_proxies` only reports whether a group has one.
+     */
+    getProxyGroupIcons: () =>
+      typedError<{ [key in ProxyName]: string }, IpcError>(
+        __RPC_INVOKE('get_proxy_group_icons'),
+      ),
     isTrayIconSet: (mode: TrayIcon) =>
       typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
     isWidgetIconSet: (mode: TrayIcon) =>
@@ -427,6 +510,11 @@ export function createRpcClient(
     queryLogs: (source: LogSource, request: QueryLogs) =>
       typedError<LogPage, LogError>(
         __RPC_INVOKE('query_logs', { source, request }),
+      ),
+    /**  Public app and service log page summary without message text, raw lines, target strings, or text filters. */
+    queryLogsSummary: (source: LogSource, request: QueryLogSummary) =>
+      typedError<LogPageSummary, LogError>(
+        __RPC_INVOKE('query_logs_summary', { source, request }),
       ),
     closeLogSession: (source: LogSource, session: string) =>
       typedError<null, LogError>(
@@ -801,13 +889,26 @@ export function createRpcClient(
       transport.events,
       'configuration-status-changed',
     ),
+    configurationStatusSummaryChanged:
+      makeEvent<ConfigurationStatusSummaryChanged>(
+        transport.events,
+        'configuration-status-summary-changed',
+      ),
     coreLogsChanged: makeEvent<CoreLogsChanged>(
       transport.events,
       'core-logs-changed',
     ),
+    coreLogsSummaryChanged: makeEvent<CoreLogsSummaryChanged>(
+      transport.events,
+      'core-logs-summary-changed',
+    ),
     coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
       transport.events,
       'core-status-changed-event',
+    ),
+    coreStatusSummaryChangedEvent: makeEvent<CoreStatusSummaryChangedEvent>(
+      transport.events,
+      'core-status-summary-changed-event',
     ),
     schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
       transport.events,
@@ -817,6 +918,11 @@ export function createRpcClient(
       transport.events,
       'service-status-changed-event',
     ),
+    serviceStatusSummaryChangedEvent:
+      makeEvent<ServiceStatusSummaryChangedEvent>(
+        transport.events,
+        'service-status-summary-changed-event',
+      ),
     stateChangedEvent: makeEvent<StateChangedEvent>(
       transport.events,
       'state-changed-event',
@@ -1007,6 +1113,139 @@ export type ApplicationPreferencesPatch_Serialize = {
   use_legacy_ui?: boolean | null
 }
 
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings =
+  ApplicationSettings_Serialize | ApplicationSettings_Deserialize
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Deserialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Deserialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Deserialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Deserialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+}
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Serialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Serialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Serialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Serialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+}
+
 export type BrandVersion = {
   brand: string
   version: string
@@ -1100,6 +1339,28 @@ export type ClashApiConfig = {
   'tproxy-port': number | null
   'external-controller': string | null
   secret: string | null
+}
+
+/**
+ *  The live core configuration without the controller secret, for callers that only hold `read`.
+ *
+ *  `external_controller` is a validated socket address, or absent. The core reports it as free
+ *  text, which can be shaped like a URL with credentials in its userinfo, path, query or host, so
+ *  text that is not exactly an `ip:port` is not forwarded. The conversion destructures
+ *  [`ClashConfig`] without `..`, so a new field must be classified.
+ */
+export type ClashApiSettings = {
+  port: number | null
+  mode: string | null
+  ipv6: boolean | null
+  'socket-port': number | null
+  'allow-lan': boolean | null
+  'log-level': string | null
+  'mixed-port': number | null
+  'redir-port': number | null
+  'socks-port': number | null
+  'tproxy-port': number | null
+  'external-controller': string | null
 }
 
 /**  Clash Related Config */
@@ -1270,6 +1531,20 @@ export type ClashInfo = {
 }
 
 /**
+ *  The overrides a `read` caller may see: everything except the controller secret.
+ *
+ *  The conversion destructures the overrides without `..`, so a new field must be classified.
+ */
+export type ClashOverridesSettings = {
+  'log-level': LogLevel
+  'allow-lan': boolean
+  mode: Mode
+  'unified-delay': ManageableField<boolean>
+  'tcp-concurrent': ManageableField<boolean>
+  ipv6: boolean
+}
+
+/**
  *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
  *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
  */
@@ -1299,10 +1574,53 @@ export type ClashOverridesSettingsPatch_Serialize = {
   'tcp-concurrent'?: ManageableField<boolean> | null
 }
 
+/**
+ *  Why a Clash read or probe a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the core's response, the request it failed on and
+ *  the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
+ *  protected full queries.
+ */
+export type ClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
+  | { kind: 'version_unavailable' }
+  | { kind: 'rules_unavailable' }
+  | { kind: 'rule_providers_unavailable' }
+  | { kind: 'proxy_providers_unavailable' }
+  | { kind: 'streams_unavailable' }
+
 export type ClashRule = {
   type: string
   payload: string
   proxy: string
+}
+
+/**
+ *  The secret-free view of [`ClashConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a new field must be classified.
+ */
+export type ClashSettings = {
+  overrides: ClashOverridesSettings
+  enable_tun_mode: boolean
+  tun: TunOverrides
+  enable_clash_fields: boolean
+  expand_include_all: boolean
+  external_controller: ExternalControllerStrategy
+  clash_control_channel: ClashControlChannel
+  clash_ipc_disable_http_controller: boolean
+  mixed_port: PortStrategy
+  socks_port: PortStrategy | null
+  http_port: PortStrategy | null
+  redir_port: PortStrategy | null
+  tproxy_port: PortStrategy | null
+  transparent_proxy: TransparentProxyConfig
+  break_connection: BreakConnectionStrategy
+  tun_stack: TunStack
+  tun_mips: MipsConfig
 }
 
 /**
@@ -1655,6 +1973,22 @@ export type ConfigurationStatus = {
 
 export type ConfigurationStatusChanged = ConfigurationStatus
 
+/**  The secret-free view of [`ConfigurationStatus`]. */
+export type ConfigurationStatusSummary = {
+  event_seq: number
+  /**  A maintenance operation is running. Its description is diagnostic text. */
+  maintenance_active: boolean
+  source_versions: SourceVersions
+  runtime: RuntimeConvergenceSummary
+  effects: EffectConvergenceSummary[]
+  /**  The latest background-source receipt per profile, without the profile's name. */
+  sources: SourceSummary[]
+  active: string | null
+  recent_operations: OperationSummary[]
+}
+
+export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
 export type Connection = Connection_Serialize | Connection_Deserialize
 
 export type ConnectionMetadata =
@@ -1846,6 +2180,9 @@ export type Connection_Serialize = {
   _extra: { [key in string]: JsonValue | null }
 }
 
+/**  How the core's controller is reached. A socket path or URL is a location, not a status. */
+export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
+
 export type ConvergenceHealth =
   'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
@@ -2013,6 +2350,9 @@ export type CoreLogError =
   | { kind: 'too_large' }
   | { kind: 'unavailable'; message: string }
 
+export type CoreLogLevel =
+  'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'unknown'
+
 export type CoreLogPage = {
   rows: CoreLogRow[]
   /**
@@ -2024,6 +2364,14 @@ export type CoreLogPage = {
   status: CoreLogStatus
 }
 
+/**  Public core-log page summary without raw payloads, source labels, or storage error text. */
+export type CoreLogPageSummary = {
+  rows: CoreLogRowSummary[]
+  cursor: CoreLogCursor | null
+  more: boolean
+  status: CoreLogStatusSummary
+}
+
 export type CoreLogQuery = {
   direction: CoreLogDirection
   cursor: CoreLogCursor | null
@@ -2031,6 +2379,19 @@ export type CoreLogQuery = {
   keyword: string
   limit: number
 }
+
+/**
+ *  Why a core log query a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: backend store paths and storage errors stay out of
+ *  the error, and their diagnostics stay on the protected full queries.
+ */
+export type CoreLogReadError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable' }
 
 export type CoreLogRecord = {
   source: CoreLogSource
@@ -2043,6 +2404,15 @@ export type CoreLogRecord = {
 export type CoreLogRow = {
   id: CoreLogCursor
   record: CoreLogRecord
+  truncated: boolean
+}
+
+/**  Public core-log entry summary without payload text, raw time string, or source strings. */
+export type CoreLogRowSummary = {
+  id: CoreLogCursor
+  received_at: number
+  level: CoreLogLevel
+  has_payload: boolean
   truncated: boolean
 }
 
@@ -2072,8 +2442,31 @@ export type CoreLogStatus = {
   discarded: number
 }
 
+/**  Public core-log status without raw storage error messages. */
+export type CoreLogStatusSummary = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  has_error: boolean
+  discarded: number
+}
+
+/**  Public core-log page query without arbitrary keyword filtering over payload text. */
+export type CoreLogSummaryQuery = {
+  direction: CoreLogDirection
+  cursor: CoreLogCursor | null
+  level: CoreLogLevel | null
+  limit: number
+}
+
 export type CoreLogsChanged = {
   status: CoreLogStatus
+}
+
+export type CoreLogsSummaryChanged = {
+  status: CoreLogStatusSummary
 }
 
 /**  A failure of locating the binary a core is started from. */
@@ -2160,6 +2553,80 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+/**
+ *  [`CoreStateDetail`] without the stop reason's text or the process id. The encoding stays
+ *  externally tagged so a consumer that tests for the `Running` key keeps working.
+ */
+export type CoreStateSummary =
+  | ({
+      Stopped: {
+        has_reason: boolean
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
+
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
@@ -2172,6 +2639,21 @@ export type CoreStatusInfo = {
   revision: RevisionIdInfo | null
   healthy: boolean | null
 }
+
+/**  The secret-free view of [`CoreStatusInfo`]. */
+export type CoreStatusSummary = {
+  controller: ControllerKind | null
+  host: ExecutionHost
+  connectivity: EndpointConnectivitySummary
+  generation: number
+  state: CoreStateSummary | null
+  state_changed_at: number
+  revision: RevisionSummary | null
+  /**  `None` is unknown, never healthy. */
+  healthy: boolean | null
+}
+
+export type CoreStatusSummaryChangedEvent = CoreStatusSummary
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
@@ -2325,6 +2807,17 @@ export type EffectConvergence = {
   message: string | null
 }
 
+export type EffectConvergenceSummary = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  code: EffectFailureCode | null
+  has_diagnostic: boolean
+}
+
 /**
  *  Why an effect is not in its desired state, in the terms the UI localizes.
  *
@@ -2417,6 +2910,13 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
+
+export type EndpointConnectivitySummary =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**  Unreachable; the transport error stays with protected callers. */
+  | { kind: 'degraded'; desired: ExecutionHost }
 
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
@@ -2796,6 +3296,9 @@ export type IpcErrorKind =
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
   | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'core_log_read'; error: CoreLogReadError }
+  | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -2876,6 +3379,13 @@ export type LogFileInfo = {
   bytes: string
 }
 
+/**  Public filter for app/service log summaries without text or target substring search. */
+export type LogFilterSummary = {
+  levels: Level[]
+  from_ms: number | null
+  to_ms: number | null
+}
+
 export type LogLevel = 'silent' | 'error' | 'warning' | 'info' | 'debug'
 
 export type LogPage = {
@@ -2896,6 +3406,22 @@ export type LogPage = {
 export type LogPageDto = {
   items: LogDto[]
   next: string | null
+}
+
+/**  Public app/service log page without raw line text, log messages, or target names. */
+export type LogPageSummary = {
+  rows: LogRowSummary[]
+  cursor: LogCursor
+  head: LogCursor
+  start: string
+  file: string
+  building: boolean
+  more: boolean
+  partial: boolean
+  malformed: string
+  truncated: string
+  indexed_bytes: string
+  file_bytes: string
 }
 
 /**
@@ -2977,6 +3503,16 @@ export type LogRow = {
   target: string
   message: string
   raw: string
+  unparsed: boolean
+  truncated: boolean
+}
+
+/**  Public app/service log row without message text, raw line text, or target string. */
+export type LogRowSummary = {
+  id: string
+  timestamp: string | null
+  level: Level
+  has_target: boolean
   unparsed: boolean
   truncated: boolean
 }
@@ -3548,6 +4084,14 @@ export type OperationStatus = {
   message: string | null
 }
 
+/**  One settled mutation. `domain` and `outcome` name variants of closed enums. */
+export type OperationSummary = {
+  operation_id: string
+  domain: string
+  outcome: string
+  has_diagnostic: boolean
+}
+
 /**  The pipeline operator that produced a snapshot node. */
 export type OperatorTag =
   | {
@@ -3852,6 +4396,149 @@ export type ProfileLayout = {
   ungrouped: ProfileId[]
 }
 
+export type ProfileListingBinding =
+  ProfileListingBinding_Serialize | ProfileListingBinding_Deserialize
+
+export type ProfileListingBinding_Deserialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingBinding_Serialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingConfig =
+  ProfileListingConfig_Serialize | ProfileListingConfig_Deserialize
+
+export type ProfileListingConfig_Deserialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Deserialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingConfig_Serialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Serialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingDefinition =
+  ProfileListingDefinition_Serialize | ProfileListingDefinition_Deserialize
+
+export type ProfileListingDefinition_Deserialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Deserialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Deserialize } & {
+      config?: never
+    })
+
+export type ProfileListingDefinition_Serialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Serialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Serialize } & {
+      config?: never
+    })
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem =
+  ProfileListingItem_Serialize | ProfileListingItem_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Deserialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Serialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Serialize
+
+/**  The name stays; the description is free text a user may paste a link into, so it is a flag. */
+export type ProfileListingMetadata = {
+  name: string
+  custom_name: boolean
+  has_desc: boolean
+}
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource =
+  ProfileListingSource_Serialize | ProfileListingSource_Deserialize
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Deserialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Deserialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Serialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Serialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription?: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+export type ProfileListingTransform =
+  ProfileListingTransform_Serialize | ProfileListingTransform_Deserialize
+
+export type ProfileListingTransform_Deserialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Deserialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Deserialize
+      runtime: ScriptRuntime
+    }
+
+export type ProfileListingTransform_Serialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Serialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Serialize
+      runtime: ScriptRuntime
+    }
+
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
   ProfileMetadata_Serialize | ProfileMetadata_Deserialize
@@ -3975,12 +4662,37 @@ export type ProfileSubscriptionInfo = {
   expire?: number | null
 }
 
+/**
+ *  Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
+ *  out of the error, and their diagnostics stay on the protected full queries.
+ */
+export type ProfileSyncReadError =
+  | { kind: 'unknown_profile' }
+  | { kind: 'not_remote' }
+  | { kind: 'invalid_cursor' }
+  | { kind: 'unavailable' }
+
 export type ProfileSyncStatus = {
   scheduled: boolean
   next_run_at: string | null
   active: RunDto[]
   journal_degraded: boolean
   registration_error: string | null
+  history_limit: number
+}
+
+/**
+ *  The secret-free view of [`ProfileSyncStatus`]. The registration error is owner text that can
+ *  carry the failing request's URL, so it is a flag.
+ */
+export type ProfileSyncSummary = {
+  scheduled: boolean
+  next_run_at: string | null
+  active: SyncRunSummary[]
+  journal_degraded: boolean
+  has_registration_error: boolean
   history_limit: number
 }
 
@@ -4878,6 +5590,36 @@ export type ProfilesError =
   | { kind: 'blocking_task_cancelled' }
   | { kind: 'shutting_down' }
 
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing =
+  ProfilesListing_Serialize | ProfilesListing_Deserialize
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Deserialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Deserialize[]
+}
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Serialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Serialize[]
+}
+
 export type ProviderName = string
 
 export type ProviderType = 'Proxy' | 'Rule' | string
@@ -4938,12 +5680,21 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
-  /**  The URL the core tests this group's members with; `None` when unset. */
-  testUrl: string | null
+  /**
+   *  Which of a node's delay records this group's members are shown with: [`DEFAULT_TEST_URL_KEY`]
+   *  when the group tests with the app's default URL, else the group's own name. A test URL is
+   *  configuration that may hold a credential, so the key names the source and never the URL;
+   *  the backend resolves the URL itself.
+   */
+  delayKey: string
   /**  The status codes a test must return, in the core's range syntax. */
   expectedStatus: string | null
   hidden: boolean
-  icon: string | null
+  /**
+   *  Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
+   *  credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+   */
+  iconConfigured: boolean
   capabilities: ProxyGroupCapabilities
 }
 
@@ -5080,6 +5831,15 @@ export type PublishRuntimeError =
   | { kind: 'create_runtime_directory'; path: ErrorPath }
   | { kind: 'write_runtime_config'; path: ErrorPath }
 
+/**  Public query parameters for [`NyanpasuClient::query_logs_summary`]. */
+export type QueryLogSummary = {
+  session: string
+  filter: LogFilterSummary
+  direction: Direction
+  cursor: LogCursor | null
+  limit: number
+}
+
 export type QueryLogs = {
   session: string
   filter: Filter
@@ -5131,6 +5891,14 @@ export type RemoteAccessError =
    */
   | { kind: 'use_dedicated_command' }
 
+/**  The sync policy; the user agent is a request header value, so it is a flag. */
+export type RemoteListingOptions = {
+  has_user_agent: boolean
+  with_proxy: boolean
+  self_proxy: boolean
+  update_interval_minutes: RemoteSyncInterval
+}
+
 export type RemoteProfileOptionsPatch =
   RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
@@ -5178,6 +5946,12 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+/**  The identity of the config revision the core adopted, without its content hash. */
+export type RevisionSummary = {
+  epoch: number
+  generation: number
 }
 
 export type RuleKey = {
@@ -5272,6 +6046,13 @@ export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
   message: string | null
+}
+
+export type RuntimeConvergenceSummary = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  /**  The owner reported diagnostic text, available to protected callers. */
+  has_diagnostic: boolean
 }
 
 /**  A failure of an operation on the running core or the runtime workflow. */
@@ -5477,6 +6258,19 @@ export type ServiceCompat =
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
 
+/**  [`ServiceCompat`] with the daemon's version only where it parsed as a version. */
+export type ServiceCompatSummary =
+  | { kind: 'unknown' }
+  | { kind: 'compatible'; server_version: string }
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      required_min: string
+    }
+  /**  The daemon reported text that is not a version, and the text is not repeated. */
+  | { kind: 'unparsable' }
+
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
  *  second copy of core state.
@@ -5582,6 +6376,20 @@ export type ServiceStatusInfo_Serialize = {
   restart_attempts: number
 }
 
+/**  The secret-free view of [`ServiceHostStatus`]. */
+export type ServiceStatusSummary = {
+  name: string
+  version: string
+  status: ServiceStatus
+  /**  The daemon answered the probe. Its data directories and log locations stay protected. */
+  server_reported: boolean
+  phase: ServicePhase
+  compat: ServiceCompatSummary
+  restart_attempts: number
+}
+
+export type ServiceStatusSummaryChangedEvent = ServiceStatusSummary
+
 export type SnapshotDiffHunk = {
   old_start: number
   old_lines: number
@@ -5605,11 +6413,33 @@ export type SourceOutcome =
    */
   | { kind: 'rejected'; code: string; message: string }
 
+export type SourceOutcomeSummary =
+  | { kind: 'committed'; operation_id: string | null }
+  | { kind: 'superseded' }
+  | { kind: 'failed' }
+  | { kind: 'rejected'; code: SourceRejection }
+
+/**  The refusal reason a source receipt names, from the closed set the source owner raises. */
+export type SourceRejection =
+  | 'subscription_rejected'
+  | 'external_source_rejected'
+  /**  A code this build does not classify; never read as success. */
+  | 'other'
+
 export type SourceStatus = {
   profile: ProfileId
   name: string
   origin: SourceOrigin
   outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
+export type SourceSummary = {
+  profile: ProfileId
+  origin: SourceOrigin
+  outcome: SourceOutcomeSummary
   health: ConvergenceHealth
   /**  Unix milliseconds. */
   at: number
@@ -5839,6 +6669,33 @@ export type SubscriptionInfo_Serialize = {
   Download: number
   Total: number
   Expire: number
+}
+
+/**  A failed run is only `Failed`: its code and message are owner text. */
+export type SyncOutcomeKind =
+  'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'skipped'
+
+export type SyncRunPageSummary = {
+  items: SyncRunSummary[]
+  next: RunCursorDto | null
+}
+
+export type SyncRunStateSummary =
+  | { kind: 'admitted' }
+  | { kind: 'running' }
+  | { kind: 'cancelling' }
+  | { kind: 'finalizing' }
+  | { kind: 'finished'; outcome: SyncOutcomeKind; journal_degraded: boolean }
+
+/**  One sync run without its job key, completion output, failure code and message. */
+export type SyncRunSummary = {
+  id: string
+  admission_sequence: string
+  trigger: string
+  scheduled_at: string | null
+  admitted_at: string
+  finished_at: string | null
+  state: SyncRunStateSummary
 }
 
 /**

@@ -2,7 +2,8 @@
 
 use nyanpasu_config::profile::{
     FolderId, NewProfileRequest, ProfileDefinition, ProfileId, ProfileLayout, ProfileMetadataPatch,
-    Profiles as DomainProfiles, ProxyGroupLayout, RemoteProfileOptionsPatch, TransformKind,
+    Profiles as DomainProfiles, ProfilesListing, ProxyGroupLayout, RemoteProfileOptionsPatch,
+    TransformKind,
 };
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_runtime_values::profiles::InvalidSubscriptionUrlSnafu;
@@ -13,6 +14,14 @@ use crate::{error::Result, registry::RpcState};
 #[specta::specta]
 pub async fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<DomainProfiles> {
     Ok((*client.get_profiles().await?).clone())
+}
+
+/// The profile structure without subscription URLs, request headers, external paths or
+/// descriptions. The full document is [`get_profiles`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub fn get_profiles_listing(client: RpcState<'_, NyanpasuClient>) -> ProfilesListing {
+    client.get_profiles_listing()
 }
 
 #[nyanpasu_macro::rpc(http, query)]
@@ -136,6 +145,29 @@ pub async fn get_profile_sync_status(
     uid: ProfileId,
 ) -> Result<nyanpasu_core::client::jobs::ProfileSyncStatus> {
     Ok(client.profile_sync_status(uid).await?)
+}
+
+/// The sync schedule and active runs without the registration error text. The full status is
+/// [`get_profile_sync_status`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_profile_sync_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<nyanpasu_core::client::jobs::ProfileSyncSummary> {
+    Ok(client.profile_sync_status_summary(uid).await?)
+}
+
+/// One page of sync runs with each outcome reduced to its kind. The full page is
+/// [`get_profile_sync_runs`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_profile_sync_runs_summary(
+    client: RpcState<'_, NyanpasuClient>,
+    uid: ProfileId,
+    after: Option<nyanpasu_jobs::dto::RunCursorDto>,
+) -> Result<nyanpasu_core::client::jobs::SyncRunPageSummary> {
+    Ok(client.profile_sync_runs_summary(uid, after).await?)
 }
 
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]

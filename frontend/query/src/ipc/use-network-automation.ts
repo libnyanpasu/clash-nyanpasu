@@ -2,7 +2,7 @@ import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { invokeMutation, unwrapQueryOptions } from './query-options'
-import { useSystemSetting } from './use-settings'
+import { useFullSystemSetting } from './use-settings'
 
 /** The status is read by polling: the host has no network-change event. */
 const STATUS_REFETCH_INTERVAL = 5_000
@@ -10,10 +10,13 @@ const STATUS_REFETCH_INTERVAL = 5_000
 /**
  * The saved network rules. A patch replaces the policy as a whole, so `save`
  * takes the complete next policy. A rule switches the system proxy, TUN and
- * transparent proxy, so the policy is written under the `system` scope.
+ * transparent proxy, so the policy is written under the `system` scope. The
+ * rules name Wi-Fi networks and gateway MAC addresses, so the editor reads the
+ * full config (`sensitive_read`), which the safe settings view reduces to a
+ * flag.
  */
 export const useNetworkAutomation = () => {
-  const setting = useSystemSetting('network_automation')
+  const setting = useFullSystemSetting('network_automation')
 
   return {
     policy: setting.value,

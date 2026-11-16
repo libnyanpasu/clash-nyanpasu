@@ -14,7 +14,7 @@ import { formatDate, formatRelativeTime } from '@/utils/date'
 import { formatBytes } from '@/utils/format-bytes'
 import {
   MutationUnconfirmedError,
-  useProfile,
+  useProfileListing,
   useProfileMutations,
 } from '@nyanpasu/query'
 import { Link } from '@tanstack/react-router'
@@ -183,7 +183,7 @@ function SubscriptionQuotaLive({
   disabled: boolean
   config: Extract<WidgetConfig, { type: WidgetId.SubscriptionQuota }>
 }) {
-  const { query } = useProfile()
+  const query = useProfileListing()
   const { update } = useProfileMutations()
   const { setIsEditing } = useDashboardContext()
   const [actionState, setActionState] = useState<ActionState>('idle')

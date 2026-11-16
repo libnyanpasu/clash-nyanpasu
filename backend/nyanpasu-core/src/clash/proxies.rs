@@ -109,12 +109,17 @@ pub struct ProxyGroup {
     pub now: Option<ProxyName>,
     /// The member a user pinned; `None` while the core selects on its own.
     pub fixed: Option<ProxyName>,
-    /// The URL the core tests this group's members with; `None` when unset.
-    pub test_url: Option<String>,
+    /// Which of a node's delay records this group's members are shown with: [`DEFAULT_TEST_URL_KEY`]
+    /// when the group tests with the app's default URL, else the group's own name. A test URL is
+    /// configuration that may hold a credential, so the key names the source and never the URL;
+    /// the backend resolves the URL itself.
+    pub delay_key: String,
     /// The status codes a test must return, in the core's range syntax.
     pub expected_status: Option<String>,
     pub hidden: bool,
-    pub icon: Option<String>,
+    /// Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
+    /// credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+    pub icon_configured: bool,
     pub capabilities: ProxyGroupCapabilities,
 }
 
@@ -131,13 +136,21 @@ impl ProxyGroup {
                 .fixed
                 .clone()
                 .filter(|name| !name.as_str().is_empty()),
-            test_url: record.test_url.clone().filter(|url| !url.is_empty()),
+            delay_key: if record
+                .test_url
+                .as_deref()
+                .is_some_and(|url| !url.is_empty())
+            {
+                record.name.as_str().to_owned()
+            } else {
+                DEFAULT_TEST_URL_KEY.to_owned()
+            },
             expected_status: record
                 .expected_status
                 .clone()
                 .filter(|status| !status.is_empty()),
             hidden: record.hidden.unwrap_or(false),
-            icon: record.icon.clone(),
+            icon_configured: record.icon.as_deref().is_some_and(|icon| !icon.is_empty()),
             capabilities,
         }
     }
@@ -316,28 +329,178 @@ impl Proxies {
         }
     }
 
-    /// The frontend reads delays only under a group's test URL or the default
-    /// one, so other URLs' records are not sent. Both the raw and the
-    /// normalized form are kept: the core keys `extra` by the string a test
-    /// was requested with (normalized by the backend) and by a group's raw
-    /// testUrl for its own health checks.
-    pub fn trim_for_frontend(mut self, default_url: &str) -> Self {
-        let mut urls = Vec::new();
-        for url in self
-            .global
+    /// The test URL the core uses for `group`'s members, when it has one of its own.
+    pub fn group_test_url(&self, group: &str) -> Option<&str> {
+        self.nodes
+            .get(&ProxyName::from(group))?
+            .test_url
+            .as_deref()
+            .filter(|url| !url.is_empty())
+    }
+
+    /// The test URL of `group` when the snapshot has such a group: `Some(None)` for a group that
+    /// tests with the app's default, `None` for a name no group has.
+    pub fn group_own_test_url(&self, group: &str) -> Option<Option<&str>> {
+        self.global
             .iter()
             .chain(&self.groups)
-            .filter_map(|group| group.test_url.as_deref())
-            .chain([default_url])
-        {
-            urls.extend(url::Url::parse(url).map(|parsed| parsed.as_str().to_owned()));
-            urls.push(url.to_owned());
+            .any(|known| known.name.as_str() == group)
+            .then(|| self.group_test_url(group))
+    }
+
+    /// The group icons of the snapshot, by group name.
+    pub fn group_icons(&self) -> IndexMap<ProxyName, String> {
+        self.global
+            .iter()
+            .chain(&self.groups)
+            .filter_map(|group| {
+                let icon = self.nodes.get(&group.name)?.icon.as_deref()?;
+                (!icon.is_empty()).then(|| (group.name.clone(), icon.to_owned()))
+            })
+            .collect()
+    }
+
+    /// The snapshot a `read` caller may see.
+    ///
+    /// Test URLs and icons are configuration that may carry a credential in any part, so no URL
+    /// leaves. Each distinct URL in use, the app default and every group's own, becomes one delay
+    /// source with one key (see [`ProxyGroup::delay_key`]); groups that share a URL, or whose URL
+    /// is the default, refer to the same key, so a node's history is sent once per source. A node's
+    /// `extra` is re-keyed by source, holding the newest record among the raw and the normalized
+    /// form of its URL (the core keys `extra` by the string a test was requested with, and by a
+    /// group's raw `testUrl` for its own health checks). Records of any other URL are dropped.
+    pub fn trim_for_frontend(mut self, default_url: &str) -> Self {
+        let mut sources = vec![(DEFAULT_TEST_URL_KEY.to_owned(), url_forms(default_url))];
+        let mut group_keys = Vec::new();
+        for group in self.global.iter().chain(&self.groups) {
+            let Some(url) = self.group_test_url(group.name.as_str()) else {
+                group_keys.push((group.name.clone(), DEFAULT_TEST_URL_KEY.to_owned()));
+                continue;
+            };
+            let forms = url_forms(url);
+            let key = match sources
+                .iter_mut()
+                .find(|(_, known)| known.iter().any(|form| forms.contains(form)))
+            {
+                Some((key, known)) => {
+                    // The core keys a sample by the spelling the group wrote, so the shared
+                    // source answers to every spelling any of its groups used.
+                    for form in forms {
+                        if !known.contains(&form) {
+                            known.push(form);
+                        }
+                    }
+                    key.clone()
+                }
+                None => {
+                    let key = group.name.as_str().to_owned();
+                    sources.push((key.clone(), forms));
+                    key
+                }
+            };
+            group_keys.push((group.name.clone(), key));
         }
-        let keep: HashSet<&str> = urls.iter().map(String::as_str).collect();
-        self.retain_extra(&keep);
+        for group in self.global.iter_mut().chain(&mut self.groups) {
+            if let Some((_, key)) = group_keys.iter().find(|(name, _)| *name == group.name) {
+                group.delay_key.clone_from(key);
+            }
+        }
+
+        self.nodes = self
+            .nodes
+            .into_iter()
+            .map(|(name, node)| (name, public_node(node, &sources)))
+            .collect();
         self
     }
 }
+
+/// A node as a `read` caller may see it: every field of the core's record is either kept or
+/// dropped here by name, so a field the SDK adds does not reach a reader unreviewed. `test_url`
+/// and `icon` are dropped (see [`Proxies::trim_for_frontend`]), and `extra` is re-keyed by delay
+/// source.
+fn public_node(node: Proxy, sources: &[(String, Vec<String>)]) -> Proxy {
+    let Proxy {
+        name,
+        proxy_type,
+        history,
+        extra,
+        alive,
+        udp,
+        uot,
+        xudp,
+        tfo,
+        mptcp,
+        smux,
+        interface,
+        routing_mark,
+        provider_name,
+        dialer_proxy,
+        id,
+        now,
+        all,
+        test_url: _,
+        expected_status,
+        fixed,
+        hidden,
+        icon: _,
+        empty_fallback,
+        provider,
+    } = node;
+
+    let extra = extra.map(|extra| {
+        sources
+            .iter()
+            .filter_map(|(key, forms)| {
+                let newest = forms
+                    .iter()
+                    .filter_map(|form| extra.get(form))
+                    .max_by_key(|entry| entry.history.last().map(|sample| sample.time))?;
+                Some((key.clone(), newest.clone()))
+            })
+            .collect::<IndexMap<_, _>>()
+    });
+
+    Proxy {
+        name,
+        proxy_type,
+        history,
+        extra,
+        alive,
+        udp,
+        uot,
+        xudp,
+        tfo,
+        mptcp,
+        smux,
+        interface,
+        routing_mark,
+        provider_name,
+        dialer_proxy,
+        id,
+        now,
+        all,
+        test_url: None,
+        expected_status,
+        fixed,
+        hidden,
+        icon: None,
+        empty_fallback,
+        provider,
+    }
+}
+
+/// `url` as written and as the backend normalizes it (`Url::as_str`).
+fn url_forms(url: &str) -> Vec<String> {
+    url::Url::parse(url)
+        .map(|parsed| parsed.as_str().to_owned())
+        .into_iter()
+        .chain([url.to_owned()])
+        .collect()
+}
+
+/// The `extra` key of the samples taken against the app's default test URL.
+pub const DEFAULT_TEST_URL_KEY: &str = "";
 
 #[cfg(test)]
 mod tests {
@@ -355,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn a_group_carries_its_test_url_and_expected_status() {
+    fn a_group_with_its_own_test_url_is_keyed_by_its_name() {
         let mut group = item("g", "URLTest", Some(vec!["DIRECT"]), Some("DIRECT"));
         group.test_url = Some("https://cp.cloudflare.com".into());
         group.expected_status = Some("204".into());
@@ -371,13 +534,21 @@ mod tests {
                 .find(|g| g.name.as_str() == name)
                 .unwrap()
         };
+        assert_eq!(by_name("g").delay_key, "g");
+        assert_eq!(by_name("g").expected_status.as_deref(), Some("204"));
+        assert_eq!(by_name("e").delay_key, DEFAULT_TEST_URL_KEY);
+        assert_eq!(by_name("e").expected_status, None);
+        // The URL itself stays on the snapshot for the backend to test with.
         assert_eq!(
-            by_name("g").test_url.as_deref(),
+            proxies.group_test_url("g"),
             Some("https://cp.cloudflare.com")
         );
-        assert_eq!(by_name("g").expected_status.as_deref(), Some("204"));
-        assert_eq!(by_name("e").test_url, None);
-        assert_eq!(by_name("e").expected_status, None);
+        assert_eq!(proxies.group_test_url("e"), None);
+        assert!(
+            !serde_json::to_string(&proxies.groups)
+                .unwrap()
+                .contains("cloudflare")
+        );
     }
 
     fn name(value: &str) -> ProxyName {
@@ -726,7 +897,8 @@ mod tests {
         assert_eq!(pinned.fixed, Some(name("a")));
         assert_eq!(pinned.now, Some(name("b")));
         assert!(pinned.hidden);
-        assert_eq!(pinned.icon.as_deref(), Some("i"));
+        assert!(pinned.icon_configured);
+        assert!(!unpinned.icon_configured);
 
         let memberless = group_with(json!({"type": "LoadBalance", "all": null}));
         assert!(memberless.all.is_empty());
@@ -784,71 +956,279 @@ mod tests {
         )
     }
 
-    #[test]
-    fn trimming_keeps_only_group_urls_and_the_default() {
-        let mut group = item("g", "URLTest", Some(vec!["a", "DIRECT"]), Some("a"));
-        group.test_url = Some("https://g/".into());
-        let mut a = item("a", "Vless", None, None);
-        a.extra = extra(&["https://g/", "https://d/", "https://other/"]);
-        let mut proxies = records(&[group]);
-        proxies.insert(name("a"), a);
-        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
-            .unwrap()
-            .trim_for_frontend("https://d/");
-        let kept: Vec<_> = trimmed.nodes[&name("a")]
-            .extra
-            .as_ref()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        assert_eq!(kept, ["https://g/", "https://d/"]);
+    const DEFAULT: &str = "https://probe.example/default-sentinel/generate_204";
+    const GROUP_A: &str = "https://user:group-a-sentinel@A.EXAMPLE/path-a-sentinel?key=a-sentinel";
+    const GROUP_B: &str = "https://group-b-sentinel.example";
+
+    fn sample(time: &str, delay: u16) -> clash_api::DelayHistory {
+        serde_json::from_value(json!({ "time": time, "delay": delay })).unwrap()
     }
 
-    /// The core keys `extra` by the URL it was asked with (normalized by the
-    /// backend) and by a group's raw testUrl for its own health checks.
-    #[test]
-    fn trimming_keeps_raw_and_normalized_forms_of_a_bare_host_url() {
-        let mut group = item("g", "URLTest", Some(vec!["a"]), Some("a"));
-        group.test_url = Some("https://g".into());
-        let mut a = item("a", "Vless", None, None);
-        a.extra = extra(&["https://g", "https://g/", "https://d/", "https://other/"]);
-        let mut proxies = records(&[group]);
-        proxies.insert(name("a"), a);
-        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
-            .unwrap()
-            .trim_for_frontend("https://d");
-        let kept: Vec<_> = trimmed.nodes[&name("a")]
-            .extra
-            .as_ref()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
-        assert_eq!(kept, ["https://g", "https://g/", "https://d/"]);
+    fn entry(time: &str, delay: u16) -> clash_api::ProxyExtra {
+        clash_api::ProxyExtra {
+            alive: delay > 0,
+            history: vec![sample(time, delay)],
+        }
+    }
+
+    /// A node with a record under each `(url, time, delay)`.
+    fn measured(name_: &str, records: &[(&str, &str, u16)]) -> Proxy {
+        let mut node = item(name_, "Vless", None, None);
+        node.extra = Some(
+            records
+                .iter()
+                .map(|(url, time, delay)| (url.to_string(), entry(time, *delay)))
+                .collect(),
+        );
+        node.test_url = Some("https://node-sentinel.example/".into());
+        node.icon = Some("https://user:node-icon-sentinel@icons.example/x.png".into());
+        node
+    }
+
+    fn normalized(url: &str) -> String {
+        url::Url::parse(url).unwrap().as_str().to_owned()
+    }
+
+    fn with_urls(group: &str, url: &str, members: &[&str]) -> Proxy {
+        let mut group = item(group, "URLTest", Some(members.to_vec()), None);
+        group.test_url = Some(url.into());
+        group.icon = Some("https://user:icon-sentinel@icons.example/g.png?k=icon-sentinel".into());
+        group
+    }
+
+    fn assert_secret_free(proxies: &Proxies) {
+        let json = serde_json::to_string(proxies).unwrap();
+        assert!(!json.contains("sentinel"), "{json}");
+        for host in ["probe.example", "a.example", "b.example", "icons.example"] {
+            assert!(!json.contains(host), "{host} in {json}");
+        }
     }
 
     #[test]
-    fn trimming_keeps_global_and_hidden_group_urls_and_leaves_history() {
-        let mut global = item("GLOBAL", "Selector", Some(vec!["g"]), Some("g"));
-        global.test_url = Some("https://global/".into());
-        let mut hidden = item("g", "URLTest", Some(vec!["a"]), Some("a"));
-        hidden.test_url = Some("https://hidden/".into());
-        hidden.hidden = Some(true);
-        let mut a = item("a", "Vless", None, None);
-        a.history = vec![
-            serde_json::from_value(json!({"time":"2026-10-06T12:34:56+08:00","delay":7})).unwrap(),
+    fn trimming_sends_each_delay_source_under_a_key_that_is_not_its_url() {
+        let default_normalized = normalized(DEFAULT);
+        let a_normalized = normalized(GROUP_A);
+        let b_normalized = normalized(GROUP_B);
+        let node = measured(
+            "n",
+            &[
+                // The default URL, raw (older) and normalized (newer).
+                (DEFAULT, "2026-10-06T12:00:00+08:00", 1),
+                (&default_normalized, "2026-10-06T13:00:00+08:00", 2),
+                // GROUP_A, raw (newer) and normalized (older).
+                (GROUP_A, "2026-10-06T15:00:00+08:00", 3),
+                (&a_normalized, "2026-10-06T14:00:00+08:00", 4),
+                // GROUP_B has only its normalized form.
+                (&b_normalized, "2026-10-06T16:00:00+08:00", 5),
+                // A URL no group or default uses.
+                (
+                    "https://other-sentinel.example/",
+                    "2026-10-06T17:00:00+08:00",
+                    6,
+                ),
+            ],
+        );
+        let mut proxies = records(&[
+            with_urls("A", GROUP_A, &["n", "inner"]),
+            with_urls("B", GROUP_B, &["n"]),
+            item("C", "Selector", Some(vec!["n"]), None),
+            // A nested group shown through A.
+            item("inner", "Selector", Some(vec!["n"]), None),
+        ]);
+        proxies.insert(name("n"), node);
+        let full = Proxies::from_responses(proxies, &IndexMap::new(), None).unwrap();
+        let trimmed = full.clone().trim_for_frontend(DEFAULT);
+
+        let extra = trimmed.nodes[&name("n")].extra.as_ref().unwrap();
+        assert_eq!(
+            extra.keys().map(String::as_str).collect::<Vec<_>>(),
+            [DEFAULT_TEST_URL_KEY, "A", "B"]
+        );
+        assert_eq!(extra[DEFAULT_TEST_URL_KEY].history[0].delay, 2);
+        assert_eq!(extra["A"].history[0].delay, 3);
+        assert_eq!(extra["B"].history[0].delay, 5);
+
+        let key_of = |group: &str| {
+            trimmed
+                .groups
+                .iter()
+                .find(|g| g.name.as_str() == group)
+                .unwrap()
+                .delay_key
+                .clone()
+        };
+        assert_eq!(key_of("A"), "A");
+        assert_eq!(key_of("B"), "B");
+        assert_eq!(key_of("C"), DEFAULT_TEST_URL_KEY);
+        assert_eq!(key_of("inner"), DEFAULT_TEST_URL_KEY);
+
+        assert_secret_free(&trimmed);
+        // The backend still resolves the URL a group tests with.
+        assert_eq!(full.group_test_url("A"), Some(GROUP_A));
+        assert_eq!(full.group_test_url("B"), Some(GROUP_B));
+        assert_eq!(full.group_test_url("C"), None);
+    }
+
+    #[test]
+    fn groups_sharing_a_url_share_one_key_and_one_history_copy() {
+        let a_normalized = normalized(GROUP_A);
+        let default_normalized = normalized(DEFAULT);
+        let node = measured(
+            "n",
+            &[
+                (GROUP_A, "2026-10-06T14:00:00+08:00", 3),
+                (&a_normalized, "2026-10-06T15:00:00+08:00", 4),
+                (&default_normalized, "2026-10-06T13:00:00+08:00", 2),
+            ],
+        );
+        let mut proxies = records(&[
+            // First and second use GROUP_A (raw and normalized spelling), third is the default.
+            with_urls("first", GROUP_A, &["n"]),
+            with_urls("second", &a_normalized, &["n"]),
+            with_urls("third", DEFAULT, &["n"]),
+            item("plain", "Selector", Some(vec!["n"]), None),
+        ]);
+        proxies.insert(name("n"), node);
+        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
+            .unwrap()
+            .trim_for_frontend(DEFAULT);
+
+        let key_of = |group: &str| {
+            trimmed
+                .groups
+                .iter()
+                .find(|g| g.name.as_str() == group)
+                .unwrap()
+                .delay_key
+                .clone()
+        };
+        assert_eq!(key_of("first"), "first");
+        assert_eq!(key_of("second"), "first");
+        assert_eq!(key_of("third"), DEFAULT_TEST_URL_KEY);
+        assert_eq!(key_of("plain"), DEFAULT_TEST_URL_KEY);
+
+        let extra = trimmed.nodes[&name("n")].extra.as_ref().unwrap();
+        assert_eq!(
+            extra.keys().map(String::as_str).collect::<Vec<_>>(),
+            [DEFAULT_TEST_URL_KEY, "first"]
+        );
+        assert_eq!(extra["first"].history[0].delay, 4);
+        assert_eq!(extra[DEFAULT_TEST_URL_KEY].history[0].delay, 2);
+        assert_secret_free(&trimmed);
+    }
+
+    /// The core keys a sample by the URL as the group wrote it, so the newest sample of a shared
+    /// source may sit only under a spelling that no earlier group of that source used.
+    #[test]
+    fn a_shared_source_reads_the_newest_sample_across_every_spelling() {
+        const OTHER: &str = "https://other-sentinel.example/ping";
+        let spellings = [
+            "https://PROBE.example/default-sentinel/generate_204",
+            "https://probe.EXAMPLE/default-sentinel/generate_204",
         ];
-        a.extra = extra(&["https://global/", "https://hidden/", "https://other/"]);
-        let mut proxies = records(&[global, hidden]);
+        assert_eq!(normalized(spellings[0]), normalized(DEFAULT));
+        assert_eq!(normalized(spellings[1]), normalized(DEFAULT));
+        let other_spellings = ["https://OTHER-sentinel.example/ping", OTHER];
+        let node = measured(
+            "n",
+            &[
+                (DEFAULT, "2026-10-06T12:00:00+08:00", 2),
+                (spellings[0], "2026-10-06T14:00:00+08:00", 3),
+                (spellings[1], "2026-10-06T16:00:00+08:00", 9),
+                (other_spellings[0], "2026-10-06T10:00:00+08:00", 5),
+                (other_spellings[1], "2026-10-06T11:00:00+08:00", 6),
+            ],
+        );
+        let mut proxies = records(&[
+            with_urls("upper", spellings[0], &["n"]),
+            with_urls("mixed", spellings[1], &["n"]),
+            with_urls("plain-default", DEFAULT, &["n"]),
+            with_urls("other-upper", other_spellings[0], &["n"]),
+            with_urls("other-lower", other_spellings[1], &["n"]),
+        ]);
+        proxies.insert(name("n"), node);
+        let trimmed = Proxies::from_responses(proxies, &IndexMap::new(), None)
+            .unwrap()
+            .trim_for_frontend(DEFAULT);
+
+        let key_of = |group: &str| {
+            trimmed
+                .groups
+                .iter()
+                .find(|g| g.name.as_str() == group)
+                .unwrap()
+                .delay_key
+                .clone()
+        };
+        for group in ["upper", "mixed", "plain-default"] {
+            assert_eq!(key_of(group), DEFAULT_TEST_URL_KEY, "{group}");
+        }
+        let other = key_of("other-upper");
+        assert_eq!(key_of("other-lower"), other);
+        assert_ne!(other, DEFAULT_TEST_URL_KEY);
+
+        let extra = trimmed.nodes[&name("n")].extra.as_ref().unwrap();
+        assert_eq!(
+            extra.keys().map(String::as_str).collect::<Vec<_>>(),
+            [DEFAULT_TEST_URL_KEY, other.as_str()]
+        );
+        assert_eq!(extra[DEFAULT_TEST_URL_KEY].history[0].delay, 9);
+        assert_eq!(extra[other.as_str()].history[0].delay, 6);
+        assert_secret_free(&trimmed);
+    }
+
+    #[test]
+    fn trimming_clears_urls_and_icons_on_every_node_record_and_leaves_history() {
+        let mut global = item("GLOBAL", "Selector", Some(vec!["g"]), Some("g"));
+        global.test_url = Some("https://global-sentinel.example/".into());
+        let mut proxies = records(&[global, with_urls("g", GROUP_A, &["a"])]);
+        let mut a = measured(
+            "a",
+            &[(
+                "https://other-sentinel.example/",
+                "2026-10-06T17:00:00+08:00",
+                6,
+            )],
+        );
+        a.history = vec![sample("2026-10-06T12:34:56+08:00", 7)];
         proxies.insert(name("a"), a);
         let full = Proxies::from_responses(proxies, &IndexMap::new(), None).unwrap();
         let history = serde_json::to_value(&full.nodes[&name("a")].history).unwrap();
-        let trimmed = full.trim_for_frontend("https://d/");
-        let node = &trimmed.nodes[&name("a")];
-        let kept: Vec<_> = node.extra.as_ref().unwrap().keys().cloned().collect();
-        assert_eq!(kept, ["https://global/", "https://hidden/"]);
-        assert_eq!(serde_json::to_value(&node.history).unwrap(), history);
+
+        let trimmed = full.trim_for_frontend(DEFAULT);
+        for node in trimmed.nodes.values() {
+            assert_eq!(node.test_url, None, "{}", node.name.as_str());
+            assert_eq!(node.icon, None, "{}", node.name.as_str());
+        }
+        assert_eq!(
+            serde_json::to_value(&trimmed.nodes[&name("a")].history).unwrap(),
+            history
+        );
+        assert!(trimmed.groups[0].icon_configured);
+        assert_secret_free(&trimmed);
+    }
+
+    #[test]
+    fn group_icons_come_from_the_snapshot_not_the_read_view() {
+        let mut global = item("GLOBAL", "Selector", Some(vec!["g", "plain"]), None);
+        global.icon = Some("https://icons.example/global.png".into());
+        let plain = item("plain", "Selector", Some(vec!["DIRECT"]), None);
+        let proxies = records(&[global, with_urls("g", GROUP_A, &["DIRECT"]), plain]);
+        let full = Proxies::from_responses(proxies, &IndexMap::new(), None).unwrap();
+
+        let icons = full.group_icons();
+        assert_eq!(icons.len(), 2);
+        assert_eq!(
+            icons[&name("g")],
+            "https://user:icon-sentinel@icons.example/g.png?k=icon-sentinel"
+        );
+        assert!(icons.contains_key(&name("GLOBAL")));
+        assert!(
+            full.clone()
+                .trim_for_frontend(DEFAULT)
+                .group_icons()
+                .is_empty()
+        );
     }
 
     #[test]

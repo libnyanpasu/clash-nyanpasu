@@ -134,13 +134,17 @@ mod tests {
                 "get_app_config",
                 "get_clash_config",
                 "get_clash_info",
+                "get_configuration_status",
                 "get_core_log",
+                "get_core_log_status",
+                "get_core_status",
                 "get_network_automation_status",
                 "get_postprocessing_output",
                 "get_profile_sync_logs",
                 "get_profile_sync_runs",
                 "get_profile_sync_status",
                 "get_profiles",
+                "get_proxy_group_icons",
                 "get_runtime_config",
                 "get_runtime_yaml",
                 "get_storage_item",
@@ -152,6 +156,7 @@ mod tests {
                 "query_logs",
                 "read_clipboard_text",
                 "read_profile_file",
+                "status_service",
             ]
         );
     }

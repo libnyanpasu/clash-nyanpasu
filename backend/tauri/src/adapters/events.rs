@@ -8,6 +8,7 @@ use tauri_specta::Event;
 use nyanpasu_runtime_values::{
     app_update::AppUpdateSnapshot,
     core_status::{CoreStatusInfo, ServiceHostStatus},
+    observation::{CoreStatusSummary, ServiceStatusSummary},
     storage::StorageRevision,
 };
 
@@ -26,6 +27,12 @@ pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct ServiceStatusChangedEvent(pub ServiceHostStatus);
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct CoreStatusSummaryChangedEvent(pub CoreStatusSummary);
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct ServiceStatusSummaryChangedEvent(pub ServiceStatusSummary);
+
 /// Attaches Tauri event registration to the canonical payload.
 #[derive(Debug, Clone, Serialize, Deserialize, tauri_specta::Event)]
 #[serde(transparent)]
@@ -35,6 +42,18 @@ pub struct CoreLogsChangedEvent(pub nyanpasu_rpc_protocol::types::CoreLogsChange
 impl Type for CoreLogsChangedEvent {
     fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
         nyanpasu_rpc_protocol::types::CoreLogsChanged::definition(types)
+    }
+}
+
+/// Attaches Tauri event registration to the summary-only core-log status payload.
+#[derive(Debug, Clone, Serialize, Deserialize, tauri_specta::Event)]
+#[serde(transparent)]
+#[tauri_specta(event_name = "core-logs-summary-changed")]
+pub struct CoreLogsSummaryChangedEvent(pub nyanpasu_rpc_protocol::types::CoreLogsSummaryChanged);
+
+impl Type for CoreLogsSummaryChangedEvent {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        nyanpasu_rpc_protocol::types::CoreLogsSummaryChanged::definition(types)
     }
 }
 

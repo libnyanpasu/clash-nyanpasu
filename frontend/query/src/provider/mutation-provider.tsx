@@ -13,6 +13,7 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
   const mutationKeys = useMemo(
     (): Record<StateChanged['kind'], QueryKey[]> => ({
       nyanpasu_config: [
+        api.queries.getAppSettings().queryKey,
         api.queries.getAppConfig().queryKey,
         // Follows the selected core.
         api.queries.getConfigFeatures().queryKey,
@@ -23,11 +24,16 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       // Sent for the runtime too, after every apply, core start or restart.
       clash_config: [
         api.queries.clashApiGetVersion().queryKey,
+        api.queries.getClashSettings().queryKey,
         api.queries.getClashConfig().queryKey,
         api.queries.getClashInfo().queryKey,
+        api.queries.clashApiGetSettings().queryKey,
         api.queries.clashApiGetConfigs().queryKey,
       ],
-      profiles: [api.queries.getProfiles().queryKey],
+      profiles: [
+        api.queries.getProfiles().queryKey,
+        api.queries.getProfilesListing().queryKey,
+      ],
       proxies: [
         api.queries.getProxies().queryKey,
         api.queries.clashApiGetProvidersProxies().queryKey,
@@ -41,11 +47,14 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
   // info is not: a runtime outcome nobody observed can drop its ports.
   const keptKeys = useMemo(
     () => [
+      api.queries.getAppSettings().queryKey,
       api.queries.getAppConfig().queryKey,
       api.queries.getConfigFeatures().queryKey,
+      api.queries.getClashSettings().queryKey,
       api.queries.getClashConfig().queryKey,
       api.queries.clashApiGetVersion().queryKey,
       api.queries.getProfiles().queryKey,
+      api.queries.getProfilesListing().queryKey,
       api.queries.getProxies().queryKey,
     ],
     [api.queries],
@@ -100,8 +109,14 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       api.events.coreStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.getCoreStatus().queryKey]),
       ),
+      api.events.coreStatusSummaryChangedEvent.listen(() =>
+        refetchQueries([api.queries.getCoreStatusSummary().queryKey]),
+      ),
       api.events.serviceStatusChangedEvent.listen(() =>
         refetchQueries([api.queries.statusService().queryKey]),
+      ),
+      api.events.serviceStatusSummaryChangedEvent.listen(() =>
+        refetchQueries([api.queries.getServiceStatusSummary().queryKey]),
       ),
     ]
     return () => {

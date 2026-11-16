@@ -4,12 +4,12 @@ use crate::error::Result;
 
 use nyanpasu_config::{
     application::{
-        ApplicationPreferencesPatch, ClashCore, IpLookupProviderInfo, NyanpasuAppConfig,
-        SystemSettingsPatch,
+        ApplicationPreferencesPatch, ApplicationSettings, ClashCore, IpLookupProviderInfo,
+        NyanpasuAppConfig, SystemSettingsPatch,
     },
     clash::{
         config::{
-            ClashConfig, ClashSettingsPatch, ClashSystemPatch,
+            ClashConfig, ClashSettings, ClashSettingsPatch, ClashSystemPatch,
             overrides::{ClashAccessPatch, ClashOverridesSettingsPatch, Mode},
         },
         features::ConfigFeatures,
@@ -101,12 +101,25 @@ pub async fn get_postprocessing_output(
         .unwrap_or_default())
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus, query)]
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetCoreStatus, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_status(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_runtime_values::core_status::CoreStatusInfo> {
     Ok(client.core_status().into())
+}
+
+/// Which core is running and in what state, without controller endpoints or failure text.
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_core_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::observation::CoreStatusSummary> {
+    Ok(
+        nyanpasu_runtime_values::observation::CoreStatusSummary::from(
+            &nyanpasu_runtime_values::core_status::CoreStatusInfo::from(client.core_status()),
+        ),
+    )
 }
 
 /// The network the host is on and what the network rules last did about it.
@@ -156,6 +169,14 @@ pub async fn get_ip_lookup_providers(
     Ok(client.ip_lookup_providers())
 }
 
+/// The application settings without the URLs that can carry credentials. The full config is
+/// [`get_app_config`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_app_settings(client: RpcState<'_, NyanpasuClient>) -> Result<ApplicationSettings> {
+    Ok(client.get_app_settings().await?)
+}
+
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_app_config(client: RpcState<'_, NyanpasuClient>) -> Result<NyanpasuAppConfig> {
@@ -183,6 +204,14 @@ pub async fn patch_system_settings(
     patch: SystemSettingsPatch,
 ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
     Ok(client.patch_app_config(patch.into()).await?)
+}
+
+/// The persistent Clash settings without the controller secret and the web UI URL templates. The
+/// full config is [`get_clash_config`].
+#[nyanpasu_macro::rpc(http, query)]
+#[specta::specta]
+pub async fn get_clash_settings(client: RpcState<'_, NyanpasuClient>) -> Result<ClashSettings> {
+    Ok(client.get_clash_settings().await?)
 }
 
 #[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]

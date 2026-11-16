@@ -12,8 +12,8 @@ async function setup(
   enabled = true,
 ) {
   const testRpc = createTestRpc({
-    get_app_config: () => ({ enable_local_ip_probe: allowed }),
-    get_clash_config: () => ({ enable_tun_mode: tun }),
+    get_app_settings: () => ({ enable_local_ip_probe: allowed }),
+    get_clash_settings: () => ({ enable_tun_mode: tun }),
     probe_direct_egress: () => ({
       kind: 'probed',
       ipv4: {
@@ -28,8 +28,8 @@ async function setup(
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   // Exercise StrictMode with settings already cached, as on a return visit.
-  client.setQueryData(['getAppConfig'], { enable_local_ip_probe: allowed })
-  client.setQueryData(['getClashConfig'], { enable_tun_mode: tun })
+  client.setQueryData(['getAppSettings'], { enable_local_ip_probe: allowed })
+  client.setQueryData(['getClashSettings'], { enable_tun_mode: tun })
   const Wrapper = rpcWrapper(testRpc.rpc, client)
   const hook = await renderHook((props) => useLocalIpProbe(props?.enabled), {
     initialProps: { enabled },
@@ -61,8 +61,8 @@ test('probes once per eligible visit without polling or focus/reconnect probes',
   await hook.act(async () => {
     window.dispatchEvent(new Event('focus'))
     window.dispatchEvent(new Event('online'))
-    await client.refetchQueries({ queryKey: ['getAppConfig'] })
-    await client.refetchQueries({ queryKey: ['getClashConfig'] })
+    await client.refetchQueries({ queryKey: ['getAppSettings'] })
+    await client.refetchQueries({ queryKey: ['getClashSettings'] })
   })
   expect(probes()).toBe(1)
   await hook.rerender({ enabled: false })
@@ -93,7 +93,7 @@ test('enabling permission triggers a probe and failures do not retry automatical
   )
   testRpc.invoke.mockRejectedValueOnce(new Error('probe unavailable'))
   await hook.act(() =>
-    client.setQueryData(['getAppConfig'], { enable_local_ip_probe: true }),
+    client.setQueryData(['getAppSettings'], { enable_local_ip_probe: true }),
   )
   await expect.poll(() => hook.result.current.isError).toBe(true)
   expect(probes()).toBe(1)
@@ -107,7 +107,7 @@ test('stops and resumes probing when local transparent capture changes', async (
   const { hook, client, probes } = await setup(onTestFinished, true, false)
   await expect.poll(probes).toBe(1)
   await hook.act(() =>
-    client.setQueryData(['getClashConfig'], {
+    client.setQueryData(['getClashSettings'], {
       enable_tun_mode: false,
       transparent_proxy: { mode: 'tproxy', local: true },
     }),
@@ -115,7 +115,7 @@ test('stops and resumes probing when local transparent capture changes', async (
   await hook.rerender({ enabled: true })
   expect(probes()).toBe(1)
   await hook.act(() =>
-    client.setQueryData(['getClashConfig'], {
+    client.setQueryData(['getClashSettings'], {
       enable_tun_mode: false,
       transparent_proxy: { mode: 'tproxy', local: false },
     }),

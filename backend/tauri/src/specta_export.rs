@@ -17,6 +17,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(collect_events![
             events::AppUpdateStateChanged,
             events::CoreLogsChangedEvent,
+            events::CoreLogsSummaryChangedEvent,
             events::ClashWsEvent,
             window::WindowMessageEvent,
             events::StorageValueChangedEvent,
@@ -25,7 +26,10 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::CoreStatusChangedEvent,
             ipc::ConfigurationStatusChanged,
             events::ServiceStatusChangedEvent,
-            events::StateChangedEvent
+            events::StateChangedEvent,
+            ipc::ConfigurationStatusSummaryChanged,
+            events::CoreStatusSummaryChangedEvent,
+            events::ServiceStatusSummaryChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
 }
@@ -45,11 +49,16 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         schema_commands![
             commands::status::get_http_server_status,
             commands::status::get_configuration_status,
+            commands::status::get_configuration_status_summary,
+            commands::status::get_service_status_summary,
+            commands::runtime::get_core_status_summary,
             // Read-only commands
             ipc::read_clipboard_text,
             commands::traffic::query_core_logs,
+            commands::traffic::query_core_logs_summary,
             commands::traffic::get_core_log,
             commands::traffic::get_core_log_status,
+            commands::traffic::get_core_log_status_summary,
             commands::logs::list_log_files,
             commands::runtime::get_sys_proxy,
             commands::runtime::get_clash_info,
@@ -61,6 +70,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::runtime::inspect_runtime_node,
             commands::runtime::get_postprocessing_output,
             commands::clash::clash_api_get_proxy_delay,
+            commands::clash::clash_api_get_settings,
             commands::clash::clash_api_get_configs,
             commands::clash::clash_api_get_version,
             commands::clash::clash_api_get_rules,
@@ -70,21 +80,27 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::updater::fetch_latest_core_versions,
             commands::updater::inspect_updater,
             ipc::get_core_version,
+            commands::runtime::get_app_settings,
             commands::runtime::get_app_config,
+            commands::runtime::get_clash_settings,
             commands::runtime::get_clash_config,
             commands::runtime::get_config_features,
             commands::runtime::get_ip_lookup_providers,
             commands::runtime::get_hotkey_functions,
             commands::profiles::get_profiles,
+            commands::profiles::get_profiles_listing,
             ipc::probe_profile_url,
             commands::profiles::get_profile_sync_status,
             commands::profiles::get_profile_sync_runs,
+            commands::profiles::get_profile_sync_status_summary,
+            commands::profiles::get_profile_sync_runs_summary,
             commands::profiles::get_profile_sync_logs,
             commands::profiles::read_profile_file,
             ipc::get_custom_app_dir,
             commands::status::status_service,
             commands::profiles::is_portable,
             commands::clash::get_proxies,
+            commands::clash::get_proxy_group_icons,
             commands::icons::is_tray_icon_set,
             commands::icons::is_widget_icon_set,
             commands::runtime::get_core_status,
@@ -134,6 +150,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::traffic::clear_core_logs,
             commands::logs::open_log_session,
             commands::logs::query_logs,
+            commands::logs::query_logs_summary,
             commands::logs::close_log_session,
             commands::logs::report_frontend_events,
             ipc::flush_system_dns_cache,
@@ -228,7 +245,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
         events::CoreStatusChangedEvent,
         ipc::ConfigurationStatusChanged,
         events::ServiceStatusChangedEvent,
-        events::StateChangedEvent
+        events::StateChangedEvent,
+        ipc::ConfigurationStatusSummaryChanged,
+        events::CoreStatusSummaryChangedEvent,
+        events::ServiceStatusSummaryChangedEvent,
+        events::CoreLogsSummaryChangedEvent
     ])
     // PR-3 T01: profile domain types, add-only. Commands referencing them
     // arrive with T08; explicit registration keeps them exported (and the
@@ -537,6 +558,22 @@ mod tests {
             (EventName::StorageResync, events::StorageResyncEvent::NAME),
             (EventName::WindowMessage, window::WindowMessageEvent::NAME),
             (EventName::StateChanged, events::StateChangedEvent::NAME),
+            (
+                EventName::ConfigurationStatusSummaryChanged,
+                ipc::ConfigurationStatusSummaryChanged::NAME,
+            ),
+            (
+                EventName::CoreStatusSummaryChanged,
+                events::CoreStatusSummaryChangedEvent::NAME,
+            ),
+            (
+                EventName::ServiceStatusSummaryChanged,
+                events::ServiceStatusSummaryChangedEvent::NAME,
+            ),
+            (
+                EventName::CoreLogsSummaryChanged,
+                events::CoreLogsSummaryChangedEvent::NAME,
+            ),
         ];
         assert_eq!(EventName::ALL.len(), desktop_names.len());
         for (event, (expected_event, desktop_name)) in EventName::ALL.into_iter().zip(desktop_names)
@@ -1093,6 +1130,139 @@ mod tests {
                 "chains: string[]",
                 "metadata: ConnectionMetadata_Serialize",
                 "_extra:",
+            ],
+        );
+
+        // Safe profile listing and sync summaries keep flat discriminated shapes
+        // and public scheduler ordering fields without leaking raw URLs or text.
+        for suffix in ["Serialize", "Deserialize"] {
+            let listing_config_name = format!("ProfileListingConfig_{suffix}");
+            let listing_config = exported_type(&generated, &listing_config_name);
+            let expected_source = format!("source: ProfileListingSource_{suffix}");
+            assert_contains_all(
+                listing_config,
+                &listing_config_name,
+                &[
+                    "type: 'file'",
+                    &expected_source,
+                    "type: 'composition'",
+                    "transforms",
+                ],
+            );
+            for wrapper in ["file:", "file?:", "composition:", "composition?:"] {
+                assert!(
+                    !listing_config.contains(wrapper),
+                    "{listing_config_name} must serialize flat, not wrapped under {wrapper}:\n{listing_config}"
+                );
+            }
+            let profiles_listing_name = format!("ProfilesListing_{suffix}");
+            let profiles_listing = exported_type(&generated, &profiles_listing_name);
+            let expected_items = format!("items: ProfileListingItem_{suffix}[]");
+            assert_contains_all(
+                profiles_listing,
+                &profiles_listing_name,
+                &[
+                    "current: ProfileId | null",
+                    "proxy_group_layouts:",
+                    &expected_items,
+                ],
+            );
+        }
+        assert_contains_all(
+            exported_type(&generated, "ProfileSyncSummary"),
+            "ProfileSyncSummary",
+            &[
+                "scheduled: boolean",
+                "active: SyncRunSummary[]",
+                "has_registration_error: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "SyncRunSummary"),
+            "SyncRunSummary",
+            &[
+                "id: string",
+                "admission_sequence: string",
+                "state: SyncRunStateSummary",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "SyncRunPageSummary"),
+            "SyncRunPageSummary",
+            &["items: SyncRunSummary[]", "next: RunCursorDto | null"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "ProfileSyncReadError"),
+            "ProfileSyncReadError",
+            &[
+                "kind: 'unknown_profile'",
+                "kind: 'not_remote'",
+                "kind: 'invalid_cursor'",
+                "kind: 'unavailable'",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogStatusSummary"),
+            "CoreLogStatusSummary",
+            &[
+                "generation: string",
+                "version: number",
+                "has_error: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogRowSummary"),
+            "CoreLogRowSummary",
+            &[
+                "id: CoreLogCursor",
+                "received_at: number",
+                "level: CoreLogLevel",
+                "has_payload: boolean",
+                "truncated: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogPageSummary"),
+            "CoreLogPageSummary",
+            &["rows: CoreLogRowSummary[]", "status: CoreLogStatusSummary"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "LogRowSummary"),
+            "LogRowSummary",
+            &[
+                "id: string",
+                "level: Level",
+                "has_target: boolean",
+                "unparsed: boolean",
+                "truncated: boolean",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "LogPageSummary"),
+            "LogPageSummary",
+            &["rows: LogRowSummary[]", "file: string", "building: boolean"],
+        );
+        assert_contains_all(
+            exported_type(&generated, "CoreLogReadError"),
+            "CoreLogReadError",
+            &[
+                "kind: 'invalid_request'",
+                "kind: 'cursor_expired'",
+                "kind: 'record_gone'",
+                "kind: 'too_large'",
+                "kind: 'unavailable'",
+            ],
+        );
+        assert_contains_all(
+            exported_type(&generated, "ClashReadError"),
+            "ClashReadError",
+            &[
+                "kind: 'settings_unavailable'",
+                "kind: 'version_unavailable'",
+                "kind: 'rules_unavailable'",
+                "kind: 'rule_providers_unavailable'",
+                "kind: 'proxy_providers_unavailable'",
+                "kind: 'streams_unavailable'",
             ],
         );
     }

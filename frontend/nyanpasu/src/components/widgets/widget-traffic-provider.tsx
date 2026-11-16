@@ -4,7 +4,11 @@ import {
   useMemo,
   type PropsWithChildren,
 } from 'react'
-import { useProfile, useSettings, useTrafficReports } from '@nyanpasu/query'
+import {
+  useProfileListing,
+  useSettings,
+  useTrafficReports,
+} from '@nyanpasu/query'
 import type { TrafficReport, TrafficRetention } from '@nyanpasu/rpc/types'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { DashboardItem } from './consts'
@@ -109,7 +113,7 @@ function DashboardTrafficDataProvider({
   requests: ReturnType<typeof uniqueTrafficReportRequests>
 }>) {
   const { query: settingsQuery } = useSettings()
-  const { query: profilesQuery } = useProfile()
+  const profilesQuery = useProfileListing()
   const retention = settingsQuery.isError
     ? undefined
     : settingsQuery.data?.traffic_retention

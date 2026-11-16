@@ -1,9 +1,11 @@
 import { m } from '@/paraglide/messages'
 import type {
+  ClashReadError,
   CommitAborted,
   ConfigError,
   CoreErrorKind,
   CoreFailure,
+  CoreLogReadError,
   DegradationReason,
   EffectFailureCode,
   EffectsError,
@@ -21,6 +23,7 @@ import type {
   ProfileContentError,
   ProfileFileError,
   ProfilesError,
+  ProfileSyncReadError,
   RemoteAccessError,
   RuntimeBuildError,
   RuntimeError,
@@ -51,6 +54,12 @@ export function ipcErrorMessage(
       return storageErrorMessage(error.kind.error)
     case 'http_server':
       return httpServerErrorMessage(error.kind.error)
+    case 'clash_read':
+      return clashReadErrorMessage(error.kind.error)
+    case 'core_log_read':
+      return coreLogReadErrorMessage(error.kind.error)
+    case 'profile_sync_read':
+      return profileSyncReadErrorMessage(error.kind.error)
     case 'system_dns':
       return systemDnsErrorMessage(error.kind.error)
     case 'system_proxy':
@@ -345,6 +354,57 @@ function httpServerErrorMessage(error: HttpServerControlError): string {
       return m.error_http_server_change_unsupported()
     case 'read_status':
       return m.error_http_server_read_status()
+  }
+}
+
+function clashReadErrorMessage(error: ClashReadError): string {
+  switch (error.kind) {
+    case 'settings_unavailable':
+      return m.error_clash_read_settings_unavailable()
+    case 'proxies_unavailable':
+      return m.error_clash_read_proxies_unavailable()
+    case 'unknown_group':
+      return m.error_clash_read_unknown_group()
+    case 'delay_test_failed':
+      return m.error_clash_read_delay_test_failed()
+    case 'version_unavailable':
+      return m.error_clash_read_version_unavailable()
+    case 'rules_unavailable':
+      return m.error_clash_read_rules_unavailable()
+    case 'rule_providers_unavailable':
+      return m.error_clash_read_rule_providers_unavailable()
+    case 'proxy_providers_unavailable':
+      return m.error_clash_read_proxy_providers_unavailable()
+    case 'streams_unavailable':
+      return m.error_clash_read_streams_unavailable()
+  }
+}
+
+function coreLogReadErrorMessage(error: CoreLogReadError): string {
+  switch (error.kind) {
+    case 'invalid_request':
+      return m.error_core_log_read_invalid_request()
+    case 'cursor_expired':
+      return m.error_core_log_read_cursor_expired()
+    case 'record_gone':
+      return m.error_core_log_read_record_gone()
+    case 'too_large':
+      return m.error_core_log_read_too_large()
+    case 'unavailable':
+      return m.error_core_log_read_unavailable()
+  }
+}
+
+function profileSyncReadErrorMessage(error: ProfileSyncReadError): string {
+  switch (error.kind) {
+    case 'unknown_profile':
+      return m.error_profile_sync_read_unknown_profile()
+    case 'not_remote':
+      return m.error_profile_sync_read_not_remote()
+    case 'invalid_cursor':
+      return m.error_profile_sync_read_invalid_cursor()
+    case 'unavailable':
+      return m.error_profile_sync_read_unavailable()
   }
 }
 

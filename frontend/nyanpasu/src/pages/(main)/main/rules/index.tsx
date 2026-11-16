@@ -15,6 +15,7 @@ import {
   useClashProxies,
   useClashRules,
   useCurrentProfileUid,
+  useProxyGroupIcons,
 } from '@nyanpasu/query'
 import { type Bytes, type ClashRule } from '@nyanpasu/rpc/types'
 import { createFileRoute } from '@tanstack/react-router'
@@ -91,9 +92,17 @@ const Viewer = memo(function Viewer({
     proxies: { data: proxies },
   } = useClashProxies()
 
+  const iconsByGroup = useProxyGroupIcons()
+
   const groupIcons = useMemo(
-    () => new Map(proxies?.groups.map((group) => [group.name, group.icon])),
-    [proxies],
+    () =>
+      new Map(
+        proxies?.groups.map((group) => [
+          group.name,
+          group.iconConfigured ? iconsByGroup[group.name] : undefined,
+        ]),
+      ),
+    [proxies, iconsByGroup],
   )
 
   // Every rule is queried, whatever the filter, so sorting sees them all.

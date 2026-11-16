@@ -9,14 +9,22 @@
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
+use nyanpasu_contracts::logs::CoreLogStatusSummary;
 use nyanpasu_core::{
     clash::ws::{ClashWsPacket, ClashWsUpdate},
     client::{NyanpasuClient, StateChanged, UiEventSink},
     storage,
     storage::{Storage, StorageNotification},
 };
-use nyanpasu_rpc_protocol::{EventName, types::CoreLogsChanged};
-use nyanpasu_runtime_values::{core_status::CoreStatusInfo, storage::StorageRevision};
+use nyanpasu_rpc_protocol::{
+    EventName,
+    types::{CoreLogsChanged, CoreLogsSummaryChanged},
+};
+use nyanpasu_runtime_values::{
+    core_status::CoreStatusInfo,
+    observation::{ConfigurationStatusSummary, CoreStatusSummary, ServiceStatusSummary},
+    storage::StorageRevision,
+};
 use serde::Serialize;
 use tokio::sync::broadcast::error::RecvError;
 
@@ -84,10 +92,13 @@ fn configuration_status(
             if changed.is_err() {
                 break;
             }
+            // One read feeds both views, so they describe the same convergence.
+            let status = client.configuration_status();
+            publish(&events, EventName::ConfigurationStatusChanged, &status);
             publish(
                 &events,
-                EventName::ConfigurationStatusChanged,
-                &client.configuration_status(),
+                EventName::ConfigurationStatusSummaryChanged,
+                &ConfigurationStatusSummary::from(&status),
             );
         }
     }
@@ -101,11 +112,15 @@ fn core_status(
     async move {
         loop {
             match core_events.recv().await {
-                Ok(status) => publish(
-                    &events,
-                    EventName::CoreStatusChanged,
-                    &CoreStatusInfo::from(status),
-                ),
+                Ok(status) => {
+                    let status = CoreStatusInfo::from(status);
+                    publish(&events, EventName::CoreStatusChanged, &status);
+                    publish(
+                        &events,
+                        EventName::CoreStatusSummaryChanged,
+                        &CoreStatusSummary::from(&status),
+                    );
+                }
                 Err(RecvError::Lagged(_)) => continue,
                 Err(RecvError::Closed) => break,
             }
@@ -134,6 +149,11 @@ fn service_status(
         while service_events.changed().await.is_ok() {
             let status = service_events.borrow_and_update().clone();
             publish(&events, EventName::ServiceStatusChanged, &status);
+            publish(
+                &events,
+                EventName::ServiceStatusSummaryChanged,
+                &ServiceStatusSummary::from(&status),
+            );
         }
     }
 }
@@ -146,7 +166,16 @@ fn core_logs(client: &NyanpasuClient, events: EventBus) -> impl Future<Output = 
             publish(
                 &events,
                 EventName::CoreLogsChanged,
-                &CoreLogsChanged { status },
+                &CoreLogsChanged {
+                    status: status.clone(),
+                },
+            );
+            publish(
+                &events,
+                EventName::CoreLogsSummaryChanged,
+                &CoreLogsSummaryChanged {
+                    status: CoreLogStatusSummary::from(&status),
+                },
             );
         }
     }
@@ -278,7 +307,10 @@ mod tests {
             .expect("proxy change is published before polling forwarders")
             .unwrap();
         let expected_service = serde_json::to_value(service.probe().await.unwrap()).unwrap();
-        let expected_configuration = serde_json::to_value(client.configuration_status()).unwrap();
+        let configuration_status = client.configuration_status();
+        let expected_configuration = serde_json::to_value(&configuration_status).unwrap();
+        let expected_configuration_summary =
+            serde_json::to_value(ConfigurationStatusSummary::from(&configuration_status)).unwrap();
         let expected_logs =
             serde_json::to_value(client.get_core_log_status().await.unwrap()).unwrap();
         // Exclude direct commit hints: the proxy hint must come from its forwarder.
@@ -323,10 +355,42 @@ mod tests {
             next(&mut configuration, EventName::ConfigurationStatusChanged).await,
             expected_configuration
         );
-        assert!(next(&mut core, EventName::CoreStatusChanged).await["host"].is_string());
+        assert_eq!(
+            next(
+                &mut configuration,
+                EventName::ConfigurationStatusSummaryChanged
+            )
+            .await,
+            expected_configuration_summary
+        );
+        // The summary is the projection of the very publication that preceded it.
+        let core_full = next(&mut core, EventName::CoreStatusChanged).await;
+        assert!(core_full["host"].is_string());
+        assert_eq!(
+            next(&mut core, EventName::CoreStatusSummaryChanged).await,
+            serde_json::to_value(CoreStatusSummary::from(
+                &serde_json::from_value::<CoreStatusInfo>(core_full).unwrap()
+            ))
+            .unwrap()
+        );
+        assert!(
+            next(&mut service_status, EventName::ServiceStatusSummaryChanged).await["phase"]
+                .is_string()
+        );
+        let expected_logs_summary = serde_json::to_value(CoreLogStatusSummary::from(
+            &serde_json::from_value::<nyanpasu_contracts::logs::CoreLogStatus>(
+                expected_logs.clone(),
+            )
+            .unwrap(),
+        ))
+        .unwrap();
         assert_eq!(
             next(&mut logs, EventName::CoreLogsChanged).await["status"],
             expected_logs
+        );
+        assert_eq!(
+            next(&mut logs, EventName::CoreLogsSummaryChanged).await["status"],
+            expected_logs_summary
         );
         loop {
             let packet = next(&mut ws, EventName::ClashWs).await;

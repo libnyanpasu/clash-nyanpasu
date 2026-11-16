@@ -85,7 +85,8 @@ const renderFolder = async (folderId: string) => {
       const method = command === 'call_rpc' ? wire.method : command
 
       if (method === 'get_storage_item') return { value: null, revision: 0 }
-      if (method === 'get_profiles') return document
+      if (method === 'get_profiles' || method === 'get_profiles_listing')
+        return document
       if (method === 'set_profile_layout') {
         const layout = wire.params.layout as ProfileLayout
         layouts.push(layout)
@@ -192,7 +193,7 @@ test('a folder page lists its profiles with the current one first', async () => 
   // members.
   const active = view.container.querySelector('[data-slot="profiles-active"]')!
   expect(active.contains(card('a'))).toBe(true)
-  expect(card('a')?.dataset.active).toBe('true')
+  await expect.poll(() => card('a')?.dataset.active).toBe('true')
 
   const section = view.container.querySelector(
     '[data-slot="profiles-folder-section"][data-folder="f1"]',

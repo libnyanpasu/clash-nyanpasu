@@ -55,7 +55,10 @@ preference: applying a rule writes the system proxy, TUN and transparent proxy s
 principal without `system` must not be able to change them through a policy. Their live status
 carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sensitive_read` query;
 `apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system`
-mutations. All three are Desktop-only.
+mutations. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
+MAC addresses, so the safe settings view (`get_app_settings`) reduces them to
+`network_automation_enabled`; the rule editor reads the full config (`sensitive_read`) and
+writes through `patch_system_settings`.
 
 Hotkeys, service mode, remote access and the core selection keep their dedicated commands
 (`set_hotkeys`, `set_service_mode`, `set_remote_access`, `change_clash_core`). The whole
@@ -201,6 +204,14 @@ Specta query/mutation groups that become the frontend bindings are checked again
   echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
   separate secret-free query instead of labelling the full response `read`. A shell, OS or
   elevation facility needs `system`.
+- A secret-free companion query reduces fields, it does not redact them. Destructure the
+  source type exhaustively (no `..`) so a new field is a compile error, replace a reduced field
+  with an explicit flag (`pac_configured`) or omit it, and never return a placeholder, a
+  syntax-filtered URL or a reconstructed value that a form could write back. A URL is not safe
+  because it has no userinfo or query: its path or host can carry the credential. Callers that
+  need the original value use the `sensitive_read` query. The failures of a non-sensitive scope
+  are part of its contract: use a small typed error with fixed messages, carried as its own
+  domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
 - Scope is independent of target. `scope = system` never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
   capability admission still apply. `remote_admin` commands are Desktop-only.

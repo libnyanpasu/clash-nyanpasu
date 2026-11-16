@@ -1,9 +1,11 @@
 pub mod clash_strategy;
 pub mod overrides;
 mod requests;
+mod settings_view;
 pub mod tun_stack;
 
 pub use requests::*;
+pub use settings_view::*;
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;

@@ -128,7 +128,8 @@ const renderPage = async ({
 
         return writes.length
       }
-      if (method === 'get_profiles') return document
+      if (method === 'get_profiles' || method === 'get_profiles_listing')
+        return document
       if (method === 'set_profile_layout') {
         const layout = wire.params.layout as ProfileLayout
         layouts.push(layout)
@@ -286,7 +287,7 @@ test('profiles are listed by folder, then those in none', async () => {
   ).toBe(m.profile_folder_empty_hint())
 
   // The active profile is the featured card, above every folder.
-  expect(card('a').dataset.active).toBe('true')
+  await expect.poll(() => card('a').dataset.active).toBe('true')
   const active = view.container.querySelector('[data-slot="profiles-active"]')!
   expect(active.contains(card('a'))).toBe(true)
   expect(

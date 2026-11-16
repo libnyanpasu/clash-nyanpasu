@@ -889,6 +889,12 @@ pub struct ConfigurationStatusChanged(
     pub nyanpasu_runtime_values::configuration::ConfigurationStatus,
 );
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "configuration-status-summary-changed")]
+pub struct ConfigurationStatusSummaryChanged(
+    pub nyanpasu_runtime_values::observation::ConfigurationStatusSummary,
+);
+
 #[cfg(test)]
 mod tests {
     use super::{IpcError, PendingDeepLinks};

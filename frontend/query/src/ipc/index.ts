@@ -16,6 +16,7 @@ export * from './use-profile-content'
 export * from './use-profile'
 export * from './profile-folders'
 export * from './proxy-group-layout'
+export * from './use-proxy-group-icons'
 export * from './use-proxy-mode'
 export * from './use-runtime-profile'
 export * from './use-settings'
@@ -24,6 +25,7 @@ export * from './settings-conversions'
 export * from './use-release-channel'
 export * from './use-network-automation'
 export * from './use-system-proxy'
+export * from './use-service-status'
 export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
@@ -46,7 +48,10 @@ export {
   invokeQuery,
   unwrapQueryOptions,
 } from './query-options'
-export type { ClashDelayOptions } from './use-clash-proxies'
+export type {
+  ClashDelayOptions,
+  ClashProxyDelayOptions,
+} from './use-clash-proxies'
 export type { ProxyProviderSummary_Serialize as ClashProviderProxies } from '@nyanpasu/rpc/types'
 export type { RuleProviderItem as ClashProviderRule } from '@nyanpasu/rpc/types'
 export {

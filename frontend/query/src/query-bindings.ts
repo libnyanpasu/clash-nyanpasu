@@ -20,6 +20,27 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getConfigurationStatus', ...args],
         queryFn: () => commands.getConfigurationStatus(...args),
       }),
+    getConfigurationStatusSummary: (
+      ...args: Parameters<typeof commands.getConfigurationStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getConfigurationStatusSummary', ...args],
+        queryFn: () => commands.getConfigurationStatusSummary(...args),
+      }),
+    getServiceStatusSummary: (
+      ...args: Parameters<typeof commands.getServiceStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getServiceStatusSummary', ...args],
+        queryFn: () => commands.getServiceStatusSummary(...args),
+      }),
+    getCoreStatusSummary: (
+      ...args: Parameters<typeof commands.getCoreStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreStatusSummary', ...args],
+        queryFn: () => commands.getCoreStatusSummary(...args),
+      }),
     readClipboardText: (
       ...args: Parameters<typeof commands.readClipboardText>
     ) =>
@@ -32,6 +53,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryCoreLogs', ...args],
         queryFn: () => commands.queryCoreLogs(...args),
       }),
+    queryCoreLogsSummary: (
+      ...args: Parameters<typeof commands.queryCoreLogsSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['queryCoreLogsSummary', ...args],
+        queryFn: () => commands.queryCoreLogsSummary(...args),
+      }),
     getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
       queryOptions({
         queryKey: ['getCoreLog', ...args],
@@ -41,6 +69,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getCoreLogStatus', ...args],
         queryFn: () => commands.getCoreLogStatus(...args),
+      }),
+    getCoreLogStatusSummary: (
+      ...args: Parameters<typeof commands.getCoreLogStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getCoreLogStatusSummary', ...args],
+        queryFn: () => commands.getCoreLogStatusSummary(...args),
       }),
     listLogFiles: (...args: Parameters<typeof commands.listLogFiles>) =>
       queryOptions({
@@ -105,6 +140,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['clashApiGetProxyDelay', ...args],
         queryFn: () => commands.clashApiGetProxyDelay(...args),
       }),
+    clashApiGetSettings: (
+      ...args: Parameters<typeof commands.clashApiGetSettings>
+    ) =>
+      queryOptions({
+        queryKey: ['clashApiGetSettings', ...args],
+        queryFn: () => commands.clashApiGetSettings(...args),
+      }),
     clashApiGetConfigs: (
       ...args: Parameters<typeof commands.clashApiGetConfigs>
     ) =>
@@ -162,10 +204,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getCoreVersion', ...args],
         queryFn: () => commands.getCoreVersion(...args),
       }),
+    getAppSettings: (...args: Parameters<typeof commands.getAppSettings>) =>
+      queryOptions({
+        queryKey: ['getAppSettings', ...args],
+        queryFn: () => commands.getAppSettings(...args),
+      }),
     getAppConfig: (...args: Parameters<typeof commands.getAppConfig>) =>
       queryOptions({
         queryKey: ['getAppConfig', ...args],
         queryFn: () => commands.getAppConfig(...args),
+      }),
+    getClashSettings: (...args: Parameters<typeof commands.getClashSettings>) =>
+      queryOptions({
+        queryKey: ['getClashSettings', ...args],
+        queryFn: () => commands.getClashSettings(...args),
       }),
     getClashConfig: (...args: Parameters<typeof commands.getClashConfig>) =>
       queryOptions({
@@ -198,6 +250,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getProfiles', ...args],
         queryFn: () => commands.getProfiles(...args),
       }),
+    getProfilesListing: (
+      ...args: Parameters<typeof commands.getProfilesListing>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfilesListing', ...args],
+        queryFn: () => commands.getProfilesListing(...args),
+      }),
     probeProfileUrl: (...args: Parameters<typeof commands.probeProfileUrl>) =>
       queryOptions({
         queryKey: ['probeProfileUrl', ...args],
@@ -216,6 +275,20 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getProfileSyncRuns', ...args],
         queryFn: () => commands.getProfileSyncRuns(...args),
+      }),
+    getProfileSyncStatusSummary: (
+      ...args: Parameters<typeof commands.getProfileSyncStatusSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfileSyncStatusSummary', ...args],
+        queryFn: () => commands.getProfileSyncStatusSummary(...args),
+      }),
+    getProfileSyncRunsSummary: (
+      ...args: Parameters<typeof commands.getProfileSyncRunsSummary>
+    ) =>
+      queryOptions({
+        queryKey: ['getProfileSyncRunsSummary', ...args],
+        queryFn: () => commands.getProfileSyncRunsSummary(...args),
       }),
     getProfileSyncLogs: (
       ...args: Parameters<typeof commands.getProfileSyncLogs>
@@ -248,6 +321,13 @@ export function createQueryBindings(rpc: RpcClient) {
       queryOptions({
         queryKey: ['getProxies', ...args],
         queryFn: () => commands.getProxies(...args),
+      }),
+    getProxyGroupIcons: (
+      ...args: Parameters<typeof commands.getProxyGroupIcons>
+    ) =>
+      queryOptions({
+        queryKey: ['getProxyGroupIcons', ...args],
+        queryFn: () => commands.getProxyGroupIcons(...args),
       }),
     isTrayIconSet: (...args: Parameters<typeof commands.isTrayIconSet>) =>
       queryOptions({
@@ -514,6 +594,11 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['queryLogs'],
       mutationFn: (input: Parameters<typeof commands.queryLogs>) =>
         commands.queryLogs(...input),
+    }),
+    queryLogsSummary: mutationOptions({
+      mutationKey: ['queryLogsSummary'],
+      mutationFn: (input: Parameters<typeof commands.queryLogsSummary>) =>
+        commands.queryLogsSummary(...input),
     }),
     closeLogSession: mutationOptions({
       mutationKey: ['closeLogSession'],

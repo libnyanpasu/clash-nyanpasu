@@ -682,6 +682,682 @@ fn provider_query_returns_summaries_over_http() {
     core_server.abort();
 }
 
+/// A failure to read the live core settings reports neither the core's response nor the request.
+/// A subscription URL, a custom user agent, a description and an external path never reach the
+/// profile listing or the sync summary, while the full reads keep the original document.
+#[test]
+fn profile_listing_and_sync_summary_serialize_no_source_secret() {
+    use serde_json::json;
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    let profiles_path = args.paths.profiles_path();
+    std::fs::create_dir_all(profiles_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &profiles_path,
+        r#"_nyanpasu:
+  document: profiles
+  schema_revision: 4
+current: remote
+items:
+  - uid: remote
+    name: Remote
+    desc: "see https://notes.invalid/?key=desc-sentinel"
+    type: config
+    config:
+      type: file
+      source:
+        type: remote
+        file: remote.yaml
+        url: "https://alice:userinfo-sentinel@sub-host-sentinel.invalid/path-sentinel/sub?token=query-sentinel"
+        option:
+          user_agent: "Bearer agent-sentinel"
+  - uid: external
+    name: External
+    type: config
+    config:
+      type: file
+      source:
+        type: local
+        binding:
+          type: external
+          file: external.yaml
+          target: /home/alice/external-path-sentinel/config.yaml
+          mode: symlink
+"#,
+    )
+    .unwrap();
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        let (status, listing) =
+            rpc_for_test_call(&app, "get_profiles_listing", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK, "{listing}");
+        let rendered = listing.to_string();
+        assert!(!rendered.contains("sentinel"), "{rendered}");
+        assert_eq!(listing["current"], "remote");
+        assert_eq!(listing["items"][0]["name"], "Remote");
+        assert_eq!(listing["items"][0]["has_desc"], true);
+        assert_eq!(
+            listing["items"][0]["config"]["source"]["option"]["has_user_agent"],
+            true
+        );
+        assert_eq!(
+            listing["items"][1]["config"]["source"]["binding"],
+            json!({"type": "external", "mode": "symlink"})
+        );
+
+        // The full read is a separate, unchanged contract.
+        let (status, full) = rpc_for_test_call(&app, "get_profiles", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK, "{full}");
+        let rendered = full.to_string();
+        assert!(rendered.contains("path-sentinel"), "{rendered}");
+        assert!(rendered.contains("agent-sentinel"), "{rendered}");
+
+        // Each stable reason survives as a typed domain error; the whole envelope is fixed text.
+        for (command, params, reason) in [
+            (
+                "get_profile_sync_status_summary",
+                json!({"uid": "external"}),
+                "not_remote",
+            ),
+            (
+                "get_profile_sync_status_summary",
+                json!({"uid": "ghost-sentinel"}),
+                "unknown_profile",
+            ),
+            (
+                "get_profile_sync_runs_summary",
+                json!({"uid": "ghost-sentinel", "after": null}),
+                "unknown_profile",
+            ),
+            (
+                "get_profile_sync_runs_summary",
+                json!({"uid": "remote", "after": {"sequence": "cursor-sentinel", "id": "x"}}),
+                "invalid_cursor",
+            ),
+        ] {
+            let (status, body) = rpc_for_test_call(&app, command, params, None).await;
+            assert_ne!(status, StatusCode::OK, "{command}: {body}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("alice"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "profile_sync_read", "error": {"kind": reason}}),
+                "{command}: {rendered}"
+            );
+        }
+
+        let (status, summary) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_status_summary",
+            json!({"uid": "remote"}),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{summary}");
+        let rendered = summary.to_string();
+        assert!(!rendered.contains("sentinel"), "{rendered}");
+        assert!(summary.get("registration_error").is_none(), "{rendered}");
+        assert!(summary["has_registration_error"].is_boolean(), "{rendered}");
+        assert_eq!(summary["active"], json!([]));
+
+        let (status, runs) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs_summary",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{runs}");
+        assert_eq!(runs["items"], json!([]));
+    });
+}
+
+/// A run history the journal cannot read. The legacy full query reports the journal's own text,
+/// and the summary keeps the stable reason and none of it.
+#[test]
+fn a_failing_journal_serializes_a_fixed_summary_error() {
+    use nyanpasu_jobs::{
+        Error as JobsError, JobStore, JobsService, Limits, Page, Retention, RunCursor, RunId,
+        RunLog, RunRecord,
+    };
+    use serde_json::json;
+
+    const JOURNAL_SECRET: &str = "/home/alice/journal-sentinel/jobs.redb?token=journal-token";
+
+    /// A journal that holds nothing and cannot list a job's runs.
+    struct UnreadableRuns;
+    impl JobStore for UnreadableRuns {
+        fn recover(&mut self, _: jiff::Timestamp) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn admit(&mut self, record: RunRecord) -> Result<RunRecord, JobsError> {
+            Ok(record)
+        }
+        fn append(&mut self, _: RunId, _: &[RunLog]) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn finish(&mut self, _: &RunRecord, _: &[RunLog]) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn get(&mut self, _: RunId) -> Result<Option<RunRecord>, JobsError> {
+            Ok(None)
+        }
+        fn runs(
+            &mut self,
+            _: &str,
+            _: Option<RunCursor>,
+            _: usize,
+        ) -> Result<Page<RunRecord, RunCursor>, JobsError> {
+            Err(JobsError::Journal(JOURNAL_SECRET.into()))
+        }
+        fn logs(&mut self, _: RunId, _: u64, _: usize) -> Result<Page<RunLog, u64>, JobsError> {
+            Ok(Page {
+                items: vec![],
+                next: None,
+            })
+        }
+        fn prune(&mut self, _: jiff::Timestamp, _: &Retention) -> Result<(), JobsError> {
+            Ok(())
+        }
+        fn health(&mut self) -> Result<(), JobsError> {
+            Ok(())
+        }
+    }
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let mut args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    let profiles_path = args.paths.profiles_path();
+    std::fs::create_dir_all(profiles_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &profiles_path,
+        r#"_nyanpasu:
+  document: profiles
+  schema_revision: 4
+current: remote
+items:
+  - uid: remote
+    name: Remote
+    type: config
+    config:
+      type: file
+      source:
+        type: remote
+        file: remote.yaml
+        url: "https://alice:userinfo-sentinel@sub-host-sentinel.invalid/path-sentinel/sub"
+"#,
+    )
+    .unwrap();
+    let mut service = runtime
+        .block_on(JobsService::start(
+            Box::new(UnreadableRuns),
+            nyanpasu_core::client::jobs::capture(),
+            Limits::default(),
+        ))
+        .unwrap();
+    args.jobs = service.client();
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        // The full query is the diagnostic path: it keeps the journal's own text.
+        let (status, full) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{full}");
+        assert!(full.to_string().contains("journal-sentinel"), "{full}");
+
+        let (status, summary) = rpc_for_test_call(
+            &app,
+            "get_profile_sync_runs_summary",
+            json!({"uid": "remote", "after": null}),
+            None,
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{summary}");
+        let rendered = summary.to_string();
+        for private in ["journal-sentinel", "journal-token", "alice", "jobs.redb"] {
+            assert!(!rendered.contains(private), "{private}: {rendered}");
+        }
+        assert_eq!(
+            summary["domain_error"]["kind"],
+            json!({"domain": "profile_sync_read", "error": {"kind": "unavailable"}}),
+            "{rendered}"
+        );
+    });
+
+    // The owner outlives every caller and drains normally.
+    drop(app);
+    runtime.block_on(async {
+        assert!(service.shutdown().await.unwrap().closed);
+    });
+}
+
+#[test]
+fn a_failed_core_read_serializes_a_fixed_error() {
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route(
+                "/configs",
+                get(|| async {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"message": "https://user:body-sentinel@probe.example/"})),
+                    )
+                }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(json!({"providers": {}})) }),
+            ),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        for command in ["clash_api_get_settings"] {
+            let (status, body) = rpc_for_test_call(&app, command, json!({}), None).await;
+            assert_ne!(status, StatusCode::OK, "{command}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("example"), "{command}: {rendered}");
+            assert!(rendered.contains("unavailable"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": "settings_unavailable"}}),
+                "{command}: {rendered}"
+            );
+        }
+    });
+    core_server.abort();
+}
+
+/// A group's test URL, its icon and the delay records of its URL are profile configuration that may
+/// carry a credential: the `read` query keeps none of them, and the icon has its own protected query.
+#[test]
+fn proxies_query_serializes_no_test_url_or_icon_over_http() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let group_url = "https://user:url-sentinel@probe.example/path-sentinel/204?key=query-sentinel";
+    let icon = "https://user:icon-sentinel@icons.example/g.png?key=icon-sentinel";
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route(
+                "/proxies",
+                get(move || async move {
+                    let history = json!([{"time":"2026-10-06T12:00:00+08:00","delay":9}]);
+                    Json(json!({"proxies": {
+                        "DIRECT": {"name":"DIRECT","type":"Direct","udp":false,"history":[]},
+                        "REJECT": {"name":"REJECT","type":"Reject","udp":false,"history":[]},
+                        "group": {
+                            "name":"group","type":"Selector","udp":false,"history":[],
+                            "all":["node"],"now":"node","testUrl":group_url,"icon":icon,
+                        },
+                        "node": {
+                            "name":"node","type":"Vless","udp":true,"history":[],
+                            "testUrl":group_url,"icon":icon,
+                            "extra":{
+                                group_url: {"alive":true,"history":history},
+                                "https://other-sentinel.example/": {"alive":true,"history":history},
+                            },
+                        },
+                    }}))
+                }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(json!({"providers": {}})) }),
+            ),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        let (status, result) = rpc_for_test_call(&app, "get_proxies", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK);
+        let rendered = result.to_string();
+        assert!(!rendered.contains("sentinel"), "{rendered}");
+        assert!(!rendered.contains("probe.example"), "{rendered}");
+        assert!(!rendered.contains("icons.example"), "{rendered}");
+        let group = &result["groups"][0];
+        assert_eq!(group["delayKey"], "group");
+        assert_eq!(group["iconConfigured"], true);
+        assert_eq!(
+            result["nodes"]["node"]["extra"]["group"]["history"][0]["delay"],
+            9
+        );
+
+        let (status, icons) =
+            rpc_for_test_call(&app, "get_proxy_group_icons", json!({}), None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(icons, json!({ "group": icon }));
+    });
+    core_server.abort();
+}
+
+/// A probe tests a private URL the caller never sees: the group's own, else the app's default. The
+/// core fails each probe with a response that echoes the URL it was asked to test, and the error a
+/// `proxy` caller gets carries none of it. A group the snapshot does not know starts no probe.
+#[test]
+fn failing_probes_report_no_private_url_and_unknown_groups_start_none() {
+    use std::sync::Mutex;
+
+    use axum::extract::{Path, Query, State};
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    const GROUP_URL: &str =
+        "https://user:group-sentinel@probe.example/path-sentinel?key=group-sentinel";
+    const DEFAULT_URL: &str = "https://default-sentinel.example/204?token=default-sentinel";
+
+    type Hits = Arc<Mutex<Vec<String>>>;
+    async fn delay(
+        State(hits): State<Hits>,
+        Path(_name): Path<String>,
+        Query(query): Query<std::collections::HashMap<String, String>>,
+    ) -> impl IntoResponse {
+        let url = query.get("url").cloned().unwrap_or_default();
+        hits.lock().unwrap().push(url.clone());
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"message": format!("An error occurred in the delay test: {url}")})),
+        )
+    }
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let hits = Hits::default();
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route(
+                "/proxies",
+                get(move || async move {
+                    Json(json!({"proxies": {
+                        "DIRECT": {"name":"DIRECT","type":"Direct","udp":false,"history":[]},
+                        "REJECT": {"name":"REJECT","type":"Reject","udp":false,"history":[]},
+                        "own": {
+                            "name":"own","type":"URLTest","udp":false,"history":[],
+                            "all":["node"],"testUrl":GROUP_URL,
+                        },
+                        "plain": {
+                            "name":"plain","type":"Selector","udp":false,"history":[],
+                            "all":["node"],
+                        },
+                        "node": {"name":"node","type":"Vless","udp":true,"history":[]},
+                    }}))
+                }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(json!({"providers": {}})) }),
+            )
+            .route("/proxies/{name}/delay", get(delay))
+            .route("/group/{name}/delay", get(delay))
+            .with_state(hits.clone()),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client: client.clone(),
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        let patch = nyanpasu_config::application::NyanpasuAppConfigPatch {
+            default_latency_test: Some(DEFAULT_URL.to_owned()),
+            ..Default::default()
+        };
+        client.patch_app_config(patch).await.unwrap();
+
+        let probes = [
+            (
+                "clash_api_get_proxy_delay",
+                json!({"name":"node","group":"own"}),
+                GROUP_URL,
+            ),
+            (
+                "clash_api_get_group_delay",
+                json!({"group":"own"}),
+                GROUP_URL,
+            ),
+            (
+                "clash_api_get_proxy_delay",
+                json!({"name":"node","group":"plain"}),
+                DEFAULT_URL,
+            ),
+            (
+                "clash_api_get_group_delay",
+                json!({"group":"plain"}),
+                DEFAULT_URL,
+            ),
+            (
+                "clash_api_get_proxy_delay",
+                json!({"name":"node"}),
+                DEFAULT_URL,
+            ),
+        ];
+        for (command, arguments, tested) in probes {
+            let started = hits.lock().unwrap().len();
+            let (status, body) = rpc_for_test_call(&app, command, arguments, None).await;
+            assert_ne!(status, StatusCode::OK, "{command}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("example"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": "delay_test_failed"}}),
+                "{command}: {rendered}"
+            );
+            let hits = hits.lock().unwrap();
+            assert_eq!(hits.len(), started + 1, "{command}");
+            assert_eq!(hits.last().unwrap(), tested, "{command}");
+        }
+
+        let started = hits.lock().unwrap().len();
+        for (command, arguments) in [
+            (
+                "clash_api_get_proxy_delay",
+                json!({"name":"node","group":"stale"}),
+            ),
+            ("clash_api_get_group_delay", json!({"group":"stale"})),
+        ] {
+            let (status, body) = rpc_for_test_call(&app, command, arguments, None).await;
+            assert_ne!(status, StatusCode::OK, "{command}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": "unknown_group"}}),
+                "{command}: {body}"
+            );
+        }
+        assert_eq!(hits.lock().unwrap().len(), started, "a probe started");
+    });
+    core_server.abort();
+}
+
+/// A failure to read the proxies reports neither the core's response nor the request.
+#[test]
+fn a_failed_proxies_read_serializes_a_fixed_error() {
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route(
+                "/proxies",
+                get(|| async {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"message": "https://user:body-sentinel@probe.example/"})),
+                    )
+                }),
+            )
+            .route(
+                "/providers/proxies",
+                get(|| async { Json(json!({"providers": {}})) }),
+            ),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let paths = args.paths.clone();
+    let client = runtime.block_on(NyanpasuClient::try_new(args)).unwrap();
+    let rpc = UnifiedRpc::new(
+        RpcDependencies {
+            icon_files: None,
+            core_directory: None,
+            service_prompt: None,
+            accent_color: None,
+            host_environment: crate::ports::HostEnvironment { is_appimage: false },
+            audit: RpcAudit::new(Arc::new(AuditSink::default())),
+            client,
+            storage: Storage::try_new(&directory.path().join("web-storage.redb")).unwrap(),
+            paths,
+            events: EventBus::new(),
+        },
+        crate::test_support::CAPABILITIES,
+    )
+    .unwrap();
+    let app = rpc.router();
+
+    runtime.block_on(async {
+        for (command, reason) in [
+            ("get_proxies", "proxies_unavailable"),
+            ("clash_api_get_settings", "settings_unavailable"),
+        ] {
+            let (status, body) = rpc_for_test_call(&app, command, json!({}), None).await;
+            assert_ne!(status, StatusCode::OK, "{command}");
+            let rendered = body.to_string();
+            assert!(!rendered.contains("sentinel"), "{command}: {rendered}");
+            assert!(!rendered.contains("example"), "{command}: {rendered}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": reason}}),
+                "{command}: {rendered}"
+            );
+        }
+    });
+    core_server.abort();
+}
+
 #[test]
 fn errors_preserve_domain_codes_and_operation_identity() {
     use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
@@ -830,4 +1506,303 @@ fn enabled_http_server_joins_application_shutdown() {
         drop(rpc);
         assert!(crate::http::HttpRoutes::build(&*routes).is_err());
     });
+}
+
+#[test]
+fn failing_core_log_store_summary_errors_hide_backend_paths_and_status_drops_error_text() {
+    use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus};
+    use nyanpasu_observers::logs::{
+        CoreLogError, CoreLogExport, CoreLogPage, CoreLogQuery, CoreLogRecord, CoreLogResult,
+        CoreLogRow, CoreLogSource, CoreLogStore, PreparedCoreLog,
+    };
+    use serde_json::json;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct InjectedCoreLogStore {
+        fail: Arc<AtomicBool>,
+    }
+
+    impl CoreLogStore for InjectedCoreLogStore {
+        fn configure(
+            &mut self,
+            _settings: nyanpasu_config::application::CoreLogSettings,
+        ) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn append(&mut self, _records: &[PreparedCoreLog]) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn query(&mut self, _request: CoreLogQuery) -> CoreLogResult<CoreLogPage> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(CoreLogError::Unavailable(
+                    "/private/core-logs.redb: store-error-sentinel".into(),
+                ));
+            }
+            Ok(CoreLogPage {
+                rows: vec![CoreLogRow {
+                    id: CoreLogCursor {
+                        generation: "gen-injected".into(),
+                        sequence: 11,
+                    },
+                    record: CoreLogRecord {
+                        source: CoreLogSource {
+                            capture: "capture-sentinel".into(),
+                            instance_id: "instance-sentinel".into(),
+                            core_kind: Some("kind-sentinel".into()),
+                        },
+                        received_at: 1_700_000_000_000,
+                        time: Some("time-sentinel".into()),
+                        log_type: "WARNING".into(),
+                        payload: "payload-secret-sentinel".into(),
+                    },
+                    truncated: false,
+                }],
+                cursor: Some(CoreLogCursor {
+                    generation: "gen-injected".into(),
+                    sequence: 11,
+                }),
+                more: false,
+                status: self.status()?,
+            })
+        }
+        fn detail(&mut self, _cursor: CoreLogCursor) -> CoreLogResult<CoreLogRecord> {
+            Err(CoreLogError::RecordGone)
+        }
+        fn export(&mut self, _home: Option<String>) -> CoreLogResult<CoreLogExport> {
+            Ok(CoreLogExport::default())
+        }
+        fn clear(&mut self) -> CoreLogResult<()> {
+            Ok(())
+        }
+        fn status(&mut self) -> CoreLogResult<CoreLogStatus> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(CoreLogError::Unavailable(
+                    "/private/core-logs.redb: store-error-sentinel".into(),
+                ));
+            }
+            Ok(CoreLogStatus {
+                generation: "gen-injected".into(),
+                version: 5,
+                first: None,
+                head: None,
+                bytes: 256,
+                error: Some("status-error-sentinel".into()),
+                discarded: 1,
+            })
+        }
+    }
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let fail = Arc::new(AtomicBool::new(false));
+    let mut args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    args.logging.core = Box::new(InjectedCoreLogStore { fail: fail.clone() });
+    let fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        directory,
+        args,
+    ));
+
+    runtime.block_on(async {
+        let (status, body) = fixture.call("get_core_log_status_summary", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["has_error"], true);
+        assert!(!body.to_string().contains("status-error-sentinel"));
+
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":null,"limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["rows"][0]["level"], "warn");
+        assert_eq!(body["rows"][0]["has_payload"], true);
+        let wire = body.to_string();
+        for forbidden in [
+            "capture-sentinel",
+            "instance-sentinel",
+            "kind-sentinel",
+            "time-sentinel",
+            "payload-secret-sentinel",
+            "status-error-sentinel",
+        ] {
+            assert!(!wire.contains(forbidden), "{wire}");
+        }
+
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":"unknown","limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(body["kind"], "application_error", "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "core_log_read", "error": {"kind": "invalid_request"}}),
+            "{body}"
+        );
+
+        fail.store(true, Ordering::SeqCst);
+        let (status, body) = fixture
+            .call(
+                "query_core_logs_summary",
+                json!({"query":{"direction":"latest","cursor":null,"level":null,"limit":10}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(body["kind"], "application_error", "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "core_log_read", "error": {"kind": "unavailable"}}),
+            "{body}"
+        );
+        let serialized = body.to_string();
+        assert!(!serialized.contains("sentinel"), "{serialized}");
+        assert!(!serialized.contains("core-logs.redb"), "{serialized}");
+    });
+
+    runtime.block_on(fixture.shutdown());
+
+    // Also verify when store.status() itself fails at actor startup: full status carries the
+    // backend error text, whereas the summary sets `has_error: true` and drops the text.
+    let failing_dir = tempfile::tempdir().unwrap();
+    let mut failing_args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &failing_dir,
+        nyanpasu_core::client::test_support::TestControlEndpoint::succeeding(),
+    ));
+    failing_args.logging.core = Box::new(InjectedCoreLogStore {
+        fail: Arc::new(AtomicBool::new(true)),
+    });
+    let failing_fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        failing_dir,
+        failing_args,
+    ));
+    runtime.block_on(async {
+        let (status, full_body) = failing_fixture.call("get_core_log_status", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "{full_body}");
+        assert!(
+            full_body["error"]
+                .as_str()
+                .unwrap()
+                .contains("store-error-sentinel")
+        );
+
+        let (status, summary_body) = failing_fixture
+            .call("get_core_log_status_summary", json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{summary_body}");
+        assert_eq!(summary_body["has_error"], true);
+        assert!(!summary_body.to_string().contains("store-error-sentinel"));
+        assert!(!summary_body.to_string().contains("core-logs.redb"));
+    });
+    runtime.block_on(failing_fixture.shutdown());
+}
+
+#[test]
+fn clash_read_error_envelopes_hide_controller_urls_and_secrets_on_all_safe_reads() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    use nyanpasu_core::actor_v2::test_support::{endpoint, server};
+    use serde_json::json;
+
+    let fail_route = || {
+        get(|| async {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "clash-controller-body-secret-sentinel",
+            )
+        })
+    };
+    let (url, core_server) = runtime.block_on(server(
+        Router::new()
+            .route("/version", fail_route())
+            .route("/rules", fail_route())
+            .route("/providers/rules", fail_route())
+            .route("/providers/proxies", fail_route()),
+    ));
+    let directory = tempfile::tempdir().unwrap();
+    let args = runtime.block_on(crate::test_support::test_client_args_with_endpoint(
+        &directory,
+        endpoint(url),
+    ));
+    let fixture = runtime.block_on(crate::test_support::Fixture::with_setup(
+        false,
+        crate::test_support::CAPABILITIES,
+        directory,
+        args,
+    ));
+
+    runtime.block_on(async {
+        for (method, expected_kind) in [
+            ("clash_api_get_version", "version_unavailable"),
+            ("clash_api_get_rules", "rules_unavailable"),
+            (
+                "clash_api_get_providers_rules",
+                "rule_providers_unavailable",
+            ),
+            (
+                "clash_api_get_providers_proxies",
+                "proxy_providers_unavailable",
+            ),
+        ] {
+            let (status, body) = fixture.call(method, json!({})).await;
+            assert_eq!(
+                status,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{method}: {body}"
+            );
+            assert_eq!(body["kind"], "application_error", "{method}: {body}");
+            assert_eq!(
+                body["domain_error"]["kind"],
+                json!({"domain": "clash_read", "error": {"kind": expected_kind}}),
+                "{method}: {body}"
+            );
+            let wire = body.to_string();
+            assert!(!wire.contains("sentinel"), "{method}: {wire}");
+            assert!(!wire.contains("127.0.0.1"), "{method}: {wire}");
+        }
+
+        let app = fixture.rpc.clone().router();
+        fixture.rpc.dependencies.client.request_shutdown();
+        fixture.rpc.dependencies.client.wait_shutdown().await;
+
+        let (status, body) =
+            rpc_for_test_call(&app, "get_clash_ws_snapshot", json!({}), None).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "clash_read", "error": {"kind": "streams_unavailable"}}),
+            "{body}"
+        );
+
+        let response = app
+            .oneshot(
+                Request::get("/bridge/connection-details")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            body["domain_error"]["kind"],
+            json!({"domain": "clash_read", "error": {"kind": "streams_unavailable"}}),
+            "{body}"
+        );
+    });
+
+    core_server.abort();
 }

@@ -11,7 +11,7 @@
     "./react": "./src/react.tsx"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.4"
+    "@tauri-apps/api": "2.12.5"
   },
   "peerDependencies": {
     "react": "19.3.1"

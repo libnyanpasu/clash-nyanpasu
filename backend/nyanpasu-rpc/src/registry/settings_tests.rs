@@ -788,6 +788,8 @@ async fn network_rules_are_not_writable_through_the_general_patch() {
     let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
     let path = fixture.rpc.dependencies.paths.application_config_path();
     let persisted = std::fs::read(&path).ok();
+    // Booting the fixture reconciles once, so the history is compared rather than expected empty.
+    let history = serde_json::to_value(client.configuration_status().recent_operations).unwrap();
 
     for patch in [
         network_rules_patch(),
@@ -819,6 +821,9 @@ async fn network_rules_are_not_writable_through_the_general_patch() {
             assert_eq!(std::fs::read(&path).ok(), persisted, "{patch}");
         }
     }
-    assert!(client.configuration_status().recent_operations.is_empty());
+    assert_eq!(
+        serde_json::to_value(client.configuration_status().recent_operations).unwrap(),
+        history
+    );
     fixture.shutdown().await;
 }

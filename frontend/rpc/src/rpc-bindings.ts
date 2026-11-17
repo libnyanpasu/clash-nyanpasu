@@ -8845,6 +8845,8 @@ export type SyncStatus = {
   open_conflicts: number
   blocked_items: BlockedItem[]
   head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
 }
 
 /**  Full sync status, revisioned so a delayed read cannot replace a newer value. */

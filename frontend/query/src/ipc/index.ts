@@ -63,6 +63,7 @@ export {
   sourceMessage,
 } from './configuration-status'
 export * from './use-profile-sync'
+export * from './use-sync'
 export {
   MAX_CONNECTIONS_HISTORY,
   MAX_MEMORY_HISTORY,

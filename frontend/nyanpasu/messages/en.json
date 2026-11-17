@@ -1039,8 +1039,13 @@
   "proxies_nav_folders": "Folders",
   "proxies_nav_group_count": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} group",
         "countPlural=other": "{count} groups"
@@ -1055,8 +1060,13 @@
   "proxies_nav_collapse_all": "Collapse all folders",
   "proxies_folder_delete_description": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} group will move to Groups.",
         "countPlural=other": "{count} groups will move to Groups."
@@ -1616,8 +1626,13 @@
   "profile_nav_merge": "YAML merge",
   "profile_nav_count_profiles": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} profile",
         "countPlural=other": "{count} profiles"
@@ -1626,8 +1641,13 @@
   ],
   "profile_nav_count_scripts": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} script",
         "countPlural=other": "{count} scripts"
@@ -1636,8 +1656,13 @@
   ],
   "profile_nav_count_overlays": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} overlay",
         "countPlural=other": "{count} overlays"
@@ -1653,8 +1678,13 @@
   "profile_folder_delete_title": "Delete folder",
   "profile_folder_delete_description": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} profile will move to Not in a folder.",
         "countPlural=other": "{count} profiles will move to Not in a folder."
@@ -1838,8 +1868,13 @@
   "inspect_rail_hint": "Every step that built your runtime config, from the source profile to what the core runs. Select a step to see what it changed.",
   "inspect_step_fields": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} field",
         "countPlural=other": "{count} fields"
@@ -1856,8 +1891,13 @@
   "inspect_step_desc_final": "What Nyanpasu sends to the core",
   "inspect_summary_changed": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "Changed {count} field — select one to jump to it",
         "countPlural=other": "Changed {count} fields — select one to jump to it"
@@ -1868,5 +1908,48 @@
   "inspect_note_unchanged": "This step ran but did not change the config.",
   "inspect_note_final": "The final config is the output of the last step. Open Output to read it.",
   "inspect_note_core": "The core reports the same config that Nyanpasu sent.",
-  "inspect_find_placeholder": "Find a field, e.g. dns.nameserver"
+  "inspect_find_placeholder": "Find a field, e.g. dns.nameserver",
+  "settings_label_sync": "Configuration sync",
+  "settings_label_sync_description": "Sync your configuration across devices",
+  "settings_sync_status_title": "Sync status",
+  "settings_sync_desktop_only": "Configuration sync is available in the desktop app only.",
+  "settings_sync_unavailable": "This build cannot sync.",
+  "settings_sync_phase": "Phase",
+  "settings_sync_phase_value": "{phase}",
+  "settings_sync_last_result": "Last result",
+  "settings_sync_never": "Never",
+  "settings_sync_conflicts": "Open conflicts",
+  "settings_sync_head_device": "Remote head",
+  "settings_sync_last_error": "Last error",
+  "settings_sync_diverged": "The last cycle merged a divergent remote history.",
+  "settings_sync_disable": "Stop syncing",
+  "settings_sync_now": "Sync now",
+  "settings_sync_enable": "Enable sync",
+  "settings_sync_provider_title": "Storage provider",
+  "settings_sync_no_providers": "This build has no sync storage providers.",
+  "settings_sync_endpoint": "Endpoint",
+  "settings_sync_bucket": "Bucket",
+  "settings_sync_region": "Region",
+  "settings_sync_access_key": "Access key ID",
+  "settings_sync_root": "Root directory",
+  "settings_sync_username": "Username",
+  "settings_sync_password": "Password",
+  "settings_sync_secret_key": "Secret access key",
+  "settings_sync_credentials_present": "Credentials are stored on this device.",
+  "settings_sync_credentials_absent": "No credentials are stored yet.",
+  "settings_sync_device_name": "Device name",
+  "settings_sync_interval": "Sync interval (minutes, 0 disables)",
+  "settings_sync_on_change": "Sync after local changes",
+  "settings_sync_unencrypted_notice": "The vault is stored unencrypted on the provider you choose.",
+  "settings_sync_test_connection": "Test connection",
+  "settings_sync_save": "Save",
+  "settings_sync_saved": "Sync settings saved.",
+  "settings_sync_conflicts_title": "Conflicts",
+  "settings_sync_no_conflicts": "No conflicts.",
+  "settings_sync_absent": "(absent)",
+  "settings_sync_resolution": "Use {choice}",
+  "settings_sync_snapshots_title": "Snapshots",
+  "settings_sync_no_snapshots": "No snapshots yet.",
+  "settings_sync_restore": "Restore",
+  "settings_sync_restored": "Snapshot restored; the next sync pushes it."
 }

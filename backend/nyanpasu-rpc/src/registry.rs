@@ -269,7 +269,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_rpc::rpc(local, result, operation = SetStorageItem, permission = settings:write)]
+/// #[nyanpasu_rpc::rpc(result, operation = SetStorageItem, expose = [local])]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -281,7 +281,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -293,7 +293,7 @@ pub type RpcHandler =
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
 /// }
 /// ```
@@ -304,7 +304,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
+///     #[nyanpasu_rpc::rpc(operation = SetStorageItem, expose = [local])]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }

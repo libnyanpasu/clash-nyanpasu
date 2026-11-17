@@ -10,7 +10,7 @@
 //! (design section 3.2 of the permission namespace spec): the top-level module is the resource, the
 //! effect is the level unless the command writes `access = ...`, events, routes and streams read,
 //! and the exposure and sensitive marking are inherited down the tree, the exposure only narrowing.
-//! Every other declaration is legacy and names its permission and exposure itself.
+//! Every declaration stands in the tree: one outside it is an error.
 
 use std::{
     collections::BTreeMap,
@@ -223,8 +223,8 @@ impl NamespaceTree {
         tree
     }
 
-    /// The settings `path` inherits, or `None` when its top-level module is not registered and
-    /// its declarations are legacy. An exposure below must be a subset of the one above it.
+    /// The settings `path` inherits, or `None` when its top-level module declares no namespace.
+    /// An exposure below must be a subset of the one above it.
     fn inherited(&self, path: &[String]) -> Result<Option<Inherited>, String> {
         let Some(top) = path.first() else {
             return Ok(None);
@@ -301,13 +301,11 @@ impl Declaration {
 }
 
 /// A non-command resource declared with
-/// `resource!(event "name", targets = [desktop, http], permission = system:read, sensitive,
-/// capabilities(app_update))`.
+/// `resource!(event "name", targets = [desktop, http], sensitive, capabilities(app_update))`.
 pub(super) struct ResourceDeclaration {
     kind: Ident,
     name: LitStr,
     targets: Vec<Ident>,
-    permission: Option<unified_command::PermissionOption>,
     sensitive: bool,
     capabilities: Vec<Ident>,
     attrs: Vec<Attribute>,
@@ -324,7 +322,6 @@ impl Parse for ResourceDeclaration {
             kind: input.parse()?,
             name: input.parse()?,
             targets: Vec::new(),
-            permission: None,
             sensitive: false,
             capabilities: Vec::new(),
             attrs: Vec::new(),
@@ -343,8 +340,10 @@ impl Parse for ResourceDeclaration {
                     declaration.targets = list(&content)?;
                 }
                 "permission" => {
-                    input.parse::<Token![=]>()?;
-                    declaration.permission = Some(input.parse()?);
+                    return Err(syn::Error::new(
+                        option.span(),
+                        "the namespace tree derives a resource's permission: remove `permission`",
+                    ));
                 }
                 "sensitive" => declaration.sensitive = true,
                 "capabilities" => {
@@ -390,81 +389,30 @@ pub(super) fn production_declarations() -> Vec<Declaration> {
     declarations
 }
 
-/// The production commands without their location, for tests about the attribute, each as a
-/// legacy declaration would read: a command in the namespace tree carries the `http`, `local`,
-/// `permission` and `sensitive` options its position derives, in place of `expose` and `access`.
+/// The production commands without their location, for tests about the attribute.
 pub(super) fn production_functions() -> Vec<ItemFn> {
+    production_commands()
+        .into_iter()
+        .map(|(function, _)| function)
+        .collect()
+}
+
+/// The production commands with what their position derives, for the capability inventory.
+/// A command that breaks a rule is left out; the table tests report it.
+pub(super) fn production_commands() -> Vec<(ItemFn, DerivedCommand)> {
     let declarations = production_declarations();
     let tree = NamespaceTree::new(&declarations, &mut Vec::new());
     declarations
         .into_iter()
         .filter_map(|declaration| match declaration.item {
             Declared::Command(function) => {
-                Some(legacy_form(*function, &declaration.namespace, &tree))
+                let inherited = tree.inherited(&declaration.namespace).ok()??;
+                let derived = derive_command(&function, &declaration.namespace, &inherited).ok()?;
+                Some((*function, derived))
             }
             Declared::Resource(_) | Declared::Namespace(_) => None,
         })
         .collect()
-}
-
-/// `function` with the options its position derives written on its `rpc` attribute; unchanged
-/// when it is a legacy declaration or breaks a rule, which the table tests report.
-fn legacy_form(mut function: ItemFn, namespace: &[String], tree: &NamespaceTree) -> ItemFn {
-    let Ok(Some(inherited)) = tree.inherited(namespace) else {
-        return function;
-    };
-    let Ok(derived) = derive_command(&function, namespace, Some(&inherited)) else {
-        return function;
-    };
-    let Some(attribute) = function.attrs.iter_mut().find(|attr| {
-        attr.path()
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "rpc")
-    }) else {
-        return function;
-    };
-    let arguments = match &attribute.meta {
-        Meta::List(list) => list.tokens.clone(),
-        _ => TokenStream::new(),
-    };
-    // Split the options at top-level commas; brackets and parentheses are single tokens.
-    let mut options: Vec<TokenStream> = vec![TokenStream::new()];
-    for token in arguments {
-        match &token {
-            proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ',' => {
-                options.push(TokenStream::new());
-            }
-            _ => options.last_mut().unwrap().extend([token]),
-        }
-    }
-    let mut options: Vec<TokenStream> = options
-        .into_iter()
-        .filter(|option| {
-            let first = option
-                .clone()
-                .into_iter()
-                .next()
-                .map(|token| token.to_string());
-            !option.is_empty()
-                && !matches!(first.as_deref(), Some("expose" | "access" | "sensitive"))
-        })
-        .collect();
-    let resource = format_ident!("{}", derived.resource);
-    let access = format_ident!("{}", derived.access);
-    options.push(quote!(permission = #resource:#access));
-    if derived.options.http {
-        options.push(quote!(http));
-    }
-    if derived.options.local {
-        options.push(quote!(local));
-    }
-    if derived.sensitive {
-        options.push(quote!(sensitive));
-    }
-    let path = attribute.path().clone();
-    *attribute = syn::parse_quote!(#[#path(#(#options),*)]);
-    function
 }
 
 fn collect_file(
@@ -716,62 +664,51 @@ fn row(declaration: &Declaration, tree: &NamespaceTree) -> Result<Option<TokenSt
     let Ok(inherited) = tree.inherited(&declaration.namespace) else {
         return Ok(None);
     };
+    let Some(inherited) = inherited else {
+        let name = match &declaration.item {
+            Declared::Command(function) => function.sig.ident.to_string(),
+            Declared::Resource(resource) => resource.name.value(),
+            Declared::Namespace(_) => unreachable!(),
+        };
+        return Err(Invalid {
+            name,
+            reason: match declaration.namespace.first() {
+                Some(top) => format!("its top-level module `{top}` declares no `namespace!`"),
+                None => {
+                    "a declaration root holds no resources: move it into a namespace".to_owned()
+                }
+            },
+        });
+    };
     match &declaration.item {
-        Declared::Command(function) => {
-            command_row(function, declaration, inherited.as_ref()).map(Some)
-        }
+        Declared::Command(function) => command_row(function, declaration, &inherited).map(Some),
         Declared::Resource(resource) => {
-            resource_row(resource, &declaration.namespace, inherited.as_ref()).map(Some)
+            resource_row(resource, &declaration.namespace, &inherited).map(Some)
         }
         Declared::Namespace(_) => unreachable!(),
     }
 }
 
 /// What a command's position and options make of it.
-struct DerivedCommand {
+pub(super) struct DerivedCommand {
     /// The options with `http` and `local` set to the effective exposure.
-    options: unified_command::Options,
-    resource: String,
-    access: String,
-    /// `Legacy`, `Derived` or `Override`.
+    pub(super) options: unified_command::Options,
+    pub(super) resource: String,
+    pub(super) access: String,
+    /// `Derived` or `Override`.
     source: &'static str,
-    sensitive: bool,
+    /// The effective marking: the command's own or its namespace's.
+    pub(super) sensitive: bool,
 }
 
-/// Applies the legacy or the derived rules to a command, by where it is declared.
+/// Applies the namespace tree's rules to a command at `namespace`.
 fn derive_command(
     function: &ItemFn,
     namespace: &[String],
-    inherited: Option<&Inherited>,
+    inherited: &Inherited,
 ) -> Result<DerivedCommand, String> {
     let mut options = unified_command::options(function).map_err(|error| error.to_string())?;
     let native = unified_command::is_native(function);
-    let Some(inherited) = inherited else {
-        if options.access.is_some() || options.expose.is_some() {
-            return Err("`access` and `expose` belong to the namespace tree; a legacy declaration names `permission`, `http` and `local`".to_owned());
-        }
-        let Some(permission) = &options.permission else {
-            return Err(
-                "a legacy declaration requires an explicit `permission = resource:access`"
-                    .to_owned(),
-            );
-        };
-        let (resource, access) = (
-            permission.resource.to_string(),
-            permission.access.to_string(),
-        );
-        let sensitive = options.sensitive;
-        return Ok(DerivedCommand {
-            options,
-            resource,
-            access,
-            source: "Legacy",
-            sensitive,
-        });
-    };
-    if options.permission.is_some() || options.http || options.local {
-        return Err("a declaration in the namespace tree derives its permission and exposure: remove `permission`, `http` and `local`".to_owned());
-    }
     let expose = match &options.expose {
         Some(expose) => {
             let expose: Vec<String> = expose.iter().map(ToString::to_string).collect();
@@ -813,7 +750,7 @@ fn derive_command(
 fn command_row(
     function: &ItemFn,
     declaration: &Declaration,
-    inherited: Option<&Inherited>,
+    inherited: &Inherited,
 ) -> Result<TokenStream, Invalid> {
     let invalid = |reason: &str| Invalid {
         name: function.sig.ident.to_string(),
@@ -894,12 +831,12 @@ fn capability_variants(values: &[Ident]) -> Vec<TokenStream> {
 }
 
 /// The row of an event, route or stream. They only read, and name their exposure explicitly
-/// because routes and streams are not offered to the desktop; in the namespace tree the exposure
-/// stays within the namespace's and the permission is derived.
+/// because routes and streams are not offered to the desktop; the exposure stays within the
+/// namespace's and the permission is derived.
 fn resource_row(
     resource: &ResourceDeclaration,
     namespace: &[String],
-    inherited: Option<&Inherited>,
+    inherited: &Inherited,
 ) -> Result<TokenStream, Invalid> {
     let name = resource.name.value();
     let invalid = |reason: &str| Invalid {
@@ -923,46 +860,19 @@ fn resource_row(
         let variant = pascal_case(target);
         targets.push(quote!(crate::RpcTarget::#variant));
     }
-    let (permission, source, sensitive) = match inherited {
-        None => {
-            let Some(permission) = &resource.permission else {
-                return Err(invalid(
-                    "a resource requires an explicit `permission = resource:access`",
-                ));
-            };
-            if permission.access != "read" {
-                return Err(invalid("events, routes and streams only read"));
-            }
-            (
-                permission_tokens(&permission.resource, &permission.access),
-                quote!(Legacy),
-                resource.sensitive,
-            )
-        }
-        Some(inherited) => {
-            if resource.permission.is_some() {
-                return Err(invalid(
-                    "a resource in the namespace tree derives its permission: remove `permission`",
-                ));
-            }
-            if let Some(target) = resource.targets.iter().find(|target| {
-                *target != "desktop" && !inherited.expose.iter().any(|exposed| *target == exposed)
-            }) {
-                return Err(invalid(&format!(
-                    "targets `{target}`, which its namespace `{}` does not expose",
-                    namespace.join(".")
-                )));
-            }
-            (
-                permission_tokens(
-                    &format_ident!("{}", inherited.resource),
-                    &format_ident!("read"),
-                ),
-                quote!(Derived),
-                inherited.sensitive || resource.sensitive,
-            )
-        }
-    };
+    if let Some(target) = resource.targets.iter().find(|target| {
+        *target != "desktop" && !inherited.expose.iter().any(|exposed| *target == exposed)
+    }) {
+        return Err(invalid(&format!(
+            "targets `{target}`, which its namespace `{}` does not expose",
+            namespace.join(".")
+        )));
+    }
+    let permission = permission_tokens(
+        &format_ident!("{}", inherited.resource),
+        &format_ident!("read"),
+    );
+    let sensitive = inherited.sensitive || resource.sensitive;
     let capabilities = capability_variants(&resource.capabilities);
     let namespace = namespace.join(".");
     Ok(quote! {
@@ -972,7 +882,7 @@ fn resource_row(
             kind: crate::permission::ResourceKind::#kind,
             effect: crate::CommandEffect::Query,
             permission: #permission,
-            source: crate::permission::PermissionSource::#source,
+            source: crate::permission::PermissionSource::Derived,
             sensitive: #sensitive,
             targets: &[#(#targets),*],
             capabilities: &[#(#capabilities),*],
@@ -1069,72 +979,61 @@ fn rejection(source: &str) -> String {
 }
 
 #[test]
-fn a_legacy_declaration_requires_a_permission() {
-    for source in [
-        "#[nyanpasu_rpc::rpc(http)] fn update() -> bool { true }",
-        "#[nyanpasu_rpc::rpc(http, query)] fn update() -> bool { true }",
+fn a_declaration_outside_the_namespace_tree_is_rejected() {
+    assert_eq!(
+        rejection("#[nyanpasu_rpc::rpc] fn update() -> bool { true }"),
+        "update: a declaration root holds no resources: move it into a namespace"
+    );
+    assert_eq!(
+        rejection("mod proxy { #[nyanpasu_rpc::rpc(query)] fn update() -> bool { true } }"),
+        "update: its top-level module `proxy` declares no `namespace!`"
+    );
+    assert_eq!(
+        rejection(r#"mod proxy { nyanpasu_rpc::resource!(event "x", targets = [desktop]); }"#),
+        "x: its top-level module `proxy` declares no `namespace!`"
+    );
+}
+
+/// The compile-time rejection of the options a declaration used to name itself: the attribute
+/// turns a parse error into `compile_error!`, so these fail the build of the declaring crate.
+#[test]
+fn the_attribute_rejects_the_options_the_tree_derives() {
+    for options in [
+        "http",
+        "local",
+        "permission = proxy:write",
+        "query, http, local",
     ] {
-        assert!(
-            rejection(source).contains(
-                "update: a legacy declaration requires an explicit `permission = resource:access`"
-            ),
-            "{source}"
+        let source =
+            format!("#[nyanpasu_rpc::rpc({options})] fn select_proxy() -> bool {{ true }}");
+        let function: ItemFn = syn::parse_str(&source).unwrap();
+        let error = match unified_command::options(&function) {
+            Ok(_) => panic!("{options} must be rejected"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.to_string(),
+            unified_command::DERIVED_OPTION,
+            "{options}"
         );
     }
-}
-
-#[test]
-fn a_permission_names_a_resource_and_a_level() {
-    assert!(
-        rejection(
-            "#[nyanpasu_rpc::rpc(query, permission = secrets:read)] fn inspect() -> bool { true }"
-        )
-        .contains("`secrets` is not a resource")
+    let error = match syn::parse_str::<ResourceDeclaration>(
+        r#"event "x", targets = [http], permission = proxy:read"#,
+    ) {
+        Ok(_) => panic!("a resource permission must be rejected"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.to_string(),
+        "the namespace tree derives a resource's permission: remove `permission`"
     );
-    assert!(
-        rejection(
-            "#[nyanpasu_rpc::rpc(query, permission = proxy:admin)] fn inspect() -> bool { true }"
-        )
-        .contains("`admin` is not an access level")
-    );
-}
-
-#[test]
-fn the_permission_and_marking_are_written_as_declared() {
-    let table = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(http, query, permission = profile:read, sensitive)] fn status() -> bool { true }",
-    ))
-    .unwrap();
-    assert!(table.contains("effect : crate :: CommandEffect :: Query"));
-    assert!(
-        table.contains("Resource :: Profile , nyanpasu_config :: application :: Access :: Read")
-    );
-    assert!(table.contains("sensitive : true"));
-    assert!(table.contains("source : crate :: permission :: PermissionSource :: Legacy"));
-}
-
-#[test]
-fn the_permission_is_independent_of_the_effect() {
-    let table = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(query, permission = proxy:write)] fn inspect() -> bool { true }",
-    ))
-    .unwrap();
-    assert!(table.contains("CommandEffect :: Query"));
-    assert!(table.contains("Access :: Write"));
-    assert!(table.contains("sensitive : false"));
-    let table = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(http, permission = logs:read)] fn open_resource() -> bool { true }",
-    ))
-    .unwrap();
-    assert!(table.contains("CommandEffect :: Mutation"));
-    assert!(table.contains("Access :: Read"));
 }
 
 #[test]
 fn only_the_desktop_root_declares_native_commands() {
     assert!(
         rejection(
-            "#[nyanpasu_rpc::rpc(permission = system:write)] #[tauri::command] fn open_that() -> bool { true }"
+            "mod system { nyanpasu_rpc::namespace!(expose = []); #[nyanpasu_rpc::rpc] #[tauri::command] fn open_that() -> bool { true } }"
         )
         .contains("only the desktop shell's declaration root may declare native commands")
     );
@@ -1143,8 +1042,8 @@ fn only_the_desktop_root_declares_native_commands() {
 #[test]
 fn every_invalid_declaration_is_reported() {
     let errors = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(http)] fn first() -> bool { true }
-         #[nyanpasu_rpc::rpc(local)] fn second() -> bool { true }",
+        "#[nyanpasu_rpc::rpc] fn first() -> bool { true }
+         #[nyanpasu_rpc::rpc(query)] fn second() -> bool { true }",
     ))
     .unwrap_err();
     assert_eq!(errors.len(), 2);
@@ -1154,24 +1053,31 @@ fn every_invalid_declaration_is_reported() {
 fn table_preserves_mutually_exclusive_platform_cfg() {
     let mut declarations = declarations_in(
         r#"
-        #[cfg(windows)] mod platform {
-            #[cfg_attr(unix, cfg(target_os = "linux"))]
-            mod nested { #[nyanpasu_rpc::rpc(permission = settings:write)] #[tauri::command] fn platform_call() {} }
+        mod settings {
+            nyanpasu_rpc::namespace!(expose = []);
+            #[cfg(windows)] mod platform {
+                #[cfg_attr(unix, cfg(target_os = "linux"))]
+                mod nested { #[nyanpasu_rpc::rpc] #[tauri::command] fn platform_call() {} }
+            }
+            #[cfg(not(windows))] #[nyanpasu_rpc::rpc] #[tauri::command] fn platform_call() {}
         }
-        #[cfg(not(windows))] #[nyanpasu_rpc::rpc(permission = settings:write)] #[tauri::command] fn platform_call() {}
     "#,
     );
     for declaration in &mut declarations {
         declaration.root = Root::Desktop;
     }
-    assert_eq!(declarations.len(), 2);
-    assert_eq!(declarations[0].namespace, ["platform", "nested"]);
-    assert!(declarations[1].namespace.is_empty());
+    let commands: Vec<_> = declarations
+        .iter()
+        .filter(|declaration| declaration.function().is_some())
+        .collect();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0].namespace, ["settings", "platform", "nested"]);
+    assert_eq!(commands[1].namespace, ["settings"]);
     let output = render(&declarations).unwrap();
     assert!(output.contains("cfg (windows)"));
     assert!(output.contains("cfg (not (windows))"));
     assert!(output.contains("cfg_attr (unix , cfg (target_os = \"linux\"))"));
-    assert!(output.contains("namespace : \"platform.nested\""));
+    assert!(output.contains("namespace : \"settings.platform.nested\""));
     let production = production_functions();
     let uwp = production
         .iter()
@@ -1202,21 +1108,19 @@ fn table_follows_external_shared_modules() {
         &[],
         &mut declarations,
     );
-    assert_eq!(declarations.len(), 2);
-    assert_eq!(
-        declarations[0].function().unwrap().sig.ident,
-        "external_shared"
-    );
-    assert_eq!(declarations[0].namespace, ["shared"]);
-    assert_eq!(
-        declarations[1].function().unwrap().sig.ident,
-        "nested_shared"
-    );
-    assert_eq!(declarations[1].namespace, ["shared", "nested"]);
+    let commands: Vec<_> = declarations
+        .iter()
+        .filter(|declaration| declaration.function().is_some())
+        .collect();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0].function().unwrap().sig.ident, "external_shared");
+    assert_eq!(commands[0].namespace, ["settings", "shared"]);
+    assert_eq!(commands[1].function().unwrap().sig.ident, "nested_shared");
+    assert_eq!(commands[1].namespace, ["settings", "shared", "nested"]);
     let output = render(&declarations).unwrap();
     assert_eq!(output.matches("cfg (windows)").count(), 2);
     assert_eq!(output.matches("CommandKind :: Shared").count(), 2);
-    assert!(output.contains("namespace : \"shared.nested\""));
+    assert!(output.contains("namespace : \"settings.shared.nested\""));
     assert!(output.contains("RpcTarget :: Http"));
     assert!(output.contains("RpcTarget :: Local"));
 }
@@ -1246,13 +1150,13 @@ fn production_namespaces_follow_the_module_tree() {
 fn table_excludes_test_fixtures() {
     let declarations = declarations_in(
         r#"
-        #[cfg(test)] mod fixtures { #[nyanpasu_rpc::rpc(permission = settings:write)] fn fixture() -> bool { true } }
+        #[cfg(test)] mod fixtures { #[nyanpasu_rpc::rpc] fn fixture() -> bool { true } }
         #[cfg(all(test, windows))] mod external_fixture;
         #[cfg_attr(not(test), cfg(any()))] mod conditional_fixture;
-        mod test_support { #[nyanpasu_rpc::rpc(permission = settings:write)] fn support() -> bool { true } }
-        #[test] #[nyanpasu_rpc::rpc(permission = settings:write)] fn fixture_test() -> bool { true }
-        #[tokio::test] #[nyanpasu_rpc::rpc(permission = settings:write)] async fn async_fixture() -> bool { true }
-        #[cfg(any(test, windows))] #[nyanpasu_rpc::rpc(permission = settings:write)] fn production() -> bool { true }
+        mod test_support { #[nyanpasu_rpc::rpc] fn support() -> bool { true } }
+        #[test] #[nyanpasu_rpc::rpc] fn fixture_test() -> bool { true }
+        #[tokio::test] #[nyanpasu_rpc::rpc] async fn async_fixture() -> bool { true }
+        #[cfg(any(test, windows))] #[nyanpasu_rpc::rpc] fn production() -> bool { true }
     "#,
     );
     assert_eq!(declarations.len(), 1);
@@ -1390,9 +1294,8 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "update_proxy_provider",
     ];
     let mut actual = Vec::new();
-    for command in production_functions() {
-        let options = unified_command::options(&command).unwrap();
-        if !options.http {
+    for (command, derived) in production_commands() {
+        if !derived.options.http {
             continue;
         }
         assert!(
@@ -1548,10 +1451,22 @@ fn the_signature_guard_descends_into_nested_modules() {
 fn resources_render_with_their_explicit_exposure() {
     let table = render(&declarations_in(
         r#"
-        nyanpasu_rpc::resource!(event "storage-value-changed-event", targets = [desktop, http], permission = settings:read, sensitive);
-        nyanpasu_rpc::resource!(event "app-update-state-changed", targets = [desktop], permission = system:read, capabilities(app_update));
-        nyanpasu_rpc::resource!(route "icon_fetch", targets = [http], permission = proxy:read);
-        nyanpasu_rpc::resource!(stream "connection_details", targets = [http, local], permission = traffic:read);
+        mod settings {
+            nyanpasu_rpc::namespace!(expose = [http]);
+            nyanpasu_rpc::resource!(event "storage-value-changed-event", targets = [desktop, http], sensitive);
+        }
+        mod system {
+            nyanpasu_rpc::namespace!(expose = []);
+            nyanpasu_rpc::resource!(event "app-update-state-changed", targets = [desktop], capabilities(app_update));
+        }
+        mod proxy {
+            nyanpasu_rpc::namespace!(expose = [http]);
+            nyanpasu_rpc::resource!(route "icon_fetch", targets = [http]);
+        }
+        mod traffic {
+            nyanpasu_rpc::namespace!(expose = [http, local]);
+            nyanpasu_rpc::resource!(stream "connection_details", targets = [http, local]);
+        }
         "#,
     ))
     .unwrap();
@@ -1569,30 +1484,24 @@ fn resources_render_with_their_explicit_exposure() {
 }
 
 #[test]
-fn a_resource_names_its_kind_permission_and_targets() {
-    for (source, reason) in [
+fn a_resource_names_its_kind_and_targets() {
+    for (resource, reason) in [
         (
-            r#"nyanpasu_rpc::resource!(signal "x", targets = [http], permission = proxy:read);"#,
+            r#"nyanpasu_rpc::resource!(signal "x", targets = [http]);"#,
             "a resource is an `event`, a `route` or a `stream`",
         ),
         (
-            r#"nyanpasu_rpc::resource!(event "x", targets = [http]);"#,
-            "a resource requires an explicit `permission = resource:access`",
-        ),
-        (
-            r#"nyanpasu_rpc::resource!(event "x", targets = [http], permission = proxy:write);"#,
-            "events, routes and streams only read",
-        ),
-        (
-            r#"nyanpasu_rpc::resource!(event "x", permission = proxy:read);"#,
+            r#"nyanpasu_rpc::resource!(event "x");"#,
             "a resource requires explicit `targets = [...]`",
         ),
         (
-            r#"nyanpasu_rpc::resource!(event "x", targets = [web], permission = proxy:read);"#,
+            r#"nyanpasu_rpc::resource!(event "x", targets = [web]);"#,
             "targets are `desktop`, `http` and `local`",
         ),
     ] {
-        assert_eq!(rejection(source), format!("x: {reason}"), "{source}");
+        let source =
+            format!("mod proxy {{ nyanpasu_rpc::namespace!(expose = [http]); {resource} }}");
+        assert_eq!(rejection(&source), format!("x: {reason}"), "{source}");
     }
 }
 
@@ -1625,47 +1534,6 @@ fn table_row<'a>(table: &'a str, name: &str) -> &'a str {
         .lines()
         .find(|line| line.contains(&format!("name : \"{name}\"")))
         .unwrap_or_else(|| panic!("no row for {name}"))
-}
-
-/// The legacy form of a derived command keeps every implementation option and replaces `expose`,
-/// `access` and `sensitive` with what its position derives.
-#[test]
-fn the_legacy_form_keeps_every_option_and_writes_the_derived_ones() {
-    let declarations = declarations_in(
-        r#"
-        mod logs {
-            nyanpasu_rpc::namespace!(expose = [http, local]);
-            mod app {
-                nyanpasu_rpc::namespace!(sensitive);
-                #[nyanpasu_rpc::rpc(owner, result, privacy, operation = contracts::OpenLogSession, capabilities(clipboard), optional_capabilities(elevation), access = read, expose = [local])]
-                fn open_log_session() -> bool { true }
-                #[nyanpasu_rpc::rpc]
-                fn clear_logs() -> bool { true }
-            }
-        }
-        "#,
-    );
-    let tree = NamespaceTree::new(&declarations, &mut Vec::new());
-    let forms: Vec<String> = declarations
-        .into_iter()
-        .filter_map(|declaration| match declaration.item {
-            Declared::Command(function) => Some(
-                legacy_form(*function, &declaration.namespace, &tree)
-                    .attrs
-                    .iter()
-                    .map(|attr| attr.to_token_stream().to_string())
-                    .collect::<String>(),
-            ),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        forms,
-        [
-            "# [nyanpasu_rpc :: rpc (owner , result , privacy , operation = contracts :: OpenLogSession , capabilities (clipboard) , optional_capabilities (elevation) , permission = logs : read , local , sensitive)]",
-            "# [nyanpasu_rpc :: rpc (permission = logs : write , http , local , sensitive)]",
-        ]
-    );
 }
 
 #[test]
@@ -1703,7 +1571,7 @@ fn a_top_level_namespace_is_a_resource_and_names_its_exposure() {
         ),
         [
             "namespace `secrets`: a top-level namespace is a resource: meta, proxy, profile, settings, system, logs, traffic, remote",
-            "read: a legacy declaration requires an explicit `permission = resource:access`",
+            "read: its top-level module `secrets` declares no `namespace!`",
         ]
     );
     assert_eq!(
@@ -1862,36 +1730,6 @@ fn an_exposure_below_only_narrows() {
 }
 
 #[test]
-fn the_namespace_tree_rejects_legacy_options() {
-    for options in ["permission = proxy:write", "http", "local"] {
-        let source = format!(
-            "mod proxy {{ nyanpasu_rpc::namespace!(expose = [http, local]); #[nyanpasu_rpc::rpc({options})] fn select_proxy() -> bool {{ true }} }}"
-        );
-        assert_eq!(
-            derived_rejection(&source),
-            [
-                "select_proxy: a declaration in the namespace tree derives its permission and exposure: remove `permission`, `http` and `local`"
-            ],
-            "{options}"
-        );
-    }
-    assert_eq!(
-        derived_rejection(
-            r#"mod proxy { nyanpasu_rpc::namespace!(expose = [http]); nyanpasu_rpc::resource!(event "x", targets = [http], permission = proxy:read); }"#
-        ),
-        ["x: a resource in the namespace tree derives its permission: remove `permission`"]
-    );
-    assert_eq!(
-        derived_rejection(
-            r#"#[nyanpasu_rpc::rpc(query, access = write, permission = proxy:write)] fn legacy() -> bool { true }"#
-        ),
-        [
-            "legacy: `access` and `expose` belong to the namespace tree; a legacy declaration names `permission`, `http` and `local`"
-        ]
-    );
-}
-
-#[test]
 fn an_access_override_is_recorded_and_must_change_the_level() {
     let table = derived_table(
         r#"
@@ -1997,6 +1835,6 @@ fn an_exposed_command_needs_a_transport_neutral_signature() {
         .collect();
     assert_eq!(
         errors,
-        ["open_that: rpc(http) requires a transport-neutral signature"]
+        ["open_that: exposing a command over HTTP requires a transport-neutral signature"]
     );
 }

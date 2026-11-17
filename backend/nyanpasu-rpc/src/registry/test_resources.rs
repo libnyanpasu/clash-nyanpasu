@@ -26,7 +26,7 @@ const fn mutation(
         kind: ResourceKind::Command(kind),
         effect: CommandEffect::Mutation,
         permission,
-        source: PermissionSource::Legacy,
+        source: PermissionSource::Derived,
         sensitive: false,
         targets,
         capabilities,

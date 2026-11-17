@@ -28,9 +28,6 @@ pub enum ResourceKind {
 /// Where a resource's requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionSource {
-    /// Written on the declaration as `permission = resource:access`, before the namespace tree
-    /// derives it.
-    Legacy,
     /// Derived from the namespace tree: the top-level module is the resource, the effect the level.
     Derived,
     /// Derived, with the level the command names in `access = ...`; a budgeted exception.
@@ -90,9 +87,6 @@ mod tests {
     use super::{PermissionSource, RESOURCES, ResourceMetadata};
     use crate::{CommandEffect, RpcTarget, ShellCapability};
 
-    /// Every committed requirement is a reviewed legacy declaration until the commands move into
-    /// the namespace tree; this budget only goes down, to zero.
-    const MAX_LEGACY: usize = 0;
     /// Commands whose level differs from the one their effect derives (design section 3.3): the
     /// latency tests and the log and connection-detail subscriptions. Raising it is reviewed.
     const MAX_OVERRIDES: usize = 9;
@@ -105,18 +99,6 @@ mod tests {
             .map(|resource| resource.name)
             .collect();
         assert!(overrides.len() <= MAX_OVERRIDES, "{overrides:?}");
-    }
-
-    #[test]
-    fn legacy_declarations_stay_within_their_budget() {
-        let legacy = RESOURCES
-            .iter()
-            .filter(|resource| resource.source == PermissionSource::Legacy)
-            .count();
-        assert_eq!(
-            legacy, MAX_LEGACY,
-            "lower MAX_LEGACY when declarations move"
-        );
     }
 
     fn names(filter: impl Fn(&ResourceMetadata) -> bool) -> Vec<&'static str> {

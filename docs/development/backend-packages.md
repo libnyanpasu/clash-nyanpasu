@@ -147,7 +147,7 @@ Until a target crate exists:
 - Do not add a mandatory presentation capability to `ClientSetupArgs`.
 - Keep new OS integration code behind a consumer-owned port next to its current
   consumer, so moving it later does not change callers.
-- Expose a new command to WebUI (`rpc(http)`) only after reviewing its effects
+- Expose a new command to WebUI (HTTP, through its namespace's `expose`) only after reviewing its effects
   for a browser caller; CLI exposure will be a separate opt-in.
 
 Domain configuration must not import a GUI package merely for a wire enum. Put

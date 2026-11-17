@@ -1,0 +1,227 @@
+# P0-2 mapping of every protected resource; reviewed with mapping.md.
+# kind | name | permission | namespace | sensitive | override | targets | origin
+command | activate_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | apply_network_automation | system:write | system.network |  |  | desktop | nyanpasu-rpc/src/commands/runtime.rs
+command | ask_native_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | cancel_app_update_download | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
+command | change_clash_core | system:write | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | check_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
+command | clash_api_delete_connections | proxy:write | proxy.connections |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_configs | settings:read | settings.clash | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_group_delay | proxy:write | proxy.delay |  | write | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_providers_proxies | proxy:read | proxy.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_providers_rules | proxy:read | proxy.rules |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_proxy_delay | proxy:write | proxy.delay |  | write | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_rules | proxy:read | proxy.rules |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_settings | settings:read | settings.clash |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_get_version | system:read | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_healthcheck_proxy_provider | proxy:write | proxy.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_update_providers_rules | profile:write | profile.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clear_clash_ws_history | traffic:write | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | clear_core_logs | logs:write | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | clear_proxy_fixed | proxy:write | proxy.groups |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clear_storage | settings:write | settings.storage |  |  | desktop,http | nyanpasu-rpc/src/commands/storage.rs
+command | close_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
+command | collect_logs | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | configure_sync | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | copy_clash_env | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | create_config_backup | settings:write | settings.backup |  |  | desktop | tauri/src/ipc.rs
+command | create_debug_tray_menu_window | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | create_editor_window | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | create_http_launch_url | remote:write | remote.sessions |  |  | desktop | nyanpasu-rpc/src/commands/remote_access.rs
+command | create_main_window | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | create_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | create_profile_folder | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | create_proxy_group_folder | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | create_remote_access_token | remote:write | remote.tokens |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
+command | delete_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | disable_sync | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | discard_app_update_package | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
+command | download_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
+command | enable_sync | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | enhance_profiles | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | fetch_latest_core_versions | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
+command | flush_system_dns_cache | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | get_all_storage_items | settings:read | settings.storage | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/storage.rs
+command | get_app_config | settings:read | settings.app | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_app_settings | settings:read | settings.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | get_app_update_changelog | system:read | system.update |  |  | desktop | tauri/src/ipc.rs
+command | get_app_update_state | system:read | system.update | sensitive |  | desktop | tauri/src/ipc.rs
+command | get_app_update_summary | system:read | system.update |  |  | desktop | tauri/src/ipc.rs
+command | get_clash_config | settings:read | settings.clash | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_clash_info | settings:read | settings.clash | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_clash_settings | settings:read | settings.clash |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | get_clash_ws_snapshot | traffic:read | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | get_config_features | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_configuration_status | system:read | system.status | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/status.rs
+command | get_configuration_status_summary | system:read | system.status |  |  | desktop,http,local | nyanpasu-rpc/src/commands/status.rs
+command | get_core_agent_skills | system:read | system.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
+command | get_core_agent_skills_summary | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
+command | get_core_dir | system:read | system.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/host.rs
+command | get_core_log | logs:read | logs.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | get_core_log_status | logs:read | logs.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | get_core_log_status_summary | logs:read | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | get_core_status | system:read | system.core | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | get_core_status_summary | system:read | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | get_core_version | system:read | system.core |  |  | desktop | tauri/src/ipc.rs
+command | get_custom_app_dir | system:read | system.os | sensitive |  | desktop | tauri/src/ipc.rs
+command | get_hotkey_functions | system:read | system.hotkeys |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_hotkeys | system:read | system.hotkeys |  |  | desktop,http | nyanpasu-rpc/src/commands/storage.rs
+command | get_http_server_status | system:read | system.status |  |  | desktop,http,local | nyanpasu-rpc/src/commands/status.rs
+command | get_ip_lookup_providers | system:read | system.network |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_ipsb_asn | system:read | system.network |  |  | desktop | tauri/src/ipc.rs
+command | get_local_socket_status | remote:read | remote.settings |  |  | desktop,local | nyanpasu-rpc/src/commands/status.rs
+command | get_network_automation_status | system:read | system.network | sensitive |  | desktop | nyanpasu-rpc/src/commands/runtime.rs
+command | get_postprocessing_output | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_profile_sync_logs | profile:read | profile.sync | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profile_sync_runs | profile:read | profile.sync | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profile_sync_runs_summary | profile:read | profile.sync |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profile_sync_status | profile:read | profile.sync | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profile_sync_status_summary | profile:read | profile.sync |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profiles | profile:read | profile.store | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | get_profiles_listing | profile:read | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | get_proxies | proxy:read | proxy.groups |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | get_proxy_group_icons | proxy:read | proxy.groups | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | get_release_channel | settings:read | settings.app |  |  | desktop | tauri/src/ipc.rs
+command | get_runtime_config | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_runtime_exists | profile:read | profile.runtime |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_runtime_yaml | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | get_service_install_prompt | system:read | system.service | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/host.rs
+command | get_service_status_summary | system:read | system.service |  |  | desktop,http | nyanpasu-rpc/src/commands/status.rs
+command | get_storage_item | settings:read | settings.storage | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/storage.rs
+command | get_sync_provider_kinds | settings:read | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | get_sync_settings | settings:read | settings.sync | sensitive |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | get_sync_status | settings:read | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | get_sys_proxy | system:read | system.proxy |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | get_system_accent_color | system:read | system.os |  |  | desktop,http | nyanpasu-rpc/src/commands/host.rs
+command | get_traffic_summary | traffic:read | traffic.usage |  |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
+command | get_transparent_proxy_status | system:read | system.proxy | sensitive |  | desktop | tauri/src/ipc.rs
+command | get_transparent_proxy_status_summary | system:read | system.proxy |  |  | desktop | tauri/src/ipc.rs
+command | import_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | inspect_applied_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | inspect_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | inspect_runtime_node | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | inspect_updater | system:read | system.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
+command | inspect_updater_summary | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
+command | install_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
+command | install_cli | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | install_service | system:write | system.service |  |  | desktop | tauri/src/ipc.rs
+command | invoke_uwp_tool | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | is_appimage | system:read | system.os |  |  | desktop,http | nyanpasu-rpc/src/commands/host.rs
+command | is_portable | system:read | system.os |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | is_tray_icon_set | system:read | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
+command | is_widget_icon_set | system:read | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
+command | list_log_files | logs:read | logs.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
+command | list_remote_access_tokens | remote:read | remote.tokens |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
+command | list_remote_browser_sessions | remote:read | remote.sessions |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
+command | list_sync_conflicts | settings:read | settings.sync | sensitive |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | list_sync_snapshots | settings:read | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | mutate_proxies | proxy:write | proxy.groups |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | open_app_config_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_app_data_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_backups_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src/ipc.rs
+command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
+command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_native_file_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_that | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_web_url | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | patch_app_config | settings:write | settings.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | patch_clash_config | settings:write | settings.clash |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | patch_clash_system_config | system:write | system.proxy |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | patch_profile_metadata | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | patch_remote_profile_options | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | patch_runtime_access | system:write | system.proxy |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | patch_runtime_overrides | settings:write | settings.clash |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | patch_system_settings | system:write | system.proxy |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | probe_direct_egress | settings:write | settings.network |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | probe_profile_url | profile:read | profile.content | sensitive |  | desktop | tauri/src/ipc.rs
+command | query_core_logs | logs:read | logs.core | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
+command | query_core_logs_summary | logs:read | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | query_logs | logs:read | logs.app | sensitive | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
+command | query_logs_summary | logs:read | logs.app |  | read | desktop,http | nyanpasu-rpc/src/commands/logs.rs
+command | query_traffic_active_connection_ids | traffic:read | traffic.connections |  |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
+command | query_traffic_closed_connections | traffic:read | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | query_traffic_report | traffic:read | traffic.usage |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | query_traffic_usage | traffic:read | traffic.usage |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | query_traffic_usage_by_keys | traffic:read | traffic.usage |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | quit_application | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | read_clipboard_text | system:read | system.os | sensitive |  | desktop | tauri/src/ipc.rs
+command | read_profile_file | profile:read | profile.content | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | remove_storage_item | settings:write | settings.storage |  |  | desktop,http,local | nyanpasu-rpc/src/commands/storage.rs
+command | reorder_profile | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | reorder_profiles_by_list | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | replace_profile_definition | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | report_frontend_events | logs:write | logs.app |  |  | desktop,http | nyanpasu-rpc/src/commands/logs.rs
+command | report_issue | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | report_window_ready | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | request_wifi_name_access | system:write | system.network |  |  | desktop | nyanpasu-rpc/src/commands/runtime.rs
+command | reset_remote_access_tls | remote:write | remote.settings |  |  | desktop,local | nyanpasu-rpc/src/commands/host.rs
+command | resolve_sync_conflict | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | restart_application | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | restart_service | system:write | system.service |  |  | desktop | tauri/src/ipc.rs
+command | restart_sidecar | system:write | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | restore_sync_snapshot | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | retry_configuration_effect | system:write | system.status |  |  | desktop,http | nyanpasu-rpc/src/commands/status.rs
+command | retry_configuration_runtime | system:write | system.status |  |  | desktop,http | nyanpasu-rpc/src/commands/status.rs
+command | revoke_remote_access_token | remote:write | remote.tokens |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
+command | revoke_remote_browser_session | remote:write | remote.sessions |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
+command | rpc_describe | meta:read | meta |  |  | desktop,http,local | nyanpasu-rpc/src/commands/describe.rs
+command | save_profile_file | profile:write | profile.content |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | save_window_size_state | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | select_proxy | proxy:write | proxy.groups |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | set_clash_ws_recording | traffic:write | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
+command | set_custom_app_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | set_global_transforms | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | set_hotkeys | system:write | system.hotkeys |  |  | desktop | nyanpasu-rpc/src/commands/storage.rs
+command | set_profile_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | set_profile_valid_fields | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | set_proxy_group_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | set_proxy_mode | proxy:write | proxy.mode |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
+command | set_release_channel | settings:write | settings.app |  |  | desktop | tauri/src/ipc.rs
+command | set_remote_access | remote:write | remote.settings |  |  | desktop,local | nyanpasu-rpc/src/commands/host.rs
+command | set_service_mode | system:write | system.service |  |  | desktop | nyanpasu-rpc/src/commands/host.rs
+command | set_storage_item | settings:write | settings.storage |  |  | desktop,http,local | nyanpasu-rpc/src/commands/storage.rs
+command | set_tray_icon | system:write | system.icons |  |  | desktop | tauri/src/ipc.rs
+command | set_tray_icon_from_bytes | system:write | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
+command | set_widget_icon | system:write | system.icons |  |  | desktop | tauri/src/ipc.rs
+command | set_widget_icon_from_bytes | system:write | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
+command | show_native_message_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | show_native_notification | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | simulate_crash | system:write | system.window |  |  | desktop | tauri/src/ipc.rs
+command | start_service | system:write | system.service |  |  | desktop | tauri/src/ipc.rs
+command | status_service | system:read | system.service | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/status.rs
+command | stop_service | system:write | system.service |  |  | desktop | tauri/src/ipc.rs
+command | subscribe_clash_connection_details | traffic:read | traffic.connections |  | read | desktop | tauri/src/ipc.rs
+command | sync_now | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | take_pending_deep_links | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | test_stun_server | settings:write | settings.network |  |  | desktop | tauri/src/ipc.rs
+command | test_sync_connection | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
+command | uninstall_service | system:write | system.service |  |  | desktop | tauri/src/ipc.rs
+command | unsubscribe_clash_connection_details | traffic:read | traffic.connections |  | read | desktop | tauri/src/ipc.rs
+command | update_core | system:write | system.core |  |  | desktop | tauri/src/ipc.rs
+command | update_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
+command | update_proxy_provider | profile:write | profile.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | url_delay_test | proxy:write | proxy.delay |  | write | desktop | tauri/src/ipc.rs
+command | view_profile | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | write_clipboard_text | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+event | app-update-state-changed | system:read | system.update | sensitive |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | app-update-summary-changed | system:read | system.update |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | clash-ws-event | traffic:read | traffic.connections |  |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | configuration-status-changed | system:read | system.status | sensitive |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | configuration-status-summary-changed | system:read | system.status |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | core-logs-changed | logs:read | logs.core | sensitive |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | core-logs-summary-changed | logs:read | logs.core |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | core-status-changed-event | system:read | system.core | sensitive |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | core-status-summary-changed-event | system:read | system.core |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | scheme-request-received-event | system:read | system.os |  |  | desktop | nyanpasu-rpc-protocol/src/event.rs
+event | service-status-changed-event | system:read | system.service | sensitive |  | desktop,http,local | nyanpasu-rpc-protocol/src/event.rs
+event | service-status-summary-changed-event | system:read | system.service |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | state-changed-event | settings:read | settings.app |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | storage-resync-event | settings:read | settings.storage |  |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | storage-value-changed-event | settings:read | settings.storage | sensitive |  | desktop,http | nyanpasu-rpc-protocol/src/event.rs
+event | sync-status-changed-event | settings:read | settings.sync | sensitive |  | desktop | nyanpasu-rpc-protocol/src/event.rs
+event | window-message-event | system:read | system.window | sensitive |  | desktop | nyanpasu-rpc-protocol/src/event.rs
+route | icon_fetch | system:read | system.icons |  |  | http | nyanpasu-rpc/src/http/routes.rs
+route | logs_archive | logs:read | logs.app | sensitive |  | http | nyanpasu-rpc/src/http/routes.rs
+stream | connection_details | traffic:read | traffic.connections |  |  | http,local | nyanpasu-rpc/src/local/server.rs

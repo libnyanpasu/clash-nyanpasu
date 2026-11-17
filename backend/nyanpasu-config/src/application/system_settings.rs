@@ -92,7 +92,6 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         } = patch;
 
@@ -134,7 +133,6 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons;
             nested: window_close,
         )?;

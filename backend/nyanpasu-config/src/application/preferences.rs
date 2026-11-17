@@ -74,10 +74,6 @@ pub struct ApplicationPreferencesPatch {
     pub enable_tray_text: Option<bool>,
     pub enable_tray_traffic: Option<bool>,
     pub use_legacy_ui: Option<bool>,
-    // Kept out of the TS bindings: a macOS-only field would make the generated bindings differ
-    // per platform.
-    #[cfg(target_os = "macos")]
-    #[specta(skip)]
     pub enable_macos_colored_icons: Option<bool>,
 }
 
@@ -135,7 +131,6 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         } = patch;
 
@@ -188,7 +183,6 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         })
     }
@@ -231,7 +225,6 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         } = preferences;
 
@@ -269,7 +262,6 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
             // Other classes are never written from here.
             enable_service_mode: None,

@@ -1337,6 +1337,7 @@ export type ApplicationPreferencesPatch_Deserialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1384,6 +1385,7 @@ export type ApplicationPreferencesPatch_Serialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1455,6 +1457,7 @@ export type ApplicationSettings_Deserialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
 }
 
 /**
@@ -1517,6 +1520,7 @@ export type ApplicationSettings_Serialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
 }
 
 export type BlockedItem = {
@@ -4484,6 +4488,16 @@ export type NyanpasuAppConfig_Deserialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons?: boolean
 }
 
 /**  `application.yaml` schema. */
@@ -4616,6 +4630,16 @@ export type NyanpasuAppConfig_Serialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons: boolean
 }
 
 export type OpenLogs = {

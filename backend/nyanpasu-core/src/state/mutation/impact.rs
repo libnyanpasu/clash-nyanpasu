@@ -613,7 +613,6 @@ mod tests {
                 owners: &[],
             },
         ];
-        #[cfg(target_os = "macos")]
         cases.push(AppCase {
             field: "enable_macos_colored_icons",
             mutate: |app| app.enable_macos_colored_icons = true,

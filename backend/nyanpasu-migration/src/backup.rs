@@ -333,6 +333,7 @@ fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
         paths.backups_dir(),
         paths.storage_path(),
         paths.jobs_path(),
+        paths.app_data_dir().join("sync"),
         paths.app_logs_dir(),
         paths.cache_dir(),
         paths.scripts_dir(),
@@ -818,6 +819,11 @@ mod tests {
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");
         write(&paths.jobs_path(), "jobs");
+        write(&paths.app_data_dir().join("sync/state.redb"), "sync state");
+        write(
+            &paths.app_data_dir().join("sync/credentials.json"),
+            "secret",
+        );
 
         let storage = paths.storage_path();
         let first =

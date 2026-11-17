@@ -390,15 +390,81 @@ pub(super) fn production_declarations() -> Vec<Declaration> {
     declarations
 }
 
-/// The production declarations without their location, for tests about the attribute.
+/// The production commands without their location, for tests about the attribute, each as a
+/// legacy declaration would read: a command in the namespace tree carries the `http`, `local`,
+/// `permission` and `sensitive` options its position derives, in place of `expose` and `access`.
 pub(super) fn production_functions() -> Vec<ItemFn> {
-    production_declarations()
+    let declarations = production_declarations();
+    let tree = NamespaceTree::new(&declarations, &mut Vec::new());
+    declarations
         .into_iter()
         .filter_map(|declaration| match declaration.item {
-            Declared::Command(function) => Some(*function),
+            Declared::Command(function) => {
+                Some(legacy_form(*function, &declaration.namespace, &tree))
+            }
             Declared::Resource(_) | Declared::Namespace(_) => None,
         })
         .collect()
+}
+
+/// `function` with the options its position derives written on its `rpc` attribute; unchanged
+/// when it is a legacy declaration or breaks a rule, which the table tests report.
+fn legacy_form(mut function: ItemFn, namespace: &[String], tree: &NamespaceTree) -> ItemFn {
+    let Ok(Some(inherited)) = tree.inherited(namespace) else {
+        return function;
+    };
+    let Ok(derived) = derive_command(&function, namespace, Some(&inherited)) else {
+        return function;
+    };
+    let Some(attribute) = function.attrs.iter_mut().find(|attr| {
+        attr.path()
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "rpc")
+    }) else {
+        return function;
+    };
+    let arguments = match &attribute.meta {
+        Meta::List(list) => list.tokens.clone(),
+        _ => TokenStream::new(),
+    };
+    // Split the options at top-level commas; brackets and parentheses are single tokens.
+    let mut options: Vec<TokenStream> = vec![TokenStream::new()];
+    for token in arguments {
+        match &token {
+            proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ',' => {
+                options.push(TokenStream::new());
+            }
+            _ => options.last_mut().unwrap().extend([token]),
+        }
+    }
+    let mut options: Vec<TokenStream> = options
+        .into_iter()
+        .filter(|option| {
+            let first = option
+                .clone()
+                .into_iter()
+                .next()
+                .map(|token| token.to_string());
+            !option.is_empty()
+                && !matches!(first.as_deref(), Some("expose" | "access" | "sensitive"))
+        })
+        .collect();
+    let resource = format_ident!("{}", derived.resource);
+    let access = format_ident!("{}", derived.access);
+    options.push(quote!(permission = #resource:#access));
+    if derived.options.http {
+        options.push(quote!(http));
+    }
+    if derived.options.local {
+        options.push(quote!(local));
+    }
+    if derived.sensitive {
+        options.push(quote!(sensitive));
+    }
+    let path = attribute.path().clone();
+    *attribute = syn::parse_quote!(#[#path(#(#options),*)]);
+    function
 }
 
 fn collect_file(
@@ -661,6 +727,89 @@ fn row(declaration: &Declaration, tree: &NamespaceTree) -> Result<Option<TokenSt
     }
 }
 
+/// What a command's position and options make of it.
+struct DerivedCommand {
+    /// The options with `http` and `local` set to the effective exposure.
+    options: unified_command::Options,
+    resource: String,
+    access: String,
+    /// `Legacy`, `Derived` or `Override`.
+    source: &'static str,
+    sensitive: bool,
+}
+
+/// Applies the legacy or the derived rules to a command, by where it is declared.
+fn derive_command(
+    function: &ItemFn,
+    namespace: &[String],
+    inherited: Option<&Inherited>,
+) -> Result<DerivedCommand, String> {
+    let mut options = unified_command::options(function).map_err(|error| error.to_string())?;
+    let native = unified_command::is_native(function);
+    let Some(inherited) = inherited else {
+        if options.access.is_some() || options.expose.is_some() {
+            return Err("`access` and `expose` belong to the namespace tree; a legacy declaration names `permission`, `http` and `local`".to_owned());
+        }
+        let Some(permission) = &options.permission else {
+            return Err(
+                "a legacy declaration requires an explicit `permission = resource:access`"
+                    .to_owned(),
+            );
+        };
+        let (resource, access) = (
+            permission.resource.to_string(),
+            permission.access.to_string(),
+        );
+        let sensitive = options.sensitive;
+        return Ok(DerivedCommand {
+            options,
+            resource,
+            access,
+            source: "Legacy",
+            sensitive,
+        });
+    };
+    if options.permission.is_some() || options.http || options.local {
+        return Err("a declaration in the namespace tree derives its permission and exposure: remove `permission`, `http` and `local`".to_owned());
+    }
+    let expose = match &options.expose {
+        Some(expose) => {
+            let expose: Vec<String> = expose.iter().map(ToString::to_string).collect();
+            narrow(&inherited.expose, &expose).map_err(|target| {
+                format!(
+                    "exposes `{target}`, which its namespace `{}` does not",
+                    namespace.join(".")
+                )
+            })?;
+            expose
+        }
+        None => inherited.expose.clone(),
+    };
+    if native && !expose.is_empty() && options.expose.is_none() {
+        return Err("a native command beyond the desktop names its `expose` itself, so the attribute builds its shared handler".to_owned());
+    }
+    options.http = expose.iter().any(|target| target == "http");
+    options.local = expose.iter().any(|target| target == "local");
+    let natural = if options.query { "read" } else { "write" };
+    let (access, source) = match &options.access {
+        Some(access) if access == natural => {
+            return Err(format!(
+                "`access = {access}` repeats the level its effect derives"
+            ));
+        }
+        Some(access) => (access.to_string(), "Override"),
+        None => (natural.to_owned(), "Derived"),
+    };
+    let sensitive = inherited.sensitive || options.sensitive;
+    Ok(DerivedCommand {
+        options,
+        resource: inherited.resource.clone(),
+        access,
+        source,
+        sensitive,
+    })
+}
+
 fn command_row(
     function: &ItemFn,
     declaration: &Declaration,
@@ -670,78 +819,21 @@ fn command_row(
         name: function.sig.ident.to_string(),
         reason: reason.to_owned(),
     };
-    let mut options =
-        unified_command::options(function).map_err(|error| invalid(&error.to_string()))?;
     let native = unified_command::is_native(function);
     if native && declaration.root != Root::Desktop {
         return Err(invalid(
             "only the desktop shell's declaration root may declare native commands",
         ));
     }
-    let (permission, source, sensitive) = match inherited {
-        None => {
-            if options.access.is_some() || options.expose.is_some() {
-                return Err(invalid(
-                    "`access` and `expose` belong to the namespace tree; a legacy declaration names `permission`, `http` and `local`",
-                ));
-            }
-            let Some(permission) = &options.permission else {
-                return Err(invalid(
-                    "a legacy declaration requires an explicit `permission = resource:access`",
-                ));
-            };
-            (
-                permission_tokens(&permission.resource, &permission.access),
-                quote!(Legacy),
-                options.sensitive,
-            )
-        }
-        Some(inherited) => {
-            if options.permission.is_some() || options.http || options.local {
-                return Err(invalid(
-                    "a declaration in the namespace tree derives its permission and exposure: remove `permission`, `http` and `local`",
-                ));
-            }
-            let expose = match &options.expose {
-                Some(expose) => {
-                    let expose: Vec<String> = expose.iter().map(ToString::to_string).collect();
-                    narrow(&inherited.expose, &expose).map_err(|target| {
-                        invalid(&format!(
-                            "exposes `{target}`, which its namespace `{}` does not",
-                            declaration.namespace.join(".")
-                        ))
-                    })?;
-                    expose
-                }
-                None => inherited.expose.clone(),
-            };
-            if native && !expose.is_empty() && options.expose.is_none() {
-                return Err(invalid(
-                    "a native command beyond the desktop names its `expose` itself, so the attribute builds its shared handler",
-                ));
-            }
-            options.http = expose.iter().any(|target| target == "http");
-            options.local = expose.iter().any(|target| target == "local");
-            let natural = if options.query { "read" } else { "write" };
-            let (access, source) = match &options.access {
-                Some(access) if access == natural => {
-                    return Err(invalid(&format!(
-                        "`access = {access}` repeats the level its effect derives"
-                    )));
-                }
-                Some(access) => (access.to_string(), quote!(Override)),
-                None => (natural.to_owned(), quote!(Derived)),
-            };
-            (
-                permission_tokens(
-                    &format_ident!("{}", inherited.resource),
-                    &format_ident!("{}", access),
-                ),
-                source,
-                inherited.sensitive || options.sensitive,
-            )
-        }
-    };
+    let derived = derive_command(function, &declaration.namespace, inherited)
+        .map_err(|reason| invalid(&reason))?;
+    let options = derived.options;
+    let permission = permission_tokens(
+        &format_ident!("{}", derived.resource),
+        &format_ident!("{}", derived.access),
+    );
+    let source = format_ident!("{}", derived.source);
+    let sensitive = derived.sensitive;
     unified_command::validate(function, &options).map_err(|error| invalid(&error.to_string()))?;
 
     let name = function.sig.ident.to_string();
@@ -1532,6 +1624,47 @@ fn table_row<'a>(table: &'a str, name: &str) -> &'a str {
         .lines()
         .find(|line| line.contains(&format!("name : \"{name}\"")))
         .unwrap_or_else(|| panic!("no row for {name}"))
+}
+
+/// The legacy form of a derived command keeps every implementation option and replaces `expose`,
+/// `access` and `sensitive` with what its position derives.
+#[test]
+fn the_legacy_form_keeps_every_option_and_writes_the_derived_ones() {
+    let declarations = declarations_in(
+        r#"
+        mod logs {
+            nyanpasu_rpc::namespace!(expose = [http, local]);
+            mod app {
+                nyanpasu_rpc::namespace!(sensitive);
+                #[nyanpasu_rpc::rpc(owner, result, privacy, operation = contracts::OpenLogSession, capabilities(clipboard), optional_capabilities(elevation), access = read, expose = [local])]
+                fn open_log_session() -> bool { true }
+                #[nyanpasu_rpc::rpc]
+                fn clear_logs() -> bool { true }
+            }
+        }
+        "#,
+    );
+    let tree = NamespaceTree::new(&declarations, &mut Vec::new());
+    let forms: Vec<String> = declarations
+        .into_iter()
+        .filter_map(|declaration| match declaration.item {
+            Declared::Command(function) => Some(
+                legacy_form(*function, &declaration.namespace, &tree)
+                    .attrs
+                    .iter()
+                    .map(|attr| attr.to_token_stream().to_string())
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        forms,
+        [
+            "# [nyanpasu_rpc :: rpc (owner , result , privacy , operation = contracts :: OpenLogSession , capabilities (clipboard) , optional_capabilities (elevation) , permission = logs : read , local , sensitive)]",
+            "# [nyanpasu_rpc :: rpc (permission = logs : write , http , local , sensitive)]",
+        ]
+    );
 }
 
 #[test]

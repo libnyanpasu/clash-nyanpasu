@@ -97,7 +97,7 @@ it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
 `tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
 `remote:read` query on Desktop and Local only. Access tokens and browser sessions are managed
-through `remote` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
+through the `remote` commands in `nyanpasu-rpc/src/commands/remote/{tokens,sessions,settings}.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
 socket may call and HTTP never offers. A token holds a `Grant`: the `viewer`, `operator` or
@@ -293,10 +293,23 @@ declaration must name `permission = resource:access`, only the desktop root may 
 commands, and a `resource!` names its kind (`event`, `route`, `stream`), a `read` permission and
 targets. The `rpc` attribute rejects a resource or level the permission model does not have. It reports every invalid
 declaration at once. It does not resolve arbitrary Rust module systems or add a protocol build
-dependency on application code. Every row is currently `PermissionSource::Legacy` (a
-`permission = ...` written on the declaration); `MAX_LEGACY` in the protocol tests equals their
-number and only goes down. When commands move, migrate the roots, schema and handler
-inventories together. Run from `backend/`:
+dependency on application code.
+
+A top-level command module that declares `nyanpasu_rpc::namespace!(expose = [http, local])` is a
+resource, and every declaration below it derives its requirement from its position
+(`PermissionSource::Derived`): the resource is the top-level module, the level is the effect,
+and events, routes and streams read. A command whose level differs from its effect writes
+`access = read|write` (`PermissionSource::Override`, at most `MAX_OVERRIDES`). The exposure is
+inherited and only narrows: a module below may declare a smaller `expose`, and a command may
+write its own; a native command exposed beyond the desktop names its `expose` itself.
+`namespace!(sensitive)` marks a subtree and `sensitive` marks one command. Declarations there
+never name `permission`, `http` or `local`, `meta` holds only `rpc_describe`, and a namespace
+is unconditional. Elsewhere a declaration is legacy (`PermissionSource::Legacy`, a
+`permission = ...` written on it); `MAX_LEGACY` in the protocol tests equals their number and
+only goes down as the cards of the permission namespace spec move the commands. A moved
+command keeps its function and method name and sits at the namespace the reviewed mapping
+gives it. When commands move, migrate the roots, schema and handler inventories together.
+Run from `backend/`:
 
 ```sh
 cargo test -p nyanpasu-rpc-macro --features syn/full export_rpc_resource_table -- --ignored

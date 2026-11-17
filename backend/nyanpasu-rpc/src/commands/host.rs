@@ -2,7 +2,6 @@
 
 use crate::error::Result;
 
-use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
@@ -41,29 +40,6 @@ pub async fn set_service_mode(
     enabled: bool,
 ) -> Result<RpcUnitMutationOutcome> {
     Ok(client.set_service_mode(enabled).await?.into())
-}
-
-/// Remote access widens who can reach the application, so it has its own command, reachable from
-/// the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
-/// section.
-#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), permission = remote:write)]
-#[specta::specta]
-pub async fn set_remote_access(
-    client: RpcState<'_, NyanpasuClient>,
-    config: RemoteAccessConfig,
-) -> Result<RpcUnitMutationOutcome> {
-    Ok(client.set_remote_access(config).await?.into())
-}
-
-/// Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
-/// the old fingerprint refuse the server until they pin the new one, so it is a remote
-/// administration command, never reachable over HTTP.
-#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), permission = remote:write)]
-#[specta::specta]
-pub async fn reset_remote_access_tls(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<RpcUnitMutationOutcome> {
-    Ok(client.reset_remote_access_tls().await?.into())
 }
 
 #[nyanpasu_rpc::rpc(http, capabilities(accent_color), query, permission = system:read)]

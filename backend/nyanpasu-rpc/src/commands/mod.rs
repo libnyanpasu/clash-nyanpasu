@@ -2,12 +2,12 @@
 
 pub mod archive;
 pub mod clash;
-pub mod describe;
 pub mod host;
 pub mod icons;
 pub mod logs;
+pub mod meta;
 pub mod profiles;
-pub mod remote_access;
+pub mod remote;
 mod resources;
 pub mod runtime;
 pub mod status;

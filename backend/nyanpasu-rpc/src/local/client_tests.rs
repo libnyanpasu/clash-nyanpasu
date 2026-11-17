@@ -266,7 +266,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
     expected.sort_unstable();
     let mut actual: Vec<_> = RESOURCES
         .iter()
-        .filter(|command| command.targets.contains(&RpcTarget::Local))
+        .filter(|command| command.is_command() && command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)
         .collect();
     actual.sort_unstable();
@@ -477,7 +477,7 @@ fn one_declaration_registers_one_command_entry() {
     let entries: Vec<_> = inventory::iter::<crate::registry::CommandEntry>
         .into_iter()
         .collect();
-    for command in RESOURCES {
+    for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
         assert_eq!(
             entries
                 .iter()

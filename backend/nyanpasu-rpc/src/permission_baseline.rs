@@ -14,7 +14,10 @@ use std::{
     path::Path,
 };
 
-use nyanpasu_rpc_protocol::{CommandEffect, EventName, RpcTarget, Scope, permission::RESOURCES};
+use nyanpasu_rpc_protocol::{
+    CommandEffect, EventName, RpcTarget, Scope,
+    permission::{RESOURCES, ResourceKind},
+};
 
 const BASELINE: &str = "tests/fixtures/permission-baseline.txt";
 /// The baseline is exported on Windows. These rows replace the commands whose declarations differ
@@ -66,63 +69,31 @@ fn names<T: Debug + Copy>(values: &[T]) -> Vec<String> {
     values.iter().copied().map(snake).collect()
 }
 
-/// The routes and streams whose scope is a literal at their admission site
-/// (`http/routes.rs`, `local/server.rs`). They become declarations later in the migration.
-fn routes() -> [(Kind, &'static str, Scope, &'static [RpcTarget]); 3] {
-    [
-        (Kind::Route, "icon_fetch", Scope::Read, &[RpcTarget::Http]),
-        (
-            Kind::Route,
-            "logs_archive",
-            Scope::SensitiveRead,
-            &[RpcTarget::Http],
-        ),
-        (
-            Kind::Stream,
-            "connection_details",
-            Scope::Read,
-            &[RpcTarget::Http, RpcTarget::Local],
-        ),
-    ]
-}
-
 /// The table the current code authorizes against.
 fn current() -> Table {
     let mut table = Table::new();
-    for command in RESOURCES {
-        let row = Row {
-            scope: command.scope.as_str().to_owned(),
-            effect: match command.effect {
-                CommandEffect::Query => "query",
-                CommandEffect::Mutation => "mutation",
-            }
-            .to_owned(),
-            targets: names(command.targets),
-            capabilities: names(command.capabilities),
-            optional_capabilities: names(command.optional_capabilities),
+    for resource in RESOURCES {
+        let (kind, effect) = match resource.kind {
+            ResourceKind::Command(_) => (
+                Kind::Command,
+                match resource.effect {
+                    CommandEffect::Query => "query",
+                    CommandEffect::Mutation => "mutation",
+                },
+            ),
+            ResourceKind::Event => (Kind::Event, "read"),
+            ResourceKind::Route => (Kind::Route, "read"),
+            ResourceKind::Stream => (Kind::Stream, "read"),
         };
-        let previous = table.insert((Kind::Command, command.name.to_owned()), row);
-        assert!(previous.is_none(), "duplicate command {}", command.name);
-    }
-    for event in EventName::ALL {
         let row = Row {
-            scope: event.scope().as_str().to_owned(),
-            effect: "read".to_owned(),
-            targets: names(event.targets()),
-            capabilities: names(event.capability().as_slice()),
-            optional_capabilities: Vec::new(),
+            scope: resource.scope.as_str().to_owned(),
+            effect: effect.to_owned(),
+            targets: names(resource.targets),
+            capabilities: names(resource.capabilities),
+            optional_capabilities: names(resource.optional_capabilities),
         };
-        table.insert((Kind::Event, event.as_str().to_owned()), row);
-    }
-    for (kind, name, scope, targets) in routes() {
-        let row = Row {
-            scope: scope.as_str().to_owned(),
-            effect: "read".to_owned(),
-            targets: names(targets),
-            capabilities: Vec::new(),
-            optional_capabilities: Vec::new(),
-        };
-        table.insert((kind, name.to_owned()), row);
+        let previous = table.insert((kind, resource.name.to_owned()), row);
+        assert!(previous.is_none(), "duplicate resource {}", resource.name);
     }
     table
 }
@@ -344,6 +315,7 @@ fn baseline_covers_every_resource_once() {
     };
     let commands: BTreeSet<_> = RESOURCES
         .iter()
+        .filter(|resource| resource.is_command())
         .map(|command| command.name.to_owned())
         .collect();
     assert_eq!(names(Kind::Command), commands);
@@ -354,27 +326,33 @@ fn baseline_covers_every_resource_once() {
     assert_eq!(names(Kind::Event), events);
 }
 
-/// The comparison's admission model is the production one, for every command, transport and
-/// caller, so an empty report means unchanged production admission.
+/// The comparison's admission model is the production one, for every resource, transport and
+/// caller, so an empty report means unchanged production admission. Every capability is
+/// provided: capabilities depend on the host and are compared as fields.
 #[test]
 fn comparison_admits_like_the_production_policy() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal};
+    use nyanpasu_rpc_protocol::ShellCapability;
 
+    let provided: Vec<ShellCapability> = RESOURCES
+        .iter()
+        .flat_map(|resource| resource.capabilities.iter().copied())
+        .collect();
+    let authority = crate::permission::Authority::new(&provided);
     let table = current();
-    for command in RESOURCES {
-        let row = &table[&(Kind::Command, command.name.to_owned())];
+    for ((kind, name), row) in &table {
+        let resource = RESOURCES
+            .iter()
+            .find(|resource| resource.name == name)
+            .unwrap();
         for transport in TRANSPORTS {
             for caller in callers() {
                 let expected = caller.as_ref().is_some_and(|scopes| {
-                    let auth =
-                        AuthContext::new(Principal::Anonymous, scopes.iter().copied().collect());
-                    crate::policy::is_command_allowed(command, true, true, true, transport, &auth)
+                    authority.visible(resource, transport, &scopes.iter().copied().collect())
                 });
                 assert_eq!(
-                    admits(Kind::Command, command.name, row, transport, &caller),
+                    admits(*kind, name, row, transport, &caller),
                     expected,
-                    "{} on {transport:?} for {}",
-                    command.name,
+                    "{name} on {transport:?} for {}",
                     Display(&caller)
                 );
             }

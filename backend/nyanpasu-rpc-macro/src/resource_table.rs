@@ -13,7 +13,11 @@ use std::{
 
 use proc_macro2::TokenStream;
 use quote::{ToTokens as _, format_ident, quote};
-use syn::{Attribute, Item, ItemFn, Meta, Token, punctuated::Punctuated};
+use syn::{
+    Attribute, Ident, Item, ItemFn, LitStr, Meta, Token, bracketed, parenthesized,
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
+};
 
 use crate::unified_command;
 
@@ -36,10 +40,91 @@ pub(super) enum Root {
 
 /// One production declaration and where it lives.
 pub(super) struct Declaration {
-    pub(super) function: ItemFn,
+    pub(super) item: Declared,
     /// Module segments below the declaration root.
     pub(super) namespace: Vec<String>,
     pub(super) root: Root,
+}
+
+/// What a declaration declares.
+pub(super) enum Declared {
+    /// A function carrying the `rpc` attribute.
+    Command(Box<ItemFn>),
+    /// A `resource!` invocation: an event, an HTTP route or a stream.
+    Resource(ResourceDeclaration),
+}
+
+impl Declaration {
+    /// The command function, when this declares a command.
+    pub(super) fn function(&self) -> Option<&ItemFn> {
+        match &self.item {
+            Declared::Command(function) => Some(function),
+            Declared::Resource(_) => None,
+        }
+    }
+
+    /// The attributes on the declaration, including the guards it inherits from its modules.
+    fn attrs(&self) -> &[Attribute] {
+        match &self.item {
+            Declared::Command(function) => &function.attrs,
+            Declared::Resource(resource) => &resource.attrs,
+        }
+    }
+}
+
+/// A non-command resource declared with
+/// `resource!(event "name", targets = [desktop, http], scope = read, capabilities(app_update))`.
+pub(super) struct ResourceDeclaration {
+    kind: Ident,
+    name: LitStr,
+    targets: Vec<Ident>,
+    scope: Option<Ident>,
+    capabilities: Vec<Ident>,
+    attrs: Vec<Attribute>,
+}
+
+impl Parse for ResourceDeclaration {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let list = |input: ParseStream<'_>| -> syn::Result<Vec<Ident>> {
+            Ok(Punctuated::<Ident, Token![,]>::parse_terminated(input)?
+                .into_iter()
+                .collect())
+        };
+        let mut declaration = Self {
+            kind: input.parse()?,
+            name: input.parse()?,
+            targets: Vec::new(),
+            scope: None,
+            capabilities: Vec::new(),
+            attrs: Vec::new(),
+        };
+        while !input.is_empty() {
+            input.parse::<Token![,]>()?;
+            if input.is_empty() {
+                break;
+            }
+            let option: Ident = input.parse()?;
+            match option.to_string().as_str() {
+                "targets" => {
+                    input.parse::<Token![=]>()?;
+                    let content;
+                    bracketed!(content in input);
+                    declaration.targets = list(&content)?;
+                }
+                "scope" => {
+                    input.parse::<Token![=]>()?;
+                    declaration.scope = Some(input.parse()?);
+                }
+                "capabilities" => {
+                    let content;
+                    parenthesized!(content in input);
+                    declaration.capabilities = list(&content)?;
+                }
+                _ => return Err(syn::Error::new(option.span(), "unknown resource option")),
+            }
+        }
+        Ok(declaration)
+    }
 }
 
 /// A rule a declaration breaks.
@@ -77,7 +162,10 @@ pub(super) fn production_declarations() -> Vec<Declaration> {
 pub(super) fn production_functions() -> Vec<ItemFn> {
     production_declarations()
         .into_iter()
-        .map(|declaration| declaration.function)
+        .filter_map(|declaration| match declaration.item {
+            Declared::Command(function) => Some(*function),
+            Declared::Resource(_) => None,
+        })
         .collect()
 }
 
@@ -191,6 +279,7 @@ fn collect_items(
         let attrs = match item {
             Item::Fn(function) => &function.attrs,
             Item::Mod(module) => &module.attrs,
+            Item::Macro(invocation) => &invocation.attrs,
             _ => continue,
         };
         if attrs.iter().any(|attr| {
@@ -215,7 +304,27 @@ fn collect_items(
                 let mut function = function.clone();
                 function.attrs.splice(0..0, inherited.iter().cloned());
                 declarations.push(Declaration {
-                    function,
+                    item: Declared::Command(Box::new(function)),
+                    namespace: namespace.to_vec(),
+                    root,
+                });
+            }
+            Item::Macro(invocation)
+                if invocation
+                    .mac
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|part| part.ident == "resource") =>
+            {
+                let mut resource: ResourceDeclaration = invocation
+                    .mac
+                    .parse_body()
+                    .unwrap_or_else(|error| panic!("malformed resource declaration: {error}"));
+                resource.attrs = inherited.to_vec();
+                resource.attrs.extend(guards(&invocation.attrs));
+                declarations.push(Declaration {
+                    item: Declared::Resource(resource),
                     namespace: namespace.to_vec(),
                     root,
                 });
@@ -282,7 +391,10 @@ fn pascal_case(value: &syn::Ident) -> syn::Ident {
 
 /// One table row, after checking the rules a declaration must satisfy.
 fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
-    let function = &declaration.function;
+    let function = match &declaration.item {
+        Declared::Command(function) => function,
+        Declared::Resource(resource) => return resource_row(resource, &declaration.namespace),
+    };
     let invalid = |reason: &str| Invalid {
         name: function.sig.ident.to_string(),
         reason: reason.to_owned(),
@@ -326,17 +438,8 @@ fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
     if options.local {
         targets.push(quote!(crate::RpcTarget::Local));
     }
-    let capabilities = |values: &[syn::Ident]| -> Vec<TokenStream> {
-        values
-            .iter()
-            .map(|value| {
-                let variant = pascal_case(value);
-                quote!(crate::ShellCapability::#variant)
-            })
-            .collect()
-    };
-    let required = capabilities(&options.capabilities);
-    let optional = capabilities(&options.optional_capabilities);
+    let required = capability_variants(&options.capabilities);
+    let optional = capability_variants(&options.optional_capabilities);
     Ok(quote! {
         crate::permission::ResourceMetadata {
             name: #name,
@@ -352,6 +455,65 @@ fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
     })
 }
 
+fn capability_variants(values: &[Ident]) -> Vec<TokenStream> {
+    values
+        .iter()
+        .map(|value| {
+            let variant = pascal_case(value);
+            quote!(crate::ShellCapability::#variant)
+        })
+        .collect()
+}
+
+/// The row of an event, route or stream. They only read, and name their exposure explicitly
+/// because routes and streams are not offered to the desktop.
+fn resource_row(
+    resource: &ResourceDeclaration,
+    namespace: &[String],
+) -> Result<TokenStream, Invalid> {
+    let name = resource.name.value();
+    let invalid = |reason: &str| Invalid {
+        name: name.clone(),
+        reason: reason.to_owned(),
+    };
+    let kind = match resource.kind.to_string().as_str() {
+        "event" => quote!(Event),
+        "route" => quote!(Route),
+        "stream" => quote!(Stream),
+        _ => return Err(invalid("a resource is an `event`, a `route` or a `stream`")),
+    };
+    let Some(scope) = &resource.scope else {
+        return Err(invalid("a resource requires an explicit `scope = ...`"));
+    };
+    let scope = pascal_case(scope);
+    if resource.targets.is_empty() {
+        return Err(invalid("a resource requires explicit `targets = [...]`"));
+    }
+    let mut targets = Vec::new();
+    for target in &resource.targets {
+        if !matches!(target.to_string().as_str(), "desktop" | "http" | "local") {
+            return Err(invalid("targets are `desktop`, `http` and `local`"));
+        }
+        let variant = pascal_case(target);
+        targets.push(quote!(crate::RpcTarget::#variant));
+    }
+    let capabilities = capability_variants(&resource.capabilities);
+    let namespace = namespace.join(".");
+    Ok(quote! {
+        crate::permission::ResourceMetadata {
+            name: #name,
+            namespace: #namespace,
+            kind: crate::permission::ResourceKind::#kind,
+            effect: crate::CommandEffect::Query,
+            scope: crate::Scope::#scope,
+            source: crate::permission::PermissionSource::Legacy,
+            targets: &[#(#targets),*],
+            capabilities: &[#(#capabilities),*],
+            optional_capabilities: &[],
+        }
+    })
+}
+
 fn render(declarations: &[Declaration]) -> Result<String, Vec<Invalid>> {
     let mut output = String::from(
         "// Generated by export_rpc_resource_table; do not edit.\n\n/// Every production resource, including commands whose native wrappers are not linked.\n#[rustfmt::skip]\npub const RESOURCES: &[crate::permission::ResourceMetadata] = &[\n",
@@ -360,7 +522,7 @@ fn render(declarations: &[Declaration]) -> Result<String, Vec<Invalid>> {
     for declaration in declarations {
         match row(declaration) {
             Ok(row) => {
-                for attr in guards(&declaration.function.attrs) {
+                for attr in guards(declaration.attrs()) {
                     output.push_str(&format!("    {}\n", attr.to_token_stream()));
                 }
                 output.push_str(&format!("    {row},\n"));
@@ -532,9 +694,15 @@ fn table_follows_external_shared_modules() {
         &mut declarations,
     );
     assert_eq!(declarations.len(), 2);
-    assert_eq!(declarations[0].function.sig.ident, "external_shared");
+    assert_eq!(
+        declarations[0].function().unwrap().sig.ident,
+        "external_shared"
+    );
     assert_eq!(declarations[0].namespace, ["shared"]);
-    assert_eq!(declarations[1].function.sig.ident, "nested_shared");
+    assert_eq!(
+        declarations[1].function().unwrap().sig.ident,
+        "nested_shared"
+    );
     assert_eq!(declarations[1].namespace, ["shared", "nested"]);
     let output = render(&declarations).unwrap();
     assert_eq!(output.matches("cfg (windows)").count(), 2);
@@ -550,7 +718,11 @@ fn production_namespaces_follow_the_module_tree() {
     let find = |name: &str| {
         declarations
             .iter()
-            .find(|declaration| declaration.function.sig.ident == name)
+            .find(|declaration| {
+                declaration
+                    .function()
+                    .is_some_and(|function| function.sig.ident == name)
+            })
             .unwrap_or_else(|| panic!("missing {name}"))
     };
     let shared = find("read_profile_file");
@@ -575,7 +747,7 @@ fn table_excludes_test_fixtures() {
     "#,
     );
     assert_eq!(declarations.len(), 1);
-    assert_eq!(declarations[0].function.sig.ident, "production");
+    assert_eq!(declarations[0].function().unwrap().sig.ident, "production");
     assert!(!render_production().contains("audit_echo"));
 }
 
@@ -860,4 +1032,59 @@ fn the_signature_guard_descends_into_nested_modules() {
     assert_eq!(references.len(), 2, "{references:?}");
     assert!(references[0].contains("contains AppHandle"));
     assert!(references[1].contains("shell-owned import: crate::shell::Window"));
+}
+
+#[test]
+fn resources_render_with_their_explicit_exposure() {
+    let table = render(&declarations_in(
+        r#"
+        nyanpasu_rpc::resource!(event "storage-value-changed-event", targets = [desktop, http], scope = sensitive_read);
+        nyanpasu_rpc::resource!(event "app-update-state-changed", targets = [desktop], scope = read, capabilities(app_update));
+        nyanpasu_rpc::resource!(route "icon_fetch", targets = [http], scope = read);
+        nyanpasu_rpc::resource!(stream "connection_details", targets = [http, local], scope = read);
+        "#,
+    ))
+    .unwrap();
+    assert!(table.contains("name : \"storage-value-changed-event\""));
+    assert!(table.contains("kind : crate :: permission :: ResourceKind :: Event"));
+    assert!(table.contains("scope : crate :: Scope :: SensitiveRead"));
+    assert!(table.contains("capabilities : & [crate :: ShellCapability :: AppUpdate]"));
+    assert!(table.contains("kind : crate :: permission :: ResourceKind :: Route"));
+    assert!(table.contains("targets : & [crate :: RpcTarget :: Http]"));
+    assert!(table.contains("kind : crate :: permission :: ResourceKind :: Stream"));
+    assert_eq!(table.matches("CommandEffect :: Query").count(), 4);
+}
+
+#[test]
+fn a_resource_names_its_kind_scope_and_targets() {
+    for (source, reason) in [
+        (
+            r#"nyanpasu_rpc::resource!(signal "x", targets = [http], scope = read);"#,
+            "a resource is an `event`, a `route` or a `stream`",
+        ),
+        (
+            r#"nyanpasu_rpc::resource!(event "x", targets = [http]);"#,
+            "a resource requires an explicit `scope = ...`",
+        ),
+        (
+            r#"nyanpasu_rpc::resource!(event "x", scope = read);"#,
+            "a resource requires explicit `targets = [...]`",
+        ),
+        (
+            r#"nyanpasu_rpc::resource!(event "x", targets = [web], scope = read);"#,
+            "targets are `desktop`, `http` and `local`",
+        ),
+    ] {
+        assert_eq!(rejection(source), format!("x: {reason}"), "{source}");
+    }
+}
+
+#[test]
+fn production_resources_are_collected() {
+    let declarations = production_declarations();
+    let resources = declarations
+        .iter()
+        .filter(|declaration| declaration.function().is_none())
+        .count();
+    assert_eq!(resources, 20);
 }

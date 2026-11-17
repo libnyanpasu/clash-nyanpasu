@@ -6,7 +6,7 @@ use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_logging::LogSession;
 use nyanpasu_owner_support::blocking;
 use nyanpasu_rpc_protocol::{
-    AuthContext, RpcError, RpcOwner, RpcTarget, Scope,
+    AuthContext, RpcError, RpcOwner, RpcTarget,
     frame::{self, Feature, Frame, Reply, RequestId, SubscriptionErrorCode, SubscriptionTarget},
     session::{RECOVERABLE_EVENTS, Session},
 };
@@ -431,13 +431,16 @@ impl Connection {
                 });
                 let policy_rejection = if check_policy {
                     let admission = match event {
-                        Some(event) => crate::policy::admit_event(
-                            event,
-                            &self.rpc.provided,
+                        Some(event) => self.rpc.authority().admit(
+                            event.resource(),
                             RpcTarget::Local,
-                            Some(&self.auth),
+                            Some(&self.auth.scopes),
                         ),
-                        None => crate::policy::admit_route(Scope::Read, Some(&self.auth)),
+                        None => self.rpc.authority().admit(
+                            crate::permission::declared(crate::permission::CONNECTION_DETAILS),
+                            RpcTarget::Local,
+                            Some(&self.auth.scopes),
+                        ),
                     };
                     admission.err().map(|error| match error.kind {
                         "unsupported" => SubscriptionErrorCode::Unsupported,

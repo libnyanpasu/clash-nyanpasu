@@ -17,6 +17,7 @@ use crate::{
         RpcTransport,
     },
     events::EventBus,
+    permission::Authority,
 };
 
 /// Explicit inputs for shared handlers. Declarations use `RpcState` and `RpcCaller`
@@ -128,9 +129,18 @@ pub struct RpcCallMeta {
     server: ServerInfo,
     target: RpcTarget,
     commands: CommandHandlers,
+    provided: Vec<ShellCapability>,
+    /// The row admission admitted this call to: the seam the layers inside admission read.
+    resource: ResourceMetadata,
 }
 
 impl RpcCallMeta {
+    /// The resource table row this call was admitted to.
+    #[must_use]
+    pub fn resource(&self) -> &ResourceMetadata {
+        &self.resource
+    }
+
     /// Build a caller-scoped self-description snapshot for `rpc_describe`.
     #[must_use]
     pub fn describe_context(&self, auth: &AuthContext) -> RpcDescribeContext {
@@ -141,7 +151,12 @@ impl RpcCallMeta {
                 transport: self.target,
                 principal: auth.principal.clone(),
                 scopes: auth.scopes.clone(),
-                commands: crate::policy::describe_commands(&self.commands, self.target, auth),
+                commands: crate::permission::describe_commands(
+                    &self.commands,
+                    Authority::new(&self.provided),
+                    self.target,
+                    auth,
+                ),
             },
         }
     }
@@ -296,7 +311,6 @@ inventory::collect!(CommandEntry);
 #[derive(Clone)]
 pub(crate) struct RegisteredCommand {
     metadata: ResourceMetadata,
-    capabilities_available: bool,
     native_linked: bool,
     handler: Option<RpcHandler>,
 }
@@ -306,46 +320,26 @@ impl RegisteredCommand {
         &self.metadata
     }
 
-    pub(crate) fn capabilities_available(&self) -> bool {
-        self.capabilities_available
-    }
-
-    pub(crate) fn has_neutral_handler(&self) -> bool {
-        self.handler.is_some()
-    }
-
-    pub(crate) fn native_linked(&self) -> bool {
-        self.native_linked
-    }
-
-    fn unavailable(&self, target: RpcTarget) -> RpcError {
-        if target == RpcTarget::Http {
-            RpcError::unsupported(self.metadata.name)
-        } else {
-            RpcError::new(
-                "unsupported",
-                format!(
-                    "command `{}` is unavailable in this shell",
-                    self.metadata.name
-                ),
-            )
-        }
-    }
-
-    fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
-        if !crate::policy::is_command_runnable(
-            &self.metadata,
-            self.capabilities_available,
-            self.handler.is_some(),
-            self.native_linked,
-            target,
-        ) {
-            return Err(self.unavailable(target));
-        }
+    /// Whether an implementation that serves `target` is linked: the native wrapper for a native
+    /// command on the desktop, the neutral handler otherwise.
+    pub(crate) fn linked(&self, target: RpcTarget) -> bool {
         if target == RpcTarget::Desktop && self.metadata.is_native_command() {
-            return Err(self.unavailable(target));
+            self.native_linked
+        } else {
+            self.handler.is_some()
         }
-        self.handler.ok_or_else(|| self.unavailable(target))
+    }
+
+    /// The neutral handler serving `target`: none where the command is not exposed, or where
+    /// only the native wrapper serves it. Capabilities and the requirement are admission's.
+    fn neutral_handler(&self, target: RpcTarget) -> Result<RpcHandler, RpcError> {
+        if !self.metadata.targets.contains(&target)
+            || (target == RpcTarget::Desktop && self.metadata.is_native_command())
+        {
+            return Err(crate::permission::unavailable(&self.metadata, target));
+        }
+        self.handler
+            .ok_or_else(|| crate::permission::unavailable(&self.metadata, target))
     }
 }
 
@@ -354,16 +348,17 @@ pub(crate) type CommandHandlers = Arc<HashMap<&'static str, RegisteredCommand>>;
 pub(crate) fn register_commands<'a>(
     resources: impl IntoIterator<Item = &'a ResourceMetadata>,
     entries: impl IntoIterator<Item = &'static CommandEntry>,
-    provided: &[ShellCapability],
 ) -> Result<CommandHandlers, SetupError> {
     let mut commands = HashMap::new();
-    for metadata in resources {
+    for metadata in resources
+        .into_iter()
+        .filter(|resource| resource.is_command())
+    {
         if commands
             .insert(
                 metadata.name,
                 RegisteredCommand {
                     metadata: *metadata,
-                    capabilities_available: false,
                     native_linked: false,
                     handler: None,
                 },
@@ -383,16 +378,6 @@ pub(crate) fn register_commands<'a>(
         if command.handler.replace(entry.handler).is_some() {
             return Err(SetupError::RegisterCommand { name: entry.name });
         }
-    }
-
-    // Validate every linked name before checking availability. Missing facilities
-    // never erase a known name, and optional effects are not admission requirements.
-    for command in commands.values_mut() {
-        command.capabilities_available = command
-            .metadata
-            .capabilities
-            .iter()
-            .all(|capability| provided.contains(capability));
     }
     Ok(Arc::new(commands))
 }
@@ -426,7 +411,7 @@ impl UnifiedRpc {
         server: ServerInfo,
         provided: &[ShellCapability],
     ) -> Result<Self, SetupError> {
-        let commands = register_commands(resources(), inventory::iter::<CommandEntry>, provided)?;
+        let commands = register_commands(resources(), inventory::iter::<CommandEntry>)?;
         Ok(Self {
             dependencies: Arc::new(dependencies),
             server,
@@ -474,8 +459,18 @@ impl UnifiedRpc {
             transport: target,
             principal: auth.principal.clone(),
             scopes: auth.scopes.clone(),
-            commands: crate::policy::describe_commands(&self.commands, target, auth),
+            commands: crate::permission::describe_commands(
+                &self.commands,
+                self.authority(),
+                target,
+                auth,
+            ),
         }
+    }
+
+    /// Admission for the capabilities this host provides.
+    pub(crate) fn authority(&self) -> Authority<'_> {
+        Authority::new(&self.provided)
     }
 
     #[cfg(test)]
@@ -484,6 +479,8 @@ impl UnifiedRpc {
             server: self.server.clone(),
             target,
             commands: Arc::clone(&self.commands),
+            provided: self.provided.clone(),
+            resource: self.commands[crate::permission::RPC_DESCRIBE_METHOD].metadata,
         }
     }
 
@@ -528,7 +525,8 @@ impl UnifiedRpc {
             .get(method)
             .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
         command.neutral_handler(target)?;
-        crate::policy::admit_resolved_command(&command.metadata, auth)
+        self.authority()
+            .admit(&command.metadata, target, auth.map(|auth| &auth.scopes))
     }
 
     pub(crate) async fn call_with_admission(
@@ -553,12 +551,17 @@ impl UnifiedRpc {
                 .get(method)
                 .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
             let handler = command.neutral_handler(target)?;
-            crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
+            self.authority()
+                .admit(&command.metadata, target, Some(&caller.auth().scopes))?;
             admit_resource()?;
+            // Data sharing and redaction (TODO, permission namespace spec section 4.6) sit here,
+            // reading the admitted row from the call metadata.
             let meta = RpcCallMeta {
                 server: self.server.clone(),
                 target,
                 commands: self.commands.clone(),
+                provided: self.provided.clone(),
+                resource: command.metadata,
             };
             handler(self.dependencies.clone(), meta, caller, params)
         })
@@ -587,13 +590,17 @@ impl UnifiedRpc {
                     .commands
                     .get(method)
                     .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
-                if !command.metadata.is_native_command()
-                    || !command.metadata.targets.contains(&RpcTarget::Desktop)
-                    || !command.capabilities_available
-                {
-                    return Err(command.unavailable(RpcTarget::Desktop));
+                if !command.metadata.is_native_command() {
+                    return Err(crate::permission::unavailable(
+                        &command.metadata,
+                        RpcTarget::Desktop,
+                    ));
                 }
-                crate::policy::admit_resolved_command(&command.metadata, Some(caller.auth()))?;
+                self.authority().admit(
+                    &command.metadata,
+                    RpcTarget::Desktop,
+                    Some(&caller.auth().scopes),
+                )?;
                 call()
             },
         )
@@ -660,13 +667,8 @@ mod tests;
 #[cfg(feature = "test-support")]
 pub fn assert_command_category_inventory() {
     // Every linked handler has a row, or registration fails.
-    let commands = register_commands(
-        resources(),
-        inventory::iter::<CommandEntry>,
-        crate::test_support::CAPABILITIES,
-    )
-    .unwrap();
-    for metadata in RESOURCES {
+    let commands = register_commands(resources(), inventory::iter::<CommandEntry>).unwrap();
+    for metadata in RESOURCES.iter().filter(|resource| resource.is_command()) {
         let command = &commands[metadata.name];
         let mut entries = inventory::iter::<CommandEntry>
             .into_iter()
@@ -701,8 +703,14 @@ pub fn assert_command_category_inventory() {
             }
         }
     }
-    let unlinked = register_commands(RESOURCES, [], &[]).unwrap();
-    assert_eq!(unlinked.len(), RESOURCES.len());
+    let unlinked = register_commands(RESOURCES, []).unwrap();
+    assert_eq!(
+        unlinked.len(),
+        RESOURCES
+            .iter()
+            .filter(|resource| resource.is_command())
+            .count()
+    );
     for metadata in RESOURCES
         .iter()
         .filter(|metadata| metadata.is_native_command())

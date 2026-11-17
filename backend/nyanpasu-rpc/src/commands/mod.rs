@@ -8,6 +8,7 @@ pub mod icons;
 pub mod logs;
 pub mod profiles;
 pub mod remote_access;
+mod resources;
 pub mod runtime;
 pub mod status;
 pub mod storage;

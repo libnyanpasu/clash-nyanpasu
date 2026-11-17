@@ -15,6 +15,10 @@ The frontend workspace has nine private source packages:
 | `@nyanpasu/nyanpasu`  | Desktop/browser application composition                           | Owns routes, providers, Vite plugins, and Paraglide                        |
 
 Dependencies flow from the app into these capabilities, not back into the app.
+The permission types (`Resource`, `Access`, `Permission`, `Grant`, `Role`) come from
+the generated bindings in `@nyanpasu/rpc`; deciding what the caller may see from
+them (`useCapabilities`, `RequireCapability`, `ReadOnlyScope`) belongs to the app's
+`components/auth`, not to a shared package.
 `rpc` is a transport layer; `query` adds React Query behavior above it. UI
 components receive labels, locale-sensitive strings, and callbacks through props.
 Platform-dependent features use an injected adapter or lazy factory so importing a

@@ -309,6 +309,26 @@ page-specific data selection in its route.
 - Regenerate the route tree through the app's existing Vite route plugin; never
   hand-edit generated route declarations.
 
+## Gate pages and controls on permissions
+
+- Read what the caller may do from `useCapabilities()`
+  (`@/components/auth/capabilities`), the immutable `rpc_describe` snapshot of
+  the page runtime. Write a permission as the backend displays it,
+  `resource:access` (`'proxy:write'`); `write` includes `read`. Never gate on a
+  role name: the backend reports the role only for display, and a custom grant
+  has none.
+- Gate a page or a viewer on the `read` of the documents it loads, with
+  `RequireCapability permission="profile:read"` and a `RestrictedContent`
+  fallback, so its queries never run for a caller that would be refused. Keep
+  editable controls visible but inert with `ReadOnlyScope permissions={[...]}`
+  naming the `write` each control needs. It disables native form controls
+  through a fieldset; gate custom clickable elements and links explicitly. Gate one command with
+  `RequireCapability command="..."` when its own `allowed` flag is what matters.
+- The `sensitive` marking of a command never decides what is shown: a caller
+  that holds the domain's `read` may see it. Use the marking only to tell the
+  user what a grant can read, as the token dialog does.
+- `remote` controls render only on the desktop, whatever the caller holds.
+
 ## Organize i18n messages by feature
 
 - Use the existing feature/component namespace for new message keys. Dashboard

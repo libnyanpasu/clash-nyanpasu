@@ -6,6 +6,8 @@
 
 ## 机器可读的基线与比较工具
 
+> **P3-3 之后：** 本节描述的 scope 形式的基线已冻结为 `backend/nyanpasu-rpc/tests/fixtures/permission-scope-baseline.txt`，只供 `permission_baseline/mapping.rs` 核对切换的变更清单。`permission-baseline.txt` 改为权限形式（`kind | name | permission | sensitive | effect | targets | capabilities | optional_capabilities`），比较工具的调用者取未解析者加七个可授予资源各取 无/读/写 的全部 2187 种组合，准入模型与 `Authority` 核对，是 P4 各卡“迁移差异为空”的依据。本节以下内容是 P0-1 时的历史描述。
+
 | 项       | 位置                                                          |
 | -------- | ------------------------------------------------------------- |
 | 基线表   | `backend/nyanpasu-rpc/tests/fixtures/permission-baseline.txt` |

@@ -60,6 +60,7 @@ pub mod runtime_recovery;
 mod session_state;
 #[cfg(test)]
 mod startup_recovery_tests;
+pub mod sync;
 pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -162,6 +163,8 @@ pub struct ClientSetupArgs {
     pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+    /// `None` keeps every sync command registered and answering `unsupported`.
+    pub sync_adapters: Option<crate::client::sync::SyncAdapters>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -213,6 +216,8 @@ pub enum SetupError {
     },
     #[snafu(display("failed to start network automation"))]
     StartNetworkAutomation { source: network_automation::Error },
+    #[snafu(display("failed to start configuration sync"))]
+    StartSync { source: crate::client::sync::Error },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -356,6 +361,8 @@ struct NyanpasuClientInner {
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
+    sync: crate::sync::SyncClient,
+    sync_status: Arc<crate::client::sync::SyncStatusHub>,
     /// The root shutdown token; `request_shutdown` cancels it.
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
@@ -389,6 +396,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            sync_adapters,
             shutdown,
             tasks,
         } = args;
@@ -460,6 +468,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            sync_adapters,
             shutdown,
             tasks,
         )
@@ -500,6 +509,7 @@ impl NyanpasuClient {
         window: Option<Arc<dyn hotkey::ports::WindowControl>>,
         accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
         traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+        sync_adapters: Option<crate::client::sync::SyncAdapters>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
@@ -751,6 +761,19 @@ impl NyanpasuClient {
             }
             None => None,
         };
+        let sync_status = Arc::new(crate::client::sync::SyncStatusHub::default());
+        let sync = crate::client::sync::SyncSetup {
+            paths: &paths,
+            application: application.clone(),
+            clash: clash_config.clone(),
+            profiles: profiles.clone(),
+            adapters: sync_adapters,
+            hub: sync_status.clone(),
+            shutdown: shutdown.child_token(),
+        }
+        .spawn(&tasks)
+        .await
+        .context(StartSyncSnafu)?;
         let network_automation = match host_adapters.network_environment {
             Some(environment) => Some(
                 Self::spawn_network_automation(
@@ -802,6 +825,8 @@ impl NyanpasuClient {
                 os_proxy,
                 effects,
                 network_automation,
+                sync,
+                sync_status,
                 window,
                 accelerators,
                 shutdown,
@@ -3183,6 +3208,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
+            sync_adapters: None,
             shutdown,
             tasks,
         })

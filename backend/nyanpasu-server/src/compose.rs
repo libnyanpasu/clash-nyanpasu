@@ -344,6 +344,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
         window: None,
         accelerators: None,
         traffic_store,
+        sync_adapters: None,
         shutdown: owners.shutdown.clone(),
         tasks: owners.tasks.clone(),
     })

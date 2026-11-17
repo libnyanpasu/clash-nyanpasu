@@ -55,7 +55,8 @@ pub enum Root {
 /// the matching [`DocumentKind`](https://docs.rs/nyanpasu-config) value. The
 /// paths crate names the kind here so the manifest stays free of config's
 /// dependencies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SyncDocumentKind {
     Application,
     Clash,
@@ -63,7 +64,8 @@ pub enum SyncDocumentKind {
 }
 
 /// How an item's portable bytes are produced.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ItemCodec {
     /// Portable projection of a configuration document, canonical JSON.
     Document(SyncDocumentKind),

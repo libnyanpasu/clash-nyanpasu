@@ -66,7 +66,7 @@ nyanpasu-utils = { workspace = true, features = ['atomic_fs', 'redb'] }
 semver = '1.0'
 parking_lot = { version = '0.13.0' }
 mockall = { version = '0.15', optional = true }
-nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-paths = { path = '../nyanpasu-paths', features = ['specta'] }
 tokio-util = { version = '0.7', features = ['full'] }
 ractor = '0.16'
 futures = '0.3'
@@ -136,7 +136,7 @@ tracing-subscriber = { version = '0.3', features = [
 pretty_assertions = '1.4.0'
 mockall = '0.15'
 axum = { version = '0.8', features = ['ws'] }
-nyanpasu-paths = { path = '../nyanpasu-paths' }
+nyanpasu-paths = { path = '../nyanpasu-paths', features = ['specta'] }
 serde_json = { version = '1', features = ['preserve_order'] }
 tokio = { workspace = true, features = ['full', 'test-util'] }
 tempfile = '3'

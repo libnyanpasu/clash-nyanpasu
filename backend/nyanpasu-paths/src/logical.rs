@@ -22,6 +22,7 @@ const MAX_SEGMENT_LENGTH: usize = 128;
 /// [`LogicalPath::case_folded`] to find names a case-insensitive filesystem
 /// cannot hold together.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(try_from = "String", into = "String")]
 pub struct LogicalPath(String);
 

@@ -32,7 +32,7 @@ import type {
   SyncRunSummary,
 } from '@nyanpasu/rpc/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const hooks = vi.hoisted(() => ({
   useProfileListing: vi.fn(),
@@ -258,7 +258,7 @@ function mount(
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   root.render(
-    <AllScopes>
+    <AllPermissions>
       <RpcProvider rpc={rpc}>
         <QueryClientProvider client={client}>
           <KvStorageProvider>
@@ -295,7 +295,7 @@ function mount(
           </KvStorageProvider>
         </QueryClientProvider>
       </RpcProvider>
-    </AllScopes>,
+    </AllPermissions>,
   )
   const cleanup = () => {
     root.unmount()

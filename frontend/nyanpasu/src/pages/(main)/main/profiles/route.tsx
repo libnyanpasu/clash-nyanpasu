@@ -43,7 +43,10 @@ const profilesOutletVariants = cva('flex flex-1 flex-col', {
 // instead of a burst of rejected requests.
 function RouteComponent() {
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="profile:read"
+      fallback={<RestrictedContent />}
+    >
       <ProfilesLayout />
     </RequireCapability>
   )
@@ -60,7 +63,7 @@ function ProfilesLayout() {
             className="bg-surface-variant/50 min-w-72 dark:bg-transparent [&>div>div]:block!"
             data-slot="profiles-sidebar-scroll-area"
           >
-            <ReadOnlyScope scopes={['profile']} banner={false}>
+            <ReadOnlyScope permissions={['profile:write']} banner={false}>
               <ProfilesNavigate />
             </ReadOnlyScope>
           </SidebarContent>
@@ -90,7 +93,7 @@ function ProfilesLayout() {
               {/* One tooltip for the labels of every card and its actions;
                   a tooltip per trigger mounts a popper with each. */}
               <SharedTooltip>
-                <ReadOnlyScope scopes={['profile']}>
+                <ReadOnlyScope permissions={['profile:write']}>
                   <AnimatedOutletPreset
                     className={profilesOutletVariants({ layout })}
                   />

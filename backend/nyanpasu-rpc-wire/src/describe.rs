@@ -1,6 +1,6 @@
 //! Shared RPC self-description contract (`rpc_describe`).
 
-use nyanpasu_contracts::auth::{Principal, Scope, ScopeSet};
+use nyanpasu_contracts::auth::{Permission, Permissions, Principal, Role};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -20,7 +20,8 @@ pub enum RpcTarget {
 ///
 /// Queries observe application or network state; refreshing a read model or measuring latency
 /// does not change application configuration. Mutations perform application operations, including
-/// allocating caller-owned resources. Scope independently controls who may request either effect.
+/// allocating caller-owned resources. The permission independently controls who may request either
+/// effect.
 /// The declaration is the source of truth; the generated frontend's split is checked against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -71,23 +72,29 @@ impl ServerInfo {
 pub struct DescribedCommand {
     pub name: String,
     pub effect: CommandEffect,
-    pub scope: Scope,
+    /// The one permission a caller must hold.
+    pub permission: Permission,
+    /// Responses may carry credentials, subscription URLs, configuration text or diagnostics.
+    pub sensitive: bool,
     pub allowed: bool,
 }
 
-/// Canonical caller-scoped discovery document returned by `rpc_describe`.
+/// Canonical caller-specific discovery document returned by `rpc_describe`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct RpcDescribeResponse {
     pub protocol: u32,
     pub server: ServerInfo,
     pub transport: RpcTarget,
     pub principal: Principal,
-    pub scopes: ScopeSet,
+    /// The role the caller's permissions expand from; absent for a custom permission map.
+    pub role: Option<Role>,
+    pub permissions: Permissions,
     pub commands: Vec<DescribedCommand>,
 }
 
 #[cfg(test)]
 mod tests {
+    use nyanpasu_contracts::auth::{Access, Resource};
     use serde_json::json;
 
     use super::*;
@@ -102,18 +109,23 @@ mod tests {
                 id: "t_01J".to_owned(),
                 name: "skill-cli".to_owned(),
             },
-            scopes: ScopeSet::from([Scope::Proxy, Scope::Read]),
+            role: None,
+            permissions: Permissions::NONE
+                .with(Resource::Proxy, Access::Write)
+                .with(Resource::Profile, Access::Read),
             commands: vec![
                 DescribedCommand {
                     name: "get_proxies".to_owned(),
                     effect: CommandEffect::Query,
-                    scope: Scope::Read,
+                    permission: Permission::new(Resource::Proxy, Access::Read),
+                    sensitive: false,
                     allowed: true,
                 },
                 DescribedCommand {
                     name: "set_system_proxy".to_owned(),
                     effect: CommandEffect::Mutation,
-                    scope: Scope::System,
+                    permission: Permission::new(Resource::System, Access::Write),
+                    sensitive: false,
                     allowed: false,
                 },
             ],
@@ -127,10 +139,23 @@ mod tests {
                 "server": { "kind": "desktop", "version": "2.0.0" },
                 "transport": "http",
                 "principal": { "kind": "token", "id": "t_01J", "name": "skill-cli" },
-                "scopes": ["read", "proxy"],
+                "role": null,
+                "permissions": { "proxy": "write", "profile": "read" },
                 "commands": [
-                    { "name": "get_proxies", "effect": "query", "scope": "read", "allowed": true },
-                    { "name": "set_system_proxy", "effect": "mutation", "scope": "system", "allowed": false }
+                    {
+                        "name": "get_proxies",
+                        "effect": "query",
+                        "permission": { "resource": "proxy", "access": "read" },
+                        "sensitive": false,
+                        "allowed": true
+                    },
+                    {
+                        "name": "set_system_proxy",
+                        "effect": "mutation",
+                        "permission": { "resource": "system", "access": "write" },
+                        "sensitive": false,
+                        "allowed": false
+                    }
                 ]
             })
         );

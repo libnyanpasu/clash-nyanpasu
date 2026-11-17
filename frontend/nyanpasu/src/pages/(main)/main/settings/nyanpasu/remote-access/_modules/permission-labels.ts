@@ -1,0 +1,113 @@
+import type { HeldPermissions } from '@/components/auth/capabilities'
+import { m } from '@/paraglide/messages'
+import type { Access, Grant, Resource, Role } from '@nyanpasu/rpc/types'
+
+/** The roles a token can hold; `owner` is the desktop app and `anonymous` no credential. */
+export const TOKEN_ROLES = [
+  'viewer',
+  'operator',
+  'admin',
+] as const satisfies readonly Role[]
+
+/**
+ * The resources a token or an anonymous caller can be granted, in display
+ * order. `meta` is held by every caller and `remote` stays with the owner.
+ */
+export const GRANTABLE_RESOURCES = [
+  'proxy',
+  'profile',
+  'settings',
+  'system',
+  'logs',
+  'traffic',
+] as const satisfies readonly Resource[]
+
+/**
+ * Each role's levels, as `Role::permissions` in `nyanpasu-config` expands them.
+ * Only the explanations in this page read it; the backend decides admission.
+ */
+export const ROLE_PERMISSIONS = {
+  anonymous: {},
+  viewer: {
+    proxy: 'read',
+    profile: 'read',
+    settings: 'read',
+    system: 'read',
+    logs: 'read',
+    traffic: 'read',
+  },
+  operator: {
+    proxy: 'write',
+    profile: 'write',
+    settings: 'write',
+    system: 'read',
+    logs: 'read',
+    traffic: 'write',
+  },
+  admin: {
+    proxy: 'write',
+    profile: 'write',
+    settings: 'write',
+    system: 'write',
+    logs: 'write',
+    traffic: 'write',
+  },
+  owner: {
+    proxy: 'write',
+    profile: 'write',
+    settings: 'write',
+    system: 'write',
+    logs: 'write',
+    traffic: 'write',
+    remote: 'write',
+  },
+} as const satisfies Record<Role, HeldPermissions>
+
+/** The most an anonymous caller may hold: the `operator` role. */
+export const ANONYMOUS_LIMIT: HeldPermissions = ROLE_PERMISSIONS.operator
+
+export const RESOURCE_LABELS = {
+  meta: m.settings_remote_access_resource_meta,
+  proxy: m.settings_remote_access_resource_proxy,
+  profile: m.settings_remote_access_resource_profile,
+  settings: m.settings_remote_access_resource_settings,
+  system: m.settings_remote_access_resource_system,
+  logs: m.settings_remote_access_resource_logs,
+  traffic: m.settings_remote_access_resource_traffic,
+  remote: m.settings_remote_access_resource_remote,
+} satisfies Record<Resource, () => string>
+
+export const ACCESS_LABELS = {
+  read: m.settings_remote_access_access_read,
+  write: m.settings_remote_access_access_write,
+} satisfies Record<Access, () => string>
+
+export const ROLE_LABELS = {
+  anonymous: m.settings_remote_access_role_anonymous,
+  viewer: m.settings_remote_access_role_viewer,
+  operator: m.settings_remote_access_role_operator,
+  admin: m.settings_remote_access_role_admin,
+  owner: m.settings_remote_access_role_owner,
+} satisfies Record<Role, () => string>
+
+/** A held permission map as `Resource: level` pairs, in resource order. */
+export function permissionsLabel(held: HeldPermissions): string {
+  const pairs = (Object.keys(RESOURCE_LABELS) as Resource[]).flatMap(
+    (resource) => {
+      const access = held[resource]
+      return access
+        ? [`${RESOURCE_LABELS[resource]()}: ${ACCESS_LABELS[access]()}`]
+        : []
+    },
+  )
+  return pairs.length > 0
+    ? pairs.join(' · ')
+    : m.settings_remote_access_access_none()
+}
+
+/** What a token or session was granted, for its list entry. */
+export function grantLabel(grant: Grant): string {
+  return 'role' in grant && grant.role
+    ? ROLE_LABELS[grant.role]()
+    : permissionsLabel(grant.permissions ?? {})
+}

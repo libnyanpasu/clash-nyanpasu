@@ -20,7 +20,7 @@ function RouteComponent() {
         {m.settings_label_public_ip()}
       </PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4" data-slot="public-ip-settings">
           <SettingsGroup>
             <LocalIpProbeSwitch />

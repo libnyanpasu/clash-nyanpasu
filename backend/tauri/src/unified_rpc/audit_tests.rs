@@ -11,7 +11,7 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 type NativeOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<String>;
 
-#[nyanpasu_rpc::rpc(privacy, capabilities(presentation), scope = settings)]
+#[nyanpasu_rpc::rpc(privacy, capabilities(presentation), permission = settings:write)]
 #[tauri::command]
 #[specta::specta]
 async fn audit_native_echo(
@@ -52,9 +52,10 @@ impl serde::Serialize for NativeFailingValue {
 #[test]
 fn tauri_sensitive_commands_summaries_and_native_outcome_projection() {
     use nyanpasu_config::application::UpdateSource;
+    use nyanpasu_contracts::auth::{Access, Permission, Resource};
     use nyanpasu_rpc::privacy::RpcResponseProjection as _;
     use nyanpasu_rpc_protocol::{
-        CommandEffect, ResponseVisibility, Scope,
+        CommandEffect, ResponseVisibility,
         permission::RESOURCES,
         types::{RpcAppUpdateOutcome, RpcMutationOutcome},
     };
@@ -66,60 +67,86 @@ fn tauri_sensitive_commands_summaries_and_native_outcome_projection() {
         },
     };
 
-    // Every newly protected Tauri sensitive getter requires SensitiveRead, while
-    // safe summary companions remain Query + Read and app-update mutations stay System.
+    // Every Tauri sensitive getter requires `system:read` and is marked sensitive, while its safe
+    // summary companion requires the same read unmarked; app-update mutations write `system`.
+    let system_read = Permission::new(Resource::System, Access::Read);
+    let system_write = Permission::new(Resource::System, Access::Write);
     let expected = [
         (
             "get_custom_app_dir",
             CommandEffect::Query,
-            Scope::SensitiveRead,
+            system_read,
+            true,
         ),
         (
             "get_app_update_state",
             CommandEffect::Query,
-            Scope::SensitiveRead,
+            system_read,
+            true,
         ),
         (
             "get_transparent_proxy_status",
             CommandEffect::Query,
-            Scope::SensitiveRead,
+            system_read,
+            true,
         ),
-        ("get_app_update_summary", CommandEffect::Query, Scope::Read),
+        (
+            "get_app_update_summary",
+            CommandEffect::Query,
+            system_read,
+            false,
+        ),
         (
             "get_transparent_proxy_status_summary",
             CommandEffect::Query,
-            Scope::Read,
+            system_read,
+            false,
         ),
-        ("check_app_update", CommandEffect::Mutation, Scope::System),
+        (
+            "check_app_update",
+            CommandEffect::Mutation,
+            system_write,
+            false,
+        ),
         (
             "download_app_update",
             CommandEffect::Mutation,
-            Scope::System,
+            system_write,
+            false,
         ),
         (
             "cancel_app_update_download",
             CommandEffect::Mutation,
-            Scope::System,
+            system_write,
+            false,
         ),
-        ("install_app_update", CommandEffect::Mutation, Scope::System),
+        (
+            "install_app_update",
+            CommandEffect::Mutation,
+            system_write,
+            false,
+        ),
         (
             "discard_app_update_package",
             CommandEffect::Mutation,
-            Scope::System,
+            system_write,
+            false,
         ),
         (
             "set_release_channel",
             CommandEffect::Mutation,
-            Scope::Settings,
+            Permission::new(Resource::Settings, Access::Write),
+            false,
         ),
     ];
-    for (name, effect, scope) in expected {
+    for (name, effect, permission, sensitive) in expected {
         let meta = RESOURCES
             .iter()
             .find(|cmd| cmd.name == name)
             .unwrap_or_else(|| panic!("missing catalog entry for {name}"));
         assert_eq!(meta.effect, effect, "{name} effect mismatch");
-        assert_eq!(meta.scope, scope, "{name} scope mismatch");
+        assert_eq!(meta.permission, permission, "{name} permission mismatch");
+        assert_eq!(meta.sensitive, sensitive, "{name} sensitive mismatch");
     }
 
     // Native aliased RpcMutationOutcome preserves audit completion even if encoding fails.

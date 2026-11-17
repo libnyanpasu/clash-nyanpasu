@@ -107,7 +107,7 @@ function RouteComponent() {
     updateProxiesDelay: { mutateAsync: mutateProxyDelay },
   } = useClashProxies()
 
-  const { hasScope } = useCapabilities()
+  const { hasPermission } = useCapabilities()
 
   const { value: proxyMode } = useProxyMode()
 
@@ -183,7 +183,7 @@ function RouteComponent() {
   const searchText = trimmedSearch.includes(' ') ? '' : trimmedSearch
 
   // Selecting, clearing a pin and latency tests change the core: `proxy` scope.
-  const canProxy = hasScope('proxy')
+  const canProxy = hasPermission('proxy:write')
 
   const selectable = (currentGroup?.capabilities.select ?? false) && canProxy
 

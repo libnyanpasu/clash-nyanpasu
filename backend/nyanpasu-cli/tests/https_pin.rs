@@ -12,8 +12,8 @@ use nyanpasu_cli::{
     error::ExitStatus,
     target::Environment,
 };
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Scope};
-use nyanpasu_contracts::auth::{CreateAccessTokenRequest, ScopeSet, TlsFingerprint, TokenName};
+use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Role};
+use nyanpasu_contracts::auth::{CreateAccessTokenRequest, Grant, TlsFingerprint, TokenName};
 use nyanpasu_rpc::{
     http::{
         HttpServerClient,
@@ -66,7 +66,7 @@ impl Lan {
             .client
             .create_remote_access_token(CreateAccessTokenRequest {
                 name: TokenName::parse("pin-test").unwrap(),
-                scopes: ScopeSet::from([Scope::Read]),
+                grant: Grant::Role(Role::Viewer),
                 expires_at_ms: None,
             })
             .await

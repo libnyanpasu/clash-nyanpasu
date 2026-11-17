@@ -73,12 +73,14 @@ impl Declaration {
 }
 
 /// A non-command resource declared with
-/// `resource!(event "name", targets = [desktop, http], scope = read, capabilities(app_update))`.
+/// `resource!(event "name", targets = [desktop, http], permission = system:read, sensitive,
+/// capabilities(app_update))`.
 pub(super) struct ResourceDeclaration {
     kind: Ident,
     name: LitStr,
     targets: Vec<Ident>,
-    scope: Option<Ident>,
+    permission: Option<unified_command::PermissionOption>,
+    sensitive: bool,
     capabilities: Vec<Ident>,
     attrs: Vec<Attribute>,
 }
@@ -94,7 +96,8 @@ impl Parse for ResourceDeclaration {
             kind: input.parse()?,
             name: input.parse()?,
             targets: Vec::new(),
-            scope: None,
+            permission: None,
+            sensitive: false,
             capabilities: Vec::new(),
             attrs: Vec::new(),
         };
@@ -111,10 +114,11 @@ impl Parse for ResourceDeclaration {
                     bracketed!(content in input);
                     declaration.targets = list(&content)?;
                 }
-                "scope" => {
+                "permission" => {
                     input.parse::<Token![=]>()?;
-                    declaration.scope = Some(input.parse()?);
+                    declaration.permission = Some(input.parse()?);
                 }
+                "sensitive" => declaration.sensitive = true,
                 "capabilities" => {
                     let content;
                     parenthesized!(content in input);
@@ -402,11 +406,13 @@ fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
     let options =
         unified_command::options(function).map_err(|error| invalid(&error.to_string()))?;
     unified_command::validate(function, &options).map_err(|error| invalid(&error.to_string()))?;
-    if options.scope.is_none() && !options.query {
+    let Some(permission) = &options.permission else {
         return Err(invalid(
-            "a mutation requires an explicit `scope = ...`; a read-only command declares `query`",
+            "a legacy declaration requires an explicit `permission = resource:access`",
         ));
-    }
+    };
+    let permission = permission_tokens(permission);
+    let sensitive = options.sensitive;
     let native = unified_command::is_native(function);
     if native && declaration.root != Root::Desktop {
         return Err(invalid(
@@ -426,11 +432,6 @@ fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
     } else {
         quote!(Mutation)
     };
-    // A query that names no scope reads without secrets.
-    let scope = options
-        .scope
-        .as_ref()
-        .map_or_else(|| format_ident!("Read"), pascal_case);
     let mut targets = vec![quote!(crate::RpcTarget::Desktop)];
     if options.http {
         targets.push(quote!(crate::RpcTarget::Http));
@@ -446,13 +447,24 @@ fn row(declaration: &Declaration) -> Result<TokenStream, Invalid> {
             namespace: #namespace,
             kind: crate::permission::ResourceKind::Command(crate::CommandKind::#kind),
             effect: crate::CommandEffect::#effect,
-            scope: crate::Scope::#scope,
+            permission: #permission,
             source: crate::permission::PermissionSource::Legacy,
+            sensitive: #sensitive,
             targets: &[#(#targets),*],
             capabilities: &[#(#required),*],
             optional_capabilities: &[#(#optional),*],
         }
     })
+}
+
+/// The requirement a legacy declaration names; parsing already checked the names.
+fn permission_tokens(permission: &unified_command::PermissionOption) -> TokenStream {
+    let resource = pascal_case(&permission.resource);
+    let access = pascal_case(&permission.access);
+    quote!(nyanpasu_config::application::Permission::new(
+        nyanpasu_config::application::Resource::#resource,
+        nyanpasu_config::application::Access::#access
+    ))
 }
 
 fn capability_variants(values: &[Ident]) -> Vec<TokenStream> {
@@ -482,10 +494,16 @@ fn resource_row(
         "stream" => quote!(Stream),
         _ => return Err(invalid("a resource is an `event`, a `route` or a `stream`")),
     };
-    let Some(scope) = &resource.scope else {
-        return Err(invalid("a resource requires an explicit `scope = ...`"));
+    let Some(permission) = &resource.permission else {
+        return Err(invalid(
+            "a resource requires an explicit `permission = resource:access`",
+        ));
     };
-    let scope = pascal_case(scope);
+    if permission.access != "read" {
+        return Err(invalid("events, routes and streams only read"));
+    }
+    let permission = permission_tokens(permission);
+    let sensitive = resource.sensitive;
     if resource.targets.is_empty() {
         return Err(invalid("a resource requires explicit `targets = [...]`"));
     }
@@ -505,8 +523,9 @@ fn resource_row(
             namespace: #namespace,
             kind: crate::permission::ResourceKind::#kind,
             effect: crate::CommandEffect::Query,
-            scope: crate::Scope::#scope,
+            permission: #permission,
             source: crate::permission::PermissionSource::Legacy,
+            sensitive: #sensitive,
             targets: &[#(#targets),*],
             capabilities: &[#(#capabilities),*],
             optional_capabilities: &[],
@@ -586,46 +605,72 @@ fn rejection(source: &str) -> String {
 }
 
 #[test]
-fn a_mutation_requires_a_scope() {
+fn a_legacy_declaration_requires_a_permission() {
+    for source in [
+        "#[nyanpasu_rpc::rpc(http)] fn update() -> bool { true }",
+        "#[nyanpasu_rpc::rpc(http, query)] fn update() -> bool { true }",
+    ] {
+        assert!(
+            rejection(source).contains(
+                "update: a legacy declaration requires an explicit `permission = resource:access`"
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn a_permission_names_a_resource_and_a_level() {
     assert!(
-        rejection("#[nyanpasu_rpc::rpc(http)] fn update() -> bool { true }")
-            .contains("update: a mutation requires an explicit `scope = ...`")
+        rejection(
+            "#[nyanpasu_rpc::rpc(query, permission = secrets:read)] fn inspect() -> bool { true }"
+        )
+        .contains("`secrets` is not a resource")
+    );
+    assert!(
+        rejection(
+            "#[nyanpasu_rpc::rpc(query, permission = proxy:admin)] fn inspect() -> bool { true }"
+        )
+        .contains("`admin` is not an access level")
     );
 }
 
 #[test]
-fn a_query_defaults_to_the_read_scope() {
+fn the_permission_and_marking_are_written_as_declared() {
     let table = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(http, query)] fn status() -> bool { true }",
+        "#[nyanpasu_rpc::rpc(http, query, permission = profile:read, sensitive)] fn status() -> bool { true }",
     ))
     .unwrap();
     assert!(table.contains("effect : crate :: CommandEffect :: Query"));
-    assert!(table.contains("scope : crate :: Scope :: Read"));
+    assert!(
+        table.contains("Resource :: Profile , nyanpasu_config :: application :: Access :: Read")
+    );
+    assert!(table.contains("sensitive : true"));
     assert!(table.contains("source : crate :: permission :: PermissionSource :: Legacy"));
 }
 
 #[test]
-fn scope_is_independent_of_the_effect() {
-    for scope in ["proxy", "remote_admin", "sensitive_read"] {
-        let table = render(&declarations_in(&format!(
-            "#[nyanpasu_rpc::rpc(query, scope = {scope})] fn inspect() -> bool {{ true }}"
-        )))
-        .unwrap();
-        assert!(table.contains("CommandEffect :: Query"), "{scope}");
-    }
+fn the_permission_is_independent_of_the_effect() {
     let table = render(&declarations_in(
-        "#[nyanpasu_rpc::rpc(http, scope = read)] fn open_resource() -> bool { true }",
+        "#[nyanpasu_rpc::rpc(query, permission = proxy:write)] fn inspect() -> bool { true }",
+    ))
+    .unwrap();
+    assert!(table.contains("CommandEffect :: Query"));
+    assert!(table.contains("Access :: Write"));
+    assert!(table.contains("sensitive : false"));
+    let table = render(&declarations_in(
+        "#[nyanpasu_rpc::rpc(http, permission = logs:read)] fn open_resource() -> bool { true }",
     ))
     .unwrap();
     assert!(table.contains("CommandEffect :: Mutation"));
-    assert!(table.contains("scope : crate :: Scope :: Read"));
+    assert!(table.contains("Access :: Read"));
 }
 
 #[test]
 fn only_the_desktop_root_declares_native_commands() {
     assert!(
         rejection(
-            "#[nyanpasu_rpc::rpc(scope = system)] #[tauri::command] fn open_that() -> bool { true }"
+            "#[nyanpasu_rpc::rpc(permission = system:write)] #[tauri::command] fn open_that() -> bool { true }"
         )
         .contains("only the desktop shell's declaration root may declare native commands")
     );
@@ -647,9 +692,9 @@ fn table_preserves_mutually_exclusive_platform_cfg() {
         r#"
         #[cfg(windows)] mod platform {
             #[cfg_attr(unix, cfg(target_os = "linux"))]
-            mod nested { #[nyanpasu_rpc::rpc(scope = settings)] #[tauri::command] fn platform_call() {} }
+            mod nested { #[nyanpasu_rpc::rpc(permission = settings:write)] #[tauri::command] fn platform_call() {} }
         }
-        #[cfg(not(windows))] #[nyanpasu_rpc::rpc(scope = settings)] #[tauri::command] fn platform_call() {}
+        #[cfg(not(windows))] #[nyanpasu_rpc::rpc(permission = settings:write)] #[tauri::command] fn platform_call() {}
     "#,
     );
     for declaration in &mut declarations {
@@ -737,13 +782,13 @@ fn production_namespaces_follow_the_module_tree() {
 fn table_excludes_test_fixtures() {
     let declarations = declarations_in(
         r#"
-        #[cfg(test)] mod fixtures { #[nyanpasu_rpc::rpc(scope = settings)] fn fixture() -> bool { true } }
+        #[cfg(test)] mod fixtures { #[nyanpasu_rpc::rpc(permission = settings:write)] fn fixture() -> bool { true } }
         #[cfg(all(test, windows))] mod external_fixture;
         #[cfg_attr(not(test), cfg(any()))] mod conditional_fixture;
-        mod test_support { #[nyanpasu_rpc::rpc(scope = settings)] fn support() -> bool { true } }
-        #[test] #[nyanpasu_rpc::rpc(scope = settings)] fn fixture_test() -> bool { true }
-        #[tokio::test] #[nyanpasu_rpc::rpc(scope = settings)] async fn async_fixture() -> bool { true }
-        #[cfg(any(test, windows))] #[nyanpasu_rpc::rpc(scope = settings)] fn production() -> bool { true }
+        mod test_support { #[nyanpasu_rpc::rpc(permission = settings:write)] fn support() -> bool { true } }
+        #[test] #[nyanpasu_rpc::rpc(permission = settings:write)] fn fixture_test() -> bool { true }
+        #[tokio::test] #[nyanpasu_rpc::rpc(permission = settings:write)] async fn async_fixture() -> bool { true }
+        #[cfg(any(test, windows))] #[nyanpasu_rpc::rpc(permission = settings:write)] fn production() -> bool { true }
     "#,
     );
     assert_eq!(declarations.len(), 1);
@@ -1038,16 +1083,19 @@ fn the_signature_guard_descends_into_nested_modules() {
 fn resources_render_with_their_explicit_exposure() {
     let table = render(&declarations_in(
         r#"
-        nyanpasu_rpc::resource!(event "storage-value-changed-event", targets = [desktop, http], scope = sensitive_read);
-        nyanpasu_rpc::resource!(event "app-update-state-changed", targets = [desktop], scope = read, capabilities(app_update));
-        nyanpasu_rpc::resource!(route "icon_fetch", targets = [http], scope = read);
-        nyanpasu_rpc::resource!(stream "connection_details", targets = [http, local], scope = read);
+        nyanpasu_rpc::resource!(event "storage-value-changed-event", targets = [desktop, http], permission = settings:read, sensitive);
+        nyanpasu_rpc::resource!(event "app-update-state-changed", targets = [desktop], permission = system:read, capabilities(app_update));
+        nyanpasu_rpc::resource!(route "icon_fetch", targets = [http], permission = proxy:read);
+        nyanpasu_rpc::resource!(stream "connection_details", targets = [http, local], permission = traffic:read);
         "#,
     ))
     .unwrap();
     assert!(table.contains("name : \"storage-value-changed-event\""));
     assert!(table.contains("kind : crate :: permission :: ResourceKind :: Event"));
-    assert!(table.contains("scope : crate :: Scope :: SensitiveRead"));
+    assert!(
+        table.contains("Resource :: Settings , nyanpasu_config :: application :: Access :: Read")
+    );
+    assert_eq!(table.matches("sensitive : true").count(), 1);
     assert!(table.contains("capabilities : & [crate :: ShellCapability :: AppUpdate]"));
     assert!(table.contains("kind : crate :: permission :: ResourceKind :: Route"));
     assert!(table.contains("targets : & [crate :: RpcTarget :: Http]"));
@@ -1056,22 +1104,26 @@ fn resources_render_with_their_explicit_exposure() {
 }
 
 #[test]
-fn a_resource_names_its_kind_scope_and_targets() {
+fn a_resource_names_its_kind_permission_and_targets() {
     for (source, reason) in [
         (
-            r#"nyanpasu_rpc::resource!(signal "x", targets = [http], scope = read);"#,
+            r#"nyanpasu_rpc::resource!(signal "x", targets = [http], permission = proxy:read);"#,
             "a resource is an `event`, a `route` or a `stream`",
         ),
         (
             r#"nyanpasu_rpc::resource!(event "x", targets = [http]);"#,
-            "a resource requires an explicit `scope = ...`",
+            "a resource requires an explicit `permission = resource:access`",
         ),
         (
-            r#"nyanpasu_rpc::resource!(event "x", scope = read);"#,
+            r#"nyanpasu_rpc::resource!(event "x", targets = [http], permission = proxy:write);"#,
+            "events, routes and streams only read",
+        ),
+        (
+            r#"nyanpasu_rpc::resource!(event "x", permission = proxy:read);"#,
             "a resource requires explicit `targets = [...]`",
         ),
         (
-            r#"nyanpasu_rpc::resource!(event "x", targets = [web], scope = read);"#,
+            r#"nyanpasu_rpc::resource!(event "x", targets = [web], permission = proxy:read);"#,
             "targets are `desktop`, `http` and `local`",
         ),
     ] {

@@ -1,29 +1,28 @@
 import { type PropsWithChildren } from 'react'
 import { m } from '@/paraglide/messages'
-import type { Scope } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { useCapabilities } from './capabilities'
+import { useCapabilities, type PermissionName } from './capabilities'
 
 /**
  * Keeps the controls of a page visible but inert for a caller that lacks one of
- * `scopes`, and says so, instead of letting every control fire a rejected
- * request. A caller holding every scope sees `children` unchanged.
+ * `permissions`, and says so, instead of letting every control fire a rejected
+ * request. A caller holding every permission sees `children` unchanged.
  *
  * The fieldset only disables form controls, so it generates no box
  * (`contents`) and the slider, which is not one, is disabled by its role.
  */
 export function ReadOnlyScope({
-  scopes,
+  permissions,
   banner = true,
   children,
 }: PropsWithChildren<{
-  scopes: readonly Scope[]
+  permissions: readonly PermissionName[]
   /** Leave the explanation to the one sibling scope that shows it. */
   banner?: boolean
 }>) {
-  const { hasScopes } = useCapabilities()
+  const { hasPermissions } = useCapabilities()
 
-  if (hasScopes(scopes)) {
+  if (hasPermissions(permissions)) {
     return <>{children}</>
   }
 

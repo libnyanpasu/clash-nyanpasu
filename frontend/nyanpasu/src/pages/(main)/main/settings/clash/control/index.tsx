@@ -51,10 +51,10 @@ function RouteComponent() {
       </PageTitle>
 
       <RequireCapability
-        scope="sensitive_read"
+        permission="settings:read"
         fallback={<RestrictedContent />}
       >
-        <ReadOnlyScope scopes={['system']}>
+        <ReadOnlyScope permissions={['system:write']}>
           <div className="space-y-4 px-4 pb-4">
             <ControlChannelSettings />
 

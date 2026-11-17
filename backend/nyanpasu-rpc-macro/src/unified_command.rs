@@ -19,7 +19,53 @@ pub struct Options {
     operation: Option<syn::Path>,
     /// A query only reads. Every other command is a mutation.
     pub(crate) query: bool,
-    pub(crate) scope: Option<syn::Ident>,
+    pub(crate) permission: Option<PermissionOption>,
+    /// Responses may disclose secrets; never part of admission.
+    pub(crate) sensitive: bool,
+}
+
+/// `permission = resource:access` on a legacy declaration, before the namespace tree derives it.
+pub struct PermissionOption {
+    pub(crate) resource: syn::Ident,
+    pub(crate) access: syn::Ident,
+}
+
+impl syn::parse::Parse for PermissionOption {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let resource = input.parse()?;
+        input.parse::<syn::Token![:]>()?;
+        let permission = Self {
+            resource,
+            access: input.parse()?,
+        };
+        permission
+            .check()
+            .map_err(|reason| Error::new(permission.resource.span(), reason))?;
+        Ok(permission)
+    }
+}
+
+impl PermissionOption {
+    /// The resources of the permission model, by their persisted names.
+    const RESOURCES: [&str; 8] = [
+        "meta", "proxy", "profile", "settings", "system", "logs", "traffic", "remote",
+    ];
+
+    /// Rejects a name the permission model does not have.
+    fn check(&self) -> Result<(), String> {
+        let resource = self.resource.to_string();
+        if !Self::RESOURCES.contains(&resource.as_str()) {
+            return Err(format!(
+                "`{resource}` is not a resource: {}",
+                Self::RESOURCES.join(", ")
+            ));
+        }
+        let access = self.access.to_string();
+        if !matches!(access.as_str(), "read" | "write") {
+            return Err(format!("`{access}` is not an access level: read, write"));
+        }
+        Ok(())
+    }
 }
 
 impl syn::parse::Parse for Options {
@@ -44,12 +90,13 @@ impl syn::parse::Parse for Options {
                 "owner" => options.owner = true,
                 "privacy" => options.privacy = true,
                 "query" => options.query = true,
-                "scope" => {
+                "sensitive" => options.sensitive = true,
+                "permission" => {
                     input.parse::<syn::Token![=]>()?;
-                    if options.scope.is_some() {
-                        return Err(Error::new(option.span(), "duplicate scope"));
+                    if options.permission.is_some() {
+                        return Err(Error::new(option.span(), "duplicate permission"));
                     }
-                    options.scope = Some(input.parse()?);
+                    options.permission = Some(input.parse()?);
                 }
                 "operation" => {
                     input.parse::<syn::Token![=]>()?;
@@ -61,7 +108,7 @@ impl syn::parse::Parse for Options {
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner, privacy, query, scope = name, operation = path, capabilities(...) or optional_capabilities(...)",
+                        "expected http, local, result, owner, privacy, query, sensitive, permission = resource:access, operation = path, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -195,7 +242,6 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut neutral_supported = neutral_compatible && (options.http || options.local || !native);
     let mut tauri_supported = true;
     let mut uses_dependencies = false;
-    let mut uses_meta = false;
 
     for argument in implementation.sig.inputs.iter_mut() {
         let FnArg::Typed(argument) = argument else {
@@ -245,7 +291,6 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             dependency_bindings.push(quote!(let owner = caller.owner().clone();));
             neutral_args.push(quote!(owner.clone()));
         } else if is_context_type(&argument.ty, "RpcDescribeContext") {
-            uses_meta = true;
             wrapper_args.push(quote!(#ident));
             neutral_args.push(quote!(meta.describe_context(caller.auth())));
         } else if is_context_type(&argument.ty, "AppHandle") {
@@ -323,9 +368,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
             operation.map(|operation| quote!(: <#operation as #operation_trait>::Response));
         let finish_output = finish_output_expr(options.privacy);
         quote! {
-            let visibility = ::nyanpasu_rpc_protocol::ResponseVisibility::for_auth(
-                ::std::option::Option::Some(caller.auth()),
-            );
+            let visibility = meta.visibility();
             #(#dependency_bindings)*
             #neutral_parse
             Ok(::std::boxed::Box::pin(async move {
@@ -448,7 +491,7 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     } else {
         format_ident!("_dependencies")
     };
-    let meta_param = if neutral_enabled && uses_meta {
+    let meta_param = if neutral_enabled {
         format_ident!("meta")
     } else {
         format_ident!("_meta")
@@ -755,17 +798,17 @@ mod tests {
 
     use super::expand;
 
-    /// Scope, effect, targets and capabilities belong to the resource table; the registration
+    /// Permission, effect, targets and capabilities belong to the resource table; the registration
     /// says only what was implemented.
     #[test]
     fn registration_carries_only_implementation_facts() {
         for item in [
             syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(http, local, query, scope = sensitive_read, capabilities(clipboard), optional_capabilities(elevation))]
+                #[nyanpasu_rpc::rpc(http, local, query, permission = system:read, sensitive, capabilities(clipboard), optional_capabilities(elevation))]
                 fn shared(value: String) -> String { value }
             },
             syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(scope = system, capabilities(opener))]
+                #[nyanpasu_rpc::rpc(permission = system:write, capabilities(opener))]
                 #[tauri::command]
                 fn native(window: tauri::Window) -> bool { true }
             },
@@ -774,7 +817,8 @@ mod tests {
             let native = super::is_native(&item);
             let expanded = expand(item).unwrap().to_string();
             for metadata in [
-                "Scope ::",
+                "Permission",
+                "Resource ::",
                 "CommandEffect ::",
                 "RpcTarget ::",
                 "ShellCapability ::",
@@ -791,7 +835,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mutation_without_a_scope_still_expands() {
+    fn a_declaration_without_a_permission_still_expands() {
         expand(syn::parse_quote! {
             #[nyanpasu_rpc::rpc(http)]
             fn update() -> bool { true }
@@ -808,7 +852,7 @@ mod tests {
             quote::quote!(WrappedOutcomeAlias),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(privacy, scope = settings)]
+                #[nyanpasu_rpc::rpc(privacy, permission = settings:write)]
                 #[tauri::command]
                 fn test() -> #output { todo!() }
             })
@@ -835,7 +879,7 @@ mod tests {
             quote::quote!(Result<MutationOutcome<()>>),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(scope = settings)]
+                #[nyanpasu_rpc::rpc(permission = settings:write)]
                 fn missing_privacy() -> #output { todo!() }
             })
             .unwrap();
@@ -848,7 +892,7 @@ mod tests {
 
         for output in [quote::quote!(Result<()>), quote::quote!(CommitReceipt)] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(scope = settings)]
+                #[nyanpasu_rpc::rpc(permission = settings:write)]
                 fn ordinary() -> #output { todo!() }
             })
             .unwrap();
@@ -919,7 +963,7 @@ mod tests {
     #[test]
     fn operation_bindings_use_the_existing_generator() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, http, owner, result, operation = contracts::OpenLogSession, scope = settings)]
+            #[nyanpasu_rpc::rpc(local, http, owner, result, operation = contracts::OpenLogSession, permission = settings:write)]
             fn open_log_session(caller: RpcCaller, client: RpcState<'_, NyanpasuClient>, source: Source, request: OpenLogs) -> LogResult<LogSession> { todo!() }
         }).unwrap();
         syn::parse2::<syn::File>(expanded.clone()).unwrap();
@@ -938,7 +982,7 @@ mod tests {
     #[test]
     fn zero_argument_contracts_check_unit_without_changing_the_parser() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, operation = contracts::GetProfiles, scope = settings)]
+            #[nyanpasu_rpc::rpc(local, operation = contracts::GetProfiles, permission = settings:write)]
             fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Profiles> { todo!() }
         })
         .unwrap()
@@ -952,7 +996,7 @@ mod tests {
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, result, owner, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, result, owner, permission = settings:write)]
             #[tauri::command]
             pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
         };
@@ -969,7 +1013,7 @@ mod tests {
 
     #[test]
     fn dependency_free_commands_can_use_http() {
-        let command = syn::parse_quote! { #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn functions() -> Vec<String> { vec![] } };
+        let command = syn::parse_quote! { #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn functions() -> Vec<String> { vec![] } };
         assert!(
             !expand(command)
                 .unwrap()
@@ -981,7 +1025,7 @@ mod tests {
     #[test]
     fn the_path_resolver_state_is_served_from_the_http_dependencies() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, permission = settings:write)]
             #[tauri::command]
             pub fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> { todo!() }
         };
@@ -994,7 +1038,7 @@ mod tests {
     #[test]
     fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(owner, scope = settings)]
+            #[nyanpasu_rpc::rpc(owner, permission = settings:write)]
             #[tauri::command]
             pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
         };
@@ -1010,7 +1054,7 @@ mod tests {
     #[test]
     fn channel_parameter_json_parser_uses_camel_case_fields() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(scope = settings)]
+            #[nyanpasu_rpc::rpc(permission = settings:write)]
             #[tauri::command]
             pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
                 todo!()
@@ -1028,27 +1072,27 @@ mod tests {
     fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
         for (source, supported) in [
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(scope = system)] pub fn open_that(path: String) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(permission = system:write)] pub fn open_that(path: String) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
                 true,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn generic<T>() -> Result<T> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn generic<T>() -> Result<T> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {
@@ -1095,7 +1139,7 @@ mod tests {
             (quote::quote!(value: &str), quote::quote!(http)),
         ] {
             let command = syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(#options, scope = settings)]
+                #[nyanpasu_rpc::rpc(#options, permission = settings:write)]
                 #[tauri::command]
                 fn native(#arguments) -> Result<()> { todo!() }
             };
@@ -1155,7 +1199,7 @@ mod tests {
         ] {
             let name = format_ident!("{name}");
             commands.push(syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(scope = settings, owner, #targets)]
+                #[nyanpasu_rpc::rpc(permission = settings:write, owner, #targets)]
                 fn #name(client: RpcState<'_, NyanpasuClient>, owner: RpcCaller, value: String) -> String { value }
             });
         }
@@ -1250,7 +1294,7 @@ mod tests {
 
         assert!(
             plain_commands.is_empty(),
-            "Tauri application commands in ipc.rs must use #[nyanpasu_rpc::rpc(..., scope = settings)]: {}",
+            "Tauri application commands in ipc.rs must use #[nyanpasu_rpc::rpc(..., permission = settings:write)]: {}",
             plain_commands.join(", ")
         );
         let source = std::fs::read_to_string(concat!(
@@ -1320,7 +1364,7 @@ mod tests {
     #[test]
     fn neutral_expansion_contains_no_tauri_types() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, local, owner, result, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, local, owner, result, permission = settings:write)]
             #[specta::specta]
             pub async fn shared(
                 client: RpcState<'_, NyanpasuClient>, storage: RpcState<'_, Storage>, paths: RpcState<'_, PathResolver>,
@@ -1349,7 +1393,7 @@ mod tests {
         assert!(expanded.contains("application_error_for (visibility"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, scope = settings)] fn empty() -> bool { true }
+            #[nyanpasu_rpc::rpc(http, permission = settings:write)] fn empty() -> bool { true }
         })
         .unwrap()
         .to_string();
@@ -1361,7 +1405,7 @@ mod tests {
     fn native_commands_register_both_dispatchers() {
         assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), scope = settings)]
+            #[nyanpasu_rpc::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), permission = settings:write)]
             #[tauri::command]
             fn copy(value: String) -> String { value }
         }).unwrap().to_string();
@@ -1415,10 +1459,10 @@ mod tests {
                     names(&options.capabilities),
                     names(&options.optional_capabilities),
                     if options.query { "query" } else { "mutation" },
-                    options
-                        .scope
-                        .as_ref()
-                        .map_or_else(|| "read".to_owned(), ToString::to_string),
+                    options.permission.as_ref().map_or_else(
+                        || "-".to_owned(),
+                        |permission| format!("{}:{}", permission.resource, permission.access)
+                    ),
                 );
                 assert!(
                     rows.insert(name, row).is_none(),
@@ -1439,7 +1483,7 @@ mod tests {
             .unwrap()
             .1;
         let mut snapshot = String::from(
-            "# name | targets | required | optional | effect | scope\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\n",
+            "# name | targets | required | optional | effect | permission\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\n",
         );
         for row in baseline.values() {
             snapshot.push_str(row);
@@ -1510,7 +1554,7 @@ mod tests {
         ]);
         assert_eq!(
             snapshot,
-            "# name | targets | required | optional | effect | scope\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\nchanged | desktop | - | - | mutation | system\nremoved | desktop | - | - | mutation | system\n\n[windows]\n- removed\n+ added | desktop | - | - | mutation | system\n+ changed | desktop | window | - | mutation | system\n\n[linux]\n\n[macos]\n"
+            "# name | targets | required | optional | effect | permission\n# [baseline] uses Linux rows; platform differences: + row adds/replaces, - name removes.\n\n[baseline]\nchanged | desktop | - | - | mutation | system\nremoved | desktop | - | - | mutation | system\n\n[windows]\n- removed\n+ added | desktop | - | - | mutation | system\n+ changed | desktop | window | - | mutation | system\n\n[linux]\n\n[macos]\n"
         );
     }
 
@@ -1632,13 +1676,16 @@ mod tests {
                 !options.query,
                 "{name} allocates or refreshes a leased server log session"
             );
-            let scope = options.scope.as_ref().map(std::string::ToString::to_string);
-            let expected_scope = if name == "query_logs" {
-                "sensitive_read"
-            } else {
-                "read"
-            };
-            assert_eq!(scope.as_deref(), Some(expected_scope), "{name}");
+            let permission = options.permission.as_ref().unwrap();
+            assert_eq!(
+                (
+                    permission.resource.to_string(),
+                    permission.access.to_string()
+                ),
+                ("logs".to_owned(), "read".to_owned()),
+                "{name}"
+            );
+            assert_eq!(options.sensitive, name == "query_logs", "{name}");
         }
         for name in [
             "is_tray_icon_set",
@@ -1659,7 +1706,7 @@ mod tests {
     #[test]
     fn local_optional_elevation_expands_and_registers() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, optional_capabilities(elevation), scope = settings)]
+            #[nyanpasu_rpc::rpc(local, optional_capabilities(elevation), permission = settings:write)]
             fn profile_mutation(value: String) -> String { value }
         })
         .unwrap()

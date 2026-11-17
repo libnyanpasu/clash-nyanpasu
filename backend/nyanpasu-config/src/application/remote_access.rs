@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use specta::Type;
 
-use super::Scope;
+use super::{Access, Permissions, Resource, validate_anonymous_permissions};
 
 /// How the HTTP listener decides who may call it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
@@ -19,9 +19,9 @@ pub enum HttpAccessStrategy {
     /// Loopback only; every request must carry a valid credential.
     #[default]
     LocalAuthenticated,
-    /// Loopback only; a request without a credential is an anonymous caller holding
-    /// [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
-    /// reach it, because loopback TCP is not user-scoped.
+    /// Loopback only; a request without a credential is an anonymous caller holding capability
+    /// discovery plus [`HttpAccessConfig::anonymous_permissions`]. Every local process of every
+    /// OS user can reach it, because loopback TCP is not user-scoped.
     LocalOpen,
     /// Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
     /// one from a loopback peer: a reverse proxy makes every request look local.
@@ -52,9 +52,10 @@ pub struct HttpAccessConfig {
     pub port: Option<u16>,
     /// Serve the bundled web UI. When false only the API is served.
     pub serve_webui: bool,
-    /// What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
-    /// another strategy is selected.
-    pub local_open_scopes: Vec<Scope>,
+    /// What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`] beyond capability
+    /// discovery, at most the `operator` role. Empty by default; kept while another strategy is
+    /// selected.
+    pub anonymous_permissions: Permissions,
     /// The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
     /// IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
     pub lan_bind: Option<IpAddr>,
@@ -70,7 +71,7 @@ impl Default for HttpAccessConfig {
             strategy: HttpAccessStrategy::default(),
             port: None,
             serve_webui: true,
-            local_open_scopes: vec![Scope::Read],
+            anonymous_permissions: Permissions::NONE,
             lan_bind: None,
             tls: HttpTls::default(),
         }
@@ -100,14 +101,13 @@ pub enum RemoteAccessError {
     /// Port 0 asks the OS for any port; the persisted port is always a concrete one.
     #[snafu(display("the HTTP port must be between 1 and 65535"))]
     PortZero,
-    /// An anonymous caller must hold at least one scope; `local_open` with none admits nothing.
-    #[snafu(display("local_open_scopes must name at least one scope"))]
-    LocalOpenScopesEmpty,
-    /// An anonymous caller never holds secrets, system control or remote administration.
-    #[snafu(display("local_open_scopes cannot include {scope}"))]
-    LocalOpenScopeForbidden {
-        /// The scope that anonymous callers can never hold.
-        scope: Scope,
+    /// Anonymous callers are unidentified local processes, so they never exceed the `operator`
+    /// role.
+    #[snafu(display("anonymous_permissions cannot hold {resource}:{access}"))]
+    AnonymousBeyondOperator {
+        /// The first permission beyond the `operator` role.
+        resource: Resource,
+        access: Access,
     },
     /// The section is changed only by the dedicated remote-access command, never by a
     /// general application patch.
@@ -131,18 +131,14 @@ impl RemoteAccessConfig {
         {
             return Err(RemoteAccessError::LanRequiresTls);
         }
-        if self.http.local_open_scopes.is_empty() {
-            return Err(RemoteAccessError::LocalOpenScopesEmpty);
-        }
-        if let Some(&scope) = self.http.local_open_scopes.iter().find(|scope| {
-            matches!(
-                scope,
-                Scope::SensitiveRead | Scope::System | Scope::RemoteAdmin
-            )
-        }) {
-            return Err(RemoteAccessError::LocalOpenScopeForbidden { scope });
-        }
-        Ok(())
+        validate_anonymous_permissions(&self.http.anonymous_permissions).map_err(
+            |super::PermissionError::AnonymousBeyondOperator { held }| {
+                RemoteAccessError::AnonymousBeyondOperator {
+                    resource: held.resource,
+                    access: held.access,
+                }
+            },
+        )
     }
 }
 
@@ -157,7 +153,7 @@ mod tests {
         assert_eq!(config.http.strategy, HttpAccessStrategy::LocalAuthenticated);
         assert_eq!(config.http.port, None);
         assert!(config.http.serve_webui);
-        assert_eq!(config.http.local_open_scopes, vec![Scope::Read]);
+        assert_eq!(config.http.anonymous_permissions, Permissions::NONE);
         assert!(!config.local_socket.enabled);
     }
 
@@ -194,7 +190,7 @@ mod tests {
         let open: RemoteAccessConfig =
             serde_json::from_str(r#"{"http":{"strategy":"local_open"}}"#).unwrap();
         assert_eq!(open.http.strategy, HttpAccessStrategy::LocalOpen);
-        assert_eq!(open.http.local_open_scopes, vec![Scope::Read]);
+        assert_eq!(open.http.anonymous_permissions, Permissions::NONE);
         let lan: RemoteAccessConfig =
             serde_json::from_str(r#"{"http":{"strategy":"lan_authenticated"}}"#).unwrap();
         assert_eq!(lan.http.strategy, HttpAccessStrategy::LanAuthenticated);
@@ -246,24 +242,39 @@ mod tests {
     }
 
     #[test]
-    fn local_open_scopes_are_validated_before_commit() {
+    fn anonymous_permissions_are_validated_before_commit() {
         let mut config = RemoteAccessConfig::default();
-        config.http.local_open_scopes = vec![Scope::Read, Scope::Proxy, Scope::Profile];
+        assert_eq!(config.validate(), Ok(()));
+        config.http.anonymous_permissions = super::super::Role::Operator.permissions();
         assert_eq!(config.validate(), Ok(()));
 
-        config.http.local_open_scopes = Vec::new();
-        assert_eq!(
-            config.validate(),
-            Err(RemoteAccessError::LocalOpenScopesEmpty)
-        );
-
-        for scope in [Scope::SensitiveRead, Scope::System, Scope::RemoteAdmin] {
-            config.http.local_open_scopes = vec![Scope::Read, scope];
+        for (resource, access) in [
+            (Resource::System, Access::Write),
+            (Resource::Logs, Access::Write),
+            (Resource::Remote, Access::Read),
+        ] {
+            config.http.anonymous_permissions = Permissions::NONE
+                .with(Resource::Proxy, Access::Read)
+                .with(resource, access);
             assert_eq!(
                 config.validate(),
-                Err(RemoteAccessError::LocalOpenScopeForbidden { scope })
+                Err(RemoteAccessError::AnonymousBeyondOperator { resource, access })
             );
         }
+    }
+
+    #[test]
+    fn anonymous_permissions_persist_as_a_map() {
+        let config: RemoteAccessConfig = serde_json::from_str(
+            r#"{"http":{"anonymous_permissions":{"proxy":"write","logs":"read"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.http.anonymous_permissions,
+            Permissions::NONE
+                .with(Resource::Proxy, Access::Write)
+                .with(Resource::Logs, Access::Read)
+        );
     }
 
     #[test]

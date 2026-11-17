@@ -11,11 +11,7 @@ import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { useRemoteAccess } from '@nyanpasu/query'
-import type {
-  HttpAccessStrategy,
-  HttpServerStatus,
-  Scope,
-} from '@nyanpasu/rpc/types'
+import type { HttpAccessStrategy, HttpServerStatus } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -27,11 +23,10 @@ import {
   SettingsLabel,
 } from '../../../../_modules/settings-card'
 import CertificateSettings from './certificate-settings'
+import PermissionGrid from './permission-grid'
+import { ANONYMOUS_LIMIT } from './permission-labels'
 import SaveField from './save-field'
-import ScopeCheckboxes from './scope-checkboxes'
-import { LOCAL_OPEN_SCOPES } from './scope-labels'
-
-const DEFAULT_LOCAL_OPEN_SCOPES: Scope[] = ['read']
+import SensitiveReach from './sensitive-reach'
 
 const PORT_MAX = 65535
 
@@ -167,7 +162,7 @@ export default function ServerSettings() {
   const loaded = http != null
   const locked = !loaded || update.isPending
   const strategy = http?.strategy ?? 'local_authenticated'
-  const localOpenScopes = http?.local_open_scopes ?? DEFAULT_LOCAL_OPEN_SCOPES
+  const anonymousPermissions = http?.anonymous_permissions ?? {}
 
   return (
     <div data-slot="remote-access-server-container">
@@ -291,29 +286,26 @@ export default function ServerSettings() {
 
                 <div
                   className="flex flex-col gap-3"
-                  data-slot="remote-access-local-open-scopes"
+                  data-slot="remote-access-anonymous-permissions"
                 >
                   <ItemLabel>
                     <ItemLabelText>
-                      {m.settings_remote_access_local_open_scopes_title()}
+                      {m.settings_remote_access_anonymous_permissions_title()}
                     </ItemLabelText>
 
                     <ItemLabelDescription>
-                      {m.settings_remote_access_local_open_scopes_description()}
+                      {m.settings_remote_access_anonymous_permissions_description()}
                     </ItemLabelDescription>
                   </ItemLabel>
 
-                  <ScopeCheckboxes
-                    scopes={LOCAL_OPEN_SCOPES}
-                    value={localOpenScopes}
+                  <PermissionGrid
+                    value={anonymousPermissions}
+                    limit={ANONYMOUS_LIMIT}
                     disabled={locked}
-                    onChange={(next) => {
-                      // An anonymous caller with no scope admits nothing, so the last one stays.
-                      if (next.length > 0) {
-                        change({ local_open_scopes: next })
-                      }
-                    }}
+                    onChange={(next) => change({ anonymous_permissions: next })}
                   />
+
+                  <SensitiveReach held={anonymousPermissions} />
                 </div>
               </>
             )}

@@ -16,7 +16,7 @@ import {
   SettingsLabel,
 } from '../../../../_modules/settings-card'
 import CreateTokenModal from './create-token-modal'
-import { scopeLabel } from './scope-labels'
+import { grantLabel } from './permission-labels'
 
 function TokenRow({
   token,
@@ -40,9 +40,7 @@ function TokenRow({
           </span>
         </ItemLabelText>
 
-        <ItemLabelDescription>
-          {token.scopes.map(scopeLabel).join(' · ')}
-        </ItemLabelDescription>
+        <ItemLabelDescription>{grantLabel(token.grant)}</ItemLabelDescription>
 
         <ItemLabelDescription>
           {m.settings_remote_access_token_created_at({

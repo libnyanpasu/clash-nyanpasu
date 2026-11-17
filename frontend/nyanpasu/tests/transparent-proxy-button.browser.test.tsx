@@ -11,7 +11,7 @@ import {
 } from '@/components/settings/system-proxy'
 import { m } from '@/paraglide/messages'
 import TransparentProxyButton from '../src/pages/(main)/main/settings/system/proxy/_modules/transparent-proxy-button'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const backend = vi.hoisted(() => ({
   values: {} as Record<string, unknown>,
@@ -117,7 +117,9 @@ async function setup(
   backend.actualMode = null
   backend.upsert.mockResolvedValue(undefined)
   backend.invalidate.mockResolvedValue(undefined)
-  const view = await render(<TransparentProxyButton />, { wrapper: AllScopes })
+  const view = await render(<TransparentProxyButton />, {
+    wrapper: AllPermissions,
+  })
   onTestFinished(async () => {
     await view.unmount()
     vi.clearAllMocks()
@@ -297,7 +299,7 @@ test('keeps the same button shape and surface when activation is unavailable', a
       <TransparentProxyButton />
     </>,
 
-    { wrapper: AllScopes },
+    { wrapper: AllPermissions },
   )
   onTestFinished(async () => {
     await view.unmount()
@@ -327,7 +329,7 @@ test('TUN cannot be enabled while transparent capture is configured', async ({
     enable_tun_mode: false,
     transparent_proxy: { mode: 'tproxy' },
   }
-  const view = await render(<TunModeButton />, { wrapper: AllScopes })
+  const view = await render(<TunModeButton />, { wrapper: AllPermissions })
   onTestFinished(async () => {
     await view.unmount()
     vi.clearAllMocks()
@@ -360,7 +362,7 @@ test('the dashboard shortcut uses the same capture action', async ({
   backend.upsert.mockResolvedValue(undefined)
   backend.invalidate.mockResolvedValue(undefined)
   const view = await render(<WidgetTransparentProxyButton />, {
-    wrapper: AllScopes,
+    wrapper: AllPermissions,
   })
   onTestFinished(async () => {
     await view.unmount()

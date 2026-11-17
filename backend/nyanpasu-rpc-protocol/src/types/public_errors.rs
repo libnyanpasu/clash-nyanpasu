@@ -20,8 +20,7 @@ use nyanpasu_runtime_values::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Exhaustive public classification for a failed command when the caller lacks
-/// `Scope::SensitiveRead`.
+/// Exhaustive public classification for a failed command when the response is redacted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "domain", content = "error", rename_all = "snake_case")]
 pub enum PublicFailure {
@@ -291,8 +290,7 @@ pub enum PublicRuntimeError {
 #[serde(rename_all = "snake_case")]
 pub enum PublicRemoteAccessErrorKind {
     PortZero,
-    LocalOpenScopesEmpty,
-    LocalOpenScopeForbidden,
+    AnonymousBeyondOperator,
     UseDedicatedCommand,
     LanRequiresTls,
 }
@@ -468,7 +466,7 @@ pub enum PublicDegradationReason {
     LocalSocketUnavailable,
 }
 
-/// Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`.
+/// Safe public outcome for committed mutations when the response is redacted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum PublicMutationOutcome<T> {
@@ -487,8 +485,8 @@ pub enum PublicMutationOutcome<T> {
 
 /// Canonical command reply union for committed mutations.
 ///
-/// Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
-/// callers receive [`PublicMutationOutcome<T>`].
+/// Unredacted responses carry [`MutationOutcome<T>`]; redacted ones carry
+/// [`PublicMutationOutcome<T>`].
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(untagged)]
 pub enum RpcMutationOutcome<T> {
@@ -572,8 +570,8 @@ pub enum ReceivedMutationOutcome<T> {
 
 /// Canonical command reply union for app-update state-changing commands.
 ///
-/// Callers holding `Scope::SensitiveRead` receive [`AppUpdateSnapshot`]; all other
-/// callers receive [`AppUpdateSummary`].
+/// Unredacted responses carry [`AppUpdateSnapshot`]; redacted ones carry
+/// [`AppUpdateSummary`].
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(untagged)]
 pub enum RpcAppUpdateOutcome {
@@ -589,8 +587,8 @@ impl From<AppUpdateSnapshot> for RpcAppUpdateOutcome {
 
 /// Canonical command reply union for the network automation commands.
 ///
-/// Callers holding `Scope::SensitiveRead` receive [`NetworkAutomationStatus`], which holds the
-/// live Wi-Fi name and gateway MAC address; all other callers receive
+/// Unredacted responses carry [`NetworkAutomationStatus`], which holds the
+/// live Wi-Fi name and gateway MAC address; redacted ones carry
 /// [`NetworkAutomationSummary`].
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(untagged)]

@@ -1,6 +1,6 @@
 //! `nyanpasu-cli remote`: remote access administration over the local socket.
 //!
-//! `remote_admin` is held only by the desktop and the same-user local socket: no bearer token
+//! `remote:write` is held only by the desktop and the same-user local socket: no bearer token
 //! or browser session can carry it and HTTP never offers its commands. These subcommands
 //! therefore refuse any other target before connecting. They are deliberately not part of the
 //! curated table in `commands.rs`, so an agent cannot be handed remote administration by
@@ -16,7 +16,7 @@ use crate::{
         HttpCommand, HttpStrategy, LanBind, RemoteCommand, SessionCommand, SwitchOnOff,
         TokenCommand, TokenCreate,
     },
-    describe::{Capabilities, Scope},
+    describe::{Access, Capabilities, Permission, Resource},
     error::{CliError, ExitStatus},
     output::Output,
     target::{ResolvedTarget, TargetKind},
@@ -62,10 +62,10 @@ pub async fn run<T: Transport>(
     capabilities: &Capabilities,
     output: &mut Output<'_>,
 ) -> Result<ExitStatus, CliError> {
-    if !capabilities.holds(Scope::RemoteAdmin) {
+    if !capabilities.permits(Permission::new(Resource::Remote, Access::Write)) {
         return Err(CliError::Unauthenticated {
-            message: "remote administration needs the remote_admin scope, which this caller \
-                      does not hold"
+            message: "remote administration needs the remote:write permission, which this \
+                      caller does not hold"
                 .to_owned(),
         });
     }
@@ -88,7 +88,7 @@ pub async fn run<T: Transport>(
                 writeln!(
                     output.stderr,
                     "warning: local_open lets every local process of every OS user call the \
-                     HTTP API with the configured open scopes"
+                     HTTP API with the configured anonymous permissions"
                 )?;
             }
             if *strategy == HttpStrategy::LanAuthenticated {
@@ -267,7 +267,7 @@ async fn create_token<T: Transport>(
 ) -> Result<ExitStatus, CliError> {
     let mut request = Map::new();
     request.insert("name".to_owned(), json!(arguments.name));
-    request.insert("scopes".to_owned(), json!(arguments.scopes));
+    request.insert("grant".to_owned(), json!(arguments.grant()));
     if let Some(lifetime) = arguments.expires_in {
         request.insert("expires_at_ms".to_owned(), json!(expiry_ms(lifetime)?));
     }
@@ -286,7 +286,27 @@ async fn create_token<T: Transport>(
         output.stderr,
         "note: this token is shown once and cannot be retrieved again"
     )?;
+    let sensitive = sensitive_reach(capabilities, arguments);
+    if !sensitive.is_empty() {
+        writeln!(
+            output.stderr,
+            "note: of the commands this connection describes, the token can read {} marked              sensitive, whose responses may hold credentials, subscription URLs or              configuration text: {}",
+            sensitive.len(),
+            sensitive.join(", ")
+        )?;
+    }
     Ok(output.result(&flatten_created_token(&created))?)
+}
+
+/// The commands marked sensitive that the requested grant reaches, by name.
+fn sensitive_reach<'a>(capabilities: &'a Capabilities, arguments: &TokenCreate) -> Vec<&'a str> {
+    let permissions = arguments.grant().permissions();
+    capabilities
+        .commands()
+        .iter()
+        .filter(|command| command.sensitive && permissions.permits(command.permission))
+        .map(|command| command.name.as_str())
+        .collect()
 }
 
 /// The token's secret ahead of its metadata, as one table.
@@ -412,8 +432,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_caller_without_remote_admin_is_refused_before_any_call() {
-        let capabilities = fixtures::capabilities(&[Scope::Read], &[(APP_SETTINGS, Scope::Read)]);
+    async fn a_caller_without_remote_write_is_refused_before_any_call() {
+        let capabilities = fixtures::capabilities(
+            crate::describe::Role::Admin.permissions(),
+            &[(
+                APP_SETTINGS,
+                Permission::new(Resource::Settings, Access::Read),
+            )],
+        );
         let transport = FakeTransport::new(Vec::new());
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
         let mut output = Output {
@@ -431,5 +457,51 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.exit_status(), ExitStatus::Unauthenticated);
         assert!(transport.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_new_token_lists_the_sensitive_commands_its_grant_reaches() {
+        use clap::Parser as _;
+
+        let profile_read = Permission::new(Resource::Profile, Access::Read);
+        let mut capabilities = fixtures::capabilities(
+            crate::describe::Role::Owner.permissions(),
+            &[
+                ("read_profile_file", profile_read),
+                ("get_profiles_listing", profile_read),
+                (
+                    "get_core_dir",
+                    Permission::new(Resource::System, Access::Read),
+                ),
+            ],
+        );
+        for command in &mut capabilities.response.commands {
+            command.sensitive = command.name != "get_profiles_listing";
+        }
+        let create = |arguments: &[&str]| {
+            let cli = crate::cli::Cli::parse_from(
+                ["nyanpasu-cli", "remote", "token", "create", "t"]
+                    .iter()
+                    .chain(arguments),
+            );
+            let crate::cli::Command::Remote(RemoteCommand::Token(TokenCommand::Create(create))) =
+                cli.command
+            else {
+                panic!("a token create command");
+            };
+            create
+        };
+
+        assert_eq!(
+            sensitive_reach(&capabilities, &create(&["--role", "viewer"])),
+            ["read_profile_file", "get_core_dir"]
+        );
+        assert_eq!(
+            sensitive_reach(&capabilities, &create(&["--permission", "profile:write"])),
+            ["read_profile_file"]
+        );
+        assert!(
+            sensitive_reach(&capabilities, &create(&["--permission", "proxy:read"])).is_empty()
+        );
     }
 }

@@ -142,7 +142,7 @@ impl ListeningServer {
             writer: Arc::new(WriterGate::default()),
         };
         peer.send(Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: features.iter().map(|s| (*s).into()).collect(),
         })
@@ -179,7 +179,7 @@ impl Peer {
             writer: Arc::new(WriterGate::default()),
         };
         peer.send(Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: features.iter().map(|s| (*s).into()).collect(),
         })
@@ -220,7 +220,7 @@ impl Peer {
             writer,
         };
         peer.send(Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: features.iter().map(|s| (*s).into()).collect(),
         })
@@ -1015,7 +1015,7 @@ async fn local_handler_panic_reaches_fatal_supervision() {
     nyanpasu_rpc_protocol::frame::write_frame(
         &mut stream,
         &Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: vec![],
         },
@@ -1454,7 +1454,10 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
             id: "tok_local_limited".to_owned(),
             name: "limited".to_owned(),
         },
-        [nyanpasu_rpc_protocol::Scope::Proxy].into(),
+        nyanpasu_contracts::auth::Grant::Custom(nyanpasu_contracts::auth::Permissions::NONE.with(
+            nyanpasu_contracts::auth::Resource::Proxy,
+            nyanpasu_contracts::auth::Access::Write,
+        )),
     );
     let task = tokio::spawn(
         serve_stream(
@@ -1477,14 +1480,14 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
         writer: Arc::new(WriterGate::default()),
     };
     peer.send(Frame::Hello {
-        versions: vec![1],
+        versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
         required_features: vec!["rpc".into()],
         optional_features: vec!["events".into(), "connection-details".into()],
     })
     .await;
     assert!(matches!(peer.read().await, Frame::Accept { .. }));
 
-    // `rpc_describe` succeeds without `Scope::Read` and shows `allowed: false` for `get_profiles`.
+    // `rpc_describe` succeeds with only `proxy:write` and shows `allowed: false` for `get_profiles`.
     peer.request("rpc_describe", json!({})).await;
     let Frame::Response {
         reply: Reply::Result(described),
@@ -1512,7 +1515,7 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
             .allowed
     );
 
-    // Command outside granted scopes fails with `forbidden`.
+    // A command of another resource fails with `forbidden`.
     peer.request("get_profiles", json!({})).await;
     let Frame::Response {
         reply: Reply::Error(error),
@@ -1523,7 +1526,7 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
     };
     assert_eq!(error["kind"], "forbidden");
 
-    // Subscriptions lacking required scopes fail with `SubscriptionErrorCode::Forbidden`
+    // Subscriptions lacking their permission fail with `SubscriptionErrorCode::Forbidden`
     // before subscribing to `events` or touching snapshot sources.
     peer.subscribe("connection-details", None).await;
     assert!(matches!(
@@ -1557,7 +1560,10 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
             id: "tok_local_exhausted".to_owned(),
             name: "exhausted".to_owned(),
         },
-        [nyanpasu_rpc_protocol::Scope::Proxy].into(),
+        nyanpasu_contracts::auth::Grant::Custom(nyanpasu_contracts::auth::Permissions::NONE.with(
+            nyanpasu_contracts::auth::Resource::Proxy,
+            nyanpasu_contracts::auth::Access::Write,
+        )),
     );
     let exhausted_limits = ConnectionLimits {
         resources: 0,
@@ -1585,7 +1591,7 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
     };
     peer2
         .send(Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: vec!["events".into(), "connection-details".into()],
         })
@@ -1632,7 +1638,8 @@ async fn local_subscribe_enforces_scope_and_capability_before_snapshot_or_event_
 
 #[tokio::test]
 async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
-    use nyanpasu_rpc_protocol::{ResponseVisibility, Scope};
+    use nyanpasu_contracts::auth::{Grant, Role};
+    use nyanpasu_rpc_protocol::ResponseVisibility;
 
     struct VisibilitySource {
         snapshots: Mutex<Vec<ResponseVisibility>>,
@@ -1668,12 +1675,10 @@ async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
     let endpoint = Endpoint::discover(ENDPOINT_NAMESPACE, directory.path(), None).unwrap();
     let listener = EndpointListener::bind(&endpoint).await.unwrap();
 
-    for (scopes, expected_visibility) in [
-        (vec![Scope::Read], ResponseVisibility::Public),
-        (
-            vec![Scope::Read, Scope::SensitiveRead],
-            ResponseVisibility::Full,
-        ),
+    // A viewer reads `logs`, `system` and `traffic` redacted; an admin writes them.
+    for (role, expected_visibility) in [
+        (Role::Viewer, ResponseVisibility::Public),
+        (Role::Admin, ResponseVisibility::Full),
     ] {
         let (stream, accepted) = tokio::join!(endpoint.connect(), listener.accept());
         let stop = CancellationToken::new();
@@ -1682,7 +1687,7 @@ async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
                 id: format!("tok_{expected_visibility:?}"),
                 name: "local-vis".to_owned(),
             },
-            scopes.into_iter().collect(),
+            Grant::Role(role),
         );
         let task = tokio::spawn(
             serve_stream(
@@ -1705,7 +1710,7 @@ async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
             writer: Arc::new(WriterGate::default()),
         };
         peer.send(Frame::Hello {
-            versions: vec![1],
+            versions: vec![nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION],
             required_features: vec!["rpc".into()],
             optional_features: vec!["events".into(), "connection-details".into()],
         })
@@ -1750,47 +1755,32 @@ async fn local_server_privacy_sanitizes_errors_and_threads_visibility() {
             panic!("expected unknown_method response");
         };
         assert_eq!(unknown_err["kind"], "unknown_method");
-        if expected_visibility == ResponseVisibility::Public {
-            assert!(
-                !unknown_err["message"]
-                    .as_str()
-                    .unwrap()
-                    .contains("secret_local_method_canary")
-            );
-        } else {
-            assert!(
-                unknown_err["message"]
-                    .as_str()
-                    .unwrap()
-                    .contains("secret_local_method_canary")
-            );
-        }
+        // An unknown method has no resource to write, so its name is never echoed.
+        assert!(
+            !unknown_err["message"]
+                .as_str()
+                .unwrap()
+                .contains("secret_local_method_canary")
+        );
 
         peer.subscribe("connection-details", None).await;
         assert!(matches!(peer.read().await, Frame::Subscribed { .. }));
 
         peer.subscribe("events", Some(EventName::CoreStatusChanged))
             .await;
-        if expected_visibility == ResponseVisibility::Full {
-            assert!(matches!(peer.read().await, Frame::Subscribed { .. }));
-            let Frame::Reset { snapshot, .. } = peer.read().await else {
-                panic!("expected Reset frame");
-            };
-            assert_eq!(snapshot["visibility"], "Full");
-        } else {
-            assert!(matches!(
-                peer.read().await,
-                Frame::SubscriptionError {
-                    code: SubscriptionErrorCode::Forbidden,
-                    ..
-                }
-            ));
-        }
+        assert!(matches!(peer.read().await, Frame::Subscribed { .. }));
+        let Frame::Reset { snapshot, .. } = peer.read().await else {
+            panic!("expected Reset frame");
+        };
+        assert_eq!(snapshot["visibility"], format!("{expected_visibility:?}"));
 
         peer.finish().await;
     }
 
-    assert_eq!(*source.snapshots.lock(), vec![ResponseVisibility::Full]);
+    assert_eq!(
+        *source.snapshots.lock(),
+        vec![ResponseVisibility::Public, ResponseVisibility::Full]
+    );
     assert_eq!(
         *source.details_visibilities.lock(),
         vec![ResponseVisibility::Public, ResponseVisibility::Full]

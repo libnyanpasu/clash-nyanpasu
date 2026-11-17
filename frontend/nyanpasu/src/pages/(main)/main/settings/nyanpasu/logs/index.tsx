@@ -58,7 +58,7 @@ function RouteComponent() {
     <>
       <PageTitle backTo="/main/settings">{m.settings_label_logs()}</PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
           <AppLogSettings />
 

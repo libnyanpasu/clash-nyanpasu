@@ -18,7 +18,7 @@ function RouteComponent() {
         {m.settings_nyanpasu_keyboard_shortcuts()}
       </PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
           <div data-slot="keyboard-settings-container">
             <SettingsGroup>

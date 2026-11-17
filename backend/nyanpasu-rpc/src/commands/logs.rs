@@ -7,7 +7,7 @@ use crate::{
     registry::{RpcCaller, RpcState},
 };
 
-#[nyanpasu_rpc::rpc(local, http, result, operation = nyanpasu_rpc_protocol::operations::ListLogFiles, query)]
+#[nyanpasu_rpc::rpc(local, http, result, operation = nyanpasu_rpc_protocol::operations::ListLogFiles, query, permission = logs:read)]
 #[specta::specta]
 pub async fn list_log_files(
     client: RpcState<'_, NyanpasuClient>,
@@ -16,7 +16,7 @@ pub async fn list_log_files(
     client.list_log_files(source).await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::OpenLogSession, scope = read)]
+#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::OpenLogSession, permission = logs:read)]
 #[specta::specta]
 pub async fn open_log_session(
     window: RpcCaller,
@@ -29,7 +29,7 @@ pub async fn open_log_session(
         .await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::QueryLogs, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::QueryLogs, permission = logs:read, sensitive)]
 #[specta::specta]
 pub async fn query_logs(
     window: RpcCaller,
@@ -43,7 +43,7 @@ pub async fn query_logs(
 }
 
 /// Public app and service log page summary without message text, raw lines, target strings, or text filters.
-#[nyanpasu_rpc::rpc(http, result, owner, scope = read)]
+#[nyanpasu_rpc::rpc(http, result, owner, permission = logs:read)]
 #[specta::specta]
 pub async fn query_logs_summary(
     window: RpcCaller,
@@ -56,7 +56,7 @@ pub async fn query_logs_summary(
         .await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::CloseLogSession, scope = read)]
+#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::CloseLogSession, permission = logs:read)]
 #[specta::specta]
 pub async fn close_log_session(
     window: RpcCaller,
@@ -69,7 +69,7 @@ pub async fn close_log_session(
         .await
 }
 
-#[nyanpasu_rpc::rpc(http, owner, scope = settings)]
+#[nyanpasu_rpc::rpc(http, owner, permission = logs:write)]
 #[specta::specta]
 pub fn report_frontend_events(
     window: RpcCaller,

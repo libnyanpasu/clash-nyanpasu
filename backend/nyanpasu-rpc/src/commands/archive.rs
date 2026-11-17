@@ -1,8 +1,7 @@
 //! Archive-only log collection for HTTP downloads and native save dialogs.
 //!
 //! Archive text redaction (`nyanpasu_config::redact`) keeps opaque URL hosts/paths intact, so
-//! `/bridge/logs/archive` remains a `sensitive_read` diagnostic export rather than an ordinary
-//! `read` endpoint.
+//! `/bridge/logs/archive` is a sensitive diagnostic export.
 
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_diagnose::{

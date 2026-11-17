@@ -192,3 +192,20 @@ fn anonymous_permissions_stay_within_the_operator_role() {
         );
     }
 }
+
+#[test]
+fn anonymous_permissions_are_capped_at_the_operator_role() {
+    use Resource::*;
+    assert_eq!(
+        cap_anonymous_permissions(&Role::Owner.permissions()),
+        Role::Operator.permissions()
+    );
+    assert_eq!(
+        cap_anonymous_permissions(&map(&[(System, W), (Logs, R), (Remote, R)])),
+        map(&[(System, R), (Logs, R)])
+    );
+    assert_eq!(
+        cap_anonymous_permissions(&Permissions::NONE),
+        Permissions::NONE
+    );
+}

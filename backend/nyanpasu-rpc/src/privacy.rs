@@ -1,5 +1,5 @@
-//! Typed, boundary-enforced error privacy projections for callers lacking
-//! `Scope::SensitiveRead`.
+//! Typed, boundary-enforced error privacy projections for redacted responses; the redaction
+//! layer ([`crate::redaction`]) decides which responses are redacted.
 //!
 //! Projections happen on typed domain values before JSON serialization, never by
 //! regex scrubbing or key filtering on serialized payloads.
@@ -78,7 +78,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```compile_fail
 /// use nyanpasu_runtime_values::runtime::MutationOutcome;
 ///
-/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, permission = settings:write)]
 /// fn raw_outcome() -> MutationOutcome<()> {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -93,7 +93,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 ///
 /// type RawMutationAlias = MutationOutcome<()>;
 ///
-/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, permission = settings:write)]
 /// fn raw_alias_outcome() -> RawMutationAlias {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -104,7 +104,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```
 ///
 /// ```compile_fail
-/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, permission = settings:write)]
 /// fn wrong_plain_type() -> String {
 ///     "not a dual-shape outcome".to_owned()
 /// }
@@ -910,11 +910,8 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
         ConfigError::InvalidRemoteAccess { reason } => PublicConfigError::InvalidRemoteAccess {
             reason: match reason {
                 RemoteAccessError::PortZero => PublicRemoteAccessErrorKind::PortZero,
-                RemoteAccessError::LocalOpenScopesEmpty => {
-                    PublicRemoteAccessErrorKind::LocalOpenScopesEmpty
-                }
-                RemoteAccessError::LocalOpenScopeForbidden { .. } => {
-                    PublicRemoteAccessErrorKind::LocalOpenScopeForbidden
+                RemoteAccessError::AnonymousBeyondOperator { .. } => {
+                    PublicRemoteAccessErrorKind::AnonymousBeyondOperator
                 }
                 RemoteAccessError::UseDedicatedCommand => {
                     PublicRemoteAccessErrorKind::UseDedicatedCommand

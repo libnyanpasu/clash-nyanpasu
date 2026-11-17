@@ -8,11 +8,12 @@
 
 use std::{collections::BTreeMap, net::IpAddr, sync::Arc, time::Duration};
 
+use nyanpasu_config::application::Role;
 use nyanpasu_contracts::auth::{
     AccessTokenStatus, AccessTokenSummary, AuthClock, AuthContext, AuthRevocation,
     AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest, EntropySource,
-    EstablishedBrowserSession, IssuedAccessToken, IssuedLaunchCode, Principal, RemoteAuthPolicy,
-    Scope, ScopeSet, SecretHash, SecretStore, SecretString, SessionId, TlsCertificateGenerator,
+    EstablishedBrowserSession, Grant, GrantError, IssuedAccessToken, IssuedLaunchCode, Principal,
+    RemoteAuthPolicy, SecretHash, SecretStore, SecretString, SessionId, TlsCertificateGenerator,
     TlsCertificateRequest, TlsCertificateSummary, TlsIdentity, TokenId,
     is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
 };
@@ -56,7 +57,6 @@ pub(super) enum Message {
         reply: Reply<AuthenticatedCaller>,
     },
     IssueLaunchCode {
-        scopes: ScopeSet,
         reply: Reply<IssuedLaunchCode>,
     },
     ExchangeLaunchCode {
@@ -134,7 +134,7 @@ impl LiveToken {
         AccessTokenSummary {
             id: self.record.id.clone(),
             name: self.record.name.clone(),
-            scopes: self.record.scopes.clone(),
+            grant: self.record.grant,
             created_at_ms: self.record.created_at_ms,
             expires_at_ms: self.record.expires_at_ms,
             last_used_at_ms: self.last_used_at_ms,
@@ -149,7 +149,6 @@ impl LiveToken {
 
 struct LaunchCode {
     hash: SecretHash,
-    scopes: ScopeSet,
     expires_at_mono_ms: u64,
 }
 
@@ -157,7 +156,7 @@ struct Session {
     id: SessionId,
     cookie_hash: SecretHash,
     backing_token_id: Option<TokenId>,
-    scopes: ScopeSet,
+    grant: Grant,
     token_expires_at_ms: Option<i64>,
     created_at_ms: i64,
     last_active_at_ms: i64,
@@ -169,7 +168,7 @@ impl Session {
         BrowserSessionSummary {
             id: self.id.clone(),
             backing_token_id: self.backing_token_id.clone(),
-            scopes: self.scopes.clone(),
+            grant: self.grant,
             created_at_ms: self.created_at_ms,
             last_active_at_ms: self.last_active_at_ms,
             token_expires_at_ms: self.token_expires_at_ms,
@@ -182,7 +181,7 @@ impl Session {
                 Principal::Session {
                     id: self.id.as_str().to_owned(),
                 },
-                self.scopes.clone(),
+                self.grant,
             ),
             expires_at_ms: self.token_expires_at_ms,
         }
@@ -291,8 +290,8 @@ impl Actor for RemoteAccessAuthActor {
             Message::AuthenticateToken { token, reply } => {
                 let _ = reply.send(state.authenticate_token(&token));
             }
-            Message::IssueLaunchCode { scopes, reply } => {
-                let _ = reply.send(state.issue_launch_code(scopes));
+            Message::IssueLaunchCode { reply } => {
+                let _ = reply.send(state.issue_launch_code());
             }
             Message::ExchangeLaunchCode { code, reply } => {
                 let _ = reply.send(state.exchange_launch_code(&code));
@@ -420,13 +419,21 @@ impl State {
         if self.tokens.len() >= self.policy.max_tokens {
             return Err(RemoteAuthError::CapacityExceeded { resource: "tokens" });
         }
-        // Remote administration is never reachable with a bearer token, so a token holding it
-        // would only look more powerful than it is.
-        if request.scopes.contains(Scope::RemoteAdmin) {
-            return Err(RemoteAuthError::InvalidInput {
-                reason: "a token cannot hold the remote_admin scope",
-            });
-        }
+        // The power to grant stays with the owner, and remote administration is never reachable
+        // over HTTP, so a token holding it would only look more powerful than it is.
+        request
+            .grant
+            .validate()
+            .map_err(|error| RemoteAuthError::InvalidInput {
+                reason: match error {
+                    GrantError::UnassignableRole { .. } => {
+                        "a token can only hold the viewer, operator or admin role"
+                    }
+                    GrantError::RemoteInCustomPermissions => {
+                        "a token cannot hold remote permissions"
+                    }
+                },
+            })?;
         let now = self.clock.now_unix_ms();
         if request.expires_at_ms.is_some_and(|expires| expires <= now) {
             return Err(RemoteAuthError::InvalidInput {
@@ -438,7 +445,7 @@ impl State {
             record: TokenRecord {
                 id: id.clone(),
                 name: request.name,
-                scopes: request.scopes,
+                grant: request.grant,
                 hash,
                 created_at_ms: now,
                 expires_at_ms: request.expires_at_ms,
@@ -561,13 +568,13 @@ impl State {
                     id: live.record.id.to_string(),
                     name: live.record.name.to_string(),
                 },
-                live.record.scopes.clone(),
+                live.record.grant,
             ),
             expires_at_ms: live.record.expires_at_ms,
         })
     }
 
-    fn issue_launch_code(&mut self, scopes: ScopeSet) -> Result<IssuedLaunchCode, RemoteAuthError> {
+    fn issue_launch_code(&mut self) -> Result<IssuedLaunchCode, RemoteAuthError> {
         if self.launch_codes.len() >= MAX_LAUNCH_CODES {
             return Err(RemoteAuthError::CapacityExceeded {
                 resource: "launch_codes",
@@ -578,12 +585,10 @@ impl State {
         let (code, hash) = mint_launch_code(self.entropy.as_ref())?;
         self.launch_codes.push(LaunchCode {
             hash,
-            scopes: scopes.clone(),
             expires_at_mono_ms: self.clock.monotonic_ms().saturating_add(ttl_ms),
         });
         Ok(IssuedLaunchCode {
             code,
-            scopes,
             issued_at_ms: now_unix,
             expires_at_ms: now_unix.saturating_add(i64::try_from(ttl_ms).unwrap_or(i64::MAX)),
         })
@@ -603,8 +608,9 @@ impl State {
             }
         }
         let index = matched.ok_or(RemoteAuthError::Unauthorized)?;
-        let code = self.launch_codes.swap_remove(index);
-        self.open_session(code.scopes, None, None)
+        self.launch_codes.swap_remove(index);
+        // A launch code comes from the owner's desktop: everything but remote administration.
+        self.open_session(Grant::Role(Role::Admin), None, None)
     }
 
     fn login_with_token(
@@ -614,12 +620,12 @@ impl State {
         let live = self
             .verify_token(raw)
             .ok_or(RemoteAuthError::Unauthorized)?;
-        let (scopes, id, expires) = (
-            live.record.scopes.clone(),
+        let (grant, id, expires) = (
+            live.record.grant,
             live.record.id.clone(),
             live.record.expires_at_ms,
         );
-        self.open_session(scopes, Some(id), expires)
+        self.open_session(grant, Some(id), expires)
     }
 
     /// A full session table is a bounded cache, not a login denial. Prefer dropping one of the
@@ -658,7 +664,7 @@ impl State {
 
     fn open_session(
         &mut self,
-        scopes: ScopeSet,
+        grant: Grant,
         backing_token_id: Option<TokenId>,
         token_expires_at_ms: Option<i64>,
     ) -> Result<EstablishedBrowserSession, RemoteAuthError> {
@@ -672,7 +678,7 @@ impl State {
             id: id.clone(),
             cookie_hash,
             backing_token_id,
-            scopes,
+            grant,
             token_expires_at_ms,
             created_at_ms: now_unix,
             last_active_at_ms: now_unix,

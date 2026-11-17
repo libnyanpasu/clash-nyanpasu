@@ -1,6 +1,7 @@
+use nyanpasu_contracts::auth::{Access, Permission, Permissions, Resource};
 use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, EventName, RpcTarget, Scope, ScopeSet, ShellCapability,
-    permission::{PermissionSource, ResourceKind, ResourceMetadata},
+    CommandEffect, CommandKind, EventName, RpcTarget, ShellCapability,
+    permission::{PermissionSource, RESOURCES, ResourceKind, ResourceMetadata},
 };
 
 use super::{Authority, CONNECTION_DETAILS, ICON_FETCH, LOGS_ARCHIVE, declared};
@@ -10,8 +11,9 @@ const PROXY_COMMAND: ResourceMetadata = ResourceMetadata {
     namespace: "clash",
     kind: ResourceKind::Command(CommandKind::Shared),
     effect: CommandEffect::Mutation,
-    scope: Scope::Proxy,
+    permission: Permission::new(Resource::Proxy, Access::Write),
     source: PermissionSource::Legacy,
+    sensitive: false,
     targets: &[RpcTarget::Desktop, RpcTarget::Http],
     capabilities: &[ShellCapability::Window],
     optional_capabilities: &[],
@@ -25,12 +27,12 @@ fn kind(result: Result<(), nyanpasu_rpc_protocol::RpcError>) -> &'static str {
 /// between `401` and `unsupported` and is the registry's, which resolves the name first.
 #[test]
 fn refusals_follow_the_admission_order() {
-    let none = ScopeSet::default();
-    let proxy: ScopeSet = [Scope::Proxy].into_iter().collect();
+    let none = Permissions::NONE;
+    let proxy = Permissions::NONE.with(Resource::Proxy, Access::Write);
     let with_window = Authority::new(&[ShellCapability::Window]);
     let without_window = Authority::new(&[]);
 
-    // Unresolved: 401 even where the resource is not offered and the scope is missing.
+    // Unresolved: 401 even where the resource is not offered and the permission is missing.
     assert_eq!(
         kind(without_window.admit(&PROXY_COMMAND, RpcTarget::Local, None)),
         "unauthorized"
@@ -44,11 +46,12 @@ fn refusals_follow_the_admission_order() {
         kind(without_window.admit(&PROXY_COMMAND, RpcTarget::Http, Some(&none))),
         "unsupported"
     );
-    // Offered: the requirement decides.
-    assert_eq!(
-        kind(with_window.admit(&PROXY_COMMAND, RpcTarget::Http, Some(&none))),
-        "forbidden"
-    );
+    // Offered: the requirement decides, and the refusal names the missing permission.
+    let refused = with_window
+        .admit(&PROXY_COMMAND, RpcTarget::Http, Some(&none))
+        .unwrap_err();
+    assert_eq!(refused.kind, "forbidden");
+    assert_eq!(refused.message, "missing permission proxy:write");
     assert_eq!(
         kind(with_window.admit(&PROXY_COMMAND, RpcTarget::Http, Some(&proxy))),
         "ok"
@@ -57,57 +60,88 @@ fn refusals_follow_the_admission_order() {
 
 #[test]
 fn visibility_is_the_admission_predicate() {
-    let proxy: ScopeSet = [Scope::Proxy].into_iter().collect();
     let authority = Authority::new(&[ShellCapability::Window]);
     for target in [RpcTarget::Desktop, RpcTarget::Http, RpcTarget::Local] {
-        for scopes in [ScopeSet::default(), proxy.clone()] {
+        for permissions in [
+            Permissions::NONE,
+            Permissions::NONE.with(Resource::Proxy, Access::Read),
+            Permissions::NONE.with(Resource::Proxy, Access::Write),
+        ] {
             assert_eq!(
-                authority.visible(&PROXY_COMMAND, target, &scopes),
+                authority.visible(&PROXY_COMMAND, target, &permissions),
                 authority
-                    .admit(&PROXY_COMMAND, target, Some(&scopes))
+                    .admit(&PROXY_COMMAND, target, Some(&permissions))
                     .is_ok(),
-                "{target:?} {scopes:?}"
+                "{target:?} {permissions:?}"
             );
         }
     }
 }
 
+/// `rpc_describe` is open to every resolved caller because it requires `meta:read`, which every
+/// resolved caller holds, not because of its name.
 #[test]
 fn any_resolved_caller_may_describe_itself() {
-    let describe = ResourceMetadata {
-        name: super::RPC_DESCRIBE_METHOD,
-        scope: Scope::Read,
-        capabilities: &[],
-        ..PROXY_COMMAND
-    };
+    let describe = RESOURCES
+        .iter()
+        .find(|resource| resource.name == "rpc_describe")
+        .unwrap();
+    assert_eq!(describe.permission, Permission::META_READ);
     let authority = Authority::new(&[]);
     assert!(
         authority
-            .admit(&describe, RpcTarget::Http, Some(&ScopeSet::default()))
+            .admit(describe, RpcTarget::Http, Some(&Permissions::NONE))
             .is_ok()
     );
-    // The exception is the command's, not the name's.
-    let event = ResourceMetadata {
-        kind: ResourceKind::Event,
-        ..describe
+    // The same name with another requirement is refused.
+    let renamed = ResourceMetadata {
+        permission: Permission::new(Resource::Proxy, Access::Read),
+        ..*describe
     };
     assert!(
         authority
-            .admit(&event, RpcTarget::Http, Some(&ScopeSet::default()))
+            .admit(&renamed, RpcTarget::Http, Some(&Permissions::NONE))
             .is_err()
     );
 }
 
 #[test]
 fn transports_admit_declared_routes_and_streams() {
-    assert_eq!(declared(ICON_FETCH).scope, Scope::Read);
+    assert_eq!(declared(ICON_FETCH).permission.access, Access::Read);
     assert_eq!(declared(ICON_FETCH).targets, &[RpcTarget::Http]);
-    assert_eq!(declared(LOGS_ARCHIVE).scope, Scope::SensitiveRead);
+    assert_eq!(
+        declared(LOGS_ARCHIVE).permission,
+        Permission::new(Resource::Logs, Access::Read)
+    );
+    assert!(declared(LOGS_ARCHIVE).sensitive);
     assert_eq!(
         declared(CONNECTION_DETAILS).targets,
         &[RpcTarget::Http, RpcTarget::Local]
     );
     for event in EventName::ALL {
         assert_eq!(event.resource().kind, ResourceKind::Event);
+    }
+}
+
+/// Admission never reads the sensitive marking: two rows that differ only in it are admitted
+/// alike for every caller.
+#[test]
+fn the_sensitive_marking_takes_no_part_in_admission() {
+    let marked = ResourceMetadata {
+        sensitive: true,
+        ..PROXY_COMMAND
+    };
+    let authority = Authority::new(&[ShellCapability::Window]);
+    for permissions in [
+        Permissions::NONE,
+        Permissions::NONE.with(Resource::Proxy, Access::Read),
+        Permissions::NONE.with(Resource::Proxy, Access::Write),
+    ] {
+        for target in [RpcTarget::Desktop, RpcTarget::Http] {
+            assert_eq!(
+                kind(authority.admit(&marked, target, Some(&permissions))),
+                kind(authority.admit(&PROXY_COMMAND, target, Some(&permissions)))
+            );
+        }
     }
 }

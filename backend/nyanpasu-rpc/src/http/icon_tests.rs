@@ -182,23 +182,22 @@ async fn icon_cache_policy_does_not_relax_other_routes() {
 }
 
 #[tokio::test]
-async fn http_icon_route_enforces_visibility_privacy_across_read_and_sensitive_scopes() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+async fn http_icon_route_redacts_for_readers_and_not_for_writers() {
+    use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
+    use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let fixture = failing_fixture(2).await;
     let router = fixture.rpc.clone().router();
     let path = "/bridge/icons/cached?url=https%3A%2F%2Fuser%3Apass%40secret-icon-canary.invalid%2Ficon.png";
 
-    for (scopes, is_full) in [
-        (vec![Scope::Read], false),
-        (vec![Scope::Read, Scope::SensitiveRead], true),
-    ] {
+    // The icon route requires `system:read`.
+    for (access, is_full) in [(Access::Read, false), (Access::Write, true)] {
         let auth = AuthContext::new(
             Principal::Token {
                 id: "tok_icon_01".to_owned(),
                 name: "icon-token".to_owned(),
             },
-            scopes.into_iter().collect(),
+            Grant::Custom(Permissions::NONE.with(Resource::System, access)),
         );
         let response = with_http_auth(router.clone(), auth)
             .oneshot(
@@ -223,11 +222,11 @@ async fn http_icon_route_enforces_visibility_privacy_across_read_and_sensitive_s
         if is_full {
             assert!(
                 body_text.contains("secret-icon-canary"),
-                "SensitiveRead icon error must retain canary diagnostic: {body_text}"
+                "an unredacted icon error must retain canary diagnostic: {body_text}"
             );
             assert!(
                 body_text.contains("user:pass"),
-                "SensitiveRead icon error must retain URL credentials in diagnostic: {body_text}"
+                "an unredacted icon error must retain URL credentials in diagnostic: {body_text}"
             );
         } else {
             assert!(

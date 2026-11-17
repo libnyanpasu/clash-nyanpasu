@@ -580,7 +580,7 @@
     "request": null,
     "successes": [
       {
-        "protocol": 1,
+        "protocol": 2,
         "server": {
           "kind": "headless",
           "version": "2.0.0"
@@ -590,12 +590,22 @@
           "kind": "local_socket",
           "user": "1000"
         },
-        "scopes": ["read"],
+        "role": "owner",
+        "permissions": {
+          "proxy": "write",
+          "profile": "write",
+          "settings": "write",
+          "system": "write",
+          "logs": "write",
+          "traffic": "write",
+          "remote": "write"
+        },
         "commands": [
           {
             "name": "rpc_describe",
             "effect": "query",
-            "scope": "read",
+            "permission": { "resource": "meta", "access": "read" },
+            "sensitive": false,
             "allowed": true
           }
         ]
@@ -604,7 +614,7 @@
     "failures": [
       {
         "kind": "invalid_params",
-        "message": "expected an empty input object",
+        "message": "invalid parameters",
         "code": null,
         "retryable": null,
         "operation_id": null,

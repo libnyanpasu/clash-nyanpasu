@@ -1,5 +1,10 @@
-//! Dispatched error and transport-parse privacy canary tests across every
-//! non-`SensitiveRead` scope and transport boundary.
+//! Dispatched error and transport-parse privacy canary tests across every resource and transport
+//! boundary.
+//!
+//! Until the redaction layer has its own rules, a caller sees the unredacted response only when it
+//! holds `write` on the resource it called (permission namespace spec, C-2). A command that
+//! requires `write` therefore answers every admitted caller in full; its redacted projection is
+//! reached by callers that only read, which the canary commands below allow.
 
 use std::{io, sync::Arc};
 
@@ -8,11 +13,10 @@ use axum::{
     http::{Request, StatusCode},
 };
 use nyanpasu_config::application::{HttpAccessConfig, RemoteAccessConfig};
+use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
 use nyanpasu_core_manager::{CoreError, CoreErrorKind, OperationId};
 use nyanpasu_observers::logs::CoreLogError;
-use nyanpasu_rpc_protocol::{
-    AuthContext, Principal, ResponseVisibility, RpcError, RpcOwner, Scope,
-};
+use nyanpasu_rpc_protocol::{AuthContext, Principal, ResponseVisibility, RpcError, RpcOwner};
 use nyanpasu_runtime_values::{
     mutation::CommitAborted,
     profiles::ProfilesError,
@@ -29,23 +33,37 @@ use crate::{
     test_support::{Fixture, rpc_for_test_call_with_auth, with_http_auth},
 };
 
-fn auth_with_scopes(scopes: impl IntoIterator<Item = Scope>) -> AuthContext {
+fn holding(resource: Resource, access: Access) -> Grant {
+    Grant::Custom(Permissions::NONE.with(resource, access))
+}
+
+/// A token that reads `resource`: it sees redacted responses from it.
+fn reader(resource: Resource) -> AuthContext {
+    token(holding(resource, Access::Read))
+}
+
+/// A token that writes `resource`: it sees unredacted responses from it.
+fn writer(resource: Resource) -> AuthContext {
+    token(holding(resource, Access::Write))
+}
+
+fn token(grant: Grant) -> AuthContext {
     AuthContext::new(
         Principal::Token {
             id: "tok_privacy_01".to_owned(),
-            name: "scoped-token".to_owned(),
+            name: "custom-token".to_owned(),
         },
-        scopes.into_iter().collect(),
+        grant,
     )
 }
 
-fn desktop_caller(scopes: impl IntoIterator<Item = Scope>) -> RpcCaller {
+fn desktop_caller(grant: Grant) -> RpcCaller {
     RpcCaller::new(
         AuthContext::new(
             Principal::Desktop {
                 window: "main".to_owned(),
             },
-            scopes.into_iter().collect(),
+            grant,
         ),
         RpcOwner::desktop("main"),
     )
@@ -66,22 +84,23 @@ fn assert_no_canary(wire: &serde_json::Value, secrets: &[&str]) {
 }
 
 #[tokio::test]
-async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scopes() {
+async fn dispatched_command_errors_project_by_the_transitional_rule() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
 
-    // 1. Scope::Read (`get_profile_sync_status_summary` with secret canary UID)
+    // 1. `profile:read` (`get_profile_sync_status_summary` with secret canary UID): a reader is
+    //    redacted, a writer is not.
     let read_secret = "https://user:pass@secret-read-canary.invalid/uid";
-    for (scopes, is_full) in [
-        (vec![Scope::Read], false),
-        (vec![Scope::Read, Scope::SensitiveRead], true),
+    for (auth, is_full) in [
+        (reader(Resource::Profile), false),
+        (writer(Resource::Profile), true),
     ] {
         let (status, body) = rpc_for_test_call_with_auth(
             &router,
             "get_profile_sync_status_summary",
             json!({ "uid": read_secret }),
             None,
-            Some(auth_with_scopes(scopes)),
+            Some(auth),
         )
         .await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
@@ -107,19 +126,17 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 2. Scope::Proxy (`clash_api_get_proxy_delay` with secret URL/proxy name)
+    // 2. `proxy:write` (`clash_api_get_proxy_delay` with secret URL/proxy name): every admitted
+    //    caller writes `proxy`, so the error is unredacted.
     let proxy_secret_url = "https://user:pass@secret-proxy-canary.invalid/delay?token=proxyleak";
     let proxy_secret_name = "secret-node-canary";
-    for (scopes, is_full) in [
-        (vec![Scope::Proxy], false),
-        (vec![Scope::Proxy, Scope::SensitiveRead], true),
-    ] {
+    for (auth, is_full) in [(writer(Resource::Proxy), true)] {
         let (status, body) = rpc_for_test_call_with_auth(
             &router,
             "clash_api_get_proxy_delay",
             json!({ "name": proxy_secret_name, "url": proxy_secret_url }),
             None,
-            Some(auth_with_scopes(scopes)),
+            Some(auth),
         )
         .await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
@@ -141,18 +158,15 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 3. Scope::Profile (`import_profile` with malformed secret URL)
+    // 3. `profile:write` (`import_profile` with malformed secret URL).
     let profile_secret_url = "not a url https://user:pass@secret-profile-canary.invalid/sub?tok=1";
-    for (scopes, is_full) in [
-        (vec![Scope::Profile], false),
-        (vec![Scope::Profile, Scope::SensitiveRead], true),
-    ] {
+    for (auth, is_full) in [(writer(Resource::Profile), true)] {
         let (status, body) = rpc_for_test_call_with_auth(
             &router,
             "import_profile",
             json!({ "url": profile_secret_url }),
             None,
-            Some(auth_with_scopes(scopes)),
+            Some(auth),
         )
         .await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
@@ -183,18 +197,15 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 4. Scope::Settings (`audit_echo` unclassified IO failure with canary text)
+    // 4. `settings:write` (`audit_echo` unclassified IO failure with canary text).
     let settings_secret = "disk-secret-canary-/home/user/.config/secret";
-    for (scopes, is_full) in [
-        (vec![Scope::Settings], false),
-        (vec![Scope::Settings, Scope::SensitiveRead], true),
-    ] {
+    for (auth, is_full) in [(writer(Resource::Settings), true)] {
         let (status, body) = rpc_for_test_call_with_auth(
             &router,
             "audit_echo",
             json!({ "value": settings_secret, "fail": true }),
             None,
-            Some(auth_with_scopes(scopes)),
+            Some(auth),
         )
         .await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
@@ -208,18 +219,15 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 5. Scope::System (`set_hotkeys` on Desktop dispatch with invalid canary hotkey string)
+    // 5. `system:write` (`set_hotkeys` on Desktop dispatch with invalid canary hotkey string).
     let hotkey_secret = "Ctrl+Alt+secret-hotkey-canary";
-    for (scopes, is_full) in [
-        (vec![Scope::System], false),
-        (vec![Scope::System, Scope::SensitiveRead], true),
-    ] {
+    for (grant, is_full) in [(holding(Resource::System, Access::Write), true)] {
         let error = fixture
             .rpc
             .call(
                 RpcTransport::TauriIpc,
                 "set_hotkeys",
-                desktop_caller(scopes),
+                desktop_caller(grant),
                 json!({ "hotkeys": [hotkey_secret] }),
             )
             .await
@@ -244,22 +252,19 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 6. Scope::RemoteAdmin (`set_remote_access` on Desktop dispatch with port 0)
+    // 6. `remote:write` (`set_remote_access` on Desktop dispatch with port 0).
     let mut remote_config = RemoteAccessConfig::default();
     remote_config.http = HttpAccessConfig {
         port: Some(0),
         ..remote_config.http
     };
-    for (scopes, is_full) in [
-        (vec![Scope::RemoteAdmin], false),
-        (vec![Scope::RemoteAdmin, Scope::SensitiveRead], true),
-    ] {
+    for (grant, is_full) in [(holding(Resource::Remote, Access::Write), true)] {
         let error = fixture
             .rpc
             .call(
                 RpcTransport::TauriIpc,
                 "set_remote_access",
-                desktop_caller(scopes),
+                desktop_caller(grant),
                 json!({ "config": remote_config }),
             )
             .await
@@ -287,7 +292,7 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
         }
     }
 
-    // 7. Typed `CoreLogCommandError` projection (used by `clear_core_logs` on `Scope::Settings`)
+    // 7. Typed `CoreLogCommandError` projection (used by `clear_core_logs` on `logs:write`)
     //    emits public `CoreLogRead` `IpcError` on `Public` visibility and rich `CoreLogError` on `Full`.
     let core_log_secret =
         CoreLogError::Unavailable("sqlite path /home/secret/core-logs.db failed".to_owned());
@@ -318,8 +323,9 @@ async fn dispatched_command_errors_project_safely_across_all_non_sensitive_scope
 async fn transport_parse_route_and_admission_ordering_enforce_public_privacy() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
-    let read_only = auth_with_scopes([Scope::Read]);
-    let full_auth = auth_with_scopes([Scope::Read, Scope::SensitiveRead]);
+    // `list_log_files` requires `logs:read`.
+    let read_only = reader(Resource::Logs);
+    let full_auth = writer(Resource::Logs);
 
     // 1. Admission ordering: missing HTTP auth (401) precedes malformed body / unknown method / errors.
     let unauth = router
@@ -334,8 +340,9 @@ async fn transport_parse_route_and_admission_ordering_enforce_public_privacy() {
         .unwrap();
     assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
 
-    // 2. Malformed HTTP JSON body hides snippet on Read-only (Public) and preserves on Full.
-    for (auth, is_full) in [(&read_only, false), (&full_auth, true)] {
+    // 2. A malformed HTTP JSON body has no admitted resource, so the snippet is hidden from every
+    //    caller.
+    for (auth, is_full) in [(&read_only, false), (&full_auth, false)] {
         let response = with_http_auth(router.clone(), auth.clone())
             .oneshot(
                 Request::post("/bridge/rpc")
@@ -390,9 +397,9 @@ async fn transport_parse_route_and_admission_ordering_enforce_public_privacy() {
         }
     }
 
-    // 4. Unknown method hides offending name on Public and preserves on Full.
+    // 4. An unknown method has no admitted resource, so its name is hidden from every caller.
     let secret_method = "secret_method_canary_fn";
-    for (auth, is_full) in [(&read_only, false), (&full_auth, true)] {
+    for (auth, is_full) in [(&read_only, false), (&full_auth, false)] {
         let (status, body) = rpc_for_test_call_with_auth(
             &router,
             secret_method,
@@ -632,7 +639,7 @@ fn canary_degraded_outcome(
     }
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = read)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = proxy:read)]
 fn privacy_canary_read_mutation(
     secret_path: String,
     secret_url: String,
@@ -641,7 +648,7 @@ fn privacy_canary_read_mutation(
     canary_degraded_outcome("read-committed-ok", &secret_path, &secret_url, &secret_diag).into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = proxy)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = proxy:read)]
 fn privacy_canary_proxy_mutation(
     secret_path: String,
     secret_url: String,
@@ -656,7 +663,7 @@ fn privacy_canary_proxy_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = profile)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = profile:read)]
 fn privacy_canary_profile_mutation(
     secret_path: String,
     secret_url: String,
@@ -671,7 +678,7 @@ fn privacy_canary_profile_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = settings)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
 fn privacy_canary_settings_mutation(
     secret_path: String,
     secret_url: String,
@@ -686,7 +693,7 @@ fn privacy_canary_settings_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = system)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
 fn privacy_canary_system_mutation(
     secret_path: String,
     secret_url: String,
@@ -701,7 +708,7 @@ fn privacy_canary_system_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = remote:read)]
 fn privacy_canary_remote_admin_mutation(
     secret_path: String,
     secret_url: String,
@@ -716,7 +723,7 @@ fn privacy_canary_remote_admin_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = system)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
 fn privacy_canary_app_update_mutation(
     secret_err: String,
     secret_endpoint: String,
@@ -749,7 +756,7 @@ fn privacy_canary_app_update_mutation(
 
 /// The live network reading of the host and the rule that matched it, with a refusal text that
 /// echoes both: everything `NetworkAutomationStatus` can hold that names the user's network.
-#[nyanpasu_rpc::rpc(http, privacy, scope = system)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
 fn privacy_canary_network_status(
     secret_ssid: String,
     secret_mac: String,
@@ -788,7 +795,7 @@ fn privacy_canary_network_status(
 }
 
 #[tokio::test]
-async fn network_automation_status_reply_drops_the_network_without_sensitive_read() {
+async fn network_automation_status_reply_drops_the_network_for_readers() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
     let params = json!({
@@ -797,14 +804,13 @@ async fn network_automation_status_reply_drops_the_network_without_sensitive_rea
         "secretRule": "rule-canary",
     });
 
-    // A writer that holds `system` but not `sensitive_read` learns what the switches did, not
-    // which network it was on.
+    // A `system` reader learns what the switches did, not which network it was on.
     let (status, public) = rpc_for_test_call_with_auth(
         &router,
         "privacy_canary_network_status",
         params.clone(),
         None,
-        Some(auth_with_scopes([Scope::System])),
+        Some(reader(Resource::System)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{public}");
@@ -827,13 +833,13 @@ async fn network_automation_status_reply_drops_the_network_without_sensitive_rea
         })
     );
 
-    // The editor's caller keeps the full reading.
+    // A `system` writer keeps the full reading.
     let (status, full) = rpc_for_test_call_with_auth(
         &router,
         "privacy_canary_network_status",
         params,
         None,
-        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+        Some(writer(Resource::System)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{full}");
@@ -846,10 +852,11 @@ async fn network_automation_status_reply_drops_the_network_without_sensitive_rea
     fixture.shutdown().await;
 }
 
-/// A refused policy names its rule, Wi-Fi name and gateway address in the full diagnostic. A
-/// `system` writer without `sensitive_read` is told only that the policy was invalid.
+/// A refused policy names its rule, Wi-Fi name and gateway address in the full diagnostic, which
+/// the `system` writer that sent it receives. A redacted reply says only that the policy was
+/// invalid.
 #[tokio::test]
-async fn refused_network_rules_name_nothing_without_sensitive_read() {
+async fn refused_network_rules_name_nothing_when_redacted() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
     let patch = json!({"patch": {"network_automation": {
@@ -861,37 +868,12 @@ async fn refused_network_rules_name_nothing_without_sensitive_read() {
         }],
     }}});
 
-    let (status, public) = rpc_for_test_call_with_auth(
-        &router,
-        "patch_system_settings",
-        patch.clone(),
-        None,
-        Some(auth_with_scopes([Scope::System])),
-    )
-    .await;
-    assert_ne!(status, StatusCode::OK, "{public}");
-    assert_no_canary(
-        &public,
-        &[
-            "rule-id-canary",
-            "rule-name-canary",
-            "mac-canary",
-            "ssid-canary",
-        ],
-    );
-    assert_eq!(public["domain_error"]["kind"]["domain"], "public");
-    assert_eq!(public["domain_error"]["kind"]["error"]["domain"], "config");
-    assert_eq!(
-        public["domain_error"]["kind"]["error"]["error"]["kind"],
-        "invalid_network_automation"
-    );
-
     let (status, full) = rpc_for_test_call_with_auth(
         &router,
         "patch_system_settings",
         patch,
         None,
-        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+        Some(writer(Resource::System)),
     )
     .await;
     assert_ne!(status, StatusCode::OK, "{full}");
@@ -899,11 +881,26 @@ async fn refused_network_rules_name_nothing_without_sensitive_read() {
         full.to_string().contains("rule-name-canary"),
         "the editor's caller keeps the reason: {full}"
     );
+
+    let refused = IpcError::from(
+        nyanpasu_core::state::config_error::ConfigError::InvalidNetworkAutomation {
+            reason: "rule rule-name-canary on ssid-canary via mac-canary".to_owned(),
+        },
+    );
+    let public =
+        serde_json::to_value(application_error_for(ResponseVisibility::Public, &refused)).unwrap();
+    assert_no_canary(&public, &["rule-name-canary", "mac-canary", "ssid-canary"]);
+    assert_eq!(public["domain_error"]["kind"]["domain"], "public");
+    assert_eq!(public["domain_error"]["kind"]["error"]["domain"], "config");
+    assert_eq!(
+        public["domain_error"]["kind"]["error"]["error"]["kind"],
+        "invalid_network_automation"
+    );
     fixture.shutdown().await;
 }
 
 #[tokio::test]
-async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes() {
+async fn dispatched_committed_degraded_outcome_projects_safely_for_every_resource() {
     use nyanpasu_rpc_protocol::types::ReceivedMutationOutcome;
 
     let fixture = Fixture::new(false).await;
@@ -915,38 +912,38 @@ async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes
 
     let cases = [
         (
-            Scope::Read,
+            Resource::Proxy,
             "privacy_canary_read_mutation",
             "read-committed-ok",
         ),
         (
-            Scope::Proxy,
+            Resource::Proxy,
             "privacy_canary_proxy_mutation",
             "proxy-committed-ok",
         ),
         (
-            Scope::Profile,
+            Resource::Profile,
             "privacy_canary_profile_mutation",
             "profile-committed-ok",
         ),
         (
-            Scope::Settings,
+            Resource::Settings,
             "privacy_canary_settings_mutation",
             "settings-committed-ok",
         ),
         (
-            Scope::System,
+            Resource::System,
             "privacy_canary_system_mutation",
             "system-committed-ok",
         ),
         (
-            Scope::RemoteAdmin,
+            Resource::Remote,
             "privacy_canary_remote_admin_mutation",
             "remote-admin-committed-ok",
         ),
     ];
 
-    for (scope, method, expected_value) in cases {
+    for (resource, method, expected_value) in cases {
         let expected_full = serde_json::to_value(canary_degraded_outcome(
             expected_value,
             secret_path,
@@ -964,7 +961,7 @@ async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes
                 "secretDiag": secret_diag,
             }),
             None,
-            Some(auth_with_scopes([scope])),
+            Some(reader(resource)),
         )
         .await;
         assert_eq!(public_status, StatusCode::OK, "{method}: {public_body}");
@@ -1020,7 +1017,7 @@ async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes
                 "secretDiag": secret_diag,
             }),
             None,
-            Some(auth_with_scopes([scope, Scope::SensitiveRead])),
+            Some(writer(resource)),
         )
         .await;
         assert_eq!(full_status, StatusCode::OK, "{method} full: {full_body}");
@@ -1034,7 +1031,7 @@ async fn dispatched_committed_degraded_outcome_projects_safely_across_all_scopes
 }
 
 #[tokio::test]
-async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
+async fn app_update_outcome_and_event_project_safely_for_readers() {
     use futures::StreamExt as _;
     use nyanpasu_core::client::app_update::AppUpdateEventSink as _;
     use nyanpasu_runtime_values::app_update::{
@@ -1059,7 +1056,7 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
             "secretBody": secret_body,
         }),
         None,
-        Some(auth_with_scopes([Scope::System])),
+        Some(reader(Resource::System)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{public_body}");
@@ -1074,7 +1071,7 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
     assert!(public_body.get("endpoints").is_none());
     assert!(public_body.get("error").is_none());
 
-    // System + SensitiveRead preserves full AppUpdateSnapshot.
+    // A `system` writer receives the full AppUpdateSnapshot.
     let (full_status, full_body) = rpc_for_test_call_with_auth(
         &router,
         "privacy_canary_app_update_mutation",
@@ -1084,7 +1081,7 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
             "secretBody": secret_body,
         }),
         None,
-        Some(auth_with_scopes([Scope::System, Scope::SensitiveRead])),
+        Some(writer(Resource::System)),
     )
     .await;
     assert_eq!(full_status, StatusCode::OK, "{full_body}");
@@ -1093,13 +1090,16 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
     assert_eq!(full_body["release"]["body"], secret_body);
     assert_eq!(full_body["source"], "github");
 
-    // BusAppUpdateEventSink emits AppUpdateSummaryChanged for Scope::Read subscribers
-    // without leaking full AppUpdateStateChanged payloads on unnamed SSE streams.
+    // BusAppUpdateEventSink emits AppUpdateSummaryChanged beside AppUpdateStateChanged. Both
+    // require `system:read`; the state is sensitive and events are not redacted, so a client that
+    // must not see it subscribes to the summary alone, which carries no secret.
     let revocation = tokio_util::sync::CancellationToken::new();
-    let mut sse_req = Request::get("/bridge/events").body(Body::empty()).unwrap();
+    let mut sse_req = Request::get("/bridge/events?name=app-update-summary-changed")
+        .body(Body::empty())
+        .unwrap();
     sse_req
         .extensions_mut()
-        .insert(auth_with_scopes([Scope::Read]));
+        .insert(token(Grant::Role(nyanpasu_contracts::auth::Role::Viewer)));
     sse_req
         .extensions_mut()
         .insert(crate::http::HttpSessionRevocation(
@@ -1134,12 +1134,8 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
 
     let sse_text = std::str::from_utf8(&chunk).unwrap().to_owned();
     assert!(
-        sse_text.contains("\"name\":\"app-update-summary-changed\""),
+        sse_text.contains("\"phase\":\"failed\""),
         "expected safe summary SSE event: {sse_text}"
-    );
-    assert!(
-        !sse_text.contains("app-update-state-changed"),
-        "must not emit SensitiveRead app-update-state-changed to Read-only stream: {sse_text}"
     );
     assert!(
         sse_text.contains("\"source\":\"github\""),
@@ -1153,7 +1149,7 @@ async fn app_update_outcome_and_event_project_safely_without_sensitive_read() {
 }
 
 #[tokio::test]
-async fn sensitive_getters_reject_without_sensitive_read_while_safe_summaries_stay_useful() {
+async fn sensitive_getters_need_their_domain_while_safe_summaries_stay_useful() {
     use nyanpasu_updater::{
         DownloadProgressState, DownloadStatus, DownloaderState, UpdaterProgressState,
         UpdaterProgressSummary, UpdaterState, UpdaterSummary,
@@ -1162,29 +1158,29 @@ async fn sensitive_getters_reject_without_sensitive_read_while_safe_summaries_st
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
 
-    // Sensitive getters require Scope::SensitiveRead.
+    // Sensitive getters require their domain's read, never another domain's.
     for (method, params) in [
         ("get_core_dir", json!({})),
         ("get_service_install_prompt", json!({})),
         ("get_core_agent_skills", json!({ "coreType": "mihomo" })),
         ("inspect_updater", json!({ "updaterId": 0 })),
     ] {
-        let (status, _) = rpc_for_test_call_with_auth(
+        let (status, body) = rpc_for_test_call_with_auth(
             &router,
             method,
             params,
             None,
-            Some(auth_with_scopes([Scope::Read])),
+            Some(reader(Resource::Profile)),
         )
         .await;
         assert_eq!(
-            status,
-            StatusCode::FORBIDDEN,
-            "{method} should require SensitiveRead"
+            body["message"], "missing permission system:read",
+            "{method} should require system:read"
         );
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method}");
     }
 
-    // System scope alone must not implicitly grant Read or SensitiveRead.
+    // Writing another resource grants nothing here.
     for (method, params) in [
         ("get_core_agent_skills", json!({ "coreType": "mihomo" })),
         (
@@ -1199,23 +1195,23 @@ async fn sensitive_getters_reject_without_sensitive_read_while_safe_summaries_st
             method,
             params,
             None,
-            Some(auth_with_scopes([Scope::System])),
+            Some(writer(Resource::Proxy)),
         )
         .await;
         assert_eq!(
             status,
             StatusCode::FORBIDDEN,
-            "{method} must reject System-only callers"
+            "{method} must reject a proxy writer"
         );
     }
 
-    // Safe CoreAgentSkillSummary remains readable with Scope::Read only and exposes no `dir`.
+    // Safe CoreAgentSkillSummary remains readable by a `system` reader and exposes no `dir`.
     let (summary_status, summary_body) = rpc_for_test_call_with_auth(
         &router,
         "get_core_agent_skills_summary",
         json!({ "coreType": "mihomo" }),
         None,
-        Some(auth_with_scopes([Scope::Read])),
+        Some(reader(Resource::System)),
     )
     .await;
     assert_eq!(summary_status, StatusCode::OK, "{summary_body}");

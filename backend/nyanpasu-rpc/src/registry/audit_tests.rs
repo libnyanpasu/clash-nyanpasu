@@ -33,7 +33,7 @@ use crate::{
     test_support::{Capture, Fixture, SECRET, test_http_auth, with_http_auth},
 };
 
-#[nyanpasu_rpc::rpc(http, scope = settings)]
+#[nyanpasu_rpc::rpc(http, permission = settings:write)]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
 }
@@ -62,7 +62,7 @@ fn receipt() -> CommitReceipt {
     }
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = settings)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
 fn audit_mutation(
     value: String,
     degraded: bool,
@@ -97,7 +97,7 @@ fn audit_mutation(
 
 type AuditOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<AuditValue>;
 
-#[nyanpasu_rpc::rpc(http, privacy, scope = settings)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
 fn audit_mutation_alias(value: String, degraded: bool, fail_encoding: bool) -> AuditOutcomeAlias {
     let value = AuditValue {
         value,
@@ -210,7 +210,8 @@ async fn app_preferences_decode_rejection_is_recorded_before_admission() {
 
 #[tokio::test]
 async fn audit_preserves_committed_degraded_summary() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+    use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
+    use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let fixture = Fixture::new(false).await;
     let public_auth = AuthContext::new(
@@ -218,11 +219,11 @@ async fn audit_preserves_committed_degraded_summary() {
             id: "tok-settings-audit".into(),
             name: "settings-only".into(),
         },
-        [Scope::Settings].into_iter().collect(),
+        Grant::Custom(Permissions::NONE.with(Resource::Settings, Access::Read)),
     );
     for command in ["audit_mutation", "audit_mutation_alias"] {
         for degraded in [false, true] {
-            // Privileged caller (SensitiveRead) receives Full MutationOutcome.
+            // A `settings` writer receives the full MutationOutcome.
             let (status, full_value) = fixture
                 .call(
                     command,
@@ -235,7 +236,7 @@ async fn audit_preserves_committed_degraded_summary() {
                 assert_eq!(full_value["degradations"][0]["message"], SECRET);
             }
 
-            // Caller with only Scope::Settings receives PublicMutationOutcome (message projected away).
+            // A `settings` reader receives PublicMutationOutcome (message projected away).
             let (pub_status, pub_value) = crate::test_support::rpc_for_test_call_with_auth(
                 &fixture.rpc.clone().router(),
                 command,
@@ -286,7 +287,8 @@ async fn audit_preserves_committed_degraded_summary() {
 
 #[tokio::test]
 async fn audit_keeps_receipts_when_response_encoding_fails() {
-    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+    use nyanpasu_contracts::auth::{Access, Grant, Permissions, Resource};
+    use nyanpasu_rpc_protocol::{AuthContext, Principal};
 
     let fixture = Fixture::new(false).await;
     let public_auth = AuthContext::new(
@@ -294,7 +296,7 @@ async fn audit_keeps_receipts_when_response_encoding_fails() {
             id: "tok-settings-audit-enc".into(),
             name: "settings-only".into(),
         },
-        [Scope::Settings].into_iter().collect(),
+        Grant::Custom(Permissions::NONE.with(Resource::Settings, Access::Read)),
     );
     for command in ["audit_mutation", "audit_mutation_alias"] {
         let (status, error) = fixture
@@ -463,7 +465,7 @@ async fn audit_drop_does_not_claim_transaction_cancellation() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_rpc::rpc(local, owner, optional_capabilities(elevation), scope = settings)]
+#[nyanpasu_rpc::rpc(local, owner, optional_capabilities(elevation), permission = settings:write)]
 #[specta::specta]
 fn local_optional_effect(
     _client: RpcState<'_, NyanpasuClient>,
@@ -542,7 +544,7 @@ async fn local_optional_elevation_expands_and_registers() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_rpc::rpc(http, capabilities(clipboard), scope = settings)]
+#[nyanpasu_rpc::rpc(http, capabilities(clipboard), permission = settings:write)]
 fn requires_clipboard(value: String) -> String {
     panic!("a command missing its required capability must not run: {value}");
 }
@@ -582,7 +584,7 @@ async fn known_unavailable_command_is_unsupported_before_handler_runs() {
             .call_native(
                 "read_clipboard_text",
                 RpcCaller::desktop("audit-window"),
-                || panic!("unavailable native handler must not run")
+                |_| panic!("unavailable native handler must not run")
             )
             .await
             .unwrap_err()
@@ -904,7 +906,8 @@ async fn audit_records_rejected_dispatches() {
                 .to_vec()
         )
         .unwrap()
-        .contains("duplicate field")
+        // A malformed query has no admitted resource, so the parser's detail is redacted.
+        .contains("invalid parameters")
     );
     {
         let all_records = fixture.sink.records.lock();

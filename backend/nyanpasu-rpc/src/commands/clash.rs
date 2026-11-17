@@ -5,7 +5,7 @@ use nyanpasu_core::client::NyanpasuClient;
 
 use crate::{error::Result, registry::RpcState};
 
-#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query, scope = proxy)]
+#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query, permission = proxy:write)]
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
     client: RpcState<'_, NyanpasuClient>,
@@ -22,7 +22,7 @@ pub async fn clash_api_get_proxy_delay(
 
 /// The live Clash configuration without the controller secret. The full one is
 /// [`clash_api_get_configs`].
-#[nyanpasu_rpc::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query, permission = settings:read)]
 #[specta::specta]
 pub async fn clash_api_get_settings(
     client: RpcState<'_, NyanpasuClient>,
@@ -30,7 +30,7 @@ pub async fn clash_api_get_settings(
     Ok(client.clash_api_settings().await?)
 }
 
-#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, permission = settings:read, sensitive)]
 #[specta::specta]
 pub async fn clash_api_get_configs(
     client: RpcState<'_, NyanpasuClient>,
@@ -38,7 +38,7 @@ pub async fn clash_api_get_configs(
     Ok(client.clash_configs().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, scope = proxy)]
+#[nyanpasu_rpc::rpc(local, http, permission = proxy:write)]
 #[specta::specta]
 pub async fn clash_api_delete_connections(
     client: RpcState<'_, NyanpasuClient>,
@@ -47,7 +47,7 @@ pub async fn clash_api_delete_connections(
     Ok(client.close_clash_connections(id).await?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, query)]
+#[nyanpasu_rpc::rpc(local, http, query, permission = system:read)]
 #[specta::specta]
 pub async fn clash_api_get_version(
     client: RpcState<'_, NyanpasuClient>,
@@ -55,7 +55,7 @@ pub async fn clash_api_get_version(
     Ok(client.clash_version().await?)
 }
 
-#[nyanpasu_rpc::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query, permission = proxy:read)]
 #[specta::specta]
 pub async fn clash_api_get_rules(
     client: RpcState<'_, NyanpasuClient>,
@@ -63,7 +63,7 @@ pub async fn clash_api_get_rules(
     Ok(client.clash_rules().await?)
 }
 
-#[nyanpasu_rpc::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query, permission = proxy:read)]
 #[specta::specta]
 pub async fn clash_api_get_providers_rules(
     client: RpcState<'_, NyanpasuClient>,
@@ -71,7 +71,7 @@ pub async fn clash_api_get_providers_rules(
     Ok(client.clash_rule_providers().await?)
 }
 
-#[nyanpasu_rpc::rpc(http, scope = profile)]
+#[nyanpasu_rpc::rpc(http, permission = profile:write)]
 #[specta::specta]
 pub async fn clash_api_update_providers_rules(
     client: RpcState<'_, NyanpasuClient>,
@@ -80,7 +80,7 @@ pub async fn clash_api_update_providers_rules(
     Ok(client.update_clash_rule_provider(name).await?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query, scope = proxy)]
+#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query, permission = proxy:write)]
 #[specta::specta]
 pub async fn clash_api_get_group_delay(
     client: RpcState<'_, NyanpasuClient>,
@@ -91,7 +91,7 @@ pub async fn clash_api_get_group_delay(
     Ok(client.group_delay(group, url, expected).await?)
 }
 
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), query)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), query, permission = proxy:read)]
 #[specta::specta]
 pub async fn clash_api_get_providers_proxies(
     client: RpcState<'_, NyanpasuClient>,
@@ -102,7 +102,7 @@ pub async fn clash_api_get_providers_proxies(
 
 /// Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
 /// credential, so `get_proxies` only reports whether a group has one.
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), query, permission = proxy:read, sensitive)]
 #[specta::specta]
 pub async fn get_proxy_group_icons(
     client: RpcState<'_, NyanpasuClient>,
@@ -110,7 +110,7 @@ pub async fn get_proxy_group_icons(
     Ok(client.proxy_group_icons().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query)]
+#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), query, permission = proxy:read)]
 #[specta::specta]
 pub async fn get_proxies(
     client: RpcState<'_, NyanpasuClient>,
@@ -118,7 +118,7 @@ pub async fn get_proxies(
     Ok(client.get_proxies().await?)
 }
 
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), scope = proxy)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), permission = proxy:write)]
 #[specta::specta]
 pub async fn mutate_proxies(
     client: RpcState<'_, NyanpasuClient>,
@@ -126,7 +126,7 @@ pub async fn mutate_proxies(
     Ok(client.refresh_proxies().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), privacy, scope = proxy)]
+#[nyanpasu_rpc::rpc(local, http, optional_capabilities(presentation), privacy, permission = proxy:write)]
 #[specta::specta]
 pub async fn select_proxy(
     client: RpcState<'_, NyanpasuClient>,
@@ -136,7 +136,7 @@ pub async fn select_proxy(
     Ok(client.select_proxy(group, name).await?.into())
 }
 
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), privacy, scope = proxy)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), privacy, permission = proxy:write)]
 #[specta::specta]
 pub async fn clear_proxy_fixed(
     client: RpcState<'_, NyanpasuClient>,
@@ -145,7 +145,7 @@ pub async fn clear_proxy_fixed(
     Ok(client.clear_proxy_fixed(group).await?.into())
 }
 
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), scope = profile)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), permission = profile:write)]
 #[specta::specta]
 pub async fn update_proxy_provider(
     client: RpcState<'_, NyanpasuClient>,
@@ -154,7 +154,7 @@ pub async fn update_proxy_provider(
     Ok(client.update_proxy_provider(name).await?)
 }
 
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), scope = proxy)]
+#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), permission = proxy:write)]
 #[specta::specta]
 pub async fn clash_api_healthcheck_proxy_provider(
     client: RpcState<'_, NyanpasuClient>,

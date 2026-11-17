@@ -2,25 +2,25 @@ import { useState, type PropsWithChildren } from 'react'
 import { CapabilitiesProvider } from '@/components/auth/capabilities'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcClient } from '@nyanpasu/rpc'
-import type { RpcDescribeResponse, Scope } from '@nyanpasu/rpc/types'
+import type { RpcDescribeResponse } from '@nyanpasu/rpc/types'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 
-const ALL_SCOPES: Scope[] = [
-  'read',
-  'sensitive_read',
-  'proxy',
-  'profile',
-  'settings',
-  'system',
-  'remote_admin',
-]
-
+/** The desktop owner: every resource written. */
 export const DEFAULT_TEST_CAPABILITIES: RpcDescribeResponse = {
-  protocol: 1,
+  protocol: 2,
   server: { kind: 'desktop', version: '0.0.0-test' },
   transport: 'desktop',
   principal: { kind: 'desktop', window: 'main' },
-  scopes: ALL_SCOPES,
+  role: 'owner',
+  permissions: {
+    proxy: 'write',
+    profile: 'write',
+    settings: 'write',
+    system: 'write',
+    logs: 'write',
+    traffic: 'write',
+    remote: 'write',
+  },
   commands: [],
 }
 

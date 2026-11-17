@@ -2,7 +2,8 @@
 //!
 //! [`ClashConfig`] holds the controller secret and the web UI templates, which are free-form URLs a
 //! user may write a credential into. [`ClashSettings`] keeps every other field, so the dashboard
-//! can show the TUN state, the ports and the break-connection policy without `sensitive_read`.
+//! can show the TUN state, the ports and the break-connection policy from a query that is not
+//! marked sensitive.
 //! A form that edits the secret or the web UI list reads the full config.
 
 use serde::Serialize;

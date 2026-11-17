@@ -10,7 +10,13 @@ use clap_complete::Shell;
 use nyanpasu_contracts::auth::TlsFingerprint;
 use serde_json::{Value, json};
 
-use crate::{describe::Scope, error::CliError, target::TransportChoice};
+use nyanpasu_contracts::auth::Grant;
+
+use crate::{
+    describe::{Permission, Permissions, Resource, Role},
+    error::CliError,
+    target::TransportChoice,
+};
 
 /// Controls a running Clash Nyanpasu shell over its local socket or HTTP.
 #[derive(Debug, Parser)]
@@ -258,8 +264,8 @@ pub enum ConfigCommand {
     },
 }
 
-/// Remote access administration. It needs the `remote_admin` scope, which only the desktop
-/// and the same-user local socket hold, so it never runs over HTTP.
+/// Remote access administration. It needs `remote:write`, which only the desktop and the
+/// same-user local socket hold, so it never runs over HTTP.
 #[derive(Debug, Subcommand)]
 pub enum RemoteCommand {
     /// Show the remote access settings and what each listener is doing.
@@ -290,7 +296,7 @@ pub enum HttpCommand {
     /// Choose how HTTP callers authenticate.
     Strategy {
         /// `local_authenticated` requires a credential; `local_open` lets every local
-        /// process of every OS user call the API with the configured open scopes;
+        /// process of every OS user call the API with the configured anonymous permissions;
         /// `lan_authenticated` listens on the LAN over HTTPS and requires a credential from
         /// every caller, so it also turns HTTPS on.
         #[arg(value_enum)]
@@ -395,14 +401,24 @@ pub enum TokenCommand {
 pub struct TokenCreate {
     /// A name for the token, shown in lists and audit records.
     pub name: String,
-    /// A scope the token holds; repeat for several. A token never holds `remote_admin`.
+    /// The role the token holds: `viewer`, `operator` or `admin`. A role follows later changes
+    /// to its definition, so commands added by an update become available with it.
     #[arg(
-        long = "scope",
-        required = true,
-        value_name = "SCOPE",
-        value_parser = parse_token_scope
+        long,
+        value_name = "ROLE",
+        value_parser = parse_token_role,
+        required_unless_present = "permissions",
+        conflicts_with = "permissions"
     )]
-    pub scopes: Vec<Scope>,
+    pub role: Option<Role>,
+    /// A permission the token holds instead of a role, such as `proxy:write`; repeat for
+    /// several. `write` includes `read`. A token never holds `remote`.
+    #[arg(
+        long = "permission",
+        value_name = "RESOURCE:ACCESS",
+        value_parser = parse_token_permission
+    )]
+    pub permissions: Vec<Permission>,
     /// How long the token stays valid, such as `90m`, `12h` or `30d`. It does not expire
     /// when omitted.
     #[arg(long, value_name = "DURATION", value_parser = parse_lifetime)]
@@ -420,25 +436,55 @@ pub enum SessionCommand {
     },
 }
 
-/// A scope a token may hold: every scope except `remote_admin`.
-fn parse_token_scope(text: &str) -> Result<Scope, String> {
-    parse_scope_but_remote_admin(text, "a token cannot hold remote_admin")
+impl TokenCreate {
+    /// What the token is granted: the role, or the listed permissions with the higher level
+    /// kept where a resource is listed twice.
+    pub fn grant(&self) -> Grant {
+        match self.role {
+            Some(role) => Grant::Role(role),
+            None => Grant::Custom(self.permissions.iter().fold(
+                Permissions::NONE,
+                |held, permission| {
+                    let access = held
+                        .get(permission.resource)
+                        .map_or(permission.access, |level| level.max(permission.access));
+                    held.with(permission.resource, access)
+                },
+            )),
+        }
+    }
 }
 
-/// Parses a scope name, refusing `remote_admin` with `refusal`.
-fn parse_scope_but_remote_admin(text: &str, refusal: &str) -> Result<Scope, String> {
-    let held = || {
-        Scope::ALL
-            .into_iter()
-            .filter(|scope| *scope != Scope::RemoteAdmin)
-            .map(Scope::as_str)
-            .collect::<Vec<_>>()
-            .join(", ")
+/// A role a token may hold: `viewer`, `operator` or `admin`.
+fn parse_token_role(text: &str) -> Result<Role, String> {
+    match serde_json::from_value::<Role>(Value::String(text.to_owned())) {
+        Ok(role @ (Role::Viewer | Role::Operator | Role::Admin)) => Ok(role),
+        _ => Err(format!(
+            "`{text}` is not a role a token can hold; choose from viewer, operator, admin"
+        )),
+    }
+}
+
+/// A permission a token may hold, `resource:access`. `remote` stays with the owner, and every
+/// caller already holds `meta:read`.
+fn parse_token_permission(text: &str) -> Result<Permission, String> {
+    const RESOURCES: &str = "proxy, profile, settings, system, logs, traffic";
+    let invalid = || {
+        format!("`{text}` is not `resource:access`; resources: {RESOURCES}; access: read, write")
     };
-    match serde_json::from_value::<Scope>(Value::String(text.to_owned())) {
-        Ok(Scope::RemoteAdmin) => Err(format!("{refusal}; choose from {}", held())),
-        Ok(scope) => Ok(scope),
-        Err(_) => Err(format!("unknown scope `{text}`; choose from {}", held())),
+    let (resource, access) = text.split_once(':').ok_or_else(invalid)?;
+    let resource = serde_json::from_value::<Resource>(Value::String(resource.to_owned()))
+        .map_err(|_| invalid())?;
+    let access = serde_json::from_value(Value::String(access.to_owned())).map_err(|_| invalid())?;
+    match resource {
+        Resource::Remote => Err(format!(
+            "a token never holds remote; remote access is administered from the app or \
+             `nyanpasu-cli remote`; resources: {RESOURCES}"
+        )),
+        Resource::Meta => Err(format!(
+            "every caller already holds meta:read; resources: {RESOURCES}"
+        )),
+        _ => Ok(Permission::new(resource, access)),
     }
 }
 
@@ -866,16 +912,16 @@ mod tests {
             &["remote", "http", "strategy", "local-authenticated"],
             &["remote", "socket", "on"],
             &["remote", "socket", "off"],
-            &["remote", "token", "create", "laptop", "--scope", "read"],
+            &["remote", "token", "create", "laptop", "--role", "viewer"],
             &[
                 "remote",
                 "token",
                 "create",
                 "ci",
-                "--scope",
-                "read",
-                "--scope",
-                "proxy",
+                "--permission",
+                "proxy:read",
+                "--permission",
+                "logs:write",
                 "--expires-in",
                 "30d",
             ],
@@ -895,25 +941,52 @@ mod tests {
     }
 
     #[test]
-    fn a_token_is_created_with_explicit_scopes_and_never_remote_admin() {
+    fn a_token_is_created_with_a_role_or_permissions_and_never_remote() {
         for arguments in [
             &["remote", "token", "create", "laptop"][..],
+            &["remote", "token", "create", "laptop", "--role", "owner"],
+            &["remote", "token", "create", "laptop", "--role", "anonymous"],
             &[
                 "remote",
                 "token",
                 "create",
                 "laptop",
-                "--scope",
-                "remote_admin",
+                "--permission",
+                "remote:read",
             ],
-            &["remote", "token", "create", "laptop", "--scope", "admin"],
             &[
                 "remote",
                 "token",
                 "create",
                 "laptop",
-                "--scope",
-                "read",
+                "--permission",
+                "meta:read",
+            ],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--permission",
+                "proxy",
+            ],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--role",
+                "viewer",
+                "--permission",
+                "proxy:write",
+            ],
+            &[
+                "remote",
+                "token",
+                "create",
+                "laptop",
+                "--role",
+                "viewer",
                 "--expires-in",
                 "0d",
             ],
@@ -922,8 +995,8 @@ mod tests {
                 "token",
                 "create",
                 "laptop",
-                "--scope",
-                "read",
+                "--role",
+                "viewer",
                 "--expires-in",
                 "soon",
             ],
@@ -940,14 +1013,36 @@ mod tests {
             );
         }
         let Command::Remote(RemoteCommand::Token(TokenCommand::Create(create))) = parse(&[
-            "remote", "token", "create", "ci", "--scope", "read", "--scope", "system",
+            "remote",
+            "token",
+            "create",
+            "ci",
+            "--permission",
+            "proxy:read",
+            "--permission",
+            "logs:read",
+            "--permission",
+            "proxy:write",
         ])
         .command
         else {
             panic!("a token create command");
         };
-        assert_eq!(create.scopes, [Scope::Read, Scope::System]);
+        assert_eq!(
+            serde_json::to_value(create.grant()).unwrap(),
+            serde_json::json!({ "permissions": { "proxy": "write", "logs": "read" } })
+        );
         assert_eq!(create.expires_in, None);
+
+        let Command::Remote(RemoteCommand::Token(TokenCommand::Create(create))) =
+            parse(&["remote", "token", "create", "ci", "--role", "operator"]).command
+        else {
+            panic!("a token create command");
+        };
+        assert_eq!(
+            serde_json::to_value(create.grant()).unwrap(),
+            serde_json::json!({ "role": "operator" })
+        );
     }
 
     #[test]

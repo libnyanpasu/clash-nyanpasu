@@ -10,11 +10,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use nyanpasu_config::application::Scope;
+use nyanpasu_config::application::{Access, Permission, Permissions, Resource, Role};
 use nyanpasu_contracts::auth::{
     AccessTokenStatus, AuthClock, AuthRevocation, CreateAccessTokenRequest, EntropyError,
-    EntropySource, Principal, RemoteAuthPolicy, ScopeSet, SecretStore, SecretStoreError,
-    SecretString, TokenName, test_support::FakeTlsGenerator,
+    EntropySource, Grant, Principal, RemoteAuthPolicy, SecretStore, SecretStoreError, SecretString,
+    TokenName, test_support::FakeTlsGenerator,
 };
 use parking_lot::Mutex;
 use tokio::{sync::broadcast, time::Instant};
@@ -123,7 +123,11 @@ impl Harness {
     async fn create_token(&self, expires_in: Option<Duration>) -> SecretString {
         let request = CreateAccessTokenRequest {
             name: TokenName::parse("laptop-cli").unwrap(),
-            scopes: ScopeSet::from([Scope::Read, Scope::Proxy]),
+            grant: Grant::Custom(
+                Role::Viewer
+                    .permissions()
+                    .with(Resource::Proxy, Access::Write),
+            ),
             expires_at_ms: expires_in
                 .map(|ttl| START_UNIX_MS + i64::try_from(ttl.as_millis()).unwrap()),
         };
@@ -160,8 +164,19 @@ async fn token_is_minted_verified_and_revoked() {
             name: "laptop-cli".to_owned()
         }
     );
-    assert!(caller.auth.has_scope(Scope::Proxy));
-    assert!(!caller.auth.has_scope(Scope::System));
+    assert_eq!(caller.auth.role, None);
+    assert!(
+        caller
+            .auth
+            .permissions
+            .permits(Permission::new(Resource::Proxy, Access::Write))
+    );
+    assert!(
+        !caller
+            .auth
+            .permissions
+            .permits(Permission::new(Resource::System, Access::Write))
+    );
 
     assert_eq!(
         harness
@@ -251,7 +266,7 @@ async fn token_creation_rejects_a_past_expiry_and_the_capacity_limit() {
     let harness = Harness::start_with(policy, Arc::default()).await;
     let request = |expires_at_ms| CreateAccessTokenRequest {
         name: TokenName::parse("t").unwrap(),
-        scopes: ScopeSet::empty(),
+        grant: Grant::Role(Role::Viewer),
         expires_at_ms,
     };
 
@@ -274,17 +289,26 @@ async fn token_creation_rejects_a_past_expiry_and_the_capacity_limit() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_token_cannot_hold_remote_admin() {
+async fn a_token_cannot_hold_remote_or_an_unassignable_role() {
     let harness = Harness::start().await;
-    let request = CreateAccessTokenRequest {
-        name: TokenName::parse("t").unwrap(),
-        scopes: ScopeSet::from([Scope::Read, Scope::RemoteAdmin]),
-        expires_at_ms: None,
-    };
-    assert!(matches!(
-        harness.client.create_access_token(request).await,
-        Err(RemoteAuthError::InvalidInput { .. })
-    ));
+    for grant in [
+        Grant::Custom(Permissions::NONE.with(Resource::Remote, Access::Read)),
+        Grant::Role(Role::Owner),
+        Grant::Role(Role::Anonymous),
+    ] {
+        let request = CreateAccessTokenRequest {
+            name: TokenName::parse("t").unwrap(),
+            grant,
+            expires_at_ms: None,
+        };
+        assert!(
+            matches!(
+                harness.client.create_access_token(request).await,
+                Err(RemoteAuthError::InvalidInput { .. })
+            ),
+            "{grant:?}"
+        );
+    }
     assert!(
         harness
             .client
@@ -302,7 +326,7 @@ async fn a_token_that_cannot_be_persisted_is_not_created() {
 
     let request = CreateAccessTokenRequest {
         name: TokenName::parse("t").unwrap(),
-        scopes: ScopeSet::empty(),
+        grant: Grant::Role(Role::Viewer),
         expires_at_ms: None,
     };
     assert!(matches!(
@@ -354,20 +378,16 @@ async fn a_corrupt_record_fails_startup_closed() {
 #[tokio::test(start_paused = true)]
 async fn launch_code_is_single_use_and_expires_after_60_seconds() {
     let harness = Harness::start().await;
-    let scopes = ScopeSet::from([Scope::Read]);
-
-    let issued = harness
-        .client
-        .issue_launch_code(scopes.clone())
-        .await
-        .unwrap();
+    let issued = harness.client.issue_launch_code().await.unwrap();
     assert_eq!(issued.expires_at_ms - issued.issued_at_ms, 60_000);
     let session = harness
         .client
         .exchange_launch_code(issued.code.clone())
         .await
         .unwrap();
-    assert_eq!(session.auth.scopes, scopes);
+    assert_eq!(session.auth.role, Some(Role::Admin));
+    assert_eq!(session.auth.permissions, Role::Admin.permissions());
+    assert_eq!(session.summary.grant, Grant::Role(Role::Admin));
     assert!(matches!(session.auth.principal, Principal::Session { .. }));
     assert_eq!(
         harness
@@ -378,7 +398,7 @@ async fn launch_code_is_single_use_and_expires_after_60_seconds() {
         RemoteAuthError::Unauthorized
     );
 
-    let stale = harness.client.issue_launch_code(scopes).await.unwrap();
+    let stale = harness.client.issue_launch_code().await.unwrap();
     tokio::time::advance(Duration::from_secs(60)).await;
     assert_eq!(
         harness
@@ -393,11 +413,7 @@ async fn launch_code_is_single_use_and_expires_after_60_seconds() {
 #[tokio::test(start_paused = true)]
 async fn session_expires_after_30_idle_minutes_and_activity_extends_it() {
     let mut harness = Harness::start().await;
-    let launch = harness
-        .client
-        .issue_launch_code(ScopeSet::full())
-        .await
-        .unwrap();
+    let launch = harness.client.issue_launch_code().await.unwrap();
     let session = harness
         .client
         .exchange_launch_code(launch.code)
@@ -452,16 +468,13 @@ async fn revoking_a_token_closes_its_sessions_and_announces_them() {
         .id
         .clone();
     let session = harness.client.login_with_token(token).await.unwrap();
+    // A token login holds the token's grant.
+    let listed_grant = harness.client.list_access_tokens().await.unwrap()[0].grant;
+    assert_eq!(session.summary.grant, listed_grant);
+    assert_eq!(session.auth.permissions, listed_grant.permissions());
     let unrelated = harness
         .client
-        .exchange_launch_code(
-            harness
-                .client
-                .issue_launch_code(ScopeSet::empty())
-                .await
-                .unwrap()
-                .code,
-        )
+        .exchange_launch_code(harness.client.issue_launch_code().await.unwrap().code)
         .await
         .unwrap();
 
@@ -644,11 +657,7 @@ async fn logout_and_revoke_close_one_session_and_a_full_table_evicts_the_oldest(
     let open = |harness: &Harness| {
         let client = harness.client.clone();
         async move {
-            let code = client
-                .issue_launch_code(ScopeSet::empty())
-                .await
-                .unwrap()
-                .code;
+            let code = client.issue_launch_code().await.unwrap().code;
             client.exchange_launch_code(code).await
         }
     };
@@ -657,11 +666,7 @@ async fn logout_and_revoke_close_one_session_and_a_full_table_evicts_the_oldest(
     let second = open(&harness).await.unwrap();
     tokio::time::advance(MINUTE).await;
 
-    let spare = harness
-        .client
-        .issue_launch_code(ScopeSet::empty())
-        .await
-        .unwrap();
+    let spare = harness.client.issue_launch_code().await.unwrap();
     let third = harness
         .client
         .exchange_launch_code(spare.code)
@@ -915,4 +920,31 @@ async fn a_record_without_a_certificate_still_loads_and_a_malformed_one_fails_cl
         result,
         Err(RemoteAuthError::PersistenceFailed { .. })
     ));
+}
+
+/// Issuance validates a grant; a record edited on disk afterwards is refused on load rather than
+/// handing a token the owner role or `remote`.
+#[tokio::test(start_paused = true)]
+async fn a_stored_grant_that_cannot_be_issued_fails_closed() {
+    let store = Arc::new(MemoryStore::default());
+    let harness = Harness::start_with(RemoteAuthPolicy::default(), store.clone()).await;
+    harness.create_token(None).await;
+    let saved: serde_json::Value =
+        serde_json::from_slice(store.record.lock().as_ref().unwrap()).unwrap();
+
+    for grant in [
+        serde_json::json!({"role": "owner"}),
+        serde_json::json!({"role": "anonymous"}),
+        serde_json::json!({"permissions": {"remote": "read"}}),
+        serde_json::json!({"permissions": {"proxy": "write", "remote": "write"}}),
+    ] {
+        let mut edited = saved.clone();
+        edited["tokens"][0]["grant"] = grant.clone();
+        *store.record.lock() = Some(serde_json::to_vec(&edited).unwrap());
+        let result = Harness::spawn(RemoteAuthPolicy::default(), &store, &Arc::default()).await;
+        assert!(
+            matches!(result, Err(RemoteAuthError::PersistenceFailed { .. })),
+            "{grant}"
+        );
+    }
 }

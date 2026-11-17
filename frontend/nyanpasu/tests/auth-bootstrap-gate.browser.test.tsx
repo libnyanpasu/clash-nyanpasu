@@ -9,7 +9,6 @@ import {
   RequireCapability,
   useCapabilities,
   type RpcDescribeSnapshot,
-  type RpcScope,
 } from '@/components/auth/capabilities'
 import {
   PRINCIPAL_MARKER_KEY,
@@ -22,29 +21,39 @@ function snapshot(
   overrides: Partial<RpcDescribeSnapshot> = {},
 ): RpcDescribeSnapshot {
   return {
-    protocol: 1,
+    protocol: 2,
     server: { kind: 'desktop', version: '2.0.0' },
     transport: 'http',
     principal: { kind: 'token', id: 'a1b2', name: 'laptop' },
-    scopes: ['read', 'proxy'],
+    role: null,
+    permissions: { proxy: 'write', profile: 'read' },
     commands: [
-      { name: 'get_profiles', effect: 'query', scope: 'read', allowed: true },
+      {
+        name: 'get_profiles',
+        effect: 'query',
+        permission: { resource: 'profile', access: 'read' },
+        sensitive: false,
+        allowed: true,
+      },
       {
         name: 'select_proxy',
         effect: 'mutation',
-        scope: 'proxy',
+        permission: { resource: 'proxy', access: 'write' },
+        sensitive: false,
         allowed: true,
       },
       {
         name: 'restart_core',
         effect: 'mutation',
-        scope: 'system',
+        permission: { resource: 'system', access: 'write' },
+        sensitive: false,
         allowed: false,
       },
       {
         name: 'get_secret',
         effect: 'query',
-        scope: 'sensitive_read',
+        permission: { resource: 'profile', access: 'read' },
+        sensitive: true,
         allowed: true,
       },
     ],
@@ -161,12 +170,12 @@ test('the same principal keeps its persisted state', async () => {
   expect(document.getElementById('nyanpasu-custom-css-item-a')).not.toBeNull()
 })
 
-test('a changed scope set is a different principal', async () => {
+test('a changed permission set is a different principal', async () => {
   seedPersistedState()
   localStorage.setItem(PRINCIPAL_MARKER_KEY, principalKey(snapshot()))
 
   const { screen } = await renderGate({
-    describe: async () => snapshot({ scopes: ['read'] }),
+    describe: async () => snapshot({ permissions: { profile: 'read' } }),
   })
 
   await expect.element(screen.getByText('app')).toBeInTheDocument()
@@ -241,19 +250,19 @@ async function renderProbe(
   return screen
 }
 
-test('useCapabilities enforces scopes and per-command allowance', async () => {
+test('useCapabilities enforces permissions and per-command allowance', async () => {
   const screen = await renderProbe(snapshot(), (c) =>
     [
-      c.hasScope('proxy'),
-      c.hasScope('system'),
-      c.hasScopes(['read', 'proxy']),
-      c.hasScopes(['read', 'system']),
+      c.hasPermission('proxy:write'),
+      c.hasPermission('system:write'),
+      c.hasPermissions(['profile:read', 'proxy:read']),
+      c.hasPermissions(['profile:read', 'system:read']),
       c.canCall('select_proxy'),
       c.canCall('restart_core'),
       c.canCall('get_secret'),
       c.canCall('unknown'),
-      c.isReadOnly('proxy'),
-      c.isReadOnly('profile'),
+      c.isReadOnly('proxy:write'),
+      c.isReadOnly('profile:write'),
       c.isDesktop,
       c.transport,
     ].join(','),
@@ -262,18 +271,18 @@ test('useCapabilities enforces scopes and per-command allowance', async () => {
   await expect
     .element(
       screen.getByText(
-        'true,false,true,false,true,false,false,false,false,true,false,http',
+        'true,false,true,false,true,false,true,false,false,true,false,http',
       ),
     )
     .toBeInTheDocument()
 })
 
-test('remote_admin is available only to the desktop principal', async () => {
-  const scopes: RpcScope[] = ['read', 'remote_admin']
+test('remote permissions are available only to the desktop principal', async () => {
+  const permissions = { profile: 'read', remote: 'write' } as const
   const remote = await renderProbe(
-    snapshot({ scopes }),
+    snapshot({ permissions }),
     (c) =>
-      `remote:${c.hasScope('remote_admin')}:${c.isReadOnly('remote_admin')}`,
+      `remote:${c.hasPermission('remote:write')}:${c.isReadOnly('remote:write')}`,
   )
   await expect
     .element(remote.getByText('remote:false:true'))
@@ -281,9 +290,9 @@ test('remote_admin is available only to the desktop principal', async () => {
   await remote.unmount()
 
   const desktop = await renderProbe(
-    snapshot({ scopes, principal: { kind: 'desktop', window: 'main' } }),
+    snapshot({ permissions, principal: { kind: 'desktop', window: 'main' } }),
     (c) =>
-      `desktop:${c.isDesktop}:${c.hasScope('remote_admin')}:${c.isReadOnly('remote_admin')}`,
+      `desktop:${c.isDesktop}:${c.hasPermission('remote:write')}:${c.isReadOnly('remote:write')}`,
   )
   await expect
     .element(desktop.getByText('desktop:true:true:false'))
@@ -294,10 +303,10 @@ test('RequireCapability renders children or the fallback', async () => {
   const { screen } = await renderGate(
     { describe: async () => snapshot() },
     <>
-      <RequireCapability scope="proxy" fallback={<p>no proxy</p>}>
+      <RequireCapability permission="proxy:write" fallback={<p>no proxy</p>}>
         <p>proxy ui</p>
       </RequireCapability>
-      <RequireCapability scope="system" fallback={<p>no system</p>}>
+      <RequireCapability permission="system:write" fallback={<p>no system</p>}>
         <p>system ui</p>
       </RequireCapability>
       <RequireCapability command="get_profiles">

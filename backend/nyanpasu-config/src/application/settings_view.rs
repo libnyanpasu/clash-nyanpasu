@@ -8,8 +8,8 @@
 //! public desired state of the system settings, and reduces the two URL fields and the network
 //! rules to flags: `pac_configured`, `latency_test_configured` and `network_automation_enabled`.
 //!
-//! A flag is not a placeholder: a form that needs the real URL reads the full config
-//! (`sensitive_read`), and a flag is never a valid thing to write back.
+//! A flag is not a placeholder: a form that needs the real URL reads the full config, a
+//! sensitive query, and a flag is never a valid thing to write back.
 
 use serde::Serialize;
 use specta::Type;

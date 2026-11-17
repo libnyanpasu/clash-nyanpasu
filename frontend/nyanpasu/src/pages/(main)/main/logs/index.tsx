@@ -397,7 +397,7 @@ function RouteComponent() {
 
   // Log lines and files hold URLs, hosts and paths: `sensitive_read`.
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability permission="logs:read" fallback={<RestrictedContent />}>
       {source === 'core' ? (
         <KernelLogs />
       ) : (

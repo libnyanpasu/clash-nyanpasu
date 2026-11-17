@@ -63,11 +63,11 @@ function RouteComponent() {
         {m.settings_label_core_settings()}
       </PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
           <CoreBehaviorSettings />
 
-          <RequireCapability scope="sensitive_read">
+          <RequireCapability permission="settings:read">
             <LatencyTestSettings />
           </RequireCapability>
 

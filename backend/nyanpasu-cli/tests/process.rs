@@ -72,14 +72,18 @@ impl MockShell {
                     while let Some(request) = read_request(&mut stream) {
                         let reply = match request.body["method"].as_str() {
                             Some("rpc_describe") => json!({
-                                "protocol": 1,
+                                "protocol": 2,
                                 "server": {"kind": "desktop", "version": "0.0.0"},
                                 "transport": "http",
                                 "principal": {"kind": "token", "id": "t", "name": "test"},
-                                "scopes": ["read"],
+                                "role": "viewer",
+                                "permissions": {"proxy": "read", "profile": "read",
+                                                "settings": "read", "system": "read",
+                                                "logs": "read", "traffic": "read"},
                                 "commands": [
                                     {"name": "get_core_status_summary", "effect": "query",
-                                     "scope": "read", "allowed": true}
+                                     "permission": {"resource": "system", "access": "read"},
+                                     "sensitive": false, "allowed": true}
                                 ],
                             }),
                             Some("get_core_status_summary") => {
@@ -232,7 +236,7 @@ fn an_unreachable_http_target_exits_three_without_a_fallback() {
 }
 
 #[test]
-fn a_denied_scope_exits_four_before_anything_is_sent() {
+fn a_denied_permission_exits_four_before_anything_is_sent() {
     let shell = MockShell::start();
     let directory = tempfile::tempdir().unwrap();
     let output = cli(&directory.path().join("cli.toml"))

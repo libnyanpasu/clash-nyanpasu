@@ -21,7 +21,7 @@ function RouteComponent() {
       </PageTitle>
 
       <RequireCapability
-        scope="remote_admin"
+        permission="remote:write"
         fallback={
           <p className="text-on-surface-variant px-4 text-sm" role="status">
             {m.settings_remote_access_desktop_only()}

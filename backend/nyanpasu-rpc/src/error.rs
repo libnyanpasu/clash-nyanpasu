@@ -54,7 +54,7 @@ pub enum IpcErrorKind {
     ClashRead(Box<ClashReadError>),
     CoreLogRead(Box<CoreLogReadError>),
     ProfileSyncRead(Box<ProfileSyncReadError>),
-    /// Exhaustive public classification for callers without `Scope::SensitiveRead`.
+    /// Exhaustive public classification for redacted responses.
     Public(Box<PublicFailure>),
 }
 
@@ -201,8 +201,8 @@ unknown_domain!(
 
 pub type Result<T = ()> = std::result::Result<T, IpcError>;
 
-/// Error union emitted by `clear_core_logs`: rich `CoreLogError` for
-/// `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+/// Error union emitted by `clear_core_logs`: rich `CoreLogError` unredacted and projected
+/// public [`IpcError`] otherwise.
 #[derive(Debug, Serialize, specta::Type)]
 #[serde(untagged)]
 pub enum CoreLogCommandError {

@@ -19,7 +19,7 @@ use nyanpasu_cli::{
     commands::{self, Invocation},
     config::CliPaths,
     credentials::TokenVault,
-    describe::{Capabilities, DESCRIBE_METHOD, Scope},
+    describe::{Access, Capabilities, DESCRIBE_METHOD, Permission, Resource, Role},
     error::{CliError, ExitStatus},
     target::{Environment, ResolvedTarget, TargetKind, TargetSource},
     transport::{StreamKind, Transport, event},
@@ -277,11 +277,13 @@ async fn the_local_principal_holds_remote_admin_for_its_reviewed_commands_only()
     assert_eq!(described["transport"], "local");
     assert_eq!(described["principal"]["kind"], "local_socket");
     let capabilities = Capabilities::from_json(described).unwrap();
-    assert!(capabilities.holds(Scope::RemoteAdmin));
+    assert_eq!(capabilities.role(), Some(Role::Owner));
+    let remote_write = Permission::new(Resource::Remote, Access::Write);
+    assert!(capabilities.permits(remote_write));
     let mut administration: Vec<_> = capabilities
         .commands()
         .iter()
-        .filter(|command| command.scope == Scope::RemoteAdmin)
+        .filter(|command| command.permission.resource == Resource::Remote)
         .map(|command| command.name.as_str())
         .collect();
     administration.sort_unstable();
@@ -343,10 +345,8 @@ async fn remote_administration_runs_end_to_end_against_a_real_core() {
             "token",
             "create",
             "ci",
-            "--scope",
-            "read",
-            "--scope",
-            "proxy",
+            "--permission",
+            "proxy:write",
             "--expires-in",
             "1h",
         ])
@@ -356,7 +356,10 @@ async fn remote_administration_runs_end_to_end_against_a_real_core() {
     let secret = created["token"].as_str().unwrap().to_owned();
     assert!(secret.starts_with("npk_"), "{secret}");
     let id = created["summary"]["id"].as_str().unwrap().to_owned();
-    assert_eq!(created["summary"]["scopes"], json!(["read", "proxy"]));
+    assert_eq!(
+        created["summary"]["grant"],
+        json!({"permissions": {"proxy": "write"}})
+    );
     assert!(created["summary"]["expires_at_ms"].is_i64(), "{created}");
     let listed = shell.cli(&["--json", "remote", "token", "list"]).await;
     assert_eq!(listed.json().as_array().unwrap().len(), 1);
@@ -418,4 +421,21 @@ async fn config_patch_works_over_the_socket_and_keeps_its_privilege_separation()
         assert_eq!(run.status, ExitStatus::Usage, "{refused}: {}", run.stderr);
     }
     shell.stop().await;
+}
+
+/// Every curated command checks the permission the shell itself requires before it calls.
+#[test]
+fn curated_permissions_are_the_shell_requirements() {
+    use nyanpasu_rpc_protocol::permission::{ResourceKind, find};
+
+    for command in commands::COMMANDS {
+        let resource = match command.invocation {
+            Invocation::Method(method) => nyanpasu_rpc_protocol::permission::RESOURCES
+                .iter()
+                .find(|resource| resource.is_command() && resource.name == method),
+            Invocation::ConnectionDetails => find(ResourceKind::Stream, "connection_details"),
+        }
+        .unwrap_or_else(|| panic!("{} has no resource row", command.name));
+        assert_eq!(command.permission, resource.permission, "{}", command.name);
+    }
 }

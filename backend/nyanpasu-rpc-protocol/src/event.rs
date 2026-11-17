@@ -89,7 +89,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::{RpcTarget, Scope, permission::RESOURCES};
+    use nyanpasu_config::application::{Access, Resource};
+
+    use crate::{RpcTarget, permission::RESOURCES};
 
     /// Whether `rows` name every event identity exactly once and nothing else.
     fn rows_match_events(rows: &[&str]) -> Result<(), String> {
@@ -146,31 +148,19 @@ mod tests {
         );
     }
 
+    /// Events only read; the sensitive ones are a reviewed list.
     #[test]
-    fn event_scopes_are_pinned() {
-        let by_scope = |scope| {
+    fn event_requirements_are_pinned() {
+        let by = |filter: &dyn Fn(&crate::permission::ResourceMetadata) -> bool| {
             EventName::ALL
                 .into_iter()
-                .filter(|event| event.resource().scope == scope)
+                .filter(|event| filter(event.resource()))
                 .map(EventName::as_str)
                 .collect::<Vec<_>>()
         };
+        assert!(by(&|resource| resource.permission.access != Access::Read).is_empty());
         assert_eq!(
-            by_scope(Scope::Read),
-            [
-                "app-update-summary-changed",
-                "clash-ws-event",
-                "scheme-request-received-event",
-                "storage-resync-event",
-                "state-changed-event",
-                "configuration-status-summary-changed",
-                "core-status-summary-changed-event",
-                "service-status-summary-changed-event",
-                "core-logs-summary-changed",
-            ]
-        );
-        assert_eq!(
-            by_scope(Scope::SensitiveRead),
+            by(&|resource| resource.sensitive),
             [
                 "app-update-state-changed",
                 "core-logs-changed",
@@ -182,7 +172,11 @@ mod tests {
                 "sync-status-changed-event",
             ]
         );
-        assert!(by_scope(Scope::System).is_empty());
+        assert_eq!(
+            by(&|resource| resource.permission.resource == Resource::Traffic),
+            ["clash-ws-event"]
+        );
+        assert!(by(&|resource| resource.permission.resource == Resource::Remote).is_empty());
     }
 
     #[test]

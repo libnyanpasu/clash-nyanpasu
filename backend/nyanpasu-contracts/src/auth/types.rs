@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use specta::Type;
 
-use super::{AuthContext, ScopeSet, secrets::SecretString};
+use super::{AuthContext, Grant, secrets::SecretString};
 
 /// Maximum length in bytes of a public token or session ID.
 pub const MAX_AUTH_ID_LEN: usize = 64;
@@ -220,8 +220,8 @@ pub struct AccessTokenSummary {
     pub id: TokenId,
     /// User-assigned display label.
     pub name: TokenName,
-    /// Independent permissions granted to this token.
-    pub scopes: ScopeSet,
+    /// What this token was granted.
+    pub grant: Grant,
     /// Wall-clock creation timestamp in Unix epoch milliseconds.
     pub created_at_ms: i64,
     /// Optional wall-clock expiration timestamp in Unix epoch milliseconds.
@@ -237,8 +237,8 @@ pub struct AccessTokenSummary {
 pub struct CreateAccessTokenRequest {
     /// User-assigned non-secret label for the token.
     pub name: TokenName,
-    /// Independent scopes granted to the token.
-    pub scopes: ScopeSet,
+    /// What the token is granted; checked with [`Grant::validate`] before it is issued.
+    pub grant: Grant,
     /// Optional wall-clock expiration timestamp in Unix epoch milliseconds.
     pub expires_at_ms: Option<i64>,
 }
@@ -265,13 +265,10 @@ impl fmt::Debug for IssuedAccessToken {
 
 /// Once-returned result of minting a 60-second single-use browser launch code.
 ///
-/// The launch code is bound to trusted composition-supplied scopes rather than any
-/// user-provided principal JSON.
+/// The resulting browser session holds the `admin` role.
 pub struct IssuedLaunchCode {
     /// Single-use secret launch code shown once for handoff into the browser URL.
     pub code: SecretString,
-    /// Exact independent scopes that will be granted to the resulting browser session.
-    pub scopes: ScopeSet,
     /// Wall-clock issuance timestamp in Unix epoch milliseconds.
     pub issued_at_ms: i64,
     /// Wall-clock expiration timestamp in Unix epoch milliseconds (`issued_at_ms + 60_000`).
@@ -282,7 +279,6 @@ impl fmt::Debug for IssuedLaunchCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IssuedLaunchCode")
             .field("code", &self.code)
-            .field("scopes", &self.scopes)
             .field("issued_at_ms", &self.issued_at_ms)
             .field("expires_at_ms", &self.expires_at_ms)
             .finish()
@@ -296,8 +292,8 @@ pub struct BrowserSessionSummary {
     pub id: SessionId,
     /// Backing token ID when the session was established via `login_with_token`.
     pub backing_token_id: Option<TokenId>,
-    /// Independent scopes held by this session.
-    pub scopes: ScopeSet,
+    /// What this session holds: `admin` from a launch code, or its backing token's grant.
+    pub grant: Grant,
     /// Wall-clock creation timestamp in Unix epoch milliseconds.
     pub created_at_ms: i64,
     /// Wall-clock last-activity timestamp in Unix epoch milliseconds.
@@ -310,7 +306,7 @@ pub struct BrowserSessionSummary {
 pub struct EstablishedBrowserSession {
     /// Public non-secret metadata for inspection/revocation.
     pub summary: BrowserSessionSummary,
-    /// Authoritative resolved caller identity and independent `ScopeSet`.
+    /// Authoritative resolved caller identity and permissions.
     pub auth: AuthContext,
     /// Secret HttpOnly session cookie credential (`nps_<session_id>_<256bit_hex_secret>`).
     pub cookie: SecretString,
@@ -329,7 +325,7 @@ impl fmt::Debug for EstablishedBrowserSession {
 /// Resolved caller context returned when verifying a credential or revalidating admission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedCaller {
-    /// Resolved non-secret principal and independent scope grants.
+    /// Resolved non-secret principal and permissions.
     pub auth: AuthContext,
     /// Optional wall-clock hard expiration in Unix epoch milliseconds.
     pub expires_at_ms: Option<i64>,

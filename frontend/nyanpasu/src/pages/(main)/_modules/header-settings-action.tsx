@@ -98,7 +98,7 @@ const ProxySettings = () => {
   const proxyMode = useProxyMode()
 
   // Switching the routing mode changes the core: `proxy` scope.
-  const canProxy = useCapabilities().hasScope('proxy')
+  const canProxy = useCapabilities().hasPermission('proxy:write')
 
   const proxyModeMessages = {
     global: m.settings_system_proxy_global_mode_label(),

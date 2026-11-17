@@ -28,7 +28,7 @@ pub enum ClientError {
     Custom(String),
 }
 
-/// Why a Clash read or probe a caller without `sensitive_read` made has no result.
+/// Why a Clash read or probe has no result, in a redacted response.
 ///
 /// The messages are fixed and carry no source: the core's response, the request it failed on and
 /// the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
@@ -56,7 +56,7 @@ pub enum ClashReadError {
     StreamsUnavailable,
 }
 
-/// Why a core log query a caller without `sensitive_read` made has no result.
+/// Why a core log query has no result, in a redacted response.
 ///
 /// The messages are fixed and carry no source: backend store paths and storage errors stay out of
 /// the error, and their diagnostics stay on the protected full queries.
@@ -93,7 +93,7 @@ impl From<nyanpasu_observers::logs::CoreLogError> for CoreLogReadError {
     }
 }
 
-/// Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+/// Why a profile's sync status or run history has no result, in a redacted response.
 ///
 /// The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
 /// out of the error, and their diagnostics stay on the protected full queries.

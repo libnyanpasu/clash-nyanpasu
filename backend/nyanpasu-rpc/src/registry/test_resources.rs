@@ -4,8 +4,9 @@
 //! to exercise dispatch, auditing and privacy have their rows written here. Each row repeats the
 //! declaration it belongs to; the registry refuses a linked handler that has no row.
 
+use nyanpasu_contracts::auth::{Access, Permission, Resource};
 use nyanpasu_rpc_protocol::{
-    CommandEffect, CommandKind, RpcTarget, Scope, ShellCapability,
+    CommandEffect, CommandKind, RpcTarget, ShellCapability,
     permission::{PermissionSource, ResourceKind, ResourceMetadata},
 };
 
@@ -14,7 +15,7 @@ const HTTP: &[RpcTarget] = &[RpcTarget::Desktop, RpcTarget::Http];
 const fn mutation(
     name: &'static str,
     kind: CommandKind,
-    scope: Scope,
+    permission: Permission,
     targets: &'static [RpcTarget],
     capabilities: &'static [ShellCapability],
     optional_capabilities: &'static [ShellCapability],
@@ -24,29 +25,40 @@ const fn mutation(
         namespace: "test",
         kind: ResourceKind::Command(kind),
         effect: CommandEffect::Mutation,
-        scope,
+        permission,
         source: PermissionSource::Legacy,
+        sensitive: false,
         targets,
         capabilities,
         optional_capabilities,
     }
 }
 
-const fn shared_http(name: &'static str, scope: Scope) -> ResourceMetadata {
-    mutation(name, CommandKind::Shared, scope, HTTP, &[], &[])
+const fn shared_http(name: &'static str, permission: Permission) -> ResourceMetadata {
+    mutation(name, CommandKind::Shared, permission, HTTP, &[], &[])
+}
+
+const fn write(resource: Resource) -> Permission {
+    Permission::new(resource, Access::Write)
+}
+
+/// The privacy canaries only read their resource, so a reader reaches the redacted projection
+/// and a writer the full response.
+const fn read(resource: Resource) -> Permission {
+    Permission::new(resource, Access::Read)
 }
 
 pub(crate) const TEST_RESOURCES: &[ResourceMetadata] = &[
     // `test_support`
-    shared_http("audit_echo", Scope::Settings),
+    shared_http("audit_echo", write(Resource::Settings)),
     // `registry/audit_tests.rs`
-    shared_http("audit_panic", Scope::Settings),
-    shared_http("audit_mutation", Scope::Settings),
-    shared_http("audit_mutation_alias", Scope::Settings),
+    shared_http("audit_panic", write(Resource::Settings)),
+    shared_http("audit_mutation", read(Resource::Settings)),
+    shared_http("audit_mutation_alias", read(Resource::Settings)),
     mutation(
         "local_optional_effect",
         CommandKind::Shared,
-        Scope::Settings,
+        write(Resource::Settings),
         &[RpcTarget::Desktop, RpcTarget::Local],
         &[],
         &[ShellCapability::Elevation],
@@ -54,25 +66,31 @@ pub(crate) const TEST_RESOURCES: &[ResourceMetadata] = &[
     mutation(
         "requires_clipboard",
         CommandKind::Shared,
-        Scope::Settings,
+        write(Resource::Settings),
         HTTP,
         &[ShellCapability::Clipboard],
         &[],
     ),
     // `privacy_tests.rs`
-    shared_http("privacy_canary_read_mutation", Scope::Read),
-    shared_http("privacy_canary_proxy_mutation", Scope::Proxy),
-    shared_http("privacy_canary_profile_mutation", Scope::Profile),
-    shared_http("privacy_canary_settings_mutation", Scope::Settings),
-    shared_http("privacy_canary_system_mutation", Scope::System),
-    shared_http("privacy_canary_remote_admin_mutation", Scope::RemoteAdmin),
-    shared_http("privacy_canary_app_update_mutation", Scope::System),
-    shared_http("privacy_canary_network_status", Scope::System),
+    shared_http(
+        "privacy_canary_read_mutation",
+        Permission::new(Resource::Proxy, Access::Read),
+    ),
+    shared_http("privacy_canary_proxy_mutation", read(Resource::Proxy)),
+    shared_http("privacy_canary_profile_mutation", read(Resource::Profile)),
+    shared_http("privacy_canary_settings_mutation", read(Resource::Settings)),
+    shared_http("privacy_canary_system_mutation", read(Resource::System)),
+    shared_http(
+        "privacy_canary_remote_admin_mutation",
+        read(Resource::Remote),
+    ),
+    shared_http("privacy_canary_app_update_mutation", read(Resource::System)),
+    shared_http("privacy_canary_network_status", read(Resource::System)),
     // The server's `panic-injection` binary and its tests, which submit entries by hand.
     mutation(
         "e4b_test_panic",
         CommandKind::Shared,
-        Scope::Settings,
+        write(Resource::Settings),
         &[RpcTarget::Http, RpcTarget::Local],
         &[],
         &[],
@@ -80,7 +98,7 @@ pub(crate) const TEST_RESOURCES: &[ResourceMetadata] = &[
     mutation(
         "e4b_test_owner_work",
         CommandKind::Shared,
-        Scope::Settings,
+        write(Resource::Settings),
         &[RpcTarget::Local],
         &[],
         &[],
@@ -89,7 +107,7 @@ pub(crate) const TEST_RESOURCES: &[ResourceMetadata] = &[
     mutation(
         "audit_native_echo",
         CommandKind::Native,
-        Scope::Settings,
+        write(Resource::Settings),
         &[RpcTarget::Desktop],
         &[ShellCapability::Presentation],
         &[],

@@ -1,4 +1,4 @@
-#[nyanpasu_rpc::rpc(http, scope = settings)]
+#[nyanpasu_rpc::rpc(http, permission = settings:write)]
 fn external_shared() -> bool {
     true
 }

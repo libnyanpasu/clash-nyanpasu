@@ -9,7 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import SettingsNavigate from '../src/pages/(main)/main/settings/_modules/settings-navigate'
-import { AllScopes, withScopes } from './all-scopes'
+import { AllPermissions, withPermissions } from './all-permissions'
 
 const state = vi.hoisted(() => ({ core: 'mihomo' }))
 
@@ -30,7 +30,7 @@ vi.mock('@nyanpasu/query', async (original) => ({
 
 const renderAt = async (
   path: string,
-  wrapper: typeof AllScopes = AllScopes,
+  wrapper: typeof AllPermissions = AllPermissions,
 ) => {
   const rootRoute = createRootRoute({ component: SettingsNavigate })
   const pageRoute = createRoute({
@@ -111,10 +111,10 @@ test('the AI item is listed only while the core ships agent skills', async () =>
   }
 })
 
-test('a caller that may not read secrets is not offered the pages that need them', async () => {
+test('a caller that may not read the documents a page edits is not offered it', async () => {
   const view = await renderAt(
     '/main/settings/debug',
-    withScopes(['read', 'settings']),
+    withPermissions({ proxy: 'write', logs: 'read', traffic: 'read' }),
   )
 
   await expect
@@ -138,16 +138,18 @@ test('Remote Access is offered to the desktop app alone', async () => {
     .toBeInTheDocument()
   await desktop.unmount()
 
-  // A browser token holding every scope still has no remote administration.
+  // A browser token holding every permission still has no remote administration.
   const browser = await renderAt(
     '/main/settings/debug',
-    withScopes([
-      'read',
-      'sensitive_read',
-      'settings',
-      'system',
-      'remote_admin',
-    ]),
+    withPermissions({
+      proxy: 'write',
+      profile: 'write',
+      settings: 'write',
+      system: 'write',
+      logs: 'write',
+      traffic: 'write',
+      remote: 'write',
+    }),
   )
   await expect
     .element(item(browser, m.settings_label_proxy_description()))

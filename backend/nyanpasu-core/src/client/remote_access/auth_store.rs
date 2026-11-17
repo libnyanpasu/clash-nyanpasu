@@ -3,7 +3,7 @@
 use std::{collections::HashSet, net::IpAddr};
 
 use nyanpasu_contracts::auth::{
-    EntropySource, ScopeSet, SecretHash, SecretStore, SecretString, TlsIdentity, TokenId, TokenName,
+    EntropySource, Grant, SecretHash, SecretStore, SecretString, TlsIdentity, TokenId, TokenName,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -20,7 +20,7 @@ pub const MAX_SECRET_RECORD_BYTES: usize = 256 * 1024;
 pub(super) struct TokenRecord {
     pub(super) id: TokenId,
     pub(super) name: TokenName,
-    pub(super) scopes: ScopeSet,
+    pub(super) grant: Grant,
     pub(super) hash: SecretHash,
     pub(super) created_at_ms: i64,
     pub(super) expires_at_ms: Option<i64>,
@@ -30,7 +30,7 @@ pub(super) struct TokenRecord {
 struct StoredToken {
     id: TokenId,
     name: TokenName,
-    scopes: ScopeSet,
+    grant: Grant,
     hash_hex: String,
     created_at_ms: i64,
     expires_at_ms: Option<i64>,
@@ -167,13 +167,18 @@ pub(super) async fn load_record(
         if !seen.insert(stored.id.clone()) {
             return Err(persistence_failed("secret record repeats a token id"));
         }
+        // A grant is validated when it is issued; a record edited since must not widen a token
+        // past what issuance allows, such as the owner role or `remote`.
+        stored.grant.validate().map_err(|_| {
+            persistence_failed("secret record holds a token grant that cannot be issued")
+        })?;
         let mut hash = [0u8; 32];
         hex::decode_to_slice(&stored.hash_hex, &mut hash)
             .map_err(|_| persistence_failed("secret record holds a malformed token hash"))?;
         tokens.push(TokenRecord {
             id: stored.id,
             name: stored.name,
-            scopes: stored.scopes,
+            grant: stored.grant,
             hash: SecretHash::from_bytes(hash),
             created_at_ms: stored.created_at_ms,
             expires_at_ms: stored.expires_at_ms,
@@ -221,7 +226,7 @@ pub(super) async fn save_record<'a>(
             .map(|token| StoredToken {
                 id: token.id.clone(),
                 name: token.name.clone(),
-                scopes: token.scopes.clone(),
+                grant: token.grant,
                 hash_hex: hex::encode(token.hash.as_bytes()),
                 created_at_ms: token.created_at_ms,
                 expires_at_ms: token.expires_at_ms,

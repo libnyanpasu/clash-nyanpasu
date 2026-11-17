@@ -4,27 +4,13 @@
 //! stream. The table in [`RESOURCES`] is the only source of a resource's requirement, exposure
 //! and capabilities: the `rpc` attribute registers implementations and carries none of it.
 
-use crate::{CommandEffect, CommandKind, RpcTarget, Scope, ShellCapability};
+use nyanpasu_config::application::Permission;
+
+use crate::{CommandEffect, CommandKind, RpcTarget, ShellCapability};
 
 mod generated;
-mod requirements;
 
 pub use generated::RESOURCES;
-use nyanpasu_config::application::Permission;
-pub use requirements::REQUIREMENTS;
-
-/// The requirement a resource takes in the permission model, and whether its responses may
-/// disclose secrets. Production admission still reads the legacy scope; the switch replaces it
-/// with these.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Requirement {
-    /// The resource's wire name, unique across kinds.
-    pub name: &'static str,
-    pub permission: Permission,
-    /// Responses may carry credentials, subscription URLs, configuration text or diagnostics.
-    /// It never takes part in admission.
-    pub sensitive: bool,
-}
 
 /// What kind of object a resource is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +28,8 @@ pub enum ResourceKind {
 /// Where a resource's requirement comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PermissionSource {
-    /// Written on the declaration as `scope = ...`, before the namespace tree derives it.
+    /// Written on the declaration as `permission = resource:access`, before the namespace tree
+    /// derives it.
     Legacy,
 }
 
@@ -56,9 +43,12 @@ pub struct ResourceMetadata {
     pub kind: ResourceKind,
     /// Whether the resource only reads.
     pub effect: CommandEffect,
-    /// The one scope a principal must hold.
-    pub scope: Scope,
+    /// The one permission a caller must hold.
+    pub permission: Permission,
     pub source: PermissionSource,
+    /// Responses may carry credentials, subscription URLs, configuration text or diagnostics.
+    /// It never takes part in admission.
+    pub sensitive: bool,
     /// Explicit transport exposure.
     pub targets: &'static [RpcTarget],
     /// Facilities required to execute the resource.
@@ -91,8 +81,10 @@ mod model_tests;
 
 #[cfg(test)]
 mod tests {
+    use nyanpasu_config::application::{Access, Permission, Resource};
+
     use super::{PermissionSource, RESOURCES, ResourceMetadata};
-    use crate::{CommandEffect, RpcTarget, Scope, ShellCapability};
+    use crate::{CommandEffect, RpcTarget, ShellCapability};
 
     /// Every committed requirement is a reviewed legacy declaration until the commands move into
     /// the namespace tree; this budget only goes down, to zero.
@@ -122,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn latency_measurements_require_proxy_authority() {
+    fn latency_measurements_require_proxy_write() {
         for name in [
             "clash_api_get_proxy_delay",
             "clash_api_get_group_delay",
@@ -130,15 +122,19 @@ mod tests {
         ] {
             let command = RESOURCES.iter().find(|item| item.name == name).unwrap();
             assert_eq!(command.effect, CommandEffect::Query, "{name}");
-            assert_eq!(command.scope, Scope::Proxy, "{name}");
+            assert_eq!(
+                command.permission,
+                Permission::new(Resource::Proxy, Access::Write),
+                "{name}"
+            );
         }
     }
 
-    /// Adding a secret-bearing query, or demoting one, is a reviewed change to this list.
+    /// Marking a command sensitive, or removing the marking, is a reviewed change to this list.
     #[test]
-    fn sensitive_reads_are_pinned() {
+    fn sensitive_commands_are_pinned() {
         assert_eq!(
-            names(|command| command.scope == Scope::SensitiveRead),
+            names(|command| command.sensitive),
             [
                 "clash_api_get_configs",
                 "get_all_storage_items",
@@ -181,12 +177,12 @@ mod tests {
         );
     }
 
-    /// `remote_admin` belongs to the desktop shell and the same-user local socket. HTTP never
-    /// offers it, because no bearer token or browser session can hold the scope.
+    /// `remote` belongs to the desktop shell and the same-user local socket. HTTP never offers it,
+    /// because no bearer token or browser session can hold it.
     #[test]
     fn remote_administration_is_never_an_http_command() {
         for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
-            if command.scope == Scope::RemoteAdmin {
+            if command.permission.resource == Resource::Remote {
                 assert!(
                     command.targets.contains(&RpcTarget::Desktop),
                     "{}",
@@ -200,7 +196,7 @@ mod tests {
             }
         }
         assert_eq!(
-            names(|command| command.scope == Scope::RemoteAdmin),
+            names(|command| command.permission.resource == Resource::Remote),
             [
                 "create_http_launch_url",
                 "create_remote_access_token",
@@ -215,7 +211,7 @@ mod tests {
         );
         // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
         assert_eq!(
-            names(|command| command.scope == Scope::RemoteAdmin
+            names(|command| command.permission.resource == Resource::Remote
                 && command.targets.contains(&RpcTarget::Local)),
             [
                 "create_remote_access_token",
@@ -230,9 +226,9 @@ mod tests {
         );
     }
 
-    /// A shell or OS facility is never reachable by a scope below `system`.
+    /// A shell or OS facility is never reachable without `system:write` or `remote:write`.
     #[test]
-    fn shell_capabilities_need_the_system_scope() {
+    fn shell_capabilities_need_system_write() {
         for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
             let shell = command.capabilities.iter().any(|capability| {
                 !matches!(
@@ -242,22 +238,28 @@ mod tests {
             });
             if shell && command.effect == CommandEffect::Mutation {
                 assert!(
-                    matches!(command.scope, Scope::System | Scope::RemoteAdmin),
-                    "{} needs a shell facility but holds {}",
+                    command.permission.access == Access::Write
+                        && matches!(
+                            command.permission.resource,
+                            Resource::System | Resource::Remote
+                        ),
+                    "{} needs a shell facility but requires {}",
                     command.name,
-                    command.scope
+                    command.permission
                 );
             }
         }
     }
 
-    /// Scope is independent of target: a `system` command is HTTP-reachable only where it
-    /// already was. This pins that set, so a new HTTP system command is a reviewed change.
+    /// The permission is independent of the target: a `system:write` command is HTTP-reachable
+    /// only where it already was. This pins that set, so a new one is a reviewed change.
     #[test]
-    fn http_exposed_system_commands_are_pinned() {
+    fn http_exposed_system_writes_are_pinned() {
         assert_eq!(
-            names(|command| command.scope == Scope::System
-                && command.targets.contains(&RpcTarget::Http)),
+            names(
+                |command| command.permission == Permission::new(Resource::System, Access::Write)
+                    && command.targets.contains(&RpcTarget::Http)
+            ),
             [
                 "change_clash_core",
                 "patch_clash_system_config",

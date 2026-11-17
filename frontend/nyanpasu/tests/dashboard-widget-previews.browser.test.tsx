@@ -13,7 +13,7 @@ import { DndContext } from '@dnd-kit/core'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient } from '@nyanpasu/rpc'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const types = Object.values(WidgetId)
 
@@ -63,7 +63,7 @@ test.each(['library', 'overlay'] as const)(
       container.remove()
     })
     root.render(
-      <AllScopes>
+      <AllPermissions>
         <RpcProvider rpc={rpc}>
           <QueryClientProvider client={new QueryClient()}>
             <KvStorageProvider>
@@ -115,7 +115,7 @@ test.each(['library', 'overlay'] as const)(
             </KvStorageProvider>
           </QueryClientProvider>
         </RpcProvider>
-      </AllScopes>,
+      </AllPermissions>,
     )
     await expect
       .poll(

@@ -5,7 +5,7 @@ use std::{net::IpAddr, sync::Arc};
 
 use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls};
 use nyanpasu_contracts::auth::{
-    CreateAccessTokenRequest, ScopeSet, TlsFingerprint, TlsIdentity, TokenName,
+    CreateAccessTokenRequest, Grant, Role, TlsFingerprint, TlsIdentity, TokenName,
 };
 use nyanpasu_core::client::NyanpasuClient;
 use reqwest::StatusCode;
@@ -60,7 +60,7 @@ impl Harness {
         self.client()
             .create_remote_access_token(CreateAccessTokenRequest {
                 name: TokenName::parse("lan-test").unwrap(),
-                scopes: ScopeSet::from([nyanpasu_config::application::Scope::Read]),
+                grant: Grant::Role(Role::Viewer),
                 expires_at_ms: None,
             })
             .await

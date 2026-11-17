@@ -56,7 +56,7 @@ impl NyanpasuClient {
         Ok(proxies.trim_for_frontend(&default_url))
     }
     /// Each group's icon, by group name. The icons are profile-provided URLs that may hold a
-    /// credential, so this is a `sensitive_read` query.
+    /// credential, so this is a sensitive query.
     pub async fn proxy_group_icons(&self) -> Result<IndexMap<ProxyName, String>> {
         Ok(self.inner.proxies.get(false).await?.group_icons())
     }

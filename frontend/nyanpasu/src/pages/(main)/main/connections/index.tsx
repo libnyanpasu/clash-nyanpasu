@@ -124,7 +124,7 @@ function RouteComponent() {
   const focusRowId = useTabFocus(scope, entryFocus)
 
   // Closing connections changes the core: `proxy` scope.
-  const canProxy = useCapabilities().hasScope('proxy')
+  const canProxy = useCapabilities().hasPermission('proxy:write')
 
   const deleteConnections = useDeleteClashConnections()
 

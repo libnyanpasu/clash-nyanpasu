@@ -1,12 +1,11 @@
 //! Remote-access administration commands.
 //!
 //! They are reachable from the desktop shell and the same-user local socket, never over HTTP:
-//! `remote_admin` is not a scope any bearer token or browser session can hold.
+//! no bearer token or browser session can hold `remote`.
 
 use nyanpasu_contracts::auth::{
     AccessTokenSummary, BrowserSessionSummary,
-    CreateAccessTokenRequest as CoreCreateAccessTokenRequest, ScopeSet, SessionId, TokenId,
-    TokenName,
+    CreateAccessTokenRequest as CoreCreateAccessTokenRequest, Grant, SessionId, TokenId, TokenName,
 };
 use nyanpasu_core::client::NyanpasuClient;
 use serde::{Deserialize, Serialize};
@@ -17,7 +16,8 @@ use crate::{error::Result, registry::RpcState};
 #[derive(Debug, Clone, Deserialize, specta::Type)]
 pub struct CreateRemoteAccessTokenRequest {
     pub name: TokenName,
-    pub scopes: ScopeSet,
+    /// A role (`viewer`, `operator` or `admin`) or a custom permission map without `remote`.
+    pub grant: Grant,
     #[serde(default)]
     #[specta(optional)]
     pub expires_at_ms: Option<i64>,
@@ -32,7 +32,7 @@ pub struct CreatedRemoteAccessToken {
     pub token: String,
 }
 
-#[nyanpasu_rpc::rpc(local, query, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, query, permission = remote:read)]
 #[specta::specta]
 pub async fn list_remote_access_tokens(
     client: RpcState<'_, NyanpasuClient>,
@@ -40,7 +40,7 @@ pub async fn list_remote_access_tokens(
     Ok(client.list_remote_access_tokens().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, permission = remote:write)]
 #[specta::specta]
 pub async fn create_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -49,7 +49,7 @@ pub async fn create_remote_access_token(
     let issued = client
         .create_remote_access_token(CoreCreateAccessTokenRequest {
             name: request.name,
-            scopes: request.scopes,
+            grant: request.grant,
             expires_at_ms: request.expires_at_ms,
         })
         .await?;
@@ -59,7 +59,7 @@ pub async fn create_remote_access_token(
     })
 }
 
-#[nyanpasu_rpc::rpc(local, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, permission = remote:write)]
 #[specta::specta]
 pub async fn revoke_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -68,7 +68,7 @@ pub async fn revoke_remote_access_token(
     Ok(client.revoke_remote_access_token(id).await?)
 }
 
-#[nyanpasu_rpc::rpc(local, query, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, query, permission = remote:read)]
 #[specta::specta]
 pub async fn list_remote_browser_sessions(
     client: RpcState<'_, NyanpasuClient>,
@@ -76,7 +76,7 @@ pub async fn list_remote_browser_sessions(
     Ok(client.list_remote_browser_sessions().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, permission = remote:write)]
 #[specta::specta]
 pub async fn revoke_remote_browser_session(
     client: RpcState<'_, NyanpasuClient>,
@@ -88,7 +88,7 @@ pub async fn revoke_remote_browser_session(
 /// A URL that logs the caller into the running HTTP server. It is a credential, so it is a
 /// desktop-only mutation: a query would keep it in a client cache, and no remote transport may
 /// return it.
-#[nyanpasu_rpc::rpc(capabilities(http_server), scope = remote_admin)]
+#[nyanpasu_rpc::rpc(capabilities(http_server), permission = remote:write)]
 #[specta::specta]
 pub async fn create_http_launch_url(
     client: RpcState<'_, NyanpasuClient>,

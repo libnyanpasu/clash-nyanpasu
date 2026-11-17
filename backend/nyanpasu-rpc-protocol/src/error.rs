@@ -5,22 +5,14 @@ use serde_json::Value;
 
 /// Controls whether an outgoing RPC error or response may include host-private
 /// diagnostics such as filesystem paths, URLs, credentials, or raw error chains.
+///
+/// The redaction layer of the RPC pipeline decides it for each admitted call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResponseVisibility {
-    /// Privileged caller with `Scope::SensitiveRead`.
+    /// Unredacted.
     Full,
-    /// Caller without `Scope::SensitiveRead`.
+    /// Redacted to the public projection.
     Public,
-}
-
-impl ResponseVisibility {
-    /// Resolve caller visibility from an authenticated context, failing closed to `Public`.
-    pub fn for_auth(auth: Option<&crate::AuthContext>) -> Self {
-        match auth {
-            Some(auth) if auth.has_sensitive_read() => Self::Full,
-            _ => Self::Public,
-        }
-    }
 }
 
 // Keep envelope comments ordinary: Specta includes doc attributes in bindings.

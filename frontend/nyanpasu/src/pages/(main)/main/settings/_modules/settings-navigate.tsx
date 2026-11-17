@@ -1,6 +1,6 @@
 import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
-import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
 import DesktopWindowsRounded from '~icons/material-symbols/desktop-windows-rounded'

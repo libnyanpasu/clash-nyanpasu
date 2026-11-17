@@ -43,10 +43,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
       )
     },
     structuralSharing: (previous, next) =>
-      acceptSyncStatus(
-        previous as SyncStatus | undefined,
-        next as SyncStatus,
-      ),
+      acceptSyncStatus(previous as SyncStatus | undefined, next as SyncStatus),
   })
 
   const settings = useQuery({

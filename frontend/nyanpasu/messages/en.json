@@ -1039,13 +1039,8 @@
   "proxies_nav_folders": "Folders",
   "proxies_nav_group_count": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} group",
         "countPlural=other": "{count} groups"
@@ -1060,13 +1055,8 @@
   "proxies_nav_collapse_all": "Collapse all folders",
   "proxies_folder_delete_description": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} group will move to Groups.",
         "countPlural=other": "{count} groups will move to Groups."
@@ -1626,13 +1616,8 @@
   "profile_nav_merge": "YAML merge",
   "profile_nav_count_profiles": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} profile",
         "countPlural=other": "{count} profiles"
@@ -1641,13 +1626,8 @@
   ],
   "profile_nav_count_scripts": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} script",
         "countPlural=other": "{count} scripts"
@@ -1656,13 +1636,8 @@
   ],
   "profile_nav_count_overlays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} overlay",
         "countPlural=other": "{count} overlays"
@@ -1678,13 +1653,8 @@
   "profile_folder_delete_title": "Delete folder",
   "profile_folder_delete_description": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} profile will move to Not in a folder.",
         "countPlural=other": "{count} profiles will move to Not in a folder."
@@ -1868,13 +1838,8 @@
   "inspect_rail_hint": "Every step that built your runtime config, from the source profile to what the core runs. Select a step to see what it changed.",
   "inspect_step_fields": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} field",
         "countPlural=other": "{count} fields"
@@ -1891,13 +1856,8 @@
   "inspect_step_desc_final": "What Nyanpasu sends to the core",
   "inspect_summary_changed": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Changed {count} field — select one to jump to it",
         "countPlural=other": "Changed {count} fields — select one to jump to it"

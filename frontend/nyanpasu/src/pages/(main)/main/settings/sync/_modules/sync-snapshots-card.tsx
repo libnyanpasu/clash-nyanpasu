@@ -3,8 +3,8 @@ import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useSync } from '@nyanpasu/query'
 import { PlatformDesktop } from '@nyanpasu/platform/react'
+import { useSync } from '@nyanpasu/query'
 import {
   SettingsCard,
   SettingsCardContent,

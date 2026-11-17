@@ -3,9 +3,9 @@ import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSync } from '@nyanpasu/query'
 import type { ConflictChoice } from '@nyanpasu/rpc/types'
-import { PlatformDesktop } from '@nyanpasu/platform/react'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -69,10 +69,10 @@ function SyncConflictsControls() {
                 <span className="text-on-surface-variant">{conflict.unit}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <pre className="overflow-x-auto rounded-lg bg-surface-variant/50 p-2">
+                <pre className="bg-surface-variant/50 overflow-x-auto rounded-lg p-2">
                   {conflict.local ?? m.settings_sync_absent()}
                 </pre>
-                <pre className="overflow-x-auto rounded-lg bg-surface-variant/50 p-2">
+                <pre className="bg-surface-variant/50 overflow-x-auto rounded-lg p-2">
                   {conflict.remote ?? m.settings_sync_absent()}
                 </pre>
               </div>

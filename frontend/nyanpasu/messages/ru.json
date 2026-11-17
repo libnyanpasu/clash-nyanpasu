@@ -1009,13 +1009,8 @@
   "proxies_nav_folders": "Папки",
   "proxies_nav_group_count": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} группа",
         "countPlural=few": "{count} группы",
@@ -1032,13 +1027,8 @@
   "proxies_nav_collapse_all": "Свернуть все папки",
   "proxies_folder_delete_description": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} группа будет перемещена в «Группы».",
         "countPlural=few": "{count} группы будут перемещены в «Группы».",
@@ -1511,13 +1501,8 @@
   "profile_nav_merge": "Слияние YAML",
   "profile_nav_count_profiles": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} профиль",
         "countPlural=few": "{count} профиля",
@@ -1528,13 +1513,8 @@
   ],
   "profile_nav_count_scripts": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} скрипт",
         "countPlural=few": "{count} скрипта",
@@ -1545,13 +1525,8 @@
   ],
   "profile_nav_count_overlays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} оверлей",
         "countPlural=few": "{count} оверлея",
@@ -1569,13 +1544,8 @@
   "profile_folder_delete_title": "Удалить папку",
   "profile_folder_delete_description": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} профиль будет перемещён в «Без папки».",
         "countPlural=few": "{count} профиля будут перемещены в «Без папки».",
@@ -1780,13 +1750,8 @@
   "inspect_rail_hint": "Все шаги, из которых собрана рабочая конфигурация: от исходного профиля до того, что запускает ядро. Выберите шаг, чтобы увидеть его изменения.",
   "inspect_step_fields": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} поле",
         "countPlural=few": "{count} поля",
@@ -1805,13 +1770,8 @@
   "inspect_step_desc_final": "Что Nyanpasu передаёт ядру",
   "inspect_summary_changed": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Изменено полей: {count} — выберите, чтобы перейти к нему",
         "countPlural=few": "Изменено полей: {count} — выберите, чтобы перейти к нему",

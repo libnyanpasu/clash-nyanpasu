@@ -23,9 +23,7 @@ function SyncMasonryItem({ children }: { children: ReactNode }) {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_sync()}
-      </PageTitle>
+      <PageTitle backTo="/main/settings">{m.settings_label_sync()}</PageTitle>
 
       <ReadOnlyScope scopes={['settings']}>
         <div className="space-y-4 px-4 pb-4">

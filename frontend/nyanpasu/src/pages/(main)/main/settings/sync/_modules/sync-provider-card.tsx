@@ -10,9 +10,9 @@ import { SwitchItem } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
+import { PlatformDesktop } from '@nyanpasu/platform/react'
 import { useSync } from '@nyanpasu/query'
 import type { ProviderConfig, ProviderKind } from '@nyanpasu/rpc/types'
-import { PlatformDesktop } from '@nyanpasu/platform/react'
 import {
   SettingsCard,
   SettingsCardContent,
@@ -284,7 +284,9 @@ function SyncProviderControls() {
           disabled={sync.configure.isPending || !nextSettings}
           onClick={() =>
             nextSettings &&
-            save(sync.configure.mutateAsync({ settings: nextSettings, secrets }))
+            save(
+              sync.configure.mutateAsync({ settings: nextSettings, secrets }),
+            )
           }
         >
           {m.settings_sync_save()}

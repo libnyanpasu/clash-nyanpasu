@@ -15,6 +15,19 @@ macro_rules! resource {
     ($($declaration:tt)*) => {};
 }
 
+/// Declares the settings of the enclosing command module and everything below it:
+/// `namespace!(expose = [http, local], sensitive)`.
+///
+/// A top-level module that declares it becomes a resource of the permission model and its
+/// commands derive their requirement from their position (design section 3.2 of the permission
+/// namespace spec): the effect decides the level unless a command writes `access = ...`. A
+/// top-level module must name its exposure; a module below may only narrow it, and `sensitive`
+/// marks the whole subtree. It expands to nothing; the resource table generator reads it.
+#[macro_export]
+macro_rules! namespace {
+    ($($settings:tt)*) => {};
+}
+
 pub mod audit;
 pub mod commands;
 pub mod error;

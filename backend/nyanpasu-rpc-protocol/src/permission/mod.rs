@@ -31,6 +31,10 @@ pub enum PermissionSource {
     /// Written on the declaration as `permission = resource:access`, before the namespace tree
     /// derives it.
     Legacy,
+    /// Derived from the namespace tree: the top-level module is the resource, the effect the level.
+    Derived,
+    /// Derived, with the level the command names in `access = ...`; a budgeted exception.
+    Override,
 }
 
 /// The authorization facts of one resource, known whether or not its handler is linked.
@@ -89,6 +93,19 @@ mod tests {
     /// Every committed requirement is a reviewed legacy declaration until the commands move into
     /// the namespace tree; this budget only goes down, to zero.
     const MAX_LEGACY: usize = 225;
+    /// Commands whose level differs from the one their effect derives (design section 3.3): the
+    /// latency tests and the log and connection-detail subscriptions. Raising it is reviewed.
+    const MAX_OVERRIDES: usize = 9;
+
+    #[test]
+    fn overrides_stay_within_their_budget() {
+        let overrides: Vec<_> = RESOURCES
+            .iter()
+            .filter(|resource| resource.source == PermissionSource::Override)
+            .map(|resource| resource.name)
+            .collect();
+        assert!(overrides.len() <= MAX_OVERRIDES, "{overrides:?}");
+    }
 
     #[test]
     fn legacy_declarations_stay_within_their_budget() {

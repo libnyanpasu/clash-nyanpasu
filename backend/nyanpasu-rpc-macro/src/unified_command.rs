@@ -7,7 +7,8 @@ use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 ///
 /// Only the implementation reads `result`, `owner`, `privacy` and `operation`. The other options
 /// are authorization metadata, which the resource table generator reads from the declaration; the
-/// expansion uses `http` and `local` only to require a transport-neutral signature.
+/// expansion uses the transports named by `http`, `local` or `expose` only to require a
+/// transport-neutral signature.
 pub struct Options {
     pub(crate) http: bool,
     pub(crate) local: bool,
@@ -22,6 +23,28 @@ pub struct Options {
     pub(crate) permission: Option<PermissionOption>,
     /// Responses may disclose secrets; never part of admission.
     pub(crate) sensitive: bool,
+    /// `access = read|write`: the level, when it differs from the one the effect derives.
+    pub(crate) access: Option<syn::Ident>,
+    /// `expose = [http, local]`: the transports beyond the desktop, a subset of the namespace's.
+    pub(crate) expose: Option<Vec<syn::Ident>>,
+}
+
+impl Options {
+    /// Whether the declaration itself names HTTP, as `http` or within `expose`.
+    pub(crate) fn names_http(&self) -> bool {
+        self.http || self.exposes("http")
+    }
+
+    /// Whether the declaration itself names the local socket, as `local` or within `expose`.
+    pub(crate) fn names_local(&self) -> bool {
+        self.local || self.exposes("local")
+    }
+
+    fn exposes(&self, target: &str) -> bool {
+        self.expose
+            .as_ref()
+            .is_some_and(|targets| targets.iter().any(|value| value == target))
+    }
 }
 
 /// `permission = resource:access` on a legacy declaration, before the namespace tree derives it.
@@ -98,6 +121,37 @@ impl syn::parse::Parse for Options {
                     }
                     options.permission = Some(input.parse()?);
                 }
+                "access" => {
+                    input.parse::<syn::Token![=]>()?;
+                    let access: syn::Ident = input.parse()?;
+                    if !matches!(access.to_string().as_str(), "read" | "write") {
+                        return Err(Error::new(access.span(), "`access` is `read` or `write`"));
+                    }
+                    if options.access.replace(access).is_some() {
+                        return Err(Error::new(option.span(), "duplicate access"));
+                    }
+                }
+                "expose" => {
+                    input.parse::<syn::Token![=]>()?;
+                    let list;
+                    syn::bracketed!(list in input);
+                    let targets: Vec<syn::Ident> = list
+                        .parse_terminated(syn::Ident::parse, syn::Token![,])?
+                        .into_iter()
+                        .collect();
+                    if let Some(target) = targets
+                        .iter()
+                        .find(|target| !matches!(target.to_string().as_str(), "http" | "local"))
+                    {
+                        return Err(Error::new(
+                            target.span(),
+                            "`expose` names `http` and `local`; the desktop is always exposed",
+                        ));
+                    }
+                    if options.expose.replace(targets).is_some() {
+                        return Err(Error::new(option.span(), "duplicate expose"));
+                    }
+                }
                 "operation" => {
                     input.parse::<syn::Token![=]>()?;
                     if options.operation.is_some() {
@@ -108,7 +162,7 @@ impl syn::parse::Parse for Options {
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner, privacy, query, sensitive, permission = resource:access, operation = path, capabilities(...) or optional_capabilities(...)",
+                        "expected http, local, result, owner, privacy, query, sensitive, permission = resource:access, access = read|write, expose = [...], operation = path, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -174,13 +228,13 @@ pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
     })) {
         return Err(Error::new(original.span(), "a shared command requires a transport-neutral signature"));
     }
-    if options.http && !neutral_compatible {
+    if options.names_http() && !neutral_compatible {
         return Err(Error::new(
             original.span(),
             "rpc(http) requires a transport-neutral signature",
         ));
     }
-    if options.local && !neutral_compatible {
+    if options.names_local() && !neutral_compatible {
         return Err(Error::new(
             original.span(),
             "rpc(local) requires a transport-neutral signature",
@@ -239,7 +293,8 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let mut field_names = Vec::new();
     let mut tauri_fields = Vec::new();
     let mut tauri_field_names = Vec::new();
-    let mut neutral_supported = neutral_compatible && (options.http || options.local || !native);
+    let mut neutral_supported =
+        neutral_compatible && (options.names_http() || options.names_local() || !native);
     let mut tauri_supported = true;
     let mut uses_dependencies = false;
 
@@ -832,6 +887,40 @@ mod tests {
             )));
             assert!(expanded.contains(&format!("transport_neutral : {}", !native)));
         }
+    }
+
+    /// A command's transports may come from its namespace instead of the attribute: a shared
+    /// command always builds its neutral handler, and a native one builds it when it names its
+    /// `expose`.
+    #[test]
+    fn the_shared_handler_follows_the_exposure_the_attribute_names() {
+        let neutral = |item: ItemFn| {
+            let expanded = expand(item).unwrap().to_string();
+            assert!(expanded.contains("transport_neutral : true"), "{expanded}");
+            expanded.contains("__unified_impl_")
+                && expanded.contains("fn __unified_rpc_")
+                && !expanded.contains("RpcError :: unsupported (stringify ! (")
+        };
+        assert!(neutral(syn::parse_quote! {
+            #[nyanpasu_rpc::rpc(query)]
+            fn shared(value: String) -> String { value }
+        }));
+        assert!(neutral(syn::parse_quote! {
+            #[nyanpasu_rpc::rpc(expose = [http, local])]
+            #[tauri::command]
+            fn native_exposed(value: String) -> String { value }
+        }));
+        let desktop_only = expand(syn::parse_quote! {
+            #[nyanpasu_rpc::rpc(expose = [])]
+            #[tauri::command]
+            fn native_desktop(value: String) -> String { value }
+        })
+        .unwrap()
+        .to_string();
+        assert!(
+            desktop_only.contains("transport_neutral : false"),
+            "{desktop_only}"
+        );
     }
 
     #[test]

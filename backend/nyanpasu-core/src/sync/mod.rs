@@ -8,7 +8,9 @@ mod actor;
 pub mod client;
 pub mod clock;
 pub mod commit;
+pub mod dirty;
 pub mod engine;
+pub mod jobs;
 pub mod plan;
 pub mod ports;
 pub mod settings;
@@ -23,7 +25,9 @@ pub use commit::{
     CommitNaming, DeviceId, LiveItem, Tombstone, TombstoneBody, VaultEncryption, VaultFormat,
     VaultId, head_of,
 };
+pub use dirty::{DirtyCommitNotifications, SyncDirty};
 pub use engine::{CycleError, CycleReport, open_store, run_cycle, vault_name};
+pub use jobs::SyncJobs;
 pub use plan::{
     ItemAction, Plan, PlanError, PlannedItem, PortableState, SideItem, plan, remote_state,
 };

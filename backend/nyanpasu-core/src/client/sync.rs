@@ -450,8 +450,14 @@ pub fn list_snapshots(paths: &PathResolver) -> Vec<SnapshotSummary> {
 }
 
 /// Builds the ports for one client from its owners and injected adapters.
+/// How long the portable documents must be quiet before a change triggers a
+/// cycle, so dragging a slider produces one sync rather than dozens.
+const QUIET_PERIOD: std::time::Duration = std::time::Duration::from_secs(5);
+
 pub(crate) struct SyncSetup<'a> {
     pub paths: &'a PathResolver,
+    pub jobs: nyanpasu_jobs::JobsClient,
+    pub dirty: crate::sync::SyncDirty,
     pub application: ApplicationClient,
     pub clash: ClashConfigClient,
     pub profiles: ProfilesClient,
@@ -467,6 +473,8 @@ impl SyncSetup<'_> {
     ) -> Result<SyncClient, Error> {
         let SyncSetup {
             paths,
+            jobs,
+            dirty,
             application,
             clash,
             profiles,
@@ -491,6 +499,9 @@ impl SyncSetup<'_> {
                     Arc::new(UnavailableStateStore)
                 }
             };
+        let (settings_tx, settings_rx) = tokio::sync::watch::channel(initial.clone());
+        let initial_settings = initial.clone();
+        let settings_watch = settings_rx.clone();
         let (remote, secrets): (
             Option<Arc<dyn nyanpasu_contracts::sync::RemoteStoreFactory>>,
             Arc<dyn nyanpasu_contracts::sync::SecretStore>,
@@ -519,9 +530,88 @@ impl SyncSetup<'_> {
             paths: paths.clone(),
             shutdown: shutdown.clone(),
         };
-        SyncClient::spawn(ports, initial, remote, shutdown, tasks)
-            .await
-            .context(StartSnafu)
+        let client = SyncClient::spawn(
+            ports,
+            initial.clone(),
+            remote,
+            settings_tx,
+            shutdown.clone(),
+            tasks,
+        )
+        .await
+        .context(StartSnafu)?;
+        // A burst of local edits produces one cycle: wait for quiet, then run.
+        {
+            let (dirty, sync_client, mut settings, token) = (
+                dirty.clone(),
+                client.clone(),
+                settings_watch,
+                shutdown.clone(),
+            );
+            tasks.spawn(async move {
+                let mut rx = dirty.subscribe();
+                loop {
+                    tokio::select! {
+                        () = token.cancelled() => break,
+                        event = rx.recv() => {
+                            if event.is_err() {
+                                break;
+                            }
+                            // Coalesce: keep resetting the quiet window while
+                            // hints keep arriving.
+                            loop {
+                                tokio::select! {
+                                    () = token.cancelled() => return,
+                                    () = tokio::time::sleep(QUIET_PERIOD) => break,
+                                    event = rx.recv() => {
+                                        if event.is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            let current = settings.borrow_and_update().clone();
+                            if current.enabled
+                                && current.sync_on_change
+                                && let Err(failure) = sync_client.sync_now().await
+                            {
+                                tracing::debug!("a change-triggered sync did not run: {failure}");
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        // The interval cycle is a job, so its run history and logs appear in
+        // the existing jobs UI and a scheduled cycle never overlaps a manual
+        // one. The facade owns registration; the actor only publishes the
+        // committed settings it must follow.
+        let jobs = sync::SyncJobs::new(jobs.clone());
+        let (registered, mut changes, sync_client, token) =
+            (jobs.clone(), settings_rx, client.clone(), shutdown.clone());
+        let initial_jobs = jobs.clone();
+        let initial_settings = initial_settings.clone();
+        let initial_client = client.clone();
+        tasks.spawn(async move {
+            if let Err(error) = initial_jobs.reconcile(&initial_settings, initial_client).await {
+                tracing::warn!("the sync schedule could not be registered: {error}");
+            }
+            loop {
+                tokio::select! {
+                    () = token.cancelled() => break,
+                    changed = changes.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        let settings = changes.borrow_and_update().clone();
+                        if let Err(error) = registered.reconcile(&settings, sync_client.clone()).await {
+                            tracing::warn!("the sync schedule could not be updated: {error}");
+                        }
+                    }
+                }
+            }
+        });
+        Ok(client)
     }
 }
 

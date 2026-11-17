@@ -78,6 +78,8 @@ pub enum SyncFailure {
 
 pub struct Args {
     pub(crate) ports: SyncPorts,
+    /// The facade watches this to keep the job schedule in step.
+    pub(crate) settings_tx: tokio::sync::watch::Sender<SyncSettings>,
     pub(crate) settings: SyncSettings,
     /// `None` when the shell supplied no sync adapters.
     pub(crate) adapters: Option<Arc<dyn RemoteStoreFactory>>,
@@ -86,6 +88,8 @@ pub struct Args {
 
 pub(super) struct State {
     ports: SyncPorts,
+    /// Publishes committed settings so the facade can follow them.
+    settings_tx: tokio::sync::watch::Sender<SyncSettings>,
     settings: SyncSettings,
     adapters: Option<Arc<dyn RemoteStoreFactory>>,
     shutdown: CancellationToken,
@@ -182,6 +186,11 @@ impl SyncActor {
         Ok(report)
     }
 
+    /// Tells the facade the committed settings, so it can re-register the job.
+    fn publish_settings(state: &State) {
+        state.settings_tx.send_replace(state.settings.clone());
+    }
+
     fn settings_reply(state: &State) -> SettingsReply {
         SettingsReply {
             settings: state.settings.clone(),
@@ -258,6 +267,7 @@ impl Actor for SyncActor {
         let conflicts = loaded.map(|loaded| loaded.conflicts).unwrap_or_default();
         Ok(State {
             ports: args.ports,
+            settings_tx: args.settings_tx,
             settings: args.settings,
             adapters: args.adapters,
             shutdown: args.shutdown,
@@ -317,6 +327,7 @@ impl Actor for SyncActor {
                         reason: error.to_string(),
                     }),
                 };
+                Self::publish_settings(state);
                 if let Err(failure) = &result {
                     state.fail(failure);
                 }

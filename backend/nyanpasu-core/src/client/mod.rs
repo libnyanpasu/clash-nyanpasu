@@ -590,8 +590,14 @@ impl NyanpasuClient {
         )
         .await
         .context(StartEffectsSnafu)?;
+        // A local commit marks sync dirty; the sync owner debounces it. The
+        // owners never call sync directly, and the hint carries no payload.
+        let sync_dirty = crate::sync::SyncDirty::default();
         let notifications: Arc<dyn effects::ports::CommitNotifications> =
-            Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
+            Arc::new(crate::sync::DirtyCommitNotifications::new(
+                Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink))),
+                sync_dirty.clone(),
+            ));
         let revisions = runtime::RuntimeRevisionAllocator::new();
         let builder = host_adapters.runtime_build;
         let validator: Arc<dyn reconciler::ports::RuntimeValidatorPort> =
@@ -764,6 +770,8 @@ impl NyanpasuClient {
         let sync_status = Arc::new(crate::client::sync::SyncStatusHub::default());
         let sync = crate::client::sync::SyncSetup {
             paths: &paths,
+            jobs: jobs.clone(),
+            dirty: sync_dirty,
             application: application.clone(),
             clash: clash_config.clone(),
             profiles: profiles.clone(),

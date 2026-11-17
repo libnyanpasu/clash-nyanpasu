@@ -37,6 +37,7 @@ impl SyncClient {
         ports: SyncPorts,
         settings: SyncSettings,
         adapters: Option<Arc<dyn RemoteStoreFactory>>,
+        settings_tx: tokio::sync::watch::Sender<SyncSettings>,
         shutdown: CancellationToken,
         tasks: &TaskTracker,
     ) -> Result<Self, Error> {
@@ -47,6 +48,7 @@ impl SyncClient {
             Args {
                 ports,
                 settings,
+                settings_tx,
                 adapters,
                 shutdown,
             },

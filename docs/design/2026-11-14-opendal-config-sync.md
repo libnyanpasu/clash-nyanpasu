@@ -1,12 +1,14 @@
 # Cross-platform configuration sync over Apache OpenDAL
 
 **Date:** 2026-11-14
-**Status:** Proposed; no production code yet
+**Status:** Proposed; implementation is in draft PR #6428 and must conform to this design
 **Baseline:** `main @ 253e2ee6d`
 **Scope:** A path manifest that enumerates every syncable item, platform-neutral portable projections of the configuration documents, a provider-agnostic storage port implemented with OpenDAL, an incremental sync protocol, and a conflict protocol surfaced through `NyanpasuClient` and unified RPC.
 **Out of scope:** Syncing logs, traffic history, core binaries, geodata or runtime state; real-time collaboration; a hosted sync service; OAuth providers and client-side encryption in the first delivery (both have a reserved place, see [§5.6](#56-credentials) and [§6.9](#69-reserved-client-side-encryption)).
 
 Facts under "verified" were checked against the source at the baseline commit. OpenDAL facts were checked by compiling and running a probe against `opendal 0.59.5` ([Appendix A](#appendix-a-opendal-0595-probe)).
+
+The committed Profiles reader and reconciler outcomes in §§6–8 incorporate the review of PR #6370; implementation in #6428 must be checked against these revised protocol requirements.
 
 ---
 
@@ -685,11 +687,12 @@ A commit is the complete portable state at one generation. Items are few and sma
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `meta`           | `device_id` (random, created on first enable), `vault_id`, baseline `{generation, id, ancestors}`, `pending_commit`, last GC time |
 | `baseline_items` | logical path to the baseline item entry (hash, size, codec, revision or tombstone)                                                |
-| `baseline_docs`  | canonical bytes of each baseline document, needed as the base of a field merge                                                    |
+| `baseline_docs`  | canonical bytes of each composite baseline document, needed as the base of a field merge                                          |
 | `journal`        | the current cycle: id, phase, planned actions, uploaded object ids, applied items                                                 |
 | `conflicts`      | open conflicts and recorded resolutions                                                                                           |
 
-- The baseline is the last state this device and the remote agreed on. It advances in one redb write transaction at the end of a cycle, so it is never half-updated.
+- The baseline records the last agreed value per merge unit, not necessarily a single remote revision. For a partially conflicted document, `baseline_docs` combines newly converged units with each unresolved unit's previous base value (including absence); its bytes and corresponding hash in `baseline_items` need not name an uploaded object. For atomic files, the whole item is one unit. The baseline, conflict records and associated item metadata advance together in one redb transaction at the end of a cycle.
+- Advance a unit only after its intended local apply and remote commit are confirmed, or when both sides already agree. A failed or uncommitted apply keeps the affected unit's old base; an atomic document apply failure keeps all units of that attempted document at their old bases. Crash recovery must preserve this rule when rebuilding the transaction.
 - There is no stat cache. A cycle projects three documents and hashes a few dozen small files; subscription downloads are not items. A cache would add an invalidation problem to save milliseconds.
 - If the file is missing or unusable it is preserved with `nyanpasu_persistence::preserve` and the device rejoins the vault as a device without a baseline ([§6.8](#68-first-sync-and-rejoin)).
 
@@ -705,7 +708,7 @@ Per item, with `B` the baseline hash, `L` the local hash and `R` the remote head
 | changed    | changed, `L == R` | converged: baseline moves, nothing is transferred |
 | changed    | changed, `L != R` | merge or conflict ([§7](#7-conflict-protocol))    |
 
-Only the delta moves: a push uploads objects the head manifest does not reference; a pull downloads objects whose hash differs from local. The local side is obtained without racing the owners: documents come from the owners' committed snapshots together with their version, files through `ProfileFsPort`.
+Only the delta moves: a push uploads objects the head manifest does not reference; a pull downloads objects whose hash differs from local. Application and Clash documents come from their owners' committed snapshots with their versions. For Profiles, use the Profiles-owned `ProfileContentReader::committed` operation to obtain the committed catalog, version and bytes or hashes of the files it names under the same `ProfileContentLock` read guard; read files through `ProfileFsPort` inside that operation. Writers hold the corresponding write guard from file promotion through document publication or compensation. A separate version recheck does not close the window between promotion and publication. Hold the read guard only for local reads and hashing, never network IO; preserve the captured bytes for uploads so they cannot change after the guard is released.
 
 ### 6.5 Cycle state machine
 
@@ -749,8 +752,8 @@ Object existence is never probed: the head manifest says which objects the remot
 | Finalize           | commit visible, baseline old             | same as above                                                                                                |
 
 - A merge is deterministic for a fixed policy and resolution set, so re-running it after a crash reproduces the same bytes.
-- Unresolved conflicts never block the cycle: a conflicted item keeps its remote value in the new commit and its old entry in the baseline, and every other item proceeds.
-- A failed item (unreadable file, `NotUtf8`, owner rejected the value) is reported and skipped; the cycle result is `Degraded`, not failed, when anything else succeeded.
+- Unresolved conflicts never block unrelated units: each conflicted unit keeps its remote value in the new commit and its old base in the composite baseline; successfully converged units advance independently. For atomic files this applies to the whole item. See [§7.2](#72-three-way-merge) for the local value and apply rules.
+- An unreadable file or `NotUtf8` item is reported and skipped; the cycle result is `Degraded`, not failed, when anything else succeeded. Runtime rejection and transient check failures have the distinct retry rules in [§8.1](#81-owner-and-ports).
 
 ### 6.6 Concurrency across devices
 
@@ -858,6 +861,8 @@ pub struct MergeInput<'a> {
 pub struct MergeOutput {
     /// Units without an open conflict already merged; conflicted units hold the remote value.
     pub merged: PortableDocument,
+    /// Converged units advance; unresolved units retain their previous base, including absence.
+    pub next_baseline: PortableDocument,
     pub conflicts: Vec<UnitConflict>,
     pub dropped_references: Vec<DroppedReference>,
 }
@@ -866,6 +871,8 @@ pub fn merge_document(input: MergeInput<'_>) -> Result<MergeOutput, MergeError>;
 ```
 
 Applying a merged projection is the inverse of projecting: the owner's current document supplies every `Device` field and the merged projection supplies every `Portable` field. For profiles, items the remote added get device state initialised empty (no `updated_at`, no subscription info), and a new `Remote` item triggers the existing refresh job to download its file.
+
+`next_baseline` is a candidate, persisted only for units whose local and remote results are confirmed as described in §6.3; unresolved units retain their prior base even when the remote value is carried in `merged`. For example, if X conflicts while Y advances from Y0 to Y1, the next base is X0/Y1. A later local change Y1 → Y2 is then a one-sided push, not a new conflict against Y0. The composite base is local bookkeeping, not a new remote object. If applying the whole document fails, none of its candidate baseline advances is recorded.
 
 ### 7.3 Policies
 
@@ -886,6 +893,7 @@ Applying a merged projection is the inverse of projecting: the owner's current d
 ### 7.4 Safety snapshots
 
 - Before the first apply of a cycle, `Snapshot` copies the pre-image of every item the cycle will change or delete into `<data>/sync/snapshots/<cycle id>/`: the full on-disk document for a document item (so device fields are restorable too), the file for a file item, plus a `manifest.json` naming the cycle, the remote commit and each item's hashes before and after.
+- Capture the Profiles document, version and relevant managed files together through the same guarded committed read as `Scan`; use the captured full document, not a separately copied live `profiles.yaml`. Release the guard after local capture and verify the captured version against the planned version before apply. If it changed, discard or recapture and replan; the apply's expected-version check still protects the interval after capture. No network operation runs under the guard.
 - The snapshot is written to a `.partial` directory and renamed, as `backup.rs` does. If it cannot be written, nothing is applied.
 - Retention: the newest 20 snapshots and anything younger than 30 days.
 - `restore_sync_snapshot` re-applies the pre-images through the owners. To sync, the restored state is an ordinary local change, which the next cycle pushes.
@@ -909,9 +917,10 @@ NyanpasuClient
 ```
 
 - `SyncActor` is an actor because it owns long-lived mutable state and a long-running operation. Planning, projection, merge and canonicalization are pure services.
-- `PortableStatePort` is implemented in core over the existing typed clients. Its apply operations build on the existing `Replace` messages of `ApplicationActor`, `ClashConfigActor` and the profiles actor. Two additions are needed. `Replace` gains an expected version: the owners already commit through `ReplaceIfVersionResult` against their own snapshot, and the caller's planned version is passed down to that comparison so a stale plan is refused with the existing `VersionConflict` error. Profiles also need a single message that commits a catalog replacement together with a set of file writes and deletions, so a pulled profile and its file land in one materialization transaction instead of two commits.
+- `PortableStatePort` is implemented in core over the existing typed clients. Its Profiles read uses `ProfileContentReader::committed`, shared with the runtime reconciler; sync depends on the profile-content lock and reader from #6364. Its apply operations build on the existing `Replace` messages of `ApplicationActor`, `ClashConfigActor` and the profiles actor. `Replace` gains an expected version: the owners already commit through `ReplaceIfVersionResult` against their own snapshot, and the caller's planned version is passed down to that comparison so a stale plan is refused with the existing `VersionConflict` error. Profiles also need a single message that commits a catalog replacement together with a set of file writes and deletions, so a pulled profile and its file land in one materialization transaction instead of two commits.
 - Dependencies run one way: `SyncActor` calls the configuration owners; they never call it. Local commits reach sync only as a "dirty" notification through the existing `CommitNotifications` fan-out, which debounces an automatic cycle.
-- Applied changes are ordinary mutations, so runtime rebuild, effects and `StateChangedEvent` follow without sync-specific code. A post-commit effect failure is reported as a degradation on the cycle, not as a failed sync.
+- Applied changes are ordinary mutations, so runtime rebuild, effects and `StateChangedEvent` follow without sync-specific code. A committed mutation with `DegradationReason::RuntimeDeferred` has saved the source even if the core has not applied it: report degradation, advance the confirmed baseline and do not replay the write. Other post-commit effect failures are likewise degradations, not failed commits.
+- `CommitAborted::RuntimeRefused` and `CommitAborted::RuntimeFailed` are not committed: leave the affected baseline unchanged. Record a refusal as a blocked item with the relevant local and remote content identities and diagnostics; do not retry that same candidate each cycle. Replan when either identity changes or the user explicitly retries. A `RuntimeFailed` check is transient: report degradation and retry on a later cycle. A version conflict replans against the current owner version rather than treating a stale candidate as refused. Persist blocked records and expose them in status; other items continue.
 - A caller that drops does not cancel a cycle. Shutdown cancels the root token; the actor refuses new cycles and finishes or abandons the current phase, which [§6.5](#65-cycle-state-machine) makes safe.
 
 ### 8.2 Scheduling
@@ -976,7 +985,7 @@ pub struct SyncStatus {
     pub last_result: Option<SyncOutcome>,      // Synced | UpToDate | Degraded | Failed
     pub last_error: Option<SyncError>,
     pub open_conflicts: u32,
-    pub blocked_items: Vec<BlockedItem>,       // SchemaTooNew, NotUtf8, UnportableName, CaseCollision
+    pub blocked_items: Vec<BlockedItem>,       // includes RuntimeRefused and its retry conditions
     pub head: Option<SyncHead>,                // generation, device name, time
 }
 ```
@@ -1035,6 +1044,8 @@ Rust rules in play: snafu error enums with structured fields, no `Custom(String)
 - **Convergence property.** Random sequences of edits, deletions and syncs on two and three simulated devices must end with equal portable state on all devices once every device has synced twice with no further edits, and must never lose an edit under `keep_both`.
 - **Crash injection.** The actor test stops a cycle after each phase and restarts with the same store and state; the resulting state must equal that of an uninterrupted cycle.
 - **Owner integration.** In core's integration tests, with profile-io as a dev-dependency: a pulled catalog and its files commit in one transaction; a rejected merge leaves the document untouched; a local edit during a cycle defers the item.
+- **Committed profile capture.** Gate a writer after file promotion and before publication, then exercise scan and pre-image capture. Both must wait for publication or compensation and return matching committed document, version and file bytes; a failed publication must never upload the promoted bytes. Verify that a blocked network request holds no profile read guard, and that a changed version between capture and apply causes replanning.
+- **Partial conflicts and runtime outcomes.** Leave X conflicted while Y converges from Y0 to Y1, then edit Y to Y2 on one side: it must push without a spurious conflict. Repeat across restart and failed document apply. Exercise committed `RuntimeDeferred`, refused, transient `RuntimeFailed` and stale-version outcomes: assert baseline advancement or retention, blocked-item persistence and retry only on changed inputs or explicit retry for refusal, while transient failures retry and other units proceed.
 - **Secrets.** Tests assert that no query DTO, log line or diagnostics archive contains a configured secret, and that `Custom.options` rejects secret keys.
 - **Live smoke tests**, manual and outside CI: a WebDAV server (Nextcloud or `rclone serve webdav`) and MinIO, two real installs on different operating systems.
 

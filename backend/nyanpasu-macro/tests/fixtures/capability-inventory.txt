@@ -25,6 +25,7 @@ clear_proxy_fixed | desktop,http | - | presentation | mutation | proxy
 clear_storage | desktop,http | - | - | mutation | settings
 close_log_session | desktop,http,local | - | - | mutation | read
 collect_logs | desktop | dialog | - | mutation | system
+configure_sync | desktop | - | - | mutation | settings
 copy_clash_env | desktop | clipboard | - | mutation | system
 create_config_backup | desktop | - | - | mutation | settings
 create_debug_tray_menu_window | desktop | window | - | mutation | system
@@ -36,8 +37,10 @@ create_profile_folder | desktop,http | - | presentation | mutation | profile
 create_proxy_group_folder | desktop,http | - | presentation | mutation | profile
 create_remote_access_token | desktop,local | - | - | mutation | remote_admin
 delete_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile
+disable_sync | desktop | - | - | mutation | settings
 discard_app_update_package | desktop | app_update | - | mutation | system
 download_app_update | desktop | app_update | - | mutation | system
+enable_sync | desktop | - | - | mutation | settings
 enhance_profiles | desktop,http | - | elevation,os_integration,presentation | mutation | profile
 fetch_latest_core_versions | desktop,http | - | - | query | read
 flush_system_dns_cache | desktop | elevation | - | mutation | system
@@ -88,6 +91,9 @@ get_runtime_yaml | desktop,http | - | - | query | sensitive_read
 get_service_install_prompt | desktop,http | - | - | query | sensitive_read
 get_service_status_summary | desktop,http | - | - | query | read
 get_storage_item | desktop,http,local | - | - | query | sensitive_read
+get_sync_provider_kinds | desktop | - | - | query | read
+get_sync_settings | desktop | - | - | query | sensitive_read
+get_sync_status | desktop | - | - | query | read
 get_sys_proxy | desktop,http,local | os_integration | - | query | read
 get_system_accent_color | desktop,http | accent_color | - | query | read
 get_traffic_summary | desktop,http,local | - | - | query | read
@@ -110,6 +116,8 @@ is_widget_icon_set | desktop,http | - | - | query | read
 list_log_files | desktop,http,local | - | - | query | read
 list_remote_access_tokens | desktop,local | - | - | query | remote_admin
 list_remote_browser_sessions | desktop,local | - | - | query | remote_admin
+list_sync_conflicts | desktop | - | - | query | sensitive_read
+list_sync_snapshots | desktop | - | - | query | read
 mutate_proxies | desktop,http | - | presentation | mutation | proxy
 open_app_config_dir | desktop | opener | - | mutation | system
 open_app_data_dir | desktop | opener | - | mutation | system
@@ -151,9 +159,11 @@ report_issue | desktop | opener | - | mutation | system
 report_window_ready | desktop | caller_webview | - | mutation | system
 request_wifi_name_access | desktop | - | - | mutation | system
 reset_remote_access_tls | desktop,local | http_server | - | mutation | remote_admin
+resolve_sync_conflict | desktop | - | - | mutation | settings
 restart_application | desktop | lifecycle | - | mutation | system
 restart_service | desktop | elevation | presentation | mutation | system
 restart_sidecar | desktop,http,local | - | elevation,os_integration,presentation | mutation | system
+restore_sync_snapshot | desktop | - | - | mutation | settings
 retry_configuration_effect | desktop,http | - | hotkey,os_integration,presentation | mutation | system
 retry_configuration_runtime | desktop,http | - | elevation,os_integration,presentation | mutation | system
 revoke_remote_access_token | desktop,local | - | - | mutation | remote_admin
@@ -185,8 +195,10 @@ start_service | desktop | elevation | presentation | mutation | system
 status_service | desktop,http | - | - | query | sensitive_read
 stop_service | desktop | elevation | presentation | mutation | system
 subscribe_clash_connection_details | desktop | caller_webview | - | mutation | read
+sync_now | desktop | - | - | mutation | settings
 take_pending_deep_links | desktop | deep_link | - | mutation | system
 test_stun_server | desktop | - | - | mutation | settings
+test_sync_connection | desktop | - | - | mutation | settings
 uninstall_service | desktop | elevation | presentation | mutation | system
 unsubscribe_clash_connection_details | desktop | caller_webview | - | mutation | read
 update_core | desktop | - | elevation,presentation | mutation | system

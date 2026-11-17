@@ -496,7 +496,7 @@ fn permission_table_covers_every_command_once_per_platform() {
         .skip(1)
         .take_while(|line| !line.is_empty())
         .collect();
-    assert_eq!(baseline.len(), 193);
+    assert_eq!(baseline.len(), 205);
     let mut permissions: BTreeMap<&str, (&str, &str)> = BTreeMap::new();
     let mut names = std::collections::BTreeSet::new();
     for row in &baseline {

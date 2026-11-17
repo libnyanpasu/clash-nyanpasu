@@ -28,8 +28,8 @@ use crate::{
         client::SyncClient,
         engine::CycleReport,
         ports::{
-            ApplyError, CommittedDocument, CommittedProfiles, PortableStatePort, SnapshotSummary,
-            SyncFilePort, SyncPorts, SyncSnapshotPort, SyncStatusSink,
+            ApplyError, ApplyOutcome, CommittedDocument, CommittedProfiles, PortableStatePort,
+            SnapshotSummary, SyncFilePort, SyncPorts, SyncSnapshotPort, SyncStatusSink,
         },
         settings::{FileSyncSettingsStore, SyncSettingsStore},
         state::{RedbSyncStateStore, SyncStateStore},
@@ -146,12 +146,10 @@ impl PortableStatePort for OwnerStatePort {
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
         let current = self.application.snapshot();
         if current.version != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/application".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         let next =
             nyanpasu_config::sync::apply_application(&current.state, merged).map_err(|error| {
@@ -160,26 +158,20 @@ impl PortableStatePort for OwnerStatePort {
                     reason: error.to_string(),
                 }
             })?;
-        self.application
-            .replace(next)
-            .await
-            .map(drop)
-            .map_err(|error| ApplyError::Rejected {
-                item: "app/application".to_owned(),
-                reason: error.to_string(),
-            })
+        Ok(match self.application.replace(next).await {
+            Ok(_) => ApplyOutcome::Committed { deferred: false },
+            Err(error) => outcome_from_config(&error),
+        })
     }
 
     async fn apply_clash(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
         let current = self.clash.snapshot();
         if current.version != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/clash".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         let next = nyanpasu_config::sync::apply_clash(&current.state, merged).map_err(|error| {
             ApplyError::Rejected {
@@ -187,25 +179,19 @@ impl PortableStatePort for OwnerStatePort {
                 reason: error.to_string(),
             }
         })?;
-        self.clash
-            .replace(next)
-            .await
-            .map(drop)
-            .map_err(|error| ApplyError::Rejected {
-                item: "app/clash".to_owned(),
-                reason: error.to_string(),
-            })
+        Ok(match self.clash.replace(next).await {
+            Ok(_) => ApplyOutcome::Committed { deferred: false },
+            Err(error) => outcome_from_config(&error),
+        })
     }
 
     async fn apply_profiles(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
         if self.profiles.version() != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/profiles".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         let current = self.profiles.snapshot();
         let next = nyanpasu_config::sync::apply_profiles(&current, merged).map_err(|error| {
@@ -214,14 +200,21 @@ impl PortableStatePort for OwnerStatePort {
                 reason: error.to_string(),
             }
         })?;
-        self.profiles
-            .replace(next)
-            .await
-            .map(drop)
-            .map_err(|error| ApplyError::Rejected {
-                item: "app/profiles".to_owned(),
-                reason: error.to_string(),
-            })
+        Ok(match self.profiles.replace(next).await {
+            Ok(report) => {
+                // A committed catalog whose runtime application is deferred still
+                // saved the source, so the baseline may advance; the deferral is
+                // reported as a degradation, not as a failed commit.
+                let deferred = report.runtime_degradations.iter().any(|degradation| {
+                    matches!(
+                        degradation.reason,
+                        nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { .. }
+                    )
+                });
+                ApplyOutcome::Committed { deferred }
+            }
+            Err(error) => outcome_from_profiles(&error),
+        })
     }
 
     async fn active_profile(&self) -> Option<String> {
@@ -302,6 +295,48 @@ impl SyncFilePort for ResolverFilePort {
             }
         };
         read_bytes(path.as_std_path())
+    }
+}
+
+/// A committed-versus-aborted outcome from an application or Clash owner.
+fn outcome_from_config(error: &crate::state::config_error::ConfigError) -> ApplyOutcome {
+    use crate::state::config_error::ConfigError;
+    match error {
+        ConfigError::VersionConflict { .. } => ApplyOutcome::VersionConflict,
+        ConfigError::Commit { source, .. } => outcome_from_aborted(source),
+        other => ApplyOutcome::Unavailable {
+            reason: other.to_string(),
+        },
+    }
+}
+
+/// A committed-versus-aborted outcome from the profiles owner.
+fn outcome_from_profiles(error: &nyanpasu_runtime_values::profiles::ProfilesError) -> ApplyOutcome {
+    use nyanpasu_runtime_values::profiles::ProfilesError;
+    match error {
+        ProfilesError::VersionConflict { .. } => ApplyOutcome::VersionConflict,
+        ProfilesError::Commit { source, .. } => outcome_from_aborted(source),
+        other => ApplyOutcome::Unavailable {
+            reason: other.to_string(),
+        },
+    }
+}
+
+/// A source that refused a candidate is not retried unchanged; one that could
+/// not be checked is transient.
+fn outcome_from_aborted(
+    aborted: &nyanpasu_runtime_values::mutation::CommitAborted,
+) -> ApplyOutcome {
+    use nyanpasu_runtime_values::mutation::CommitAborted;
+    match aborted {
+        CommitAborted::RuntimeRefused { .. } => ApplyOutcome::Refused {
+            reason: aborted.to_string(),
+        },
+        CommitAborted::RuntimeFailed { .. }
+        | CommitAborted::WriteConfig { .. }
+        | CommitAborted::RecoverAfterWriteFailure { .. } => ApplyOutcome::Unavailable {
+            reason: aborted.to_string(),
+        },
     }
 }
 
@@ -608,7 +643,7 @@ impl SyncSetup<'_> {
                             let current = settings.borrow_and_update().clone();
                             if current.enabled
                                 && current.sync_on_change
-                                && let Err(failure) = sync_client.sync_now().await
+                                && let Err(failure) = sync_client.sync_scheduled().await
                             {
                                 tracing::debug!("a change-triggered sync did not run: {failure}");
                             }
@@ -667,6 +702,13 @@ impl SyncStateStore for UnavailableStateStore {
     }
 
     fn save_conflicts(&self, _conflicts: &[SyncConflict]) -> Result<(), sync::state::StateError> {
+        Ok(())
+    }
+
+    fn save_blocked(
+        &self,
+        _blocked: &[sync::state::BlockedRecord],
+    ) -> Result<(), sync::state::StateError> {
         Ok(())
     }
 }

@@ -28,7 +28,7 @@ use super::{
         LiveItem, VaultEncryption, VaultFormat, VaultId,
     },
     plan::{ItemAction, Plan, PortableState, SideItem, plan, remote_state},
-    ports::{APPLICATION_ITEM, ApplyError, CLASH_ITEM, PROFILES_ITEM, SyncPorts},
+    ports::{APPLICATION_ITEM, ApplyError, ApplyOutcome, CLASH_ITEM, PROFILES_ITEM, SyncPorts},
     state::{BaselineItem, SyncMeta, baseline_state},
 };
 
@@ -81,6 +81,8 @@ pub struct CycleReport {
     pub contended: bool,
     /// The head diverged from this device's baseline; the two were merged.
     pub diverged: bool,
+    /// An owner moved during the cycle; a fresh cycle must replan.
+    pub replan: bool,
 }
 
 /// One cycle's inputs, all owned by the actor that calls it.
@@ -90,6 +92,8 @@ pub struct CycleInput<'a> {
     pub meta: &'a SyncMeta,
     pub settings: &'a nyanpasu_contracts::sync::SyncSettings,
     pub status: &'a mut SyncStatus,
+    /// A manual trigger retries candidates the core refused.
+    pub retry_blocked: bool,
 }
 
 /// Runs one cycle and returns what it did.
@@ -105,6 +109,7 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
         meta,
         settings,
         status,
+        retry_blocked,
     } = input;
     if ports.shutdown.is_cancelled() {
         return Err(CycleError::Cancelled);
@@ -202,7 +207,19 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
     let merged = merged_objects(&plan, &downloaded, &scan);
 
     status.phase = SyncPhase::Applying;
-    apply_local(ports, &plan, &downloaded, &merged, &scan, &mut report).await?;
+    let outcomes = apply_local(
+        ports,
+        ApplyInput {
+            plan: &plan,
+            downloaded: &downloaded,
+            merged: &merged,
+            scan: &scan,
+            loaded: &loaded,
+            retry_blocked,
+        },
+        &mut report,
+    )
+    .await?;
 
     status.phase = SyncPhase::Uploading;
     upload(store.as_ref(), &plan, &scan.objects, &merged).await?;
@@ -234,11 +251,22 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
     let settled =
         committed.contended || confirmed.iter().any(|candidate| candidate.id == commit.id);
     status.phase = SyncPhase::Finalizing;
-    advance_baseline(ports, &plan, &commit, &loaded, settled, &scan.codecs)?;
+    advance_baseline(
+        ports,
+        &plan,
+        &commit,
+        &loaded,
+        settled,
+        &scan.codecs,
+        &outcomes,
+    )?;
     ports
         .state
         .save_conflicts(&report.conflicts)
         .context(StateSnafu)?;
+    save_blocked(ports, &loaded, &plan, &outcomes, &report)?;
+    // The status carries the refusals and unavailable checks this cycle found.
+    status.blocked_items.clone_from(&report.blocked);
 
     report.pushed = count(&plan, ItemAction::Push);
     report.pulled = count(&plan, ItemAction::Pull);
@@ -610,17 +638,37 @@ fn merged_objects(
     merged
 }
 
+struct ApplyInput<'a> {
+    plan: &'a Plan,
+    downloaded: &'a BTreeMap<LogicalPath, Vec<u8>>,
+    merged: &'a BTreeMap<LogicalPath, Vec<u8>>,
+    scan: &'a Scan,
+    loaded: &'a super::state::LoadedState,
+    retry_blocked: bool,
+}
+
 async fn apply_local(
     ports: &SyncPorts,
-    plan: &Plan,
-    downloaded: &BTreeMap<LogicalPath, Vec<u8>>,
-    merged: &BTreeMap<LogicalPath, Vec<u8>>,
-    scan: &Scan,
+    input: ApplyInput<'_>,
     report: &mut CycleReport,
-) -> Result<(), CycleError> {
+) -> Result<BTreeMap<LogicalPath, ApplyOutcome>, CycleError> {
+    let ApplyInput {
+        plan,
+        downloaded,
+        merged,
+        scan,
+        loaded,
+        retry_blocked,
+    } = input;
     let application = ports.portable.application().await.context(ApplySnafu)?;
     let clash = ports.portable.clash().await.context(ApplySnafu)?;
     let profiles = ports.portable.profiles().await.context(ApplySnafu)?;
+    let refused: BTreeMap<LogicalPath, &super::state::BlockedRecord> = loaded
+        .blocked
+        .iter()
+        .map(|record| (record.logical.clone(), record))
+        .collect();
+    let mut outcomes = BTreeMap::new();
     // A document item is applied from its merged projection; a file from the
     // downloaded bytes. A merge that changed nothing local is not applied.
     for item in &plan.items {
@@ -632,23 +680,50 @@ async fn apply_local(
         let Some(bytes) = bytes else {
             continue;
         };
+        // A candidate the core already refused is not retried unchanged: it
+        // waits until either side's content moves, or the user retries.
+        if !retry_blocked
+            && let Some(record) = refused.get(&item.logical)
+            && record.local.as_ref() == item_resulting_local(item).as_ref()
+            && record.remote.as_ref()
+                == item
+                    .remote
+                    .sha256
+                    .as_deref()
+                    .and_then(|sha| ObjectId::parse(sha).ok())
+                    .as_ref()
+        {
+            report.blocked.push(BlockedItem {
+                item: item.logical.to_string(),
+                reason: SyncBlockedReason::RuntimeRefused {
+                    reason: record.reason.clone(),
+                },
+            });
+            outcomes.insert(
+                item.logical.clone(),
+                ApplyOutcome::Refused {
+                    reason: record.reason.clone(),
+                },
+            );
+            continue;
+        }
         let document = PortableDocument::from_bytes(bytes);
-        let result = match (item.logical.as_str(), document) {
-            (APPLICATION_ITEM, Ok(document)) => {
-                ports
-                    .portable
-                    .apply_application(application.version, &document)
-                    .await
-            }
-            (CLASH_ITEM, Ok(document)) => {
-                ports.portable.apply_clash(clash.version, &document).await
-            }
-            (PROFILES_ITEM, Ok(document)) => {
-                ports
-                    .portable
-                    .apply_profiles(profiles.version, &document)
-                    .await
-            }
+        let outcome = match (item.logical.as_str(), document) {
+            (APPLICATION_ITEM, Ok(document)) => ports
+                .portable
+                .apply_application(application.version, &document)
+                .await
+                .context(ApplySnafu)?,
+            (CLASH_ITEM, Ok(document)) => ports
+                .portable
+                .apply_clash(clash.version, &document)
+                .await
+                .context(ApplySnafu)?,
+            (PROFILES_ITEM, Ok(document)) => ports
+                .portable
+                .apply_profiles(profiles.version, &document)
+                .await
+                .context(ApplySnafu)?,
             (APPLICATION_ITEM | CLASH_ITEM | PROFILES_ITEM, Err(_)) => {
                 report.blocked.push(BlockedItem {
                     item: item.logical.to_string(),
@@ -657,21 +732,51 @@ async fn apply_local(
                         supported: nyanpasu_config::sync::document::PORTABLE_REVISION,
                     },
                 });
+                // A document this build cannot read is not applied and its
+                // baseline stays where it was.
+                outcomes.insert(
+                    item.logical.clone(),
+                    ApplyOutcome::Refused {
+                        reason: "the remote document needs a newer application".to_owned(),
+                    },
+                );
                 continue;
             }
             _ => {
-                if item.logical.as_str().starts_with("profiles/") {
+                let result = if item.logical.as_str().starts_with("profiles/") {
                     ports.files.write_text(&item.logical, bytes)
                 } else {
                     ports.files.write_binary(&item.logical, bytes)
+                };
+                match result {
+                    Ok(()) => ApplyOutcome::Committed { deferred: false },
+                    Err(error) => ApplyOutcome::Unavailable {
+                        reason: error.to_string(),
+                    },
                 }
             }
         };
-        if let Err(ApplyError::VersionConflict { .. }) = result {
-            // A local edit landed during the cycle; the item defers to the next one.
-            continue;
+        match &outcome {
+            ApplyOutcome::VersionConflict => {
+                // A local edit landed during the cycle; replanning is safe and
+                // the item does not advance the baseline this time.
+                report.replan = true;
+            }
+            ApplyOutcome::Refused { reason } => report.blocked.push(BlockedItem {
+                item: item.logical.to_string(),
+                reason: SyncBlockedReason::RuntimeRefused {
+                    reason: reason.clone(),
+                },
+            }),
+            ApplyOutcome::Unavailable { reason } => report.blocked.push(BlockedItem {
+                item: item.logical.to_string(),
+                reason: SyncBlockedReason::RuntimeUnavailable {
+                    reason: reason.clone(),
+                },
+            }),
+            ApplyOutcome::Committed { .. } => {}
         }
-        result.context(ApplySnafu)?;
+        outcomes.insert(item.logical.clone(), outcome);
     }
     // A remote deletion applies only to a file, and only when the plan chose it.
     for item in &plan.items {
@@ -680,17 +785,29 @@ async fn apply_local(
         }
         if matches!(item.action, ItemAction::Pull | ItemAction::Merge) {
             let _ = scan;
-            if item.logical.as_str().starts_with("profiles/") {
-                ports.files.remove_text(&item.logical).context(ApplySnafu)?;
+            let result = if item.logical.as_str().starts_with("profiles/") {
+                ports.files.remove_text(&item.logical)
             } else {
-                ports
-                    .files
-                    .remove_binary(&item.logical)
-                    .context(ApplySnafu)?;
-            }
+                ports.files.remove_binary(&item.logical)
+            };
+            let outcome = match result {
+                Ok(()) => ApplyOutcome::Committed { deferred: false },
+                Err(error) => ApplyOutcome::Unavailable {
+                    reason: error.to_string(),
+                },
+            };
+            outcomes.insert(item.logical.clone(), outcome);
         }
     }
-    Ok(())
+    Ok(outcomes)
+}
+
+/// The local content identity an apply would leave behind for this item.
+fn item_resulting_local(item: &super::plan::PlannedItem) -> Option<ObjectId> {
+    item.local
+        .sha256
+        .as_deref()
+        .and_then(|sha| ObjectId::parse(sha).ok())
 }
 
 async fn upload(
@@ -966,10 +1083,20 @@ fn advance_baseline(
     loaded: &super::state::LoadedState,
     settled: bool,
     codecs: &BTreeMap<LogicalPath, ItemCodec>,
+    outcomes: &BTreeMap<LogicalPath, ApplyOutcome>,
 ) -> Result<(), CycleError> {
     let mut baseline: BTreeMap<LogicalPath, BaselineItem> = loaded.baseline.clone();
     let mut documents = loaded.baseline_documents.clone();
     for item in &plan.items {
+        // A unit advances only after its apply and commit are confirmed. A
+        // refused or transiently failed apply keeps the affected unit at its
+        // old base, so a later one-sided change to a sibling unit is not read
+        // as a conflict against a stale base.
+        if let Some(outcome) = outcomes.get(&item.logical)
+            && !matches!(outcome, ApplyOutcome::Committed { .. })
+        {
+            continue;
+        }
         match &item.baseline.sha256 {
             Some(sha) => {
                 baseline.insert(
@@ -1003,6 +1130,54 @@ fn advance_baseline(
         .state
         .save_baseline(&meta, &baseline, &documents)
         .context(StateSnafu)
+}
+
+/// Persists the refusals from this cycle, dropping records whose candidate is
+/// no longer the one that was refused.
+fn save_blocked(
+    ports: &SyncPorts,
+    loaded: &super::state::LoadedState,
+    plan: &Plan,
+    outcomes: &BTreeMap<LogicalPath, ApplyOutcome>,
+    report: &CycleReport,
+) -> Result<(), CycleError> {
+    let mut records: BTreeMap<LogicalPath, super::state::BlockedRecord> = loaded
+        .blocked
+        .iter()
+        .map(|record| (record.logical.clone(), record.clone()))
+        .collect();
+    for item in &plan.items {
+        let outcome = outcomes.get(&item.logical);
+        match outcome {
+            Some(ApplyOutcome::Committed { .. }) | None => {
+                records.remove(&item.logical);
+            }
+            Some(ApplyOutcome::Refused { reason }) => {
+                records.insert(
+                    item.logical.clone(),
+                    super::state::BlockedRecord {
+                        logical: item.logical.clone(),
+                        local: item_resulting_local(item),
+                        remote: item
+                            .remote
+                            .sha256
+                            .as_deref()
+                            .and_then(|sha| ObjectId::parse(sha).ok()),
+                        reason: reason.clone(),
+                        at: super::clock::now_iso8601(),
+                    },
+                );
+            }
+            // A transient failure is retried next cycle, so it keeps no record.
+            Some(ApplyOutcome::Unavailable { .. }) | Some(ApplyOutcome::VersionConflict) => {}
+        }
+    }
+    // Preserve only items the plan mentioned this cycle; anything else is stale.
+    let active: BTreeSet<&LogicalPath> = plan.items.iter().map(|item| &item.logical).collect();
+    records.retain(|logical, _| active.contains(logical));
+    let _ = report;
+    let values: Vec<super::state::BlockedRecord> = records.into_values().collect();
+    ports.state.save_blocked(&values).context(StateSnafu)
 }
 
 fn fixed_key(key: &str) -> LogicalPath {

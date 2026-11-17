@@ -39,6 +39,25 @@ pub struct CommittedProfiles {
     pub document: Vec<u8>,
 }
 
+/// What an apply did, as the owner reported it.
+///
+/// A committed source advances the baseline even when the runtime has not
+/// taken it yet. A refusal is a verdict about a specific candidate, so it is
+/// recorded and not retried until one side's content changes; an unavailable
+/// check is transient and is retried on a later cycle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApplyOutcome {
+    /// The source was saved. `deferred` marks a commit the runtime has not
+    /// applied yet, which is still a durable source change.
+    Committed { deferred: bool },
+    /// The core refused this candidate; nothing was saved.
+    Refused { reason: String },
+    /// The change could not be checked; nothing was saved.
+    Unavailable { reason: String },
+    /// The owner moved since the plan; the item must be replanned.
+    VersionConflict,
+}
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum ApplyError {
@@ -64,19 +83,19 @@ pub trait PortableStatePort: Send + Sync + 'static {
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError>;
+    ) -> Result<ApplyOutcome, ApplyError>;
 
     async fn apply_clash(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError>;
+    ) -> Result<ApplyOutcome, ApplyError>;
 
     async fn apply_profiles(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError>;
+    ) -> Result<ApplyOutcome, ApplyError>;
 
     /// The active profile, which sync must never remove.
     async fn active_profile(&self) -> Option<String>;

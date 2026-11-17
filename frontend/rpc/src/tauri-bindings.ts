@@ -1036,6 +1036,13 @@ export type SyncBlockedReason =
   | { kind: 'not_utf8' }
   | { kind: 'unportable_name' }
   | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
 
 /**  A classified sync failure. The UI localizes by variant. */
 export type SyncError =

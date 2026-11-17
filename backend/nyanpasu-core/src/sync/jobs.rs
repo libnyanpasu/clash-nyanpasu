@@ -65,7 +65,7 @@ impl SyncJobs {
             move |_context, _input| {
                 let sync_client = Arc::clone(&sync_client);
                 async move {
-                    match sync_client.sync_now().await {
+                    match sync_client.sync_scheduled().await {
                         Ok(report) => Ok(CycleSummary {
                             outcome: report.outcome,
                             pushed: report.pushed,

@@ -18,14 +18,14 @@ use nyanpasu_contracts::sync::{
     test_support::{ConditionalCreate, MemoryRemoteStore},
 };
 use nyanpasu_paths::{LogicalPath, PathResolver};
-use nyanpasu_runtime_values::sync::{SyncOutcome, SyncPhase, SyncStatus};
+use nyanpasu_runtime_values::sync::{SyncBlockedReason, SyncOutcome, SyncPhase, SyncStatus};
 use nyanpasu_state_engine::Version;
 
 use super::{
     engine::{CycleInput, run_cycle},
     ports::{
-        ApplyError, CommittedDocument, CommittedProfiles, PortableStatePort, SyncFilePort,
-        SyncPorts, SyncSnapshotPort, SyncStatusSink,
+        ApplyError, ApplyOutcome, CommittedDocument, CommittedProfiles, PortableStatePort,
+        SyncFilePort, SyncPorts, SyncSnapshotPort, SyncStatusSink,
     },
     state::{LoadedState, RedbSyncStateStore, StateError, SyncMeta, SyncStateStore},
 };
@@ -40,6 +40,9 @@ struct DeviceDocuments {
 
 struct FakePortable {
     documents: Mutex<DeviceDocuments>,
+    /// Scripted apply outcomes, consumed one per apply; a refusal test queues
+    /// one per call it expects.
+    script: Mutex<std::collections::VecDeque<ApplyOutcome>>,
     /// The bytes the guarded capture returns. It is deliberately separate from
     /// the file port so a test can make a later direct read answer differently
     /// and prove the cycle uses the captured bytes.
@@ -51,11 +54,23 @@ impl FakePortable {
         Self {
             documents: Mutex::new(DeviceDocuments::default()),
             captured: Mutex::new(BTreeMap::new()),
+            script: Mutex::new(std::collections::VecDeque::new()),
         }
     }
 
     fn capture_file(&self, logical: LogicalPath, bytes: Vec<u8>) {
         self.captured.lock().unwrap().insert(logical, bytes);
+    }
+
+    /// Queues the outcome the next apply reports. A scripted rejection or
+    /// conflict returns without committing; a scripted deferred commit really
+    /// commits and only changes how the result is reported.
+    fn script(&self, outcome: ApplyOutcome) {
+        self.script.lock().unwrap().push_back(outcome);
+    }
+
+    fn take_script(&self) -> Option<ApplyOutcome> {
+        self.script.lock().unwrap().pop_front()
     }
 }
 
@@ -102,12 +117,19 @@ impl PortableStatePort for FakePortable {
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
+        let scripted = self.take_script();
+        if let Some(
+            outcome @ (ApplyOutcome::Refused { .. }
+            | ApplyOutcome::Unavailable { .. }
+            | ApplyOutcome::VersionConflict),
+        ) = &scripted
+        {
+            return Ok(outcome.clone());
+        }
         let mut state = self.documents.lock().unwrap();
         if Version::new(state.version) != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/application".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         state.application = nyanpasu_config::sync::apply_application(&state.application, merged)
             .map_err(|error| ApplyError::Rejected {
@@ -115,19 +137,26 @@ impl PortableStatePort for FakePortable {
                 reason: error.to_string(),
             })?;
         next_version(&mut state);
-        Ok(())
+        Ok(scripted.unwrap_or(ApplyOutcome::Committed { deferred: false }))
     }
 
     async fn apply_clash(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
+        let scripted = self.take_script();
+        if let Some(
+            outcome @ (ApplyOutcome::Refused { .. }
+            | ApplyOutcome::Unavailable { .. }
+            | ApplyOutcome::VersionConflict),
+        ) = &scripted
+        {
+            return Ok(outcome.clone());
+        }
         let mut state = self.documents.lock().unwrap();
         if Version::new(state.version) != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/clash".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         state.clash =
             nyanpasu_config::sync::apply_clash(&state.clash, merged).map_err(|error| {
@@ -137,19 +166,26 @@ impl PortableStatePort for FakePortable {
                 }
             })?;
         next_version(&mut state);
-        Ok(())
+        Ok(scripted.unwrap_or(ApplyOutcome::Committed { deferred: false }))
     }
 
     async fn apply_profiles(
         &self,
         expected: Version,
         merged: &PortableDocument,
-    ) -> Result<(), ApplyError> {
+    ) -> Result<ApplyOutcome, ApplyError> {
+        let scripted = self.take_script();
+        if let Some(
+            outcome @ (ApplyOutcome::Refused { .. }
+            | ApplyOutcome::Unavailable { .. }
+            | ApplyOutcome::VersionConflict),
+        ) = &scripted
+        {
+            return Ok(outcome.clone());
+        }
         let mut state = self.documents.lock().unwrap();
         if Version::new(state.version) != expected {
-            return Err(ApplyError::VersionConflict {
-                item: "app/profiles".to_owned(),
-            });
+            return Ok(ApplyOutcome::VersionConflict);
         }
         state.profiles =
             nyanpasu_config::sync::apply_profiles(&state.profiles, merged).map_err(|error| {
@@ -159,7 +195,7 @@ impl PortableStatePort for FakePortable {
                 }
             })?;
         next_version(&mut state);
-        Ok(())
+        Ok(scripted.unwrap_or(ApplyOutcome::Committed { deferred: false }))
     }
 
     async fn active_profile(&self) -> Option<String> {
@@ -346,6 +382,7 @@ impl Device {
             meta: &meta,
             settings: &self.settings,
             status: &mut status,
+            retry_blocked: false,
         })
         .await
         .unwrap()
@@ -423,6 +460,201 @@ impl Device {
 
 fn store() -> MemoryRemoteStore {
     MemoryRemoteStore::new(ConditionalCreate::Honored)
+}
+
+/// Runs one cycle for the device with an explicit retry flag.
+async fn sync_with(
+    device: &Device,
+    vault: &MemoryRemoteStore,
+    retry_blocked: bool,
+) -> super::engine::CycleReport {
+    let meta = device.state.load().unwrap().meta;
+    let mut status = SyncStatus::default();
+    run_cycle(CycleInput {
+        ports: &device.ports,
+        store: Arc::new(vault.connect()),
+        meta: &meta,
+        settings: &device.settings,
+        status: &mut status,
+        retry_blocked,
+    })
+    .await
+    .unwrap()
+}
+
+/// A refused pull keeps the baseline and is not retried until the user asks.
+#[tokio::test]
+async fn a_refused_apply_is_blocked_and_not_retried_unchanged() {
+    let vault = store();
+    // The device establishes its baseline first, then the remote moves, so the
+    // device's next cycle plans a pull.
+    let device = Device::new(&vault, "device");
+    device.sync(&vault).await;
+    let publisher = Device::new(&vault, "publisher");
+    publisher.sync(&vault).await;
+    publisher.set_theme(nyanpasu_config::application::ThemeMode::Dark);
+    publisher.sync(&vault).await;
+
+    device.portable.script(ApplyOutcome::Refused {
+        reason: "the core rejected the candidate".to_owned(),
+    });
+    let report = sync_with(&device, &vault, false).await;
+    assert!(
+        report
+            .blocked
+            .iter()
+            .any(|item| matches!(item.reason, SyncBlockedReason::RuntimeRefused { .. })),
+        "{:?}",
+        report.blocked
+    );
+    let loaded = device.state.load().unwrap();
+    assert!(
+        loaded
+            .blocked
+            .iter()
+            .any(|record| record.logical.as_str() == "app/application"),
+        "{:?}",
+        loaded.blocked
+    );
+    // The refused document kept its old base.
+    let baseline = loaded
+        .baseline_documents
+        .get(&LogicalPath::parse("app/application").unwrap())
+        .expect("a baseline document");
+    assert_eq!(
+        baseline.payload["theme_mode"],
+        serde_json::json!("system"),
+        "the refused unit keeps its base"
+    );
+
+    // A scheduled cycle does not retry the unchanged candidate.
+    let scheduled = sync_with(&device, &vault, false).await;
+    assert!(
+        scheduled
+            .blocked
+            .iter()
+            .any(|item| matches!(item.reason, SyncBlockedReason::RuntimeRefused { .. })),
+        "{:?}",
+        scheduled.blocked
+    );
+    assert_eq!(
+        device.theme(),
+        nyanpasu_config::application::ThemeMode::System,
+        "the refusal is still in force"
+    );
+
+    // An explicit retry applies it.
+    let retried = sync_with(&device, &vault, true).await;
+    assert!(!retried.replan);
+    assert_eq!(
+        device.theme(),
+        nyanpasu_config::application::ThemeMode::Dark,
+        "an explicit retry applies the refused candidate"
+    );
+    assert!(
+        device.state.load().unwrap().blocked.is_empty(),
+        "the record is cleared once the candidate applies"
+    );
+}
+
+/// A transient check failure keeps no record and is retried next cycle.
+#[tokio::test]
+async fn a_transient_failure_is_retried_and_keeps_no_record() {
+    let vault = store();
+    let device = Device::new(&vault, "device");
+    device.sync(&vault).await;
+    let publisher = Device::new(&vault, "publisher");
+    publisher.sync(&vault).await;
+    publisher.set_theme(nyanpasu_config::application::ThemeMode::Dark);
+    publisher.sync(&vault).await;
+
+    device.portable.script(ApplyOutcome::Unavailable {
+        reason: "the candidate could not be checked".to_owned(),
+    });
+    let report = sync_with(&device, &vault, false).await;
+    assert!(
+        report
+            .blocked
+            .iter()
+            .any(|item| matches!(item.reason, SyncBlockedReason::RuntimeUnavailable { .. })),
+        "{:?}",
+        report.blocked
+    );
+    assert!(
+        device.state.load().unwrap().blocked.is_empty(),
+        "a transient failure is not recorded as a refusal"
+    );
+
+    // The next scheduled cycle retries and applies.
+    let retried = sync_with(&device, &vault, false).await;
+    assert_eq!(
+        device.theme(),
+        nyanpasu_config::application::ThemeMode::Dark,
+        "{retried:?}"
+    );
+}
+
+/// A committed mutation whose runtime application is deferred still advances
+/// the baseline, because the source was saved.
+#[tokio::test]
+async fn a_deferred_commit_advances_the_baseline() {
+    let vault = store();
+    let device = Device::new(&vault, "device");
+    device.sync(&vault).await;
+    let publisher = Device::new(&vault, "publisher");
+    publisher.sync(&vault).await;
+    publisher.set_theme(nyanpasu_config::application::ThemeMode::Dark);
+    publisher.sync(&vault).await;
+
+    // The owner commits the source but reports a deferral; the fake still
+    // records the committed document because a deferral is not a failed write.
+    device
+        .portable
+        .script(ApplyOutcome::Committed { deferred: true });
+    let report = sync_with(&device, &vault, false).await;
+    assert!(report.blocked.is_empty(), "{:?}", report.blocked);
+    let loaded = device.state.load().unwrap();
+    assert_eq!(
+        loaded
+            .baseline_documents
+            .get(&LogicalPath::parse("app/application").unwrap())
+            .expect("a baseline document")
+            .payload["theme_mode"],
+        serde_json::json!("dark"),
+        "a deferred commit still advances the baseline"
+    );
+    assert_eq!(
+        device.theme(),
+        nyanpasu_config::application::ThemeMode::Dark,
+        "the deferred commit saved the source"
+    );
+}
+
+/// An owner that moved during the cycle asks for a replan rather than a
+/// refusal, and the next cycle converges.
+#[tokio::test]
+async fn a_stale_version_asks_for_a_replan() {
+    let vault = store();
+    let device = Device::new(&vault, "device");
+    device.sync(&vault).await;
+    let publisher = Device::new(&vault, "publisher");
+    publisher.sync(&vault).await;
+    publisher.set_theme(nyanpasu_config::application::ThemeMode::Dark);
+    publisher.sync(&vault).await;
+
+    device.portable.script(ApplyOutcome::VersionConflict);
+    let report = sync_with(&device, &vault, false).await;
+    assert!(report.replan, "a stale version asks for a replan");
+    assert!(report.blocked.is_empty());
+
+    // A fresh cycle sees the current version and applies.
+    let converged = sync_with(&device, &vault, false).await;
+    assert!(!converged.replan);
+    assert_eq!(
+        device.theme(),
+        nyanpasu_config::application::ThemeMode::Dark,
+        "{converged:?}"
+    );
 }
 
 /// Records the pre-images a cycle hands to the snapshot port.
@@ -538,6 +770,7 @@ impl MismatchedDevice {
             meta: &meta,
             settings: &self.settings,
             status: &mut status,
+            retry_blocked: false,
         })
         .await
         .unwrap()
@@ -776,6 +1009,9 @@ async fn a_broken_state_store_stops_the_cycle() {
         ) -> Result<(), StateError> {
             Ok(())
         }
+        fn save_blocked(&self, _blocked: &[super::state::BlockedRecord]) -> Result<(), StateError> {
+            Ok(())
+        }
     }
     let vault = store();
     let directory = tempfile::tempdir().unwrap();
@@ -804,6 +1040,7 @@ async fn a_broken_state_store_stops_the_cycle() {
         meta: &SyncMeta::default(),
         settings: &SyncSettings::default(),
         status: &mut status,
+        retry_blocked: false,
     })
     .await;
     assert!(result.is_err(), "a broken baseline stops the cycle");

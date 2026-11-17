@@ -104,8 +104,14 @@ impl SyncClient {
         self.call(Message::Disable).await
     }
 
+    /// An explicit sync request; retries candidates the core refused.
     pub async fn sync_now(&self) -> Result<CycleReport, SyncFailure> {
         self.call(Message::SyncNow).await
+    }
+
+    /// A scheduled or change-triggered run; does not retry refusals.
+    pub async fn sync_scheduled(&self) -> Result<CycleReport, SyncFailure> {
+        self.call(Message::SyncScheduled).await
     }
 
     pub async fn test_connection(

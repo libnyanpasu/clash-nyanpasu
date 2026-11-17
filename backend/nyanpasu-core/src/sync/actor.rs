@@ -32,7 +32,11 @@ pub(super) enum Message {
     },
     Enable(RpcReplyPort<Result<CycleReport, SyncFailure>>),
     Disable(RpcReplyPort<Result<(), SyncFailure>>),
+    /// An explicit request from the user: retries refused candidates.
     SyncNow(RpcReplyPort<Result<CycleReport, SyncFailure>>),
+    /// A scheduled or change-triggered run: it does not retry a refusal whose
+    /// content has not changed.
+    SyncScheduled(RpcReplyPort<Result<CycleReport, SyncFailure>>),
     TestConnection {
         settings: SyncSettings,
         secrets: Option<ProviderSecrets>,
@@ -96,6 +100,9 @@ pub(super) struct State {
     status: SyncStatus,
     meta: SyncMeta,
     conflicts: Vec<SyncConflict>,
+    /// Set for one cycle after an explicit sync-now, so a refused candidate is
+    /// retried even though its content did not change.
+    retry_blocked: bool,
 }
 
 pub(super) struct SyncActor;
@@ -136,14 +143,16 @@ impl SyncActor {
             .unwrap_or_default()
     }
 
-    /// Runs a cycle, retrying once when an exclusive generation was claimed.
-    async fn cycle(state: &mut State) -> Result<CycleReport, SyncFailure> {
+    /// Runs a cycle. An exclusive generation claimed elsewhere, or an owner
+    /// that moved during the cycle, is retried once: nothing local is
+    /// discarded, so replanning against the current state converges.
+    async fn cycle(state: &mut State, retry_blocked: bool) -> Result<CycleReport, SyncFailure> {
+        state.retry_blocked = retry_blocked;
         let report = Self::run_once(state).await?;
-        if !report.contended {
+        if !report.contended && !report.replan {
             return Ok(report);
         }
-        // Another device wrote this generation first. Nothing local was
-        // discarded, so replanning against its commit converges.
+        state.retry_blocked = false;
         Self::run_once(state).await
     }
 
@@ -168,6 +177,7 @@ impl SyncActor {
             meta: &state.meta,
             settings: &state.settings,
             status: &mut status,
+            retry_blocked: state.retry_blocked,
         })
         .await
         .map_err(|error| to_failure(&error))?;
@@ -274,6 +284,7 @@ impl Actor for SyncActor {
             status,
             meta,
             conflicts,
+            retry_blocked: true,
         })
     }
 
@@ -322,7 +333,7 @@ impl Actor for SyncActor {
                 state.settings = settings.clone();
                 state.status.availability = Self::availability(state);
                 let result = match state.ports.settings.save(&settings) {
-                    Ok(()) => Self::cycle(state).await,
+                    Ok(()) => Self::cycle(state, true).await,
                     Err(error) => Err(SyncFailure::Failed {
                         reason: error.to_string(),
                     }),
@@ -350,7 +361,14 @@ impl Actor for SyncActor {
                 let _ = reply.send(result);
             }
             Message::SyncNow(reply) => {
-                let result = Self::cycle(state).await;
+                let result = Self::cycle(state, true).await;
+                if let Err(failure) = &result {
+                    state.fail(failure);
+                }
+                let _ = reply.send(result);
+            }
+            Message::SyncScheduled(reply) => {
+                let result = Self::cycle(state, false).await;
                 if let Err(failure) = &result {
                     state.fail(failure);
                 }
@@ -412,7 +430,7 @@ impl Actor for SyncActor {
                     return Ok(());
                 }
                 state.publish();
-                let result = Self::cycle(state).await;
+                let result = Self::cycle(state, false).await;
                 if let Err(failure) = &result {
                     state.fail(failure);
                 }

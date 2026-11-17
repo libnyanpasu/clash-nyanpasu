@@ -73,6 +73,15 @@ pub enum SyncBlockedReason {
     NotUtf8,
     UnportableName,
     CaseCollision,
+    /// The core refused this exact candidate. It is not retried until either
+    /// side's content changes or the user retries explicitly.
+    RuntimeRefused {
+        reason: String,
+    },
+    /// The candidate could not be checked; a later cycle retries it.
+    RuntimeUnavailable {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]

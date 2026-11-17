@@ -21,9 +21,11 @@ const META: TableDefinition<&str, &[u8]> = TableDefinition::new("sync_meta");
 const BASELINE: TableDefinition<&str, &[u8]> = TableDefinition::new("sync_baseline");
 const BASELINE_DOCS: TableDefinition<&str, &[u8]> = TableDefinition::new("sync_baseline_docs");
 const CONFLICTS: TableDefinition<&str, &[u8]> = TableDefinition::new("sync_conflicts");
+const BLOCKED: TableDefinition<&str, &[u8]> = TableDefinition::new("sync_blocked");
 
 const META_KEY: &str = "meta";
 const CONFLICTS_KEY: &str = "open";
+const BLOCKED_KEY: &str = "refused";
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -58,6 +60,18 @@ pub struct BaselineItem {
     pub codec: nyanpasu_paths::ItemCodec,
 }
 
+/// An item the core refused, kept so an unchanged candidate is not retried.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BlockedRecord {
+    pub logical: LogicalPath,
+    /// The local content identity the refusal was about, if any.
+    pub local: Option<ObjectId>,
+    /// The remote content identity the refusal was about, if any.
+    pub remote: Option<ObjectId>,
+    pub reason: String,
+    pub at: String,
+}
+
 /// The durable record of a vault and the last agreed state.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncMeta {
@@ -76,6 +90,7 @@ pub struct LoadedState {
     pub baseline: BTreeMap<LogicalPath, BaselineItem>,
     pub baseline_documents: BTreeMap<LogicalPath, PortableDocument>,
     pub conflicts: Vec<nyanpasu_runtime_values::sync::SyncConflict>,
+    pub blocked: Vec<BlockedRecord>,
 }
 
 /// Reads and writes the device's sync baseline.
@@ -94,6 +109,9 @@ pub trait SyncStateStore: Send + Sync + 'static {
         &self,
         conflicts: &[nyanpasu_runtime_values::sync::SyncConflict],
     ) -> Result<(), StateError>;
+
+    /// Replaces the refused-item records; a later cycle consults them.
+    fn save_blocked(&self, blocked: &[BlockedRecord]) -> Result<(), StateError>;
 }
 
 /// A redb-backed [`SyncStateStore`], opened by the composition root.
@@ -113,7 +131,7 @@ impl RedbSyncStateStore {
         // Create the tables up front so a read of a brand-new device is empty,
         // not an error, and so the first cycle can write without a special case.
         let write = database.begin_write().context(TransactionSnafu)?;
-        for table in [META, BASELINE, BASELINE_DOCS, CONFLICTS] {
+        for table in [META, BASELINE, BASELINE_DOCS, CONFLICTS, BLOCKED] {
             let _ = write.open_table(table).context(TableSnafu)?;
         }
         write.commit().context(CommitSnafu)?;
@@ -180,11 +198,21 @@ impl SyncStateStore for RedbSyncStateStore {
             Some(value) => serde_json::from_slice(value.value()).context(DecodeSnafu)?,
             None => Vec::new(),
         };
+        let blocked = match read
+            .open_table(BLOCKED)
+            .context(TableSnafu)?
+            .get(BLOCKED_KEY)
+            .context(StorageSnafu)?
+        {
+            Some(value) => serde_json::from_slice(value.value()).context(DecodeSnafu)?,
+            None => Vec::new(),
+        };
         Ok(LoadedState {
             meta,
             baseline,
             baseline_documents,
             conflicts,
+            blocked,
         })
     }
 
@@ -235,6 +263,19 @@ impl SyncStateStore for RedbSyncStateStore {
             let encoded = serde_json::to_vec(conflicts).context(EncodeSnafu)?;
             table
                 .insert(CONFLICTS_KEY, encoded.as_slice())
+                .context(StorageSnafu)?;
+        }
+        write.commit().context(CommitSnafu)?;
+        Ok(())
+    }
+
+    fn save_blocked(&self, blocked: &[BlockedRecord]) -> Result<(), StateError> {
+        let write = self.database.begin_write().context(TransactionSnafu)?;
+        {
+            let mut table = write.open_table(BLOCKED).context(TableSnafu)?;
+            let encoded = serde_json::to_vec(blocked).context(EncodeSnafu)?;
+            table
+                .insert(BLOCKED_KEY, encoded.as_slice())
                 .context(StorageSnafu)?;
         }
         write.commit().context(CommitSnafu)?;

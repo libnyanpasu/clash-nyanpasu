@@ -1,9 +1,11 @@
 //! Configuration-sync command adapters.
 //!
-//! None of these declares `rpc(http)`: a browser caller must not be able to
-//! redirect a device's configuration to another endpoint or read conflict
-//! contents. Exposure to WebUI or the local socket is a separate, reviewed
-//! opt-in.
+//! The namespace exposes nothing beyond the desktop: a browser caller must not
+//! be able to redirect a device's configuration to another endpoint or read
+//! conflict contents. Exposure to WebUI or the local socket is a separate,
+//! reviewed opt-in.
+
+nyanpasu_rpc::namespace!(expose = []);
 
 use nyanpasu_contracts::sync::{ProviderKind, ProviderSecrets, SyncSettings};
 use nyanpasu_core::{
@@ -16,15 +18,18 @@ use specta::Type;
 
 use crate::{error::Result, registry::RpcState};
 
+// The sync status carries blocked item paths, which are local names.
+nyanpasu_rpc::resource!(event "sync-status-changed-event", targets = [desktop], sensitive);
+
 /// The sync status, without the credentials a provider may hold.
-#[nyanpasu_rpc::rpc(query, permission = settings:read)]
+#[nyanpasu_rpc::rpc(query)]
 #[specta::specta]
 pub async fn get_sync_status(client: RpcState<'_, NyanpasuClient>) -> Result<SyncStatus> {
     Ok(client.sync_status().await?)
 }
 
 /// Settings, whether credentials exist, and the provider kinds this build has.
-#[nyanpasu_rpc::rpc(query, permission = settings:read, sensitive)]
+#[nyanpasu_rpc::rpc(query, sensitive)]
 #[specta::specta]
 pub async fn get_sync_settings(client: RpcState<'_, NyanpasuClient>) -> Result<SyncSettingsView> {
     let reply: SettingsReply = client.sync_settings().await?;
@@ -32,7 +37,7 @@ pub async fn get_sync_settings(client: RpcState<'_, NyanpasuClient>) -> Result<S
 }
 
 /// Provider kinds compiled into this build.
-#[nyanpasu_rpc::rpc(query, permission = settings:read)]
+#[nyanpasu_rpc::rpc(query)]
 #[specta::specta]
 pub async fn get_sync_provider_kinds(
     client: RpcState<'_, NyanpasuClient>,
@@ -42,7 +47,7 @@ pub async fn get_sync_provider_kinds(
 }
 
 /// Open conflicts with both values.
-#[nyanpasu_rpc::rpc(query, permission = settings:read, sensitive)]
+#[nyanpasu_rpc::rpc(query, sensitive)]
 #[specta::specta]
 pub async fn list_sync_conflicts(
     client: RpcState<'_, NyanpasuClient>,
@@ -51,14 +56,14 @@ pub async fn list_sync_conflicts(
 }
 
 /// Pre-image snapshots this device took.
-#[nyanpasu_rpc::rpc(query, permission = settings:read)]
+#[nyanpasu_rpc::rpc(query)]
 #[specta::specta]
 pub fn list_sync_snapshots(client: RpcState<'_, NyanpasuClient>) -> Vec<SnapshotSummary> {
     client.list_sync_snapshots()
 }
 
 /// Saves the provider, its secrets and the sync options.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn configure_sync(
     client: RpcState<'_, NyanpasuClient>,
@@ -71,7 +76,7 @@ pub async fn configure_sync(
 }
 
 /// Checks reachability and credentials without saving anything.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn test_sync_connection(
     client: RpcState<'_, NyanpasuClient>,
@@ -84,28 +89,28 @@ pub async fn test_sync_connection(
 }
 
 /// Runs the first cycle and keeps syncing.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn enable_sync(client: RpcState<'_, NyanpasuClient>) -> Result<SyncRunView> {
     Ok(client.enable_sync().await?.into())
 }
 
 /// Stops syncing; local data and the remote vault stay.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn disable_sync(client: RpcState<'_, NyanpasuClient>) -> Result<()> {
     Ok(client.disable_sync().await?)
 }
 
 /// Runs one cycle now.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn sync_now(client: RpcState<'_, NyanpasuClient>) -> Result<SyncRunView> {
     Ok(client.sync_now().await?.into())
 }
 
 /// Records a conflict resolution and runs a cycle.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn resolve_sync_conflict(
     client: RpcState<'_, NyanpasuClient>,
@@ -119,7 +124,7 @@ pub async fn resolve_sync_conflict(
 }
 
 /// Re-applies a snapshot's pre-images; the next cycle pushes them.
-#[nyanpasu_rpc::rpc(permission = settings:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn restore_sync_snapshot(
     client: RpcState<'_, NyanpasuClient>,

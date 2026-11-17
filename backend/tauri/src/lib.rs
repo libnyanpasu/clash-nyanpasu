@@ -387,7 +387,7 @@ pub fn run() -> std::process::ExitCode {
         .manage(init::logging::LoggingShutdown(logger_reload.clone()))
         // Deep links wait here until a frontend takes them; macOS can deliver
         // one before setup runs.
-        .manage(crate::ipc::PendingDeepLinks::default())
+        .manage(crate::ipc::system::os::PendingDeepLinks::default())
         .invoke_handler(transport_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())

@@ -1,15 +1,35 @@
-//! Shared icons command adapters.
-
-use crate::error::Result;
+//! Tray and widget icons.
 
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::values::TrayIcon;
 
-use crate::{ports::HostIconFiles, registry::RpcState};
+use crate::{error::Result, ports::HostIconFiles, registry::RpcState};
 
-#[nyanpasu_rpc::rpc(http, capabilities(presentation), permission = system:write)]
+nyanpasu_rpc::resource!(route "icon_fetch", targets = [http]);
+
+#[nyanpasu_rpc::rpc(query, expose = [http])]
+#[specta::specta]
+pub async fn is_tray_icon_set(
+    icons: RpcState<'_, dyn HostIconFiles>,
+    paths: RpcState<'_, PathResolver>,
+    mode: TrayIcon,
+) -> Result<bool> {
+    Ok(icons.is_tray_icon_set(paths, mode).await)
+}
+
+#[nyanpasu_rpc::rpc(query, expose = [http])]
+#[specta::specta]
+pub async fn is_widget_icon_set(
+    icons: RpcState<'_, dyn HostIconFiles>,
+    paths: RpcState<'_, PathResolver>,
+    mode: TrayIcon,
+) -> Result<bool> {
+    Ok(icons.is_widget_icon_set(paths, mode))
+}
+
+#[nyanpasu_rpc::rpc(capabilities(presentation), expose = [http])]
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
     client: RpcState<'_, NyanpasuClient>,
@@ -24,27 +44,7 @@ pub async fn set_tray_icon_from_bytes(
     Ok(())
 }
 
-#[nyanpasu_rpc::rpc(http, query, permission = system:read)]
-#[specta::specta]
-pub async fn is_tray_icon_set(
-    icons: RpcState<'_, dyn HostIconFiles>,
-    paths: RpcState<'_, PathResolver>,
-    mode: TrayIcon,
-) -> Result<bool> {
-    Ok(icons.is_tray_icon_set(paths, mode).await)
-}
-
-#[nyanpasu_rpc::rpc(http, query, permission = system:read)]
-#[specta::specta]
-pub async fn is_widget_icon_set(
-    icons: RpcState<'_, dyn HostIconFiles>,
-    paths: RpcState<'_, PathResolver>,
-    mode: TrayIcon,
-) -> Result<bool> {
-    Ok(icons.is_widget_icon_set(paths, mode))
-}
-
-#[nyanpasu_rpc::rpc(http, capabilities(presentation), permission = system:write)]
+#[nyanpasu_rpc::rpc(capabilities(presentation), expose = [http])]
 #[specta::specta]
 pub async fn set_widget_icon_from_bytes(
     client: RpcState<'_, NyanpasuClient>,

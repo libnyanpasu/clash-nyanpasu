@@ -49,12 +49,12 @@ pub fn deliver(app_handle: &AppHandle, url: &Url) {
     // The URL itself can carry a subscription token, so only its scheme is logged.
     tracing::info!(scheme = url.scheme(), "deep link received");
     app_handle
-        .state::<crate::ipc::PendingDeepLinks>()
+        .state::<crate::ipc::system::os::PendingDeepLinks>()
         .push(url.to_string());
     if let Some(events) = app_handle.try_state::<nyanpasu_rpc::events::EventBus>()
         && let Err(error) = events.publish_serialized(
             nyanpasu_rpc_protocol::EventName::SchemeRequestReceived,
-            &crate::ipc::SchemeRequestReceivedEvent,
+            &crate::ipc::system::os::SchemeRequestReceivedEvent,
         )
     {
         tracing::error!(%error, "failed to emit scheme-request-received event");

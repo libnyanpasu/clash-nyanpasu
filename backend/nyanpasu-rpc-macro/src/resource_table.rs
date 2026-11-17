@@ -1239,7 +1239,7 @@ fn production_namespaces_follow_the_module_tree() {
     assert_eq!(shared.namespace, ["profile", "content"]);
     let native = find("read_clipboard_text");
     assert_eq!(native.root, Root::Desktop);
-    assert!(native.namespace.is_empty());
+    assert_eq!(native.namespace, ["system", "os"]);
 }
 
 #[test]
@@ -1507,6 +1507,7 @@ fn shell_owned_references(directory: &Path) -> (usize, Vec<String>) {
                         && !imported.starts_with("crate::registry::")
                         && !imported.starts_with("crate::error::")
                         && !imported.starts_with("crate::ports::")
+                        && !imported.starts_with("crate::commands::")
                     {
                         references.push(format!(
                             "{}: shell-owned import: {imported}",

@@ -11,8 +11,7 @@ use std::{
 };
 
 use nyanpasu_config::{
-    application::NyanpasuAppConfig, clash::config::ClashConfig, profile::Profiles,
-    sync::PortableDocument,
+    application::NyanpasuAppConfig, clash::config::ClashConfig, sync::PortableDocument,
 };
 use nyanpasu_paths::{LogicalPath, PathResolver};
 use nyanpasu_runtime_values::sync::{ConflictChoice, SyncConflict, SyncStatus};
@@ -29,8 +28,8 @@ use crate::{
         client::SyncClient,
         engine::CycleReport,
         ports::{
-            ApplyError, CommittedDocument, PortableStatePort, SnapshotSummary, SyncFilePort,
-            SyncPorts, SyncSnapshotPort, SyncStatusSink,
+            ApplyError, CommittedDocument, CommittedProfiles, PortableStatePort, SnapshotSummary,
+            SyncFilePort, SyncPorts, SyncSnapshotPort, SyncStatusSink,
         },
         settings::{FileSyncSettingsStore, SyncSettingsStore},
         state::{RedbSyncStateStore, SyncStateStore},
@@ -91,6 +90,7 @@ pub struct OwnerStatePort {
     pub(crate) application: ApplicationClient,
     pub(crate) clash: ClashConfigClient,
     pub(crate) profiles: ProfilesClient,
+    pub(crate) paths: PathResolver,
 }
 
 #[async_trait::async_trait]
@@ -111,12 +111,34 @@ impl PortableStatePort for OwnerStatePort {
         })
     }
 
-    async fn profiles(&self) -> Result<CommittedDocument<Profiles>, ApplyError> {
-        let snapshot = self.profiles.snapshot();
-        let version = self.profiles.version();
-        Ok(CommittedDocument {
-            state: (*snapshot).clone(),
+    /// Reads the catalog, its version and its portable files under the content
+    /// read guard, so a file promoted by an in-flight write cannot be paired
+    /// with the catalog that preceded it.
+    async fn profiles(&self) -> Result<CommittedProfiles, ApplyError> {
+        let reader = self.profiles.content_reader();
+        let paths = self.paths.clone();
+        let capture = reader
+            .committed(move |versioned| async move {
+                let state = versioned.state.clone();
+                let version = versioned.version;
+                let document =
+                    std::fs::read(paths.profiles_path().as_std_path()).unwrap_or_default();
+                let mut files = std::collections::BTreeMap::new();
+                for file in nyanpasu_config::sync::portable_profile_files(&state) {
+                    let path = paths.app_profiles_dir().join(&file);
+                    if let Ok(bytes) = std::fs::read(path.as_std_path()) {
+                        files.insert(file, bytes);
+                    }
+                }
+                (state, version, files, document)
+            })
+            .await;
+        let (state, version, files, document) = capture;
+        Ok(CommittedProfiles {
+            state,
             version,
+            files,
+            document,
         })
     }
 
@@ -266,6 +288,21 @@ impl SyncFilePort for ResolverFilePort {
     fn remove_binary(&self, logical: &LogicalPath) -> Result<(), ApplyError> {
         remove_file(&self.physical(logical)?)
     }
+
+    fn read_document(&self, logical: &LogicalPath) -> Result<Option<Vec<u8>>, ApplyError> {
+        let path = match logical.as_str() {
+            "app/application" => self.paths.application_config_path(),
+            "app/clash" => self.paths.clash_config_path(),
+            "app/profiles" => self.paths.profiles_path(),
+            other => {
+                return Err(ApplyError::File {
+                    path: other.to_owned(),
+                    reason: "not a configuration document".to_owned(),
+                });
+            }
+        };
+        read_bytes(path.as_std_path())
+    }
 }
 
 fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>, ApplyError> {
@@ -346,7 +383,10 @@ impl FsSnapshotPort {
 }
 
 impl SyncSnapshotPort for FsSnapshotPort {
-    fn capture(&self, items: &[LogicalPath]) -> Result<String, ApplyError> {
+    fn capture(
+        &self,
+        pre_images: &std::collections::BTreeMap<LogicalPath, Vec<u8>>,
+    ) -> Result<String, ApplyError> {
         let id = format!(
             "cycle-{}",
             nyanpasu_config::sync::ObjectId::of(&nanoid::nanoid!().into_bytes()).as_str()[..12]
@@ -358,16 +398,10 @@ impl SyncSnapshotPort for FsSnapshotPort {
             reason: error.to_string(),
         })?;
         let mut captured = Vec::new();
-        for logical in items {
-            let Some(source) = self.physical(logical) else {
-                continue;
-            };
-            if !source.is_file() {
-                continue;
-            }
+        for (logical, bytes) in pre_images {
             let name = logical.as_str().replace('/', "__");
-            std::fs::copy(&source, directory.join(&name)).map_err(|error| ApplyError::File {
-                path: source.display().to_string(),
+            std::fs::write(directory.join(&name), bytes).map_err(|error| ApplyError::File {
+                path: logical.to_string(),
                 reason: error.to_string(),
             })?;
             captured.push(logical.as_str().to_owned());
@@ -523,6 +557,7 @@ impl SyncSetup<'_> {
                 application,
                 clash,
                 profiles,
+                paths: paths.clone(),
             }),
             files: Arc::new(ResolverFilePort::new(paths.clone())),
             snapshots: Arc::new(FsSnapshotPort::new(paths.clone())),

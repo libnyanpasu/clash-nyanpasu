@@ -23,6 +23,22 @@ pub struct CommittedDocument<T> {
     pub version: Version,
 }
 
+/// The Profiles catalog together with the managed files it names.
+///
+/// One guarded read produces all three: the committed catalog, the version it
+/// was published at, and the bytes of every portable file it names. A profile
+/// write promotes its file before publishing the catalog, so reading the two
+/// separately can pair a promoted file with the document that preceded it.
+#[derive(Debug, Clone)]
+pub struct CommittedProfiles {
+    pub state: Profiles,
+    pub version: Version,
+    /// Raw bytes of each portable file, keyed by the file name in the catalog.
+    pub files: std::collections::BTreeMap<String, Vec<u8>>,
+    /// The full on-disk catalog bytes, for a restorable pre-image.
+    pub document: Vec<u8>,
+}
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum ApplyError {
@@ -39,7 +55,9 @@ pub enum ApplyError {
 pub trait PortableStatePort: Send + Sync + 'static {
     async fn application(&self) -> Result<CommittedDocument<NyanpasuAppConfig>, ApplyError>;
     async fn clash(&self) -> Result<CommittedDocument<ClashConfig>, ApplyError>;
-    async fn profiles(&self) -> Result<CommittedDocument<Profiles>, ApplyError>;
+    /// Reads the committed catalog, its version and the bytes of the files it
+    /// names under one guard, so the two halves always agree.
+    async fn profiles(&self) -> Result<CommittedProfiles, ApplyError>;
 
     /// Replaces the portable fields if the document is still at `expected`.
     async fn apply_application(
@@ -74,12 +92,21 @@ pub trait SyncFilePort: Send + Sync + 'static {
     fn read_binary(&self, logical: &LogicalPath) -> Result<Option<Vec<u8>>, ApplyError>;
     fn write_binary(&self, logical: &LogicalPath, bytes: &[u8]) -> Result<(), ApplyError>;
     fn remove_binary(&self, logical: &LogicalPath) -> Result<(), ApplyError>;
+    /// The full on-disk bytes of a configuration document, for a pre-image that
+    /// still holds the device-bound fields.
+    fn read_document(&self, logical: &LogicalPath) -> Result<Option<Vec<u8>>, ApplyError>;
 }
 
 /// Writes pre-images before a cycle changes anything locally.
 pub trait SyncSnapshotPort: Send + Sync + 'static {
-    /// Copies the given items into a new snapshot and returns its id.
-    fn capture(&self, items: &[LogicalPath]) -> Result<String, ApplyError>;
+    /// Writes the captured pre-images into a new snapshot and returns its id.
+    ///
+    /// The bytes come from the cycle's guarded capture, not from a second read
+    /// of the live files, so a pre-image is a pair that actually existed.
+    fn capture(
+        &self,
+        pre_images: &std::collections::BTreeMap<LogicalPath, Vec<u8>>,
+    ) -> Result<String, ApplyError>;
     /// Restores a snapshot's pre-images through the domain owners.
     fn restore(&self, snapshot_id: &str) -> Result<(), ApplyError>;
 }

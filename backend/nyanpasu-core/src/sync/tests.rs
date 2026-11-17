@@ -24,8 +24,8 @@ use nyanpasu_state_engine::Version;
 use super::{
     engine::{CycleInput, run_cycle},
     ports::{
-        ApplyError, CommittedDocument, PortableStatePort, SyncFilePort, SyncPorts,
-        SyncSnapshotPort, SyncStatusSink,
+        ApplyError, CommittedDocument, CommittedProfiles, PortableStatePort, SyncFilePort,
+        SyncPorts, SyncSnapshotPort, SyncStatusSink,
     },
     state::{LoadedState, RedbSyncStateStore, StateError, SyncMeta, SyncStateStore},
 };
@@ -40,13 +40,22 @@ struct DeviceDocuments {
 
 struct FakePortable {
     documents: Mutex<DeviceDocuments>,
+    /// The bytes the guarded capture returns. It is deliberately separate from
+    /// the file port so a test can make a later direct read answer differently
+    /// and prove the cycle uses the captured bytes.
+    captured: Mutex<BTreeMap<LogicalPath, Vec<u8>>>,
 }
 
 impl FakePortable {
     fn new() -> Self {
         Self {
             documents: Mutex::new(DeviceDocuments::default()),
+            captured: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    fn capture_file(&self, logical: LogicalPath, bytes: Vec<u8>) {
+        self.captured.lock().unwrap().insert(logical, bytes);
     }
 }
 
@@ -73,11 +82,19 @@ impl PortableStatePort for FakePortable {
         })
     }
 
-    async fn profiles(&self) -> Result<CommittedDocument<Profiles>, ApplyError> {
+    async fn profiles(&self) -> Result<CommittedProfiles, ApplyError> {
         let state = self.documents.lock().unwrap();
-        Ok(CommittedDocument {
+        let mut files = std::collections::BTreeMap::new();
+        for (logical, bytes) in self.captured.lock().unwrap().iter() {
+            if let Some(name) = logical.as_str().strip_prefix("profiles/") {
+                files.insert(name.to_owned(), bytes.clone());
+            }
+        }
+        Ok(CommittedProfiles {
             state: state.profiles.clone(),
             version: Version::new(state.version),
+            files,
+            document: Vec::new(),
         })
     }
 
@@ -155,6 +172,23 @@ struct FakeFiles {
     text: Mutex<BTreeMap<LogicalPath, Vec<u8>>>,
 }
 
+impl FakeFiles {
+    fn put(&self, path: &str, bytes: &[u8]) {
+        self.text
+            .lock()
+            .unwrap()
+            .insert(LogicalPath::parse(path).unwrap(), bytes.to_vec());
+    }
+
+    fn get(&self, path: &str) -> Option<Vec<u8>> {
+        self.text
+            .lock()
+            .unwrap()
+            .get(&LogicalPath::parse(path).unwrap())
+            .cloned()
+    }
+}
+
 impl SyncFilePort for FakeFiles {
     fn read_text(&self, logical: &LogicalPath) -> Result<Option<Vec<u8>>, ApplyError> {
         Ok(self.text.lock().unwrap().get(logical).cloned())
@@ -184,12 +218,16 @@ impl SyncFilePort for FakeFiles {
     fn remove_binary(&self, logical: &LogicalPath) -> Result<(), ApplyError> {
         self.remove_text(logical)
     }
+
+    fn read_document(&self, logical: &LogicalPath) -> Result<Option<Vec<u8>>, ApplyError> {
+        Ok(self.text.lock().unwrap().get(logical).cloned())
+    }
 }
 
 struct NoSnapshots;
 
 impl SyncSnapshotPort for NoSnapshots {
-    fn capture(&self, _items: &[LogicalPath]) -> Result<String, ApplyError> {
+    fn capture(&self, _items: &BTreeMap<LogicalPath, Vec<u8>>) -> Result<String, ApplyError> {
         Ok("test".to_owned())
     }
 
@@ -255,10 +293,10 @@ impl nyanpasu_contracts::sync::SecretStore for NoSecrets {
 /// One simulated device: its owners, files, baseline and settings.
 struct Device {
     portable: Arc<FakePortable>,
+    files: Arc<FakeFiles>,
     state: Arc<RedbSyncStateStore>,
     ports: SyncPorts,
     settings: SyncSettings,
-    paths: PathResolver,
     _directory: tempfile::TempDir,
 }
 
@@ -267,6 +305,7 @@ impl Device {
         let directory = tempfile::tempdir().unwrap();
         let state =
             Arc::new(RedbSyncStateStore::open(&directory.path().join("sync/state.redb")).unwrap());
+        let files = Arc::new(FakeFiles::default());
         let portable = Arc::new(FakePortable::new());
         let paths = PathResolver::with_base_dirs(
             directory.path().join("config").try_into().unwrap(),
@@ -278,7 +317,7 @@ impl Device {
             secrets: Arc::new(NoSecrets),
             remote: Arc::new(FixedFactory(Arc::new(store.connect()))),
             portable: portable.clone(),
-            files: Arc::new(crate::client::sync::ResolverFilePort::new(paths.clone())),
+            files: files.clone(),
             snapshots: Arc::new(NoSnapshots),
             status: Arc::new(NoStatus),
             paths: paths.clone(),
@@ -286,9 +325,9 @@ impl Device {
         };
         Self {
             portable,
+            files,
             state,
             ports,
-            paths,
             settings: SyncSettings {
                 enabled: true,
                 device_name: name.to_owned(),
@@ -310,6 +349,17 @@ impl Device {
         })
         .await
         .unwrap()
+    }
+
+    fn put_file(&self, name: &str, bytes: &[u8]) {
+        let logical = LogicalPath::parse(&format!("profiles/{name}")).unwrap();
+        // Both the guarded capture and the file port see a locally written file.
+        self.portable.capture_file(logical.clone(), bytes.to_vec());
+        self.files.put(&format!("profiles/{name}"), bytes);
+    }
+
+    fn read_file(&self, name: &str) -> Option<Vec<u8>> {
+        self.files.get(&format!("profiles/{name}"))
     }
 
     /// Registers a managed local profile, as the profiles owner would.
@@ -345,17 +395,6 @@ impl Device {
         state.version += 1;
     }
 
-    /// Writes a profile file where the resolver names it, as an owner would.
-    fn put_file(&self, name: &str, bytes: &[u8]) {
-        let directory = self.paths.app_profiles_dir();
-        std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join(name), bytes).unwrap();
-    }
-
-    fn read_file(&self, name: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.paths.app_profiles_dir().join(name)).ok()
-    }
-
     fn set_theme(&self, theme: nyanpasu_config::application::ThemeMode) {
         let mut state = self.portable.documents.lock().unwrap();
         state.application.theme_mode = theme;
@@ -384,6 +423,186 @@ impl Device {
 
 fn store() -> MemoryRemoteStore {
     MemoryRemoteStore::new(ConditionalCreate::Honored)
+}
+
+/// Records the pre-images a cycle hands to the snapshot port.
+#[derive(Default)]
+struct RecordingSnapshots {
+    captured: Mutex<Option<BTreeMap<LogicalPath, Vec<u8>>>>,
+}
+
+impl SyncSnapshotPort for RecordingSnapshots {
+    fn capture(&self, pre_images: &BTreeMap<LogicalPath, Vec<u8>>) -> Result<String, ApplyError> {
+        *self.captured.lock().unwrap() = Some(pre_images.clone());
+        Ok("cycle-test".to_owned())
+    }
+
+    fn restore(&self, _snapshot_id: &str) -> Result<(), ApplyError> {
+        Ok(())
+    }
+}
+
+/// A device whose file port answers with content that differs from the guarded
+/// capture, standing in for a write that lands after the guard is released.
+struct MismatchedDevice {
+    portable: Arc<FakePortable>,
+    files: Arc<FakeFiles>,
+    snapshots: Arc<RecordingSnapshots>,
+    state: Arc<RedbSyncStateStore>,
+    ports: SyncPorts,
+    settings: SyncSettings,
+    _directory: tempfile::TempDir,
+}
+
+impl MismatchedDevice {
+    fn new(store: &MemoryRemoteStore) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let state =
+            Arc::new(RedbSyncStateStore::open(&directory.path().join("sync/state.redb")).unwrap());
+        let files = Arc::new(FakeFiles::default());
+        let portable = Arc::new(FakePortable::new());
+        let snapshots = Arc::new(RecordingSnapshots::default());
+        let paths = PathResolver::with_base_dirs(
+            directory.path().join("config").try_into().unwrap(),
+            directory.path().join("data").try_into().unwrap(),
+        );
+        let ports = SyncPorts {
+            state: state.clone(),
+            settings: Arc::new(NoSettings),
+            secrets: Arc::new(NoSecrets),
+            remote: Arc::new(FixedFactory(Arc::new(store.connect()))),
+            portable: portable.clone(),
+            files: files.clone(),
+            snapshots: snapshots.clone(),
+            status: Arc::new(NoStatus),
+            paths,
+            shutdown: tokio_util::sync::CancellationToken::new(),
+        };
+        Self {
+            portable,
+            files,
+            snapshots,
+            state,
+            ports,
+            settings: SyncSettings {
+                enabled: true,
+                device_name: "mismatched".to_owned(),
+                ..Default::default()
+            },
+            _directory: directory,
+        }
+    }
+
+    fn add_local_profile(&self, file: &str) {
+        let mut state = self.portable.documents.lock().unwrap();
+        let uid =
+            nyanpasu_config::profile::ProfileId(format!("p{}", file.trim_end_matches(".yaml")));
+        state.profiles.items.insert(
+            uid.clone(),
+            nyanpasu_config::profile::ProfileItem {
+                uid,
+                metadata: nyanpasu_config::profile::ProfileMetadata {
+                    name: file.to_owned(),
+                    desc: None,
+                    custom_name: true,
+                },
+                definition: nyanpasu_config::profile::ProfileDefinition::Config {
+                    config: nyanpasu_config::profile::ConfigDefinition::File(
+                        nyanpasu_config::profile::FileConfig {
+                            source: nyanpasu_config::profile::ProfileSource::Local {
+                                binding: nyanpasu_config::profile::LocalBinding::Managed {
+                                    materialized: nyanpasu_config::profile::MaterializedFile {
+                                        file: nyanpasu_config::profile::ManagedProfilePath::new(
+                                            file,
+                                        )
+                                        .unwrap(),
+                                        updated_at: None,
+                                    },
+                                },
+                            },
+                            transforms: Vec::new(),
+                        },
+                    ),
+                },
+            },
+        );
+        state.version += 1;
+    }
+
+    async fn sync(&self, store: &MemoryRemoteStore) -> super::engine::CycleReport {
+        let meta = self.state.load().unwrap().meta;
+        let mut status = SyncStatus::default();
+        run_cycle(CycleInput {
+            ports: &self.ports,
+            store: Arc::new(store.connect()),
+            meta: &meta,
+            settings: &self.settings,
+            status: &mut status,
+        })
+        .await
+        .unwrap()
+    }
+}
+
+/// The bytes a cycle uploads and snapshots are the ones the guarded capture
+/// returned, even if the file changed after the guard was released.
+#[tokio::test]
+async fn a_cycle_uses_the_guarded_capture_not_a_second_read() {
+    let vault = store();
+    let device = MismatchedDevice::new(&vault);
+    device.add_local_profile("local.yaml");
+    // The guarded capture holds these bytes; a later direct read would answer
+    // with the different ones in the file port.
+    let captured = b"committed: 1\n".to_vec();
+    device.portable.capture_file(
+        LogicalPath::parse("profiles/local.yaml").unwrap(),
+        captured.clone(),
+    );
+    device.files.put("profiles/local.yaml", b"uncommitted: 2\n");
+
+    device.sync(&vault).await;
+
+    let committed_hash = nyanpasu_config::sync::ObjectId::of(&captured);
+    assert!(
+        vault
+            .keys()
+            .iter()
+            .any(|key| key.ends_with(committed_hash.as_str())),
+        "the captured bytes must be uploaded: {:?}",
+        vault.keys()
+    );
+}
+
+/// A pull's pre-image is the bytes the guarded capture returned, not a later
+/// read of the live file.
+#[tokio::test]
+async fn a_pull_snapshots_the_guarded_capture_not_a_second_read() {
+    let vault = store();
+    // The remote already holds a file the pulling device will overwrite.
+    let publisher = Device::new(&vault, "publisher");
+    publisher.add_local_profile("local.yaml");
+    publisher.put_file("local.yaml", b"remote: 1\n");
+    publisher.sync(&vault).await;
+
+    // The second device holds the file with `committed`, while its file port
+    // answers `rewritten`, standing in for a write after the guard.
+    let device = MismatchedDevice::new(&vault);
+    device.add_local_profile("local.yaml");
+    let committed = b"committed: 1\n".to_vec();
+    device.portable.capture_file(
+        LogicalPath::parse("profiles/local.yaml").unwrap(),
+        committed.clone(),
+    );
+    device.files.put("profiles/local.yaml", b"rewritten: 2\n");
+
+    device.sync(&vault).await;
+
+    let snapshot = device.snapshots.captured.lock().unwrap().clone().unwrap();
+    assert_eq!(
+        snapshot.get(&LogicalPath::parse("profiles/local.yaml").unwrap()),
+        Some(&committed),
+        "a pre-image must be the captured pair, not a later read"
+    );
 }
 
 #[tokio::test]

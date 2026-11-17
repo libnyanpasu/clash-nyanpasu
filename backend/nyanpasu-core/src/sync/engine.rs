@@ -179,14 +179,12 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
     });
 
     status.phase = SyncPhase::Snapshotting;
-    let changed: Vec<_> = plan
-        .items
-        .iter()
-        .filter(|item| matches!(item.action, ItemAction::Pull | ItemAction::Merge))
-        .map(|item| item.logical.clone())
-        .collect();
-    if !changed.is_empty() {
-        ports.snapshots.capture(&changed).context(ApplySnafu)?;
+    // A pre-image must be a pair that actually existed: file bytes come from
+    // the guarded capture, and the documents are read now. Profiles keeps the
+    // catalog bytes captured under the same guard as its files.
+    let pre_images = capture_pre_images(ports, &plan, &scan)?;
+    if !pre_images.is_empty() {
+        ports.snapshots.capture(&pre_images).context(ApplySnafu)?;
     }
 
     status.phase = SyncPhase::Downloading;
@@ -265,6 +263,9 @@ fn count(plan: &Plan, action: ItemAction) -> u32 {
 
 struct Scan {
     local: PortableState,
+    /// The full on-disk catalog bytes captured under the same guard as the
+    /// profile files, so a pre-image is a pair that existed.
+    profile_document: Vec<u8>,
     /// Every document this device holds, keyed by logical path.
     documents: BTreeMap<LogicalPath, PortableDocument>,
     /// The canonical bytes of every local item, keyed by logical path.
@@ -277,20 +278,16 @@ struct Scan {
 async fn scan(ports: &SyncPorts) -> Result<Scan, CycleError> {
     let application = ports.portable.application().await.context(ApplySnafu)?;
     let clash = ports.portable.clash().await.context(ApplySnafu)?;
+    // One guarded read yields the committed catalog, its version and the bytes
+    // of the files it names, so a promoted file can never be paired with the
+    // catalog that preceded it.
     let profiles = ports.portable.profiles().await.context(ApplySnafu)?;
-    let selected: BTreeSet<LogicalPath> =
-        nyanpasu_config::sync::portable_profile_files(&profiles.state)
-            .into_iter()
-            .filter_map(|file| {
-                LogicalPath::parse("profiles")
-                    .and_then(|base| base.join(&file))
-                    .ok()
-            })
-            .collect();
+    // Only the non-profile portable rows are enumerated from disk; the profile
+    // files come from the guarded capture below.
     let enumeration: SyncEnumeration =
         ports
             .paths
-            .enumerate_sync_items(&selected)
+            .enumerate_sync_items(&BTreeSet::new())
             .map_err(|error| CycleError::Apply {
                 source: ApplyError::File {
                     path: String::new(),
@@ -325,6 +322,32 @@ async fn scan(ports: &SyncPorts) -> Result<Scan, CycleError> {
         documents.insert(logical, document);
     }
     let mut blocked = blocked_from(&enumeration);
+    // The captured profile bytes are canonicalized and validated exactly as an
+    // enumerated file would be, but they cannot change under us.
+    for (name, bytes) in &profiles.files {
+        let Ok(logical) = LogicalPath::parse("profiles").and_then(|base| base.join(name)) else {
+            blocked.push(BlockedItem {
+                item: format!("profiles/{name}"),
+                reason: SyncBlockedReason::UnportableName,
+            });
+            continue;
+        };
+        let canonical = canonical_text(bytes)
+            .map_err(|_| SyncBlockedReason::NotUtf8)
+            .map_err(|reason| {
+                blocked.push(BlockedItem {
+                    item: logical.to_string(),
+                    reason,
+                });
+            });
+        let Ok(canonical) = canonical else { continue };
+        local.insert(
+            logical.clone(),
+            SideItem::present(ObjectId::of(&canonical).as_str()),
+        );
+        codecs.insert(logical.clone(), ItemCodec::Text);
+        objects.insert(logical.clone(), canonical);
+    }
     for item in &enumeration.items {
         match read_item(ports, item) {
             Ok(Some(bytes)) => {
@@ -348,6 +371,7 @@ async fn scan(ports: &SyncPorts) -> Result<Scan, CycleError> {
         objects,
         codecs,
         blocked,
+        profile_document: profiles.document,
     })
 }
 
@@ -395,6 +419,36 @@ async fn fetch_head(
         Err(source) => return Err(CycleError::Remote { source }),
     }
     Ok(list_commits(store).await?.into_iter().next())
+}
+
+/// The pre-image of every item the cycle will change locally.
+///
+/// The bytes are the ones the cycle already captured, so a pre-image is a pair
+/// that actually existed; only the Application and Clash documents, which have
+/// no shared lock, are read here.
+fn capture_pre_images(
+    ports: &SyncPorts,
+    plan: &Plan,
+    scan: &Scan,
+) -> Result<BTreeMap<LogicalPath, Vec<u8>>, CycleError> {
+    let mut pre_images = BTreeMap::new();
+    for item in &plan.items {
+        if !matches!(item.action, ItemAction::Pull | ItemAction::Merge) {
+            continue;
+        }
+        let bytes = match item.logical.as_str() {
+            PROFILES_ITEM => Some(scan.profile_document.clone()),
+            APPLICATION_ITEM | CLASH_ITEM => ports
+                .files
+                .read_document(&item.logical)
+                .context(ApplySnafu)?,
+            _ => scan.objects.get(&item.logical).cloned(),
+        };
+        if let Some(bytes) = bytes {
+            pre_images.insert(item.logical.clone(), bytes);
+        }
+    }
+    Ok(pre_images)
 }
 
 /// The documents to merge against, and whether the head diverged.

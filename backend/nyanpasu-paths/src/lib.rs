@@ -15,9 +15,11 @@ use std::{
 };
 
 mod error;
+mod logical;
 #[cfg(windows)]
 pub use error::RegistryError;
 pub use error::{CreateDirError, DiscoverError, InstallDirError, Root};
+pub use logical::{LogicalPath, LogicalPathError};
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod platform;

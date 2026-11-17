@@ -190,6 +190,7 @@ jobs:
         if: ${{ inputs.arch != 'x86_64' }}
         shell: bash
         env:
+          NYANPASU_SKILLS_DIR: ${{ github.workspace }}/skills
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NYANPASU_SOURCEFORGE_PROJECT: ${{ vars.SOURCEFORGE_PROJECT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}

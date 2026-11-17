@@ -23,3 +23,6 @@ image = 'ghcr.io/libnyanpasu/builder-debian-trixie-aarch64:latest'
 #     libssl-dev:$CROSS_DEB_ARCH \
 #   """,
 # ]
+
+[target.aarch64-unknown-linux-gnu.env]
+volumes = ['NYANPASU_SKILLS_DIR']

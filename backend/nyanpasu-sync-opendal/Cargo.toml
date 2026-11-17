@@ -1,0 +1,29 @@
+[package]
+name = 'nyanpasu-sync-opendal'
+version = '0.1.0'
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = ['webdav', 's3', 'fs']
+webdav = ['opendal/services-webdav']
+s3 = ['opendal/services-s3']
+fs = ['opendal/services-fs']
+
+[dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+async-trait = '0.1'
+bytes = '1'
+opendal = { workspace = true }
+opendal-http-transport-reqwest = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false, features = [
+  'test-support',
+] }
+tempfile = '3'
+tokio = { workspace = true, features = ['macros', 'rt'] }
+url = '2'

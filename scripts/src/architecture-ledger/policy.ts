@@ -101,6 +101,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-net/src/',
   'backend/nyanpasu-single-instance/src/',
   'backend/nyanpasu-cli/src/',
+  'backend/nyanpasu-sync-opendal/src/',
 ]
 
 /**

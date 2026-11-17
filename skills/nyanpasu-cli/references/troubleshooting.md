@@ -43,9 +43,3 @@ standard error and do not repeat the command.
 On Windows and in the Linux packages the installer puts `nyanpasu-cli` on `PATH`. For the
 macOS app and the AppImage, the user installs it from the app's settings (Remote access,
 Command-line tool), which runs `nyanpasu-cli install` for them. Do not link it yourself.
-
-## MCP
-
-`nyanpasu-cli mcp` resolves its target exactly like every other command and keeps one
-connection for its whole life. If the app restarts, tool calls fail with
-`cannot reach`; restart the MCP server rather than retrying elsewhere.

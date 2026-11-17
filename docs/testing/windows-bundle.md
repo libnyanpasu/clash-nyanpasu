@@ -88,7 +88,7 @@ installer or WebView2 runtime acceptance.
 5. Test fresh directories, covering an existing portable directory, NSIS upgrades,
    and uninstall resource cleanup. Migrate older fixed clients manually as noted
    above before testing subsequent automatic upgrades.
-6. Keep `nyanpasu-cli mcp` running over the local socket and over HTTP while
+6. Keep `nyanpasu-cli conn list -f` running over the local socket and over HTTP while
    installing a newer NSIS build. Confirm the old processes survive, new CLI
    invocations use the new sidecar, and `nyanpasu-cli.exe.old-*` is removed once
    the old process exits. The socket session should exit when the app closes;

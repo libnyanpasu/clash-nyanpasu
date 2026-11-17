@@ -85,8 +85,6 @@ pub enum Command {
     /// Manage named targets in `cli.toml`.
     #[command(subcommand)]
     Context(ContextCommand),
-    /// Serve the curated operations as an MCP server over standard input and output.
-    Mcp(McpArgs),
     /// Link this executable into a directory on your `PATH`. Needed for the macOS app and an
     /// AppImage; the Windows installer and the Linux packages already put it there.
     Install(InstallArgs),
@@ -427,15 +425,6 @@ fn parse_token_scope(text: &str) -> Result<Scope, String> {
     parse_scope_but_remote_admin(text, "a token cannot hold remote_admin")
 }
 
-/// A scope the MCP server may offer: every scope except `remote_admin`.
-fn parse_mcp_scope(text: &str) -> Result<Scope, String> {
-    parse_scope_but_remote_admin(
-        text,
-        "remote_admin is never offered over MCP; manage remote access from the app or \
-         `nyanpasu-cli remote`",
-    )
-}
-
 /// Parses a scope name, refusing `remote_admin` with `refusal`.
 fn parse_scope_but_remote_admin(text: &str, refusal: &str) -> Result<Scope, String> {
     let held = || {
@@ -532,23 +521,6 @@ pub struct ContextAdd {
     /// authority such as a reverse proxy's, instead of pinning its certificate.
     #[arg(long, requires = "url")]
     pub system_trust: bool,
-}
-
-/// What the MCP server offers an agent. It always offers the read-only tools.
-#[derive(Debug, Args)]
-pub struct McpArgs {
-    /// Also offer the tools of this scope; repeat for several. Limited to the scopes the
-    /// shell grants this caller, and `remote_admin` is never offered.
-    #[arg(
-        long = "scope",
-        value_name = "SCOPE",
-        value_parser = parse_mcp_scope
-    )]
-    pub scopes: Vec<Scope>,
-    /// Also offer a `call_method` tool for operations without a curated tool. It is bounded
-    /// by the same scopes and never reaches `remote_admin`.
-    #[arg(long)]
-    pub raw: bool,
 }
 
 #[derive(Debug, Args)]
@@ -716,7 +688,6 @@ impl Command {
             | Self::Methods
             | Self::Call(_)
             | Self::Context(_)
-            | Self::Mcp(_)
             | Self::Install(_)
             | Self::Skill(_)
             | Self::Completion(_) => return Ok(None),
@@ -796,7 +767,6 @@ mod tests {
             &["remote", "status"],
             &["call", "get_core_status"],
             &["context", "list"],
-            &["mcp"],
             &["install"],
             &["skill", "path"],
             &["completion", "bash"],
@@ -978,36 +948,6 @@ mod tests {
         };
         assert_eq!(create.scopes, [Scope::Read, Scope::System]);
         assert_eq!(create.expires_in, None);
-    }
-
-    #[test]
-    fn mcp_takes_extra_scopes_and_never_remote_admin() {
-        let Command::Mcp(args) =
-            parse(&["mcp", "--scope", "proxy", "--scope", "profile", "--raw"]).command
-        else {
-            panic!("an mcp command");
-        };
-        assert_eq!(args.scopes, [Scope::Proxy, Scope::Profile]);
-        assert!(args.raw);
-
-        let Command::Mcp(args) = parse(&["mcp"]).command else {
-            panic!("an mcp command");
-        };
-        assert!(args.scopes.is_empty() && !args.raw);
-
-        for arguments in [
-            &["mcp", "--scope", "remote_admin"][..],
-            &["mcp", "--scope", "everything"],
-            &["mcp", "--scope", "read", "--scope", "remote_admin", "--raw"],
-        ] {
-            assert!(
-                Cli::try_parse_from(
-                    std::iter::once("nyanpasu-cli").chain(arguments.iter().copied())
-                )
-                .is_err(),
-                "{arguments:?}"
-            );
-        }
     }
 
     #[test]

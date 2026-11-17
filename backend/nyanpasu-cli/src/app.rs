@@ -28,7 +28,6 @@ use crate::{
     endpoint,
     error::{CliError, ExitStatus},
     install::{self, AppImage},
-    mcp::{self, McpOptions},
     output::{Output, render_human},
     remote, skill,
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
@@ -189,24 +188,6 @@ async fn run<C: Connector>(
     let transport = services.connector.connect(&target, token).await?;
     let (raw, capabilities) = describe(&transport).await?;
 
-    if let Command::Mcp(arguments) = &cli.command {
-        // Standard input and output belong to the protocol from here on: nothing else may
-        // be printed to standard output, and `Io` is not used.
-        let options = McpOptions {
-            scopes: arguments.scopes.clone(),
-            raw: arguments.raw,
-        };
-        mcp::serve(
-            &transport,
-            &capabilities,
-            &options,
-            tokio::io::BufReader::new(tokio::io::stdin()),
-            tokio::io::stdout(),
-        )
-        .await?;
-        return Ok(ExitStatus::Success);
-    }
-
     let mut output = Output {
         json,
         stdout: &mut *io.stdout,
@@ -225,9 +206,7 @@ async fn run<C: Connector>(
     }
     match plan {
         Some(plan) => run_plan(&transport, &capabilities, &plan, &mut output).await,
-        None => unreachable!(
-            "every connected subcommand has a plan, a call, `remote`, `mcp` or methods"
-        ),
+        None => unreachable!("every connected subcommand has a plan, a call, `remote` or methods"),
     }
 }
 

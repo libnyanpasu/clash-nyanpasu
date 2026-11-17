@@ -1,4 +1,4 @@
-//! The curated static command table shared by the CLI subcommands and the MCP tools.
+//! The curated static command table behind the CLI subcommands.
 //!
 //! CLI v0 ships before the typed protocol, so each curated operation is written
 //! down once here: the RPC method, its scope, a description, a compact JSON input

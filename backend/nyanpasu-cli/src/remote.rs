@@ -3,8 +3,8 @@
 //! `remote_admin` is held only by the desktop and the same-user local socket: no bearer token
 //! or browser session can carry it and HTTP never offers its commands. These subcommands
 //! therefore refuse any other target before connecting. They are deliberately not part of the
-//! curated table in `commands.rs`, which `nyanpasu-cli mcp` offers tools from, so an agent
-//! cannot be handed remote administration by accident.
+//! curated table in `commands.rs`, so an agent cannot be handed remote administration by
+//! accident.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

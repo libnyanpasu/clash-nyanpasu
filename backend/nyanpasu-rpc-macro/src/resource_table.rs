@@ -1236,7 +1236,7 @@ fn production_namespaces_follow_the_module_tree() {
     };
     let shared = find("read_profile_file");
     assert_eq!(shared.root, Root::Shared);
-    assert_eq!(shared.namespace, ["profiles"]);
+    assert_eq!(shared.namespace, ["profile", "content"]);
     let native = find("read_clipboard_text");
     assert_eq!(native.root, Root::Desktop);
     assert!(native.namespace.is_empty());

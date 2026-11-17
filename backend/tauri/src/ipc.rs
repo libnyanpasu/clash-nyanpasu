@@ -1,5 +1,7 @@
 pub mod proxy;
 
+pub mod profile;
+
 use crate::{
     adapters::cli_install::{self, CliInstallation},
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
@@ -15,7 +17,7 @@ use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc::error::{IpcError, Result};
 use nyanpasu_rpc_protocol::values::TrayIcon;
-use nyanpasu_runtime_values::profiles::{InvalidSubscriptionUrlSnafu, ProfileFileMissingSnafu};
+use nyanpasu_runtime_values::profiles::ProfileFileMissingSnafu;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, State, Webview};
@@ -220,24 +222,7 @@ pub async fn open_native_file_dialog(
 
 // ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
 
-use nyanpasu_config::profile::{ProfileId, RemoteProfileOptionsPatch};
-
-/// Downloads a profile URL and suggests how to import it, for the user to
-/// confirm. Desktop-only: it sends a request to any URL the caller names.
-#[nyanpasu_rpc::rpc(query, permission = profile:read, sensitive)]
-#[tauri::command]
-#[specta::specta]
-pub async fn probe_profile_url(
-    client: State<'_, NyanpasuClient>,
-    url: String,
-    option: Option<RemoteProfileOptionsPatch>,
-) -> Result<nyanpasu_core::client::profiles::ProfileUrlProbe> {
-    let url = snafu::ResultExt::context(
-        url::Url::parse(&url),
-        InvalidSubscriptionUrlSnafu { url: &url },
-    )?;
-    Ok(client.probe_profile_url(url, option).await?)
-}
+use nyanpasu_config::profile::ProfileId;
 
 /// Emitted to the frontend after a `clash-nyanpasu`/`clash` custom-scheme deep
 /// link joins [`PendingDeepLinks`]. It carries no URL: it only asks a listening

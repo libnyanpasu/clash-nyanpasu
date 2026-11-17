@@ -29,21 +29,3 @@ pub async fn clash_api_get_version(
 ) -> Result<nyanpasu_core::clash::api::ClashVersion> {
     Ok(client.clash_version().await?)
 }
-
-#[nyanpasu_rpc::rpc(http, permission = profile:write)]
-#[specta::specta]
-pub async fn clash_api_update_providers_rules(
-    client: RpcState<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.update_clash_rule_provider(name).await?)
-}
-
-#[nyanpasu_rpc::rpc(http, optional_capabilities(presentation), permission = profile:write)]
-#[specta::specta]
-pub async fn update_proxy_provider(
-    client: RpcState<'_, NyanpasuClient>,
-    name: String,
-) -> Result<()> {
-    Ok(client.update_proxy_provider(name).await?)
-}

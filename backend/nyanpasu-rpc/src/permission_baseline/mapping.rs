@@ -5,7 +5,8 @@
 //! derivation of design section 3.2 applied to the namespace, and every admission difference
 //! between the baseline (scopes) and the mapping (permissions, with callers converted by design
 //! section 7) must fall in one of the allowed change categories. The resulting change list and
-//! the sensitive resources each role reaches are a committed report, kept fresh by a test.
+//! the sensitive resources each role reaches are a committed report, kept fresh by a test. The
+//! protocol's requirement table is generated from the mapping the same way.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,46 +15,31 @@ use std::{
     path::Path,
 };
 
+use nyanpasu_config::application::{Access, Permission, Permissions, Resource, Role};
 use nyanpasu_rpc_protocol::{RpcTarget, Scope};
 
 use super::{Kind, TRANSPORTS, baseline, callers, snake};
 
 const MAPPING: &str = "tests/fixtures/permission-mapping.txt";
 const REPORT: &str = "tests/fixtures/permission-mapping-report.txt";
-const RESOURCES: [&str; 8] = [
-    "meta", "proxy", "profile", "settings", "system", "logs", "traffic", "remote",
-];
+const REQUIREMENTS: &str = "../nyanpasu-rpc-protocol/src/permission/requirements.rs";
 /// Initial budget of command-level `access =` exceptions (design section 3.3).
 const MAX_OVERRIDES: usize = 9;
 /// The resources each P4 card registers as derived top-level modules, in order.
-const CARDS: [(&str, &[&str]); 5] = [
-    ("P4-1", &["meta", "remote"]),
-    ("P4-2", &["proxy"]),
-    ("P4-3", &["profile"]),
-    ("P4-4", &["settings", "system"]),
-    ("P4-5", &["logs", "traffic"]),
+const CARDS: [(&str, &[Resource]); 5] = [
+    ("P4-1", &[Resource::Meta, Resource::Remote]),
+    ("P4-2", &[Resource::Proxy]),
+    ("P4-3", &[Resource::Profile]),
+    ("P4-4", &[Resource::Settings, Resource::System]),
+    ("P4-5", &[Resource::Logs, Resource::Traffic]),
 ];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Access {
-    Read,
-    Write,
-}
-
-impl Access {
-    fn parse(text: &str) -> Self {
-        match text {
-            "read" => Self::Read,
-            "write" => Self::Write,
-            other => panic!("unknown access {other}"),
-        }
-    }
-}
-
-/// A permission: a domain resource and an access level.
-type Permission = (&'static str, Access);
-/// What a caller holds: at most one access level per domain resource.
-type Permissions = BTreeMap<&'static str, Access>;
+const ROLES: [Role; 5] = [
+    Role::Anonymous,
+    Role::Viewer,
+    Role::Operator,
+    Role::Admin,
+    Role::Owner,
+];
 
 #[derive(Debug, Clone)]
 struct Mapped {
@@ -65,11 +51,9 @@ struct Mapped {
     origin: String,
 }
 
-fn resource(name: &str) -> &'static str {
-    RESOURCES
-        .iter()
-        .find(|resource| **resource == name)
-        .unwrap_or_else(|| panic!("{name} is not a domain resource"))
+fn parse<T: serde::de::DeserializeOwned>(name: &str) -> T {
+    serde_json::from_value(serde_json::Value::from(name))
+        .unwrap_or_else(|error| panic!("{name}: {error}"))
 }
 
 fn mapping() -> BTreeMap<(Kind, String), Mapped> {
@@ -90,14 +74,14 @@ fn mapping() -> BTreeMap<(Kind, String), Mapped> {
             .split_once(':')
             .unwrap_or_else(|| panic!("malformed permission: {line}"));
         let mapped = Mapped {
-            permission: (resource(domain), Access::parse(access)),
+            permission: Permission::new(parse(domain), parse(access)),
             namespace: columns[3].to_owned(),
             sensitive: match columns[4] {
                 "sensitive" => true,
                 "" => false,
                 other => panic!("unknown marking {other}"),
             },
-            override_access: (!columns[5].is_empty()).then(|| Access::parse(columns[5])),
+            override_access: (!columns[5].is_empty()).then(|| parse(columns[5])),
             targets: columns[6].split(',').map(str::to_owned).collect(),
             origin: columns[7].to_owned(),
         };
@@ -116,99 +100,48 @@ fn derive(kind: Kind, effect: &str, mapped: &Mapped) -> Permission {
         (Kind::Command, None) if effect == "mutation" => Access::Write,
         _ => Access::Read,
     };
-    (resource(top), access)
+    Permission::new(parse(top), access)
 }
 
-/// Design section 7: the permissions an old scope converts to.
-fn convert(scope: Scope) -> &'static [Permission] {
-    const READS: &[Permission] = &[
-        ("proxy", Access::Read),
-        ("profile", Access::Read),
-        ("settings", Access::Read),
-        ("system", Access::Read),
-        ("logs", Access::Read),
-        ("traffic", Access::Read),
-    ];
-    match scope {
-        Scope::Read => READS,
-        Scope::SensitiveRead => &[],
-        Scope::Proxy => &[("proxy", Access::Write)],
-        Scope::Profile => &[("profile", Access::Write)],
-        Scope::Settings => &[
-            ("settings", Access::Write),
-            ("logs", Access::Write),
-            ("traffic", Access::Write),
+/// Design section 7: the permissions an old scope converts to. Only comparisons and tests use
+/// it; nothing persisted needs converting.
+fn convert(scope: Scope) -> Vec<Permission> {
+    use Access::{Read, Write};
+    use Resource::{Logs, Profile, Proxy, Remote, Settings, System, Traffic};
+    let pairs: &[(Resource, Access)] = match scope {
+        Scope::Read => &[
+            (Proxy, Read),
+            (Profile, Read),
+            (Settings, Read),
+            (System, Read),
+            (Logs, Read),
+            (Traffic, Read),
         ],
-        Scope::System => &[("system", Access::Write)],
-        Scope::RemoteAdmin => &[("remote", Access::Write)],
-    }
-}
-
-fn grant(permissions: &mut Permissions, (resource, access): Permission) {
-    let held = permissions.entry(resource).or_insert(access);
-    *held = (*held).max(access);
+        Scope::SensitiveRead => &[],
+        Scope::Proxy => &[(Proxy, Write)],
+        Scope::Profile => &[(Profile, Write)],
+        Scope::Settings => &[(Settings, Write), (Logs, Write), (Traffic, Write)],
+        Scope::System => &[(System, Write)],
+        Scope::RemoteAdmin => &[(Remote, Write)],
+    };
+    pairs
+        .iter()
+        .map(|(resource, access)| Permission::new(*resource, *access))
+        .collect()
 }
 
 /// The permissions a resolved caller holding `scopes` has in the new model.
 fn converted(scopes: &BTreeSet<Scope>) -> Permissions {
-    let mut permissions = Permissions::from([("meta", Access::Read)]);
-    for scope in scopes {
-        for permission in convert(*scope) {
-            grant(&mut permissions, *permission);
-        }
-    }
-    permissions
+    scopes.iter().flat_map(|scope| convert(*scope)).fold(
+        Permissions::NONE,
+        |permissions, permission| {
+            let access = permissions
+                .get(permission.resource)
+                .map_or(permission.access, |held| held.max(permission.access));
+            permissions.with(permission.resource, access)
+        },
+    )
 }
-
-fn permits(permissions: &Permissions, (resource, access): Permission) -> bool {
-    permissions
-        .get(resource)
-        .is_some_and(|held| *held >= access)
-}
-
-/// Design section 2.2: what each role expands to.
-fn role(name: &str) -> Permissions {
-    let mut permissions = Permissions::from([("meta", Access::Read)]);
-    let tiers: &[(&str, &[Permission])] = &[
-        ("anonymous", &[]),
-        (
-            "viewer",
-            &[
-                ("proxy", Access::Read),
-                ("profile", Access::Read),
-                ("settings", Access::Read),
-                ("system", Access::Read),
-                ("logs", Access::Read),
-                ("traffic", Access::Read),
-            ],
-        ),
-        (
-            "operator",
-            &[
-                ("proxy", Access::Write),
-                ("profile", Access::Write),
-                ("traffic", Access::Write),
-                ("settings", Access::Write),
-            ],
-        ),
-        (
-            "admin",
-            &[("system", Access::Write), ("logs", Access::Write)],
-        ),
-        ("owner", &[("remote", Access::Write)]),
-    ];
-    for (tier, added) in tiers {
-        for permission in *added {
-            grant(&mut permissions, *permission);
-        }
-        if *tier == name {
-            return permissions;
-        }
-    }
-    panic!("unknown role {name}")
-}
-
-const ROLES: [&str; 5] = ["anonymous", "viewer", "operator", "admin", "owner"];
 
 /// The allowed change categories of design section 7 that a mapping can produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -238,9 +171,9 @@ fn classify(
     if old_scope == Scope::SensitiveRead.as_str() {
         return Some(Change::SensitiveRead);
     }
-    let (resource, access) = permission;
-    let held_write = converted(scopes).get(resource) == Some(&Access::Write);
-    (now_admitted && access == Access::Read && held_write).then_some(Change::WriteIncludesRead)
+    let held_write = converted(scopes).get(permission.resource) == Some(Access::Write);
+    (now_admitted && permission.access == Access::Read && held_write)
+        .then_some(Change::WriteIncludesRead)
 }
 
 struct Comparison {
@@ -262,9 +195,9 @@ fn compare() -> Comparison {
             let exposed = row.targets.contains(&snake(transport));
             for caller in &callers {
                 let old = super::admits(*kind, name, row, transport, caller);
-                let new = caller.as_ref().is_some_and(|scopes| {
-                    exposed && permits(&converted(scopes), mapped.permission)
-                });
+                let new = caller
+                    .as_ref()
+                    .is_some_and(|scopes| exposed && converted(scopes).permits(mapped.permission));
                 if old == new {
                     continue;
                 }
@@ -300,28 +233,27 @@ fn report() -> String {
     );
     let old = baseline();
     for (key @ (kind, name), changes) in &comparison.changes {
-        let (resource, access) = mapped[key].permission;
         let categories: Vec<_> = changes.iter().map(|change| change.label()).collect();
         writeln!(
             output,
-            "{} | {name} | {} | {resource}:{} | {}",
+            "{} | {name} | {} | {} | {}",
             snake(kind),
             old[key].scope,
-            snake(access),
+            mapped[key].permission,
             categories.join("; ")
         )
         .unwrap();
     }
-    for role_name in ROLES {
-        let permissions = role(role_name);
+    for role in ROLES {
+        let permissions = role.permissions();
         let reached: Vec<_> = mapped
             .iter()
-            .filter(|(_, mapped)| mapped.sensitive && permits(&permissions, mapped.permission))
+            .filter(|(_, mapped)| mapped.sensitive && permissions.permits(mapped.permission))
             .map(|((kind, name), _)| format!("{} {name}", snake(kind)))
             .collect();
         writeln!(
             output,
-            "## Sensitive resources {role_name} reaches ({}): {}",
+            "## Sensitive resources {role} reaches ({}): {}",
             reached.len(),
             reached.join(", ")
         )
@@ -330,22 +262,74 @@ fn report() -> String {
     output
 }
 
-fn report_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(REPORT)
+/// The protocol's committed requirement table: each resource's requirement and sensitive
+/// marking, in name order.
+fn requirements() -> String {
+    let variant = |value: &dyn std::fmt::Display| -> String {
+        value
+            .to_string()
+            .split('_')
+            .map(|part| part[..1].to_uppercase() + &part[1..])
+            .collect()
+    };
+    let mut rows: Vec<_> = mapping()
+        .into_iter()
+        .map(|((_, name), mapped)| (name, mapped))
+        .collect();
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut output = String::from(
+        "// Generated by export_permission_requirements from the P0-2 mapping; do not edit.\n\n\
+         use nyanpasu_config::application::{Access, Permission, Resource};\n\n\
+         use super::Requirement;\n\n\
+         /// The requirement and sensitive marking of every resource in the permission model.\n\
+         #[rustfmt::skip]\n\
+         pub const REQUIREMENTS: &[Requirement] = &[\n",
+    );
+    for (name, mapped) in rows {
+        writeln!(
+            output,
+            "    Requirement {{ name: {name:?}, permission: Permission::new(Resource::{}, Access::{}), sensitive: {} }},",
+            variant(&mapped.permission.resource),
+            variant(&mapped.permission.access),
+            mapped.sensitive
+        )
+        .unwrap();
+    }
+    output.push_str("];\n");
+    output
+}
+
+fn path(relative: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
 
 #[test]
 #[ignore = "explicit generator; the freshness test never writes"]
 fn export_permission_mapping_report() {
-    fs::write(report_path(), report()).expect("the mapping report must be writable");
+    fs::write(path(REPORT), report()).expect("the mapping report must be writable");
 }
 
 #[test]
 fn mapping_report_is_fresh() {
-    let committed = fs::read_to_string(report_path()).unwrap_or_default();
+    let committed = fs::read_to_string(path(REPORT)).unwrap_or_default();
     assert!(
         committed == report(),
         "the mapping report is stale; run export_permission_mapping_report explicitly"
+    );
+}
+
+#[test]
+#[ignore = "explicit generator; the freshness test never writes"]
+fn export_permission_requirements() {
+    fs::write(path(REQUIREMENTS), requirements()).expect("the requirement table must be writable");
+}
+
+#[test]
+fn permission_requirements_are_fresh() {
+    let committed = fs::read_to_string(path(REQUIREMENTS)).unwrap_or_default();
+    assert!(
+        committed.replace("\r\n", "\n") == requirements(),
+        "the requirement table is stale; run export_permission_requirements explicitly"
     );
 }
 
@@ -386,12 +370,12 @@ fn meta_and_remote_keep_their_boundaries() {
     let mapping = mapping();
     let meta: Vec<_> = mapping
         .iter()
-        .filter(|(_, mapped)| mapped.permission.0 == "meta")
+        .filter(|(_, mapped)| mapped.permission.resource == Resource::Meta)
         .map(|((_, name), _)| name.as_str())
         .collect();
     assert_eq!(meta, ["rpc_describe"]);
     for ((_, name), mapped) in &mapping {
-        if mapped.permission.0 == "remote" {
+        if mapped.permission.resource == Resource::Remote {
             assert!(!mapped.targets.contains(&snake(RpcTarget::Http)), "{name}");
         }
     }
@@ -405,7 +389,7 @@ fn sensitive_markings_carry_over_every_sensitive_read() {
         let was_sensitive = before[&key].scope == Scope::SensitiveRead.as_str();
         assert_eq!(mapped.sensitive, was_sensitive, "{name}");
         if mapped.sensitive {
-            assert_eq!(mapped.permission.1, Access::Read, "{name}");
+            assert_eq!(mapped.permission.access, Access::Read, "{name}");
         }
     }
 }
@@ -427,80 +411,70 @@ fn every_admission_difference_has_a_category() {
 fn registered_top_modules_hold_no_legacy_declarations() {
     let mut registered = BTreeSet::new();
     for (card, resources) in CARDS {
-        registered.extend(resources.iter().copied());
+        registered.extend(resources.iter().map(ToString::to_string));
         for ((_, name), mapped) in mapping() {
             let stem = Path::new(&mapped.origin)
                 .file_stem()
                 .and_then(|stem| stem.to_str())
                 .unwrap();
+            let owner = mapped.permission.resource.to_string();
             if registered.contains(stem) {
                 assert!(
-                    registered.contains(mapped.permission.0),
-                    "{card}: {name} in {} belongs to {}, which is not registered yet",
+                    registered.contains(&owner),
+                    "{card}: {name} in {} belongs to {owner}, which is not registered yet",
                     mapped.origin,
-                    mapped.permission.0
                 );
             }
         }
     }
-    let all: BTreeSet<_> = RESOURCES.into_iter().collect();
+    // The owner writes every resource but meta.
+    let all: BTreeSet<_> = Role::Owner
+        .permissions()
+        .iter()
+        .map(|(resource, _)| resource)
+        .chain([Resource::Meta])
+        .map(|resource| resource.to_string())
+        .collect();
     assert_eq!(registered, all);
-}
-
-#[test]
-fn roles_expand_like_the_design() {
-    let expect =
-        |pairs: &[(&'static str, Access)]| -> Permissions { pairs.iter().copied().collect() };
-    use Access::{Read as R, Write as W};
-    assert_eq!(role("anonymous"), expect(&[("meta", R)]));
-    assert_eq!(
-        role("viewer"),
-        expect(&[
-            ("meta", R),
-            ("proxy", R),
-            ("profile", R),
-            ("settings", R),
-            ("system", R),
-            ("logs", R),
-            ("traffic", R),
-        ])
-    );
-    assert_eq!(
-        role("operator"),
-        expect(&[
-            ("meta", R),
-            ("proxy", W),
-            ("profile", W),
-            ("settings", W),
-            ("system", R),
-            ("logs", R),
-            ("traffic", W),
-        ])
-    );
-    assert_eq!(
-        role("admin"),
-        expect(&[
-            ("meta", R),
-            ("proxy", W),
-            ("profile", W),
-            ("settings", W),
-            ("system", W),
-            ("logs", W),
-            ("traffic", W),
-        ])
-    );
-    let mut owner = role("admin");
-    owner.insert("remote", W);
-    assert_eq!(role("owner"), owner);
 }
 
 #[test]
 fn comparison_flags_a_requirement_outside_the_categories() {
     let changed = classify(
         "system",
-        ("settings", Access::Write),
+        Permission::new(Resource::Settings, Access::Write),
         &BTreeSet::from([Scope::Settings]),
         true,
     );
     assert_eq!(changed, None);
+}
+
+/// The test-only conversion of design section 7, on the permission model's own types.
+#[test]
+fn legacy_scopes_convert_to_the_design_permissions() {
+    use Access::Write;
+    assert_eq!(
+        converted(&BTreeSet::from([Scope::Read])),
+        Role::Viewer.permissions()
+    );
+    assert_eq!(
+        converted(&BTreeSet::from([Scope::SensitiveRead])),
+        Permissions::NONE
+    );
+    assert_eq!(
+        converted(&BTreeSet::from([Scope::Read, Scope::Settings])),
+        Role::Viewer
+            .permissions()
+            .with(Resource::Settings, Write)
+            .with(Resource::Logs, Write)
+            .with(Resource::Traffic, Write)
+    );
+    assert_eq!(
+        converted(&Scope::ALL.into_iter().collect()),
+        Role::Owner.permissions()
+    );
+    assert_eq!(
+        converted(&BTreeSet::from([Scope::Proxy])).get(Resource::Proxy),
+        Some(Write)
+    );
 }

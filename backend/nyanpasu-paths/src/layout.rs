@@ -682,14 +682,18 @@ mod tests {
 
     #[test]
     fn names_colliding_under_case_folding_are_both_skipped() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = Utf8PathBuf::from_path_buf(dir.path().to_owned()).unwrap();
-        let r = resolver(&root);
-        write(&root.join("config/icons/A.png"), "a");
-        write(&root.join("config/icons/a.png"), "b");
-        write(&root.join("config/icons/b.png"), "c");
-
-        let enumeration = r.enumerate_sync_items(&BTreeSet::new()).unwrap();
+        let mut enumeration = SyncEnumeration {
+            items: ["icons/A.png", "icons/a.png", "icons/b.png"]
+                .into_iter()
+                .map(|path| SyncItem {
+                    logical: LogicalPath::parse(path).unwrap(),
+                    physical: Utf8PathBuf::from(path),
+                    codec: ItemCodec::Binary,
+                })
+                .collect(),
+            skipped: Vec::new(),
+        };
+        drop_collisions(&mut enumeration);
         let keys: Vec<_> = enumeration
             .items
             .iter()

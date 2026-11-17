@@ -10,7 +10,7 @@ use nyanpasu_config::{
     clash::{
         config::{
             ClashConfig, ClashSettings, ClashSettingsPatch, ClashSystemPatch,
-            overrides::{ClashAccessPatch, ClashOverridesSettingsPatch, Mode},
+            overrides::{ClashAccessPatch, ClashOverridesSettingsPatch},
         },
         features::ConfigFeatures,
     },
@@ -284,16 +284,6 @@ pub async fn patch_runtime_access(
         "patch_runtime_access"
     );
     Ok(client.patch_runtime_overrides(patch.into()).await?.into())
-}
-
-/// Switch the proxy mode (rule, global, direct).
-#[nyanpasu_rpc::rpc(local, http, privacy, optional_capabilities(elevation, os_integration, presentation), permission = proxy:write)]
-#[specta::specta]
-pub async fn set_proxy_mode(
-    client: RpcState<'_, NyanpasuClient>,
-    mode: Mode,
-) -> Result<RpcUnitMutationOutcome> {
-    Ok(client.set_proxy_mode(mode).await?.into())
 }
 
 #[nyanpasu_rpc::rpc(http, query, permission = system:read)]

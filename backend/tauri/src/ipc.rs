@@ -1,3 +1,5 @@
+pub mod proxy;
+
 use crate::{
     adapters::cli_install::{self, CliInstallation},
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
@@ -284,17 +286,6 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     }
     help::open_file(&path)?;
     Ok(())
-}
-
-#[nyanpasu_rpc::rpc(query, permission = proxy:write)]
-#[tauri::command]
-#[specta::specta]
-pub async fn url_delay_test(
-    client: State<'_, NyanpasuClient>,
-    url: String,
-    expected_status: u16,
-) -> Result<Option<u64>> {
-    Ok(client.url_delay_test(&url, expected_status).await)
 }
 
 #[nyanpasu_rpc::rpc(query, permission = system:read)]

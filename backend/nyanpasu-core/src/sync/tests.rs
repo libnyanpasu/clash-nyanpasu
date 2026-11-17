@@ -387,6 +387,60 @@ fn store() -> MemoryRemoteStore {
 }
 
 #[tokio::test]
+async fn a_backend_honouring_create_if_absent_gets_linear_history() {
+    let vault = MemoryRemoteStore::new(ConditionalCreate::Honored);
+    let first = Device::new(&vault, "first");
+    first.sync(&vault).await;
+    let format = nyanpasu_core_sync_format(&vault).await;
+    assert_eq!(format, super::commit::CommitNaming::Exclusive);
+    // Exclusive naming writes one commit per generation, with no id suffix.
+    assert!(
+        vault
+            .keys()
+            .iter()
+            .any(|key| key == "commits/000000000001.json"),
+        "{:?}",
+        vault.keys()
+    );
+}
+
+#[tokio::test]
+async fn a_backend_ignoring_the_condition_gets_content_named_commits() {
+    // The fake advertises create-if-absent but overwrites: the self-test must
+    // trust the probe, not the flag.
+    let vault = MemoryRemoteStore::new(ConditionalCreate::Ignored);
+    let first = Device::new(&vault, "first");
+    first.sync(&vault).await;
+    let format = nyanpasu_core_sync_format(&vault).await;
+    assert_eq!(format, super::commit::CommitNaming::Content);
+    assert!(
+        vault
+            .keys()
+            .iter()
+            .any(|key| key.starts_with("commits/000000000001-")),
+        "{:?}",
+        vault.keys()
+    );
+}
+
+#[tokio::test]
+async fn a_webdav_like_backend_falls_back_to_content_naming() {
+    let vault = MemoryRemoteStore::new(ConditionalCreate::Unsupported);
+    let first = Device::new(&vault, "first");
+    first.sync(&vault).await;
+    let format = nyanpasu_core_sync_format(&vault).await;
+    assert_eq!(format, super::commit::CommitNaming::Content);
+}
+
+/// Reads the vault format the way a device would.
+async fn nyanpasu_core_sync_format(vault: &MemoryRemoteStore) -> super::commit::CommitNaming {
+    let bytes = RemoteStore::get(vault, "format.json").await.unwrap();
+    super::commit::VaultFormat::parse(&bytes)
+        .unwrap()
+        .commit_naming
+}
+
+#[tokio::test]
 async fn a_second_device_pulls_the_first_devices_changes() {
     let vault = store();
     let first = Device::new(&vault, "first");

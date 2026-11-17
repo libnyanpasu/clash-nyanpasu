@@ -132,7 +132,18 @@ impl SyncActor {
             .unwrap_or_default()
     }
 
+    /// Runs a cycle, retrying once when an exclusive generation was claimed.
     async fn cycle(state: &mut State) -> Result<CycleReport, SyncFailure> {
+        let report = Self::run_once(state).await?;
+        if !report.contended {
+            return Ok(report);
+        }
+        // Another device wrote this generation first. Nothing local was
+        // discarded, so replanning against its commit converges.
+        Self::run_once(state).await
+    }
+
+    async fn run_once(state: &mut State) -> Result<CycleReport, SyncFailure> {
         let adapters = state.adapters.clone().ok_or(SyncFailure::Unsupported)?;
         if !state.settings.enabled {
             return Err(SyncFailure::NotConfigured);

@@ -147,6 +147,9 @@ pub struct SyncStatus {
     pub open_conflicts: u32,
     pub blocked_items: Vec<BlockedItem>,
     pub head: Option<SyncHead>,
+    /// The last cycle merged a diverged remote branch.
+    #[serde(default)]
+    pub diverged: bool,
 }
 
 impl Default for SyncStatus {
@@ -162,6 +165,7 @@ impl Default for SyncStatus {
             open_conflicts: 0,
             blocked_items: Vec::new(),
             head: None,
+            diverged: false,
         }
     }
 }

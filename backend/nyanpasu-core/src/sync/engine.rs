@@ -77,6 +77,10 @@ pub struct CycleReport {
     pub blocked: Vec<BlockedItem>,
     pub conflicts: Vec<SyncConflict>,
     pub head: Option<nyanpasu_runtime_values::sync::SyncHead>,
+    /// Another device wrote this generation first; the cycle must replan.
+    pub contended: bool,
+    /// The head diverged from this device's baseline; the two were merged.
+    pub diverged: bool,
 }
 
 /// One cycle's inputs, all owned by the actor that calls it.
@@ -139,6 +143,14 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
         })
         .collect::<BTreeMap<_, _>>();
 
+    // The merge base must be what this device and the head last agreed on.
+    // Using this device's own baseline when the head belongs to another branch
+    // would read the sibling's lack of this device's changes as a revert.
+    let (base_documents, diverged) =
+        resolve_base_documents(store.as_ref(), &loaded, head.as_ref()).await?;
+    report.diverged = diverged;
+    status.diverged = diverged;
+
     status.phase = SyncPhase::Planning;
     let baseline_state = baseline_state(&loaded.baseline);
     let pinned = pinned(&documents);
@@ -147,7 +159,7 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
         local: &scan.local,
         remote: &remote,
         documents: &documents,
-        base_documents: &loaded.baseline_documents,
+        base_documents: &base_documents,
         policy,
         pinned: &pinned,
         resolutions: &resolutions,
@@ -198,7 +210,7 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
     upload(store.as_ref(), &plan, &scan.objects, &merged).await?;
 
     status.phase = SyncPhase::Committing;
-    let commit = commit(
+    let committed = commit(
         store.as_ref(),
         meta,
         settings,
@@ -211,12 +223,18 @@ pub async fn run_cycle(input: CycleInput<'_>) -> Result<CycleReport, CycleError>
         },
     )
     .await?;
+    let commit = committed.manifest;
+    report.contended = committed.contended;
     report.head = Some(super::status::head_of(&commit));
     status.head = report.head.clone();
 
     status.phase = SyncPhase::Confirming;
     let confirmed = list_commits(store.as_ref()).await?;
-    let settled = confirmed.iter().any(|candidate| candidate.id == commit.id);
+    // A contended exclusive commit was not recorded by this device, so the
+    // baseline still adopts it: the head is the winner's commit and the next
+    // cycle replans against it.
+    let settled =
+        committed.contended || confirmed.iter().any(|candidate| candidate.id == commit.id);
     status.phase = SyncPhase::Finalizing;
     advance_baseline(ports, &plan, &commit, &loaded, settled, &scan.codecs)?;
     ports
@@ -377,6 +395,47 @@ async fn fetch_head(
         Err(source) => return Err(CycleError::Remote { source }),
     }
     Ok(list_commits(store).await?.into_iter().next())
+}
+
+/// The documents to merge against, and whether the head diverged.
+///
+/// A fast-forward or a device with no baseline uses its own baseline. A
+/// diverged head uses the newest common ancestor's documents, so neither
+/// branch's absence of the other's edits is read as a deletion.
+async fn resolve_base_documents(
+    store: &dyn RemoteStore,
+    loaded: &super::state::LoadedState,
+    head: Option<&CommitManifest>,
+) -> Result<(BTreeMap<LogicalPath, PortableDocument>, bool), CycleError> {
+    let Some(head) = head else {
+        return Ok((loaded.baseline_documents.clone(), false));
+    };
+    let baseline = loaded.meta.baseline_commit.as_ref();
+    let fast_forward = match baseline {
+        None => true,
+        Some(id) => head.is_ancestor_of(id),
+    };
+    if fast_forward {
+        return Ok((loaded.baseline_documents.clone(), false));
+    }
+    // Newest common ancestor: the head's list is newest first.
+    let common = head
+        .ancestors
+        .iter()
+        .find(|id| loaded.meta.baseline_ancestors.contains(id) || baseline == Some(*id))
+        .cloned();
+    let Some(common) = common else {
+        // No common ancestor within the recorded window: treat it as a join,
+        // which reports differences as conflicts rather than reverting.
+        return Ok((BTreeMap::new(), true));
+    };
+    let key = format!("{}{}.json", COMMITS_PREFIX, common.as_str());
+    let manifest = match store.get(&key).await {
+        Ok(bytes) => CommitManifest::parse(&bytes).context(CommitSnafu)?,
+        Err(RemoteError::NotFound { .. }) => return Ok((BTreeMap::new(), true)),
+        Err(source) => return Err(CycleError::Remote { source }),
+    };
+    Ok((fetch_remote_documents(store, Some(&manifest)).await?, true))
 }
 
 /// The documents a head commit references, decoded.
@@ -628,12 +687,18 @@ struct CommitInput<'a> {
     head: Option<&'a CommitManifest>,
 }
 
+struct Committed {
+    manifest: CommitManifest,
+    /// `true` when an exclusive create found the generation taken.
+    contended: bool,
+}
+
 async fn commit(
     store: &dyn RemoteStore,
     meta: &SyncMeta,
     settings: &nyanpasu_contracts::sync::SyncSettings,
     input: CommitInput<'_>,
-) -> Result<CommitManifest, CycleError> {
+) -> Result<Committed, CycleError> {
     let CommitInput {
         plan,
         objects,
@@ -648,7 +713,7 @@ async fn commit(
             .unwrap_or_else(|| DeviceId::new("local")),
         name: settings.device_name.clone(),
     };
-    ensure_vault(store).await?;
+    let vault = ensure_vault(store).await?;
     let generation = head.map_or(1, CommitManifest::next_generation);
 
     // Start from the head's table so an item this cycle did not touch keeps
@@ -730,13 +795,38 @@ async fn commit(
         items,
     )
     .context(CommitSnafu)?;
-    let key = format!("{COMMITS_PREFIX}{:012}-{}.json", generation, manifest.id);
-    let bytes = manifest.to_bytes().context(CommitSnafu)?;
-    store
-        .put(&key, bytes.into(), PutCondition::Any)
-        .await
-        .map_err(|source| CycleError::Remote { source })?;
-    Ok(manifest)
+    let bytes = manifest.to_bytes().context(CommitSnafu)?.into();
+    // `content` names the commit after its id, so a fork is visible; `exclusive`
+    // claims the generation with a conditional create, so exactly one device
+    // wins and history stays linear.
+    match vault.commit_naming {
+        CommitNaming::Content => {
+            let key = format!("{COMMITS_PREFIX}{:012}-{}.json", generation, manifest.id);
+            match store.put(&key, bytes, PutCondition::Any).await {
+                Ok(()) => Ok(Committed {
+                    manifest,
+                    contended: false,
+                }),
+                Err(source) => Err(CycleError::Remote { source }),
+            }
+        }
+        CommitNaming::Exclusive => {
+            let key = format!("{COMMITS_PREFIX}{generation:012}.json");
+            match store.put(&key, bytes, PutCondition::IfAbsent).await {
+                Ok(()) => Ok(Committed {
+                    manifest,
+                    contended: false,
+                }),
+                // Another device claimed the generation. The caller replans
+                // against the new head without discarding anything local.
+                Err(RemoteError::AlreadyExists { .. }) => Ok(Committed {
+                    manifest,
+                    contended: true,
+                }),
+                Err(source) => Err(CycleError::Remote { source }),
+            }
+        }
+    }
 }
 
 async fn ensure_vault(store: &dyn RemoteStore) -> Result<VaultFormat, CycleError> {
@@ -745,23 +835,74 @@ async fn ensure_vault(store: &dyn RemoteStore) -> Result<VaultFormat, CycleError
         Err(RemoteError::NotFound { .. }) => {
             let format = VaultFormat {
                 format: super::commit::COMMIT_FORMAT,
-                vault_id: VaultId::new("local"),
+                vault_id: VaultId::new(&nanoid::nanoid!()),
                 created_at: super::clock::now_iso8601(),
-                commit_naming: CommitNaming::Content,
+                commit_naming: capability_self_test(store).await?,
                 encryption: VaultEncryption::None,
             };
-            store
-                .put(
-                    FORMAT_KEY,
-                    format.to_bytes().context(CommitSnafu)?.into(),
-                    PutCondition::IfAbsent,
-                )
+            let bytes = format.to_bytes().context(CommitSnafu)?;
+            // A provider that cannot create conditionally still needs a vault.
+            // A racing creator may win; read back whichever record landed so
+            // every device settles on one vault id.
+            let created = match store
+                .put(FORMAT_KEY, bytes.clone().into(), PutCondition::IfAbsent)
                 .await
-                .map_err(|source| CycleError::Remote { source })?;
-            Ok(format)
+            {
+                Ok(()) => true,
+                Err(RemoteError::Unsupported { .. }) => {
+                    store
+                        .put(FORMAT_KEY, bytes.into(), PutCondition::Any)
+                        .await
+                        .map_err(|source| CycleError::Remote { source })?;
+                    true
+                }
+                Err(RemoteError::AlreadyExists { .. }) => false,
+                Err(source) => return Err(CycleError::Remote { source }),
+            };
+            if created {
+                Ok(format)
+            } else {
+                let bytes = store
+                    .get(FORMAT_KEY)
+                    .await
+                    .map_err(|source| CycleError::Remote { source })?;
+                VaultFormat::parse(&bytes).context(CommitSnafu)
+            }
         }
         Err(source) => Err(CycleError::Remote { source }),
     }
+}
+
+/// Decides the vault's commit naming by writing a probe twice with
+/// `IfAbsent`.
+///
+/// A provider may advertise create-if-absent and still overwrite; the probe
+/// is what is trusted, not the flag. A second successful create means forks
+/// are possible, so the vault uses content-named commits. The probe is
+/// removed afterwards and is never left behind on a failure path that matters.
+async fn capability_self_test(store: &dyn RemoteStore) -> Result<CommitNaming, CycleError> {
+    let nonce = nanoid::nanoid!();
+    let key = format!("probe/{nonce}");
+    let first = store
+        .put(&key, b"probe".to_vec().into(), PutCondition::IfAbsent)
+        .await;
+    let naming = match first {
+        Ok(()) => match store
+            .put(&key, b"probe-2".to_vec().into(), PutCondition::IfAbsent)
+            .await
+        {
+            // The second create succeeded: the condition is not honoured.
+            Ok(()) => CommitNaming::Content,
+            Err(RemoteError::AlreadyExists { .. }) => CommitNaming::Exclusive,
+            Err(RemoteError::Unsupported { .. }) => CommitNaming::Content,
+            Err(source) => return Err(CycleError::Remote { source }),
+        },
+        Err(RemoteError::Unsupported { .. }) => CommitNaming::Content,
+        Err(source) => return Err(CycleError::Remote { source }),
+    };
+    // Best effort: a leftover probe is collected, not fatal.
+    let _ = store.delete(&key).await;
+    Ok(naming)
 }
 
 fn advance_baseline(

@@ -563,10 +563,6 @@ mod tests {
                 EventName::AppUpdateSummaryChanged,
                 events::AppUpdateSummaryChanged::NAME,
             ),
-            (
-                EventName::SyncStatusChanged,
-                events::SyncStatusChanged::NAME,
-            ),
             (EventName::ClashWs, events::ClashWsEvent::NAME),
             (
                 EventName::CoreLogsChanged,
@@ -610,6 +606,10 @@ mod tests {
             (
                 EventName::CoreLogsSummaryChanged,
                 events::CoreLogsSummaryChangedEvent::NAME,
+            ),
+            (
+                EventName::SyncStatusChanged,
+                events::SyncStatusChanged::NAME,
             ),
         ];
         assert_eq!(EventName::ALL.len(), desktop_names.len());

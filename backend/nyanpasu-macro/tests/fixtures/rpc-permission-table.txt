@@ -26,6 +26,7 @@ clear_proxy_fixed | proxy.fixed_selection:clear | proxy | mutation | desktop,htt
 clear_storage | settings.storage:clear | settings | mutation | desktop,http
 close_log_session | log.session:follow | read | mutation | desktop,http,local
 collect_logs | system.logs:collect | system | mutation | desktop
+configure_sync | sync.settings:configure | settings | mutation | desktop
 copy_clash_env | system.clash_env:copy | system | mutation | desktop
 create_config_backup | settings.config_backup:create | settings | mutation | desktop
 create_debug_tray_menu_window | system.debug_tray_menu_window:create | system | mutation | desktop
@@ -37,8 +38,10 @@ create_profile_folder | profile.folder:create | profile | mutation | desktop,htt
 create_proxy_group_folder | profile.proxy_group_folder:create | profile | mutation | desktop,http
 create_remote_access_token | remote_admin.token:create | remote_admin | mutation | desktop,local
 delete_profile | profile.item:delete | profile | mutation | desktop,http,local
+disable_sync | sync.enabled:disable | settings | mutation | desktop
 discard_app_update_package | system.app_update_package:discard | system | mutation | desktop
 download_app_update | system.app_update:download | system | mutation | desktop
+enable_sync | sync.enabled:enable | settings | mutation | desktop
 enhance_profiles | profile.items:enhance | profile | mutation | desktop,http
 fetch_latest_core_versions | core.latest_versions:view | read | query | desktop,http
 flush_system_dns_cache | system.dns_cache:flush | system | mutation | desktop
@@ -89,6 +92,9 @@ get_runtime_yaml | runtime.yaml:reveal | sensitive_read | query | desktop,http
 get_service_install_prompt | service.install_prompt:reveal | sensitive_read | query | desktop,http
 get_service_status_summary | service.status_summary:view | read | query | desktop,http
 get_storage_item | storage.item:reveal | sensitive_read | query | desktop,http,local
+get_sync_provider_kinds | sync.providers:view | read | query | desktop
+get_sync_settings | sync.settings:reveal | sensitive_read | query | desktop
+get_sync_status | sync.status:view | read | query | desktop
 get_sys_proxy | sys_proxy.state:view | read | query | desktop,http,local
 get_system_accent_color | system.accent_color:view | read | query | desktop,http
 get_traffic_summary | traffic.summary:view | read | query | desktop,http,local
@@ -111,6 +117,8 @@ is_widget_icon_set | widget_icon.custom:view | read | query | desktop,http
 list_log_files | log_file.list:view | read | query | desktop,http,local
 list_remote_access_tokens | remote_admin.token:list | remote_admin | query | desktop,local
 list_remote_browser_sessions | remote_admin.browser_session:list | remote_admin | query | desktop,local
+list_sync_conflicts | sync.conflicts:reveal | sensitive_read | query | desktop
+list_sync_snapshots | sync.snapshots:view | read | query | desktop
 mutate_proxies | proxy.proxies:mutate | proxy | mutation | desktop,http
 open_app_config_dir | system.app_config_dir:open | system | mutation | desktop
 open_app_data_dir | system.app_data_dir:open | system | mutation | desktop
@@ -152,9 +160,11 @@ report_issue | system.issue:report | system | mutation | desktop
 report_window_ready | system.window_ready:report | system | mutation | desktop
 request_wifi_name_access | system.wifi_name_access:ask | system | mutation | desktop
 reset_remote_access_tls | remote_admin.tls:reset | remote_admin | mutation | desktop,local
+resolve_sync_conflict | sync.conflict:resolve_conflict | settings | mutation | desktop
 restart_application | system.application:restart | system | mutation | desktop
 restart_service | system.service:restart | system | mutation | desktop
 restart_sidecar | system.sidecar:restart | system | mutation | desktop,http,local
+restore_sync_snapshot | sync.snapshot:restore_snapshot | settings | mutation | desktop
 retry_configuration_effect | system.configuration_effect:retry | system | mutation | desktop,http
 retry_configuration_runtime | system.configuration_runtime:retry | system | mutation | desktop,http
 revoke_remote_access_token | remote_admin.token:revoke | remote_admin | mutation | desktop,local
@@ -186,8 +196,10 @@ start_service | system.service:start | system | mutation | desktop
 status_service | service.status:reveal | sensitive_read | query | desktop,http
 stop_service | system.service:stop | system | mutation | desktop
 subscribe_clash_connection_details | clash_connection.details:follow | read | mutation | desktop
+sync_now | sync.cycle:run | settings | mutation | desktop
 take_pending_deep_links | system.deep_links:take | system | mutation | desktop
 test_stun_server | settings.stun_server:test | settings | mutation | desktop
+test_sync_connection | sync.connection:test | settings | mutation | desktop
 uninstall_service | system.service:uninstall | system | mutation | desktop
 unsubscribe_clash_connection_details | clash_connection.details:follow | read | mutation | desktop
 update_core | system.core:update | system | mutation | desktop

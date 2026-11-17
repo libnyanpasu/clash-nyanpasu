@@ -51,6 +51,11 @@ nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features 
 nyanpasu-migration = { path = '../nyanpasu-migration', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 nyanpasu-net = { path = '../nyanpasu-net', default-features = false }
+nyanpasu-sync-opendal = { path = '../nyanpasu-sync-opendal', default-features = false, features = [
+  'fs',
+  's3',
+  'webdav'
+] }
 nyanpasu-profile-io = { path = '../nyanpasu-profile-io', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }

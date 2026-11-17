@@ -540,6 +540,37 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['listRemoteBrowserSessions', ...args],
         queryFn: () => commands.listRemoteBrowserSessions(...args),
       }),
+    getSyncStatus: (...args: Parameters<typeof commands.getSyncStatus>) =>
+      queryOptions({
+        queryKey: ['getSyncStatus', ...args],
+        queryFn: () => commands.getSyncStatus(...args),
+      }),
+    getSyncSettings: (...args: Parameters<typeof commands.getSyncSettings>) =>
+      queryOptions({
+        queryKey: ['getSyncSettings', ...args],
+        queryFn: () => commands.getSyncSettings(...args),
+      }),
+    getSyncProviderKinds: (
+      ...args: Parameters<typeof commands.getSyncProviderKinds>
+    ) =>
+      queryOptions({
+        queryKey: ['getSyncProviderKinds', ...args],
+        queryFn: () => commands.getSyncProviderKinds(...args),
+      }),
+    listSyncConflicts: (
+      ...args: Parameters<typeof commands.listSyncConflicts>
+    ) =>
+      queryOptions({
+        queryKey: ['listSyncConflicts', ...args],
+        queryFn: () => commands.listSyncConflicts(...args),
+      }),
+    listSyncSnapshots: (
+      ...args: Parameters<typeof commands.listSyncSnapshots>
+    ) =>
+      queryOptions({
+        queryKey: ['listSyncSnapshots', ...args],
+        queryFn: () => commands.listSyncSnapshots(...args),
+      }),
   }
   const mutations = {
     writeClipboardText: mutationOptions({
@@ -1092,6 +1123,41 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['quitApplication'],
       mutationFn: (input: Parameters<typeof commands.quitApplication>) =>
         commands.quitApplication(...input),
+    }),
+    configureSync: mutationOptions({
+      mutationKey: ['configureSync'],
+      mutationFn: (input: Parameters<typeof commands.configureSync>) =>
+        commands.configureSync(...input),
+    }),
+    testSyncConnection: mutationOptions({
+      mutationKey: ['testSyncConnection'],
+      mutationFn: (input: Parameters<typeof commands.testSyncConnection>) =>
+        commands.testSyncConnection(...input),
+    }),
+    enableSync: mutationOptions({
+      mutationKey: ['enableSync'],
+      mutationFn: (input: Parameters<typeof commands.enableSync>) =>
+        commands.enableSync(...input),
+    }),
+    disableSync: mutationOptions({
+      mutationKey: ['disableSync'],
+      mutationFn: (input: Parameters<typeof commands.disableSync>) =>
+        commands.disableSync(...input),
+    }),
+    syncNow: mutationOptions({
+      mutationKey: ['syncNow'],
+      mutationFn: (input: Parameters<typeof commands.syncNow>) =>
+        commands.syncNow(...input),
+    }),
+    resolveSyncConflict: mutationOptions({
+      mutationKey: ['resolveSyncConflict'],
+      mutationFn: (input: Parameters<typeof commands.resolveSyncConflict>) =>
+        commands.resolveSyncConflict(...input),
+    }),
+    restoreSyncSnapshot: mutationOptions({
+      mutationKey: ['restoreSyncSnapshot'],
+      mutationFn: (input: Parameters<typeof commands.restoreSyncSnapshot>) =>
+        commands.restoreSyncSnapshot(...input),
     }),
   }
 

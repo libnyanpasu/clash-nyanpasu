@@ -1938,6 +1938,7 @@ dependencies = [
  "nyanpasu-scripts",
  "nyanpasu-single-instance",
  "nyanpasu-state-engine",
+ "nyanpasu-sync-opendal",
  "nyanpasu-traffic",
  "nyanpasu-tsdb",
  "nyanpasu-updater",

@@ -17,6 +17,7 @@ pub(crate) fn build_transport_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(collect_events![
             events::AppUpdateStateChanged,
             events::AppUpdateSummaryChanged,
+            events::SyncStatusChanged,
             events::CoreLogsChangedEvent,
             events::CoreLogsSummaryChangedEvent,
             events::ClashWsEvent,
@@ -135,6 +136,11 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::get_transparent_proxy_status_summary,
             commands::remote_access::list_remote_access_tokens,
             commands::remote_access::list_remote_browser_sessions,
+            commands::sync::get_sync_status,
+            commands::sync::get_sync_settings,
+            commands::sync::get_sync_provider_kinds,
+            commands::sync::list_sync_conflicts,
+            commands::sync::list_sync_snapshots,
         ],
         schema_commands![
             ipc::write_clipboard_text,
@@ -246,11 +252,19 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::report_window_ready,
             ipc::copy_clash_env,
             ipc::quit_application,
+            commands::sync::configure_sync,
+            commands::sync::test_sync_connection,
+            commands::sync::enable_sync,
+            commands::sync::disable_sync,
+            commands::sync::sync_now,
+            commands::sync::resolve_sync_conflict,
+            commands::sync::restore_sync_snapshot,
         ],
     )
     .events(collect_events![
         events::AppUpdateStateChanged,
         events::AppUpdateSummaryChanged,
+        events::SyncStatusChanged,
         events::CoreLogsChangedEvent,
         events::ClashWsEvent,
         window::WindowMessageEvent,
@@ -548,6 +562,10 @@ mod tests {
             (
                 EventName::AppUpdateSummaryChanged,
                 events::AppUpdateSummaryChanged::NAME,
+            ),
+            (
+                EventName::SyncStatusChanged,
+                events::SyncStatusChanged::NAME,
             ),
             (EventName::ClashWs, events::ClashWsEvent::NAME),
             (

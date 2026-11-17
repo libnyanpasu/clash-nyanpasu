@@ -62,6 +62,12 @@ const GROUPS: &[Group] = &[
         name: "settings", scope: Some("Settings"), reads: &[], queries: &[],
         mutations: &["clear", "create", "patch", "probe", "remove", "report", "set", "test"],
     },
+    // Configuration sync moves subscription tokens and proxy credentials to
+    // storage the user chose, so configuring it is a settings-class write.
+    Group {
+        name: "sync", scope: Some("Settings"), reads: &["reveal", "view"], queries: &[],
+        mutations: &["configure", "disable", "enable", "resolve_conflict", "restore_snapshot", "run", "test"],
+    },
     Group {
         name: "system", scope: Some("System"), reads: &["view"], queries: &[],
         mutations: &[

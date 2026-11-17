@@ -11,6 +11,7 @@ pub mod remote_access;
 pub mod runtime;
 pub mod status;
 pub mod storage;
+pub mod sync;
 pub mod traffic;
 pub mod types;
 pub mod updater;

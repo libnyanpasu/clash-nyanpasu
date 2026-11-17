@@ -24,6 +24,7 @@ pub enum EventName {
     ServiceStatusChanged,
     ServiceStatusSummaryChanged,
     StateChanged,
+    SyncStatusChanged,
     StorageResync,
     StorageValueChanged,
     WindowMessage,
@@ -31,7 +32,7 @@ pub enum EventName {
 
 impl EventName {
     /// All shared identities in desktop bridge registration order.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::AppUpdateStateChanged,
         Self::AppUpdateSummaryChanged,
         Self::ClashWs,
@@ -48,6 +49,7 @@ impl EventName {
         Self::CoreStatusSummaryChanged,
         Self::ServiceStatusSummaryChanged,
         Self::CoreLogsSummaryChanged,
+        Self::SyncStatusChanged,
     ];
 
     /// The existing event name used on every frontend transport.
@@ -66,6 +68,7 @@ impl EventName {
             Self::ServiceStatusChanged => "service-status-changed-event",
             Self::ServiceStatusSummaryChanged => "service-status-summary-changed-event",
             Self::StateChanged => "state-changed-event",
+            Self::SyncStatusChanged => "sync-status-changed-event",
             Self::StorageResync => "storage-resync-event",
             Self::StorageValueChanged => "storage-value-changed-event",
             Self::WindowMessage => "window-message-event",
@@ -91,6 +94,8 @@ impl EventName {
             | Self::SchemeRequestReceived
             | Self::StateChanged
             | Self::StorageResync => Scope::Read,
+            // The status carries blocked item paths, which are local names.
+            Self::SyncStatusChanged => Scope::SensitiveRead,
             // Full status values carry owner diagnostic text, endpoints and
             // controller details; the update state carries unaudited error and
             // endpoint text; the core-log status carries an error message; a
@@ -131,6 +136,8 @@ impl EventName {
             | Self::StateChanged
             | Self::StorageResync
             | Self::StorageValueChanged => DESKTOP_AND_HTTP,
+            // Sync is a device-local capability; a browser must not read it.
+            Self::SyncStatusChanged => DESKTOP_ONLY,
         }
     }
 
@@ -141,6 +148,7 @@ impl EventName {
                 Some(ShellCapability::AppUpdate)
             }
             Self::SchemeRequestReceived => Some(ShellCapability::DeepLink),
+            Self::SyncStatusChanged => None,
             Self::WindowMessage => Some(ShellCapability::Window),
             Self::ClashWs
             | Self::ConfigurationStatusChanged
@@ -195,6 +203,7 @@ mod tests {
                 "service-status-changed-event",
                 "storage-value-changed-event",
                 "window-message-event",
+                "sync-status-changed-event",
             ]
         );
         assert!(by_scope(Scope::System).is_empty());
@@ -213,7 +222,8 @@ mod tests {
         let http = by_target(RpcTarget::Http);
         assert!(!http.contains(&"window-message-event"));
         assert!(!http.contains(&"scheme-request-received-event"));
-        assert_eq!(http.len(), EventName::ALL.len() - 2);
+        assert!(!http.contains(&"sync-status-changed-event"));
+        assert_eq!(http.len(), EventName::ALL.len() - 3);
 
         let local = by_target(RpcTarget::Local);
         assert_eq!(

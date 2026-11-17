@@ -193,6 +193,8 @@ unknown_domain!(
     yaml_serde::Error,
     serde_json::Error,
     anyhow::Error,
+    nyanpasu_core::sync::SyncFailure,
+    nyanpasu_core::client::sync::Error,
     nyanpasu_migration::backup::BackupError,
     RemoteAuthError,
 );

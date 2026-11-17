@@ -74,7 +74,21 @@ pub fn forwarders(
         Box::pin(core_logs(client, events.clone())),
         Box::pin(clash_ws(client.clone(), events.clone())),
         Box::pin(storage_changes(storage, events.clone())),
+        Box::pin(sync_status(client.clone(), events.clone())),
     ]
+}
+
+/// Publishes every full sync status. The status carries a revision, so a
+/// delayed delivery cannot replace a newer value on the receiving side.
+async fn sync_status(client: NyanpasuClient, events: EventBus) {
+    let mut status = client.subscribe_sync_status();
+    loop {
+        let current = status.borrow_and_update().clone();
+        publish(&events, EventName::SyncStatusChanged, &current);
+        if status.changed().await.is_err() {
+            break;
+        }
+    }
 }
 
 fn configuration_status(
@@ -276,7 +290,7 @@ mod tests {
             .into_value();
         let storage = Storage::try_new(&directory.path().join("forward.redb")).unwrap();
         let mut loops = forwarders(&client, &storage, &bus, ui);
-        assert_eq!(loops.len(), 7);
+        assert_eq!(loops.len(), 8);
         // Independent receivers let assertions ignore inter-source scheduling.
         let mut stored = bus.subscribe();
         let mut configuration = bus.subscribe();

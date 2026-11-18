@@ -95,7 +95,7 @@ function SettingsNavigationItem({
 }
 
 export default function SettingsNavigate() {
-  const { hasScope } = useCapabilities()
+  const { hasPermission } = useCapabilities()
   const { value: currentCore } = useSetting('core')
   const { data: agentSkills } = useCoreAgentSkillsSummary(currentCore)
 
@@ -103,8 +103,10 @@ export default function SettingsNavigate() {
   const hasAgentSkills = !!agentSkills?.length
 
   // These pages edit the core's control plane, the service and the runtime
-  // from full documents; a caller that may not read secrets has no use for them.
-  const canSensitiveRead = hasScope('sensitive_read')
+  // from full documents, so each is listed only for a caller that reads them.
+  const canReadSystem = hasPermission('system:read')
+  const canReadSettings = hasPermission('settings:read')
+  const canReadRuntime = canReadSettings && hasPermission('profile:read')
 
   return (
     <NavigationList aria-label={m.settings_navigation()}>
@@ -117,7 +119,7 @@ export default function SettingsNavigate() {
           description={m.settings_label_proxy_description()}
         />
 
-        {canSensitiveRead && (
+        {canReadSystem && (
           <SettingsNavigationItem
             to="/main/settings/system/service"
             color="green"
@@ -129,7 +131,7 @@ export default function SettingsNavigate() {
       </NavigationListGroup>
 
       <NavigationListGroup label={m.settings_group_clash()}>
-        {canSensitiveRead && (
+        {canReadSystem && (
           <SettingsNavigationItem
             to="/main/settings/clash/core-manager"
             color="purple"
@@ -147,7 +149,7 @@ export default function SettingsNavigate() {
           description={m.settings_label_core_settings_description()}
         />
 
-        {canSensitiveRead && (
+        {canReadSettings && (
           <SettingsNavigationItem
             to="/main/settings/clash/network"
             color="cyan"
@@ -157,7 +159,7 @@ export default function SettingsNavigate() {
           />
         )}
 
-        {canSensitiveRead && (
+        {canReadSettings && (
           <SettingsNavigationItem
             to="/main/settings/clash/control"
             color="blue"
@@ -167,7 +169,7 @@ export default function SettingsNavigate() {
           />
         )}
 
-        {canSensitiveRead && (
+        {canReadRuntime && (
           <SettingsNavigationItem
             to="/main/settings/clash/runtime"
             color="yellow"
@@ -177,7 +179,7 @@ export default function SettingsNavigate() {
           />
         )}
 
-        {canSensitiveRead && hasAgentSkills && (
+        {canReadSystem && hasAgentSkills && (
           <SettingsNavigationItem
             to="/main/settings/clash/ai"
             color="green"
@@ -253,7 +255,7 @@ export default function SettingsNavigate() {
           description={m.settings_label_sync_description()}
         />
 
-        <RequireCapability scope="remote_admin">
+        <RequireCapability permission="remote:write">
           <SettingsNavigationItem
             to="/main/settings/nyanpasu/remote-access"
             color="green"

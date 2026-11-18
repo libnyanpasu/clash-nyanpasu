@@ -81,12 +81,3 @@ calling anything that changes state. See the [command reference](references/comm
 
 Exit code 6 means the change took effect; do not repeat it. Read the degradation
 on standard error and tell the user.
-
-## Run it as an MCP server
-
-`nyanpasu-cli mcp` serves the same curated operations over standard input and output
-for agents that speak MCP. It is read-only by default; `nyanpasu-cli mcp --scope proxy`
-adds the `proxy` tools (repeat `--scope` for additional scopes), always limited to the
-caller's own scopes. Pass `nyanpasu-cli mcp --raw` to also expose a generic
-`call_method` tool for uncurated commands, still bounded by the same scopes. It never
-offers `remote_admin`: remote access is administered from the app, never through MCP.

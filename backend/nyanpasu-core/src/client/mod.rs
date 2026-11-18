@@ -924,16 +924,13 @@ impl NyanpasuClient {
 
     /// A launch URL for the server listening at `origin`, for hosts that bind it themselves.
     ///
-    /// The session it opens holds every scope except `remote_admin`, which no browser holds.
+    /// The session it opens holds the `admin` role: everything but remote administration, which
+    /// no browser holds.
     pub async fn launch_url_for(
         &self,
         origin: &str,
     ) -> std::result::Result<String, RemoteAuthError> {
-        let scopes = nyanpasu_contracts::auth::ScopeSet::full()
-            .iter()
-            .filter(|scope| *scope != nyanpasu_config::application::Scope::RemoteAdmin)
-            .collect();
-        let issued = self.inner.remote_auth.issue_launch_code(scopes).await?;
+        let issued = self.inner.remote_auth.issue_launch_code().await?;
         Ok(format!(
             "{}/?code={}",
             origin.trim_end_matches('/'),
@@ -982,7 +979,7 @@ impl NyanpasuClient {
         self.inner.remote_auth.exchange_launch_code(code).await
     }
 
-    /// Opens a browser session holding a token's scopes; it ends when the token does.
+    /// Opens a browser session holding a token's grant; it ends when the token does.
     pub async fn login_with_remote_token(
         &self,
         token: nyanpasu_contracts::auth::SecretString,

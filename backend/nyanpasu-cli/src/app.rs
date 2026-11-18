@@ -28,7 +28,6 @@ use crate::{
     endpoint,
     error::{CliError, ExitStatus},
     install::{self, AppImage},
-    mcp::{self, McpOptions},
     output::{Output, render_human},
     remote, skill,
     target::{Environment, ResolvedTarget, TargetKind, parse_http_url, resolve, resolve_token},
@@ -189,24 +188,6 @@ async fn run<C: Connector>(
     let transport = services.connector.connect(&target, token).await?;
     let (raw, capabilities) = describe(&transport).await?;
 
-    if let Command::Mcp(arguments) = &cli.command {
-        // Standard input and output belong to the protocol from here on: nothing else may
-        // be printed to standard output, and `Io` is not used.
-        let options = McpOptions {
-            scopes: arguments.scopes.clone(),
-            raw: arguments.raw,
-        };
-        mcp::serve(
-            &transport,
-            &capabilities,
-            &options,
-            tokio::io::BufReader::new(tokio::io::stdin()),
-            tokio::io::stdout(),
-        )
-        .await?;
-        return Ok(ExitStatus::Success);
-    }
-
     let mut output = Output {
         json,
         stdout: &mut *io.stdout,
@@ -225,9 +206,7 @@ async fn run<C: Connector>(
     }
     match plan {
         Some(plan) => run_plan(&transport, &capabilities, &plan, &mut output).await,
-        None => unreachable!(
-            "every connected subcommand has a plan, a call, `remote`, `mcp` or methods"
-        ),
+        None => unreachable!("every connected subcommand has a plan, a call, `remote` or methods"),
     }
 }
 
@@ -242,18 +221,21 @@ fn methods(raw: &Value, json: bool, output: &mut Output<'_>) -> Result<ExitStatu
     if json {
         return Ok(output.result(raw)?);
     }
-    let scopes = raw
-        .get("scopes")
-        .and_then(Value::as_array)
-        .map(|scopes| {
-            scopes
+    if let Some(role) = raw.get("role").and_then(Value::as_str) {
+        writeln!(output.stdout, "role: {role}")?;
+    }
+    let permissions = raw
+        .get("permissions")
+        .and_then(Value::as_object)
+        .map(|permissions| {
+            permissions
                 .iter()
-                .filter_map(Value::as_str)
+                .filter_map(|(resource, access)| Some(format!("{resource}:{}", access.as_str()?)))
                 .collect::<Vec<_>>()
                 .join(", ")
         })
         .unwrap_or_default();
-    writeln!(output.stdout, "scopes: {scopes}")?;
+    writeln!(output.stdout, "permissions: {permissions}")?;
     let commands = raw.get("commands").cloned().unwrap_or_else(|| json!([]));
     let table = render_human(&commands);
     writeln!(output.stdout, "{table}")?;
@@ -262,11 +244,11 @@ fn methods(raw: &Value, json: bool, output: &mut Output<'_>) -> Result<ExitStatu
 
 /// Checks a curated command against the caller's own capabilities.
 fn permit(command: &CuratedCommand, capabilities: &Capabilities) -> Result<(), CliError> {
-    if !capabilities.holds(command.scope) {
+    if !capabilities.permits(command.permission) {
         return Err(CliError::Unauthenticated {
             message: format!(
-                "`{}` needs the {} scope, which this caller does not hold",
-                command.name, command.scope
+                "`{}` needs the {} permission, which this caller does not hold",
+                command.name, command.permission
             ),
         });
     }
@@ -685,7 +667,7 @@ mod tests {
     use super::*;
     use crate::{
         credentials::fakes::MemoryStore,
-        describe::{Scope, fixtures},
+        describe::{Access, Permission, Permissions, Resource, Role, fixtures},
         transport::fakes::FakeTransport,
     };
 
@@ -746,8 +728,11 @@ mod tests {
         }
     }
 
-    fn describe_reply(scopes: &[Scope], methods: &[(&str, Scope)]) -> Result<Value, CliError> {
-        Ok(fixtures::describe_json(scopes, methods))
+    fn describe_reply(
+        held: Permissions,
+        methods: &[(&str, Permission)],
+    ) -> Result<Value, CliError> {
+        Ok(fixtures::describe_json(held, methods))
     }
 
     struct Harness {
@@ -812,19 +797,12 @@ mod tests {
         }
     }
 
-    fn all_scopes() -> Vec<Scope> {
-        Scope::ALL
-            .into_iter()
-            .filter(|scope| *scope != Scope::RemoteAdmin)
-            .collect()
-    }
-
     fn describe_all() -> Result<Value, CliError> {
-        let allowed: Vec<(&str, Scope)> = commands::COMMANDS
+        let allowed: Vec<(&str, Permission)> = commands::COMMANDS
             .iter()
-            .filter_map(|command| command.method().map(|method| (method, command.scope)))
+            .filter_map(|command| command.method().map(|method| (method, command.permission)))
             .collect();
-        describe_reply(&all_scopes(), &allowed)
+        describe_reply(Role::Admin.permissions(), &allowed)
     }
 
     #[tokio::test]
@@ -980,12 +958,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_denied_scope_never_reaches_the_shell() {
+    async fn a_denied_permission_never_reaches_the_shell() {
         let transport = FakeTransport::new(vec![describe_reply(
-            &[Scope::Read],
+            Role::Viewer.permissions(),
             &[
-                ("get_core_status", Scope::Read),
-                ("restart_sidecar", Scope::System),
+                (
+                    "get_core_status",
+                    Permission::new(Resource::System, Access::Read),
+                ),
+                (
+                    "restart_sidecar",
+                    Permission::new(Resource::System, Access::Write),
+                ),
             ],
         )]);
         let harness = harness(Ok(transport));
@@ -996,8 +980,11 @@ mod tests {
     #[tokio::test]
     async fn a_method_the_transport_does_not_expose_is_unsupported() {
         let transport = FakeTransport::new(vec![describe_reply(
-            &[Scope::Read, Scope::System],
-            &[("get_core_status", Scope::Read)],
+            Role::Admin.permissions(),
+            &[(
+                "get_core_status",
+                Permission::new(Resource::System, Access::Read),
+            )],
         )]);
         let harness = harness(Ok(transport));
         let run = invoke(&harness, &Environment::default(), &["core", "restart"], "").await;
@@ -1377,9 +1364,10 @@ mod tests {
         drop(harness.directory);
     }
 
-    /// A local principal holding every scope, with the remote administration commands allowed.
+    /// A local principal holding every permission, with the remote administration commands
+    /// allowed.
     fn describe_remote() -> Result<Value, CliError> {
-        let methods: Vec<(&str, Scope)> = [
+        let methods: Vec<(&str, Permission)> = [
             "get_app_settings",
             "get_http_server_status",
             "get_local_socket_status",
@@ -1392,15 +1380,15 @@ mod tests {
             "revoke_remote_browser_session",
         ]
         .into_iter()
-        .map(|method| (method, Scope::RemoteAdmin))
+        .map(|method| (method, Permission::new(Resource::Remote, Access::Write)))
         .collect();
-        describe_reply(&Scope::ALL, &methods)
+        describe_reply(Role::Owner.permissions(), &methods)
     }
 
     fn committed_settings() -> Value {
         json!({"remote_access": {
             "http": {"enabled": false, "strategy": "local_authenticated", "port": null,
-                     "serve_webui": true, "local_open_scopes": ["read"],
+                     "serve_webui": true, "anonymous_permissions": {},
                      "lan_bind": null, "tls": "http"},
             "local_socket": {"enabled": true},
         }})
@@ -1597,9 +1585,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn token_creation_sends_the_scopes_and_prints_the_secret_once() {
+    async fn token_creation_sends_the_grant_and_prints_the_secret_once() {
         let created = json!({
-            "summary": {"id": "tok_1", "name": "ci", "scopes": ["read", "proxy"]},
+            "summary": {"id": "tok_1", "name": "ci", "grant": {"role": "viewer"}},
             "token": "npk_tok_1_secret",
         });
         let transport = FakeTransport::new(vec![describe_remote(), Ok(created.clone())]);
@@ -1612,10 +1600,10 @@ mod tests {
                 "token",
                 "create",
                 "ci",
-                "--scope",
-                "read",
-                "--scope",
-                "proxy",
+                "--permission",
+                "proxy:write",
+                "--permission",
+                "logs:read",
                 "--expires-in",
                 "1h",
             ],
@@ -1629,7 +1617,10 @@ mod tests {
         let request = &calls[1].1["request"];
         assert_eq!(calls[1].0, "create_remote_access_token");
         assert_eq!(request["name"], "ci");
-        assert_eq!(request["scopes"], json!(["read", "proxy"]));
+        assert_eq!(
+            request["grant"],
+            json!({"permissions": {"proxy": "write", "logs": "read"}})
+        );
         assert!(request["expires_at_ms"].as_i64().unwrap() > 0);
 
         let transport = FakeTransport::new(vec![describe_remote(), Ok(created.clone())]);
@@ -1638,7 +1629,7 @@ mod tests {
             &machine,
             &Environment::default(),
             &[
-                "--json", "remote", "token", "create", "ci", "--scope", "read",
+                "--json", "remote", "token", "create", "ci", "--role", "viewer",
             ],
             "",
         )
@@ -1682,7 +1673,7 @@ mod tests {
     #[tokio::test]
     async fn a_shell_that_does_not_offer_remote_administration_is_unsupported() {
         // A shell older than this CLI, or one that exposes none of the commands.
-        let transport = FakeTransport::new(vec![describe_reply(&Scope::ALL, &[])]);
+        let transport = FakeTransport::new(vec![describe_reply(Role::Owner.permissions(), &[])]);
         let harness = harness(Ok(transport));
         let run = invoke(
             &harness,

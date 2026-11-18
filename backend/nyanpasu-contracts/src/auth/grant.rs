@@ -5,12 +5,13 @@
 
 use nyanpasu_config::application::{Permissions, Resource, Role};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A persisted grant: `{ "role": "viewer" }` or `{ "permissions": { "proxy": "write" } }`.
 ///
 /// A role follows later changes to its definition, so commands added by an upgrade become
 /// available with it; a custom map stays exactly what was granted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Grant {
     Role(Role),
@@ -24,6 +25,14 @@ impl Grant {
         match self {
             Self::Role(role) => role.permissions(),
             Self::Custom(permissions) => *permissions,
+        }
+    }
+
+    /// The role this grant names; `None` for a custom map.
+    pub const fn role(&self) -> Option<Role> {
+        match self {
+            Self::Role(role) => Some(*role),
+            Self::Custom(_) => None,
         }
     }
 

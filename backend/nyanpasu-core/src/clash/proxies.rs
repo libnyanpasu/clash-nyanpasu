@@ -118,7 +118,7 @@ pub struct ProxyGroup {
     pub expected_status: Option<String>,
     pub hidden: bool,
     /// Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
-    /// credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+    /// credential, so only `get_proxy_group_icons`, a sensitive query, returns it.
     pub icon_configured: bool,
     pub capabilities: ProxyGroupCapabilities,
 }

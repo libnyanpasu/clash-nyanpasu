@@ -25,7 +25,7 @@ function RouteComponent() {
     <>
       <PageTitle backTo="/main/settings">{m.settings_label_sync()}</PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
           <div
             className="-mb-4 columns-1 gap-x-4 md:columns-2"

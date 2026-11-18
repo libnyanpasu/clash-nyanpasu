@@ -50,7 +50,10 @@ export const Route = createFileRoute('/(editor)/editor/css/')({
 
 function GuardedRouteComponent() {
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="settings:read"
+      fallback={<RestrictedContent />}
+    >
       <RouteComponent />
     </RequireCapability>
   )

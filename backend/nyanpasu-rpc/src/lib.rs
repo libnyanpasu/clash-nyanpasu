@@ -5,7 +5,8 @@ extern crate self as nyanpasu_rpc;
 pub use nyanpasu_rpc_macro::rpc;
 
 /// Declares an event, HTTP route or stream for the resource table:
-/// `resource!(event "name", targets = [desktop, http], scope = read, capabilities(app_update))`.
+/// `resource!(event "name", targets = [desktop, http], permission = system:read, sensitive,
+/// capabilities(app_update))`.
 ///
 /// It expands to nothing. The resource table generator reads the declaration, checks it and
 /// writes its row; admission looks the row up by kind and name.
@@ -27,6 +28,7 @@ pub mod local;
 pub mod permission;
 pub mod ports;
 pub mod privacy;
+pub mod redaction;
 pub mod registry;
 #[cfg(all(feature = "http", any(test, feature = "test-support")))]
 pub mod test_support;

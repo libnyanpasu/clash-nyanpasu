@@ -63,10 +63,10 @@ function RouteComponent() {
       </PageTitle>
 
       <RequireCapability
-        scope="sensitive_read"
+        permissions={['settings:read', 'profile:read']}
         fallback={<RestrictedContent />}
       >
-        <ReadOnlyScope scopes={['settings', 'system']}>
+        <ReadOnlyScope permissions={['settings:write', 'system:write']}>
           <div className="space-y-4 px-4 pb-4">
             <FieldFilterSettings />
 

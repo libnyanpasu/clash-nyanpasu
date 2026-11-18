@@ -8,7 +8,7 @@ import { clearKvStorageLocalCache } from '@nyanpasu/query'
 import type { QueryClient } from '@tanstack/react-query'
 import type { RpcDescribeSnapshot, RpcPrincipal } from './capabilities'
 
-/** Records which principal and scopes the browser's persisted state belongs to. */
+/** Records which principal and permissions the browser's persisted state belongs to. */
 export const PRINCIPAL_MARKER_KEY = 'nyanpasu-principal-marker'
 
 function principalIdentity(principal: RpcPrincipal): string {
@@ -27,17 +27,19 @@ function principalIdentity(principal: RpcPrincipal): string {
 
 /**
  * The non-secret identity of a page runtime: principal kind and id plus the
- * sorted scope set. The desktop webview is one caller whatever its window
- * label, so its id is dropped.
+ * held permissions in resource order. The desktop webview is one caller
+ * whatever its window label, so its id is dropped.
  */
 export function principalKey({
   principal,
-  scopes,
-}: Pick<RpcDescribeSnapshot, 'principal' | 'scopes'>): string {
+  permissions,
+}: Pick<RpcDescribeSnapshot, 'principal' | 'permissions'>): string {
   return JSON.stringify([
     principal.kind,
     principalIdentity(principal),
-    [...scopes].sort(),
+    Object.entries(permissions).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
   ])
 }
 

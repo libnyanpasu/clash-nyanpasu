@@ -302,9 +302,10 @@ function BootstrapErrorFallback({
 
 function AuthenticatedApp() {
   const [appWindow] = useState(createWindowAdapter)
-  const { hasScope } = useCapabilities()
-  const canRead = hasScope('read')
-  const canSensitiveRead = hasScope('sensitive_read')
+  const { hasPermission } = useCapabilities()
+  const canReadSettings = hasPermission('settings:read')
+  const canReadProfiles = hasPermission('profile:read')
+  const canReadTraffic = hasPermission('traffic:read')
   const degradationHandler = useRef<DegradationHandler | null>(null)
   const onDegraded = useCallback(
     (items: AnyDegradation[]) => degradationHandler.current?.(items),
@@ -315,10 +316,10 @@ function AuthenticatedApp() {
     <TooltipProvider>
       <SnackbarProvider>
         <ImportUrlProvider>
-          <WindowReadyReporter canRead={canRead} />
+          <WindowReadyReporter canRead={canReadSettings} />
           <MutationDegradationNotifier
             handler={degradationHandler}
-            canRead={canRead}
+            canRead={canReadProfiles}
           />
           {appWindow?.label() === 'main' && <DeepLinkImport />}
           <Outlet />
@@ -332,13 +333,13 @@ function AuthenticatedApp() {
       rpc={rpc}
       queryClient={queryClient}
       onDegraded={onDegraded}
-      kvPersistence={canSensitiveRead ? 'backend' : 'local'}
-      clashWsEnabled={canRead}
+      kvPersistence={canReadSettings ? 'backend' : 'local'}
+      clashWsEnabled={canReadTraffic}
     >
       <BlockTaskProvider>
-        <LanguageProvider enabled={canRead}>
-          <ExperimentalThemeProvider enabled={canRead}>
-            {canSensitiveRead ? (
+        <LanguageProvider enabled={canReadSettings}>
+          <ExperimentalThemeProvider enabled={canReadSettings}>
+            {canReadSettings ? (
               <CustomCssProvider>{appTree}</CustomCssProvider>
             ) : (
               appTree

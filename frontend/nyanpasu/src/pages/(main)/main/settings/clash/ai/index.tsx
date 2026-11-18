@@ -19,7 +19,10 @@ export const Route = createFileRoute('/(main)/main/settings/clash/ai/')({
 
 function GuardedRouteComponent() {
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="system:read"
+      fallback={<RestrictedContent />}
+    >
       <RouteComponent />
     </RequireCapability>
   )

@@ -6,16 +6,35 @@ import {
   type ReactNode,
 } from 'react'
 import type {
+  Access,
   DescribedCommand,
   Principal,
+  Resource,
   RpcDescribeResponse,
-  Scope,
 } from '@nyanpasu/rpc/types'
 
-export type RpcScope = Scope
 export type RpcDescribeCommand = DescribedCommand
 export type RpcDescribeSnapshot = RpcDescribeResponse
 export type RpcPrincipal = Principal
+
+/** A permission written as the backend displays it, such as `proxy:write`. */
+export type PermissionName = `${Resource}:${Access}`
+
+/** The levels a caller holds, by resource; a resource that is not listed is not held. */
+export type HeldPermissions = RpcDescribeResponse['permissions']
+
+/**
+ * Whether `held` satisfies `required`: `write` includes `read`, and every
+ * resolved caller holds `meta:read`.
+ */
+export function permits(held: HeldPermissions, required: PermissionName) {
+  const [resource, access] = required.split(':') as [Resource, Access]
+  if (resource === 'meta' && access === 'read') {
+    return true
+  }
+  const level = held[resource]
+  return level === 'write' || level === access
+}
 
 export const CapabilitiesContext = createContext<RpcDescribeResponse | null>(
   null,
@@ -40,28 +59,37 @@ export function useCapabilities() {
   }
 
   return useMemo(() => {
-    const { principal, scopes, transport, commands } = snapshot
-    // `remote_admin` controls exist only in the desktop app.
+    const { principal, role, permissions, transport, commands } = snapshot
+    // `remote` controls exist only in the desktop app.
     const isDesktop = principal.kind === 'desktop'
-    const granted = new Set(scopes)
-    const hasScope = (scope: Scope) =>
-      granted.has(scope) && (scope !== 'remote_admin' || isDesktop)
+    const hasPermission = (permission: PermissionName) =>
+      permits(permissions, permission) &&
+      (!permission.startsWith('remote:') || isDesktop)
     const byName = new Map(commands.map((command) => [command.name, command]))
 
     return {
       principal,
-      scopes,
+      role,
+      permissions,
       transport,
+      commands,
       isDesktop,
-      hasScope,
-      /** Whether every scope in `required` is held. */
-      hasScopes: (required: readonly Scope[]) => required.every(hasScope),
+      hasPermission,
+      /** Whether every permission in `required` is held. */
+      hasPermissions: (required: readonly PermissionName[]) =>
+        required.every(hasPermission),
       canCall: (name: string) => {
         const command = byName.get(name)
-        return !!command && command.allowed && hasScope(command.scope)
+        return (
+          !!command &&
+          command.allowed &&
+          hasPermission(
+            `${command.permission.resource}:${command.permission.access}`,
+          )
+        )
       },
-      /** Whether mutation controls guarded by `scope` must be unavailable. */
-      isReadOnly: (scope: Scope) => !hasScope(scope),
+      /** Whether mutation controls guarded by `permission` must be unavailable. */
+      isReadOnly: (permission: PermissionName) => !hasPermission(permission),
     }
   }, [snapshot])
 }
@@ -70,26 +98,30 @@ export type Capabilities = ReturnType<typeof useCapabilities>
 
 type RequireCapabilityProps = PropsWithChildren<
   { fallback?: ReactNode } & (
-    | { scope: Scope; scopes?: never; command?: never }
-    | { scopes: readonly Scope[]; scope?: never; command?: never }
-    | { command: string; scope?: never; scopes?: never }
+    | { permission: PermissionName; permissions?: never; command?: never }
+    | {
+        permissions: readonly PermissionName[]
+        permission?: never
+        command?: never
+      }
+    | { command: string; permission?: never; permissions?: never }
   )
 >
 
-/** Renders `children` only when the principal holds the scope or may call the command. */
+/** Renders `children` only when the caller holds the permissions or may call the command. */
 export function RequireCapability({
-  scope,
-  scopes,
+  permission,
+  permissions,
   command,
   fallback = null,
   children,
 }: RequireCapabilityProps) {
   const capabilities = useCapabilities()
   const allowed =
-    scope !== undefined
-      ? capabilities.hasScope(scope)
-      : scopes !== undefined
-        ? capabilities.hasScopes(scopes)
+    permission !== undefined
+      ? capabilities.hasPermission(permission)
+      : permissions !== undefined
+        ? capabilities.hasPermissions(permissions)
         : capabilities.canCall(command)
 
   return <>{allowed ? children : fallback}</>

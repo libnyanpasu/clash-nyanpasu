@@ -61,7 +61,7 @@ const AdvanceToolsSettings = () => {
 
               <BlockTaskViewer />
 
-              <RequireCapability scope="sensitive_read">
+              <RequireCapability permission="settings:read">
                 <KVStorage />
               </RequireCapability>
 
@@ -85,7 +85,7 @@ function RouteComponent() {
       <div className="space-y-4 px-4 pb-4">
         <PathUtilsSettings />
 
-        <RequireCapability scope="sensitive_read">
+        <RequireCapability permission="system:read">
           <ConfigurationStatus />
         </RequireCapability>
 

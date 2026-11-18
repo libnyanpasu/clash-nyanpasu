@@ -7,7 +7,7 @@ use serde_json::Value;
 use snafu::{ResultExt as _, Snafu};
 
 /// Initial negotiated protocol version; versions are not checked per request.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 /// Maximum UTF-8 JSON body size, excluding the four-byte big-endian prefix.
 pub const MAX_FRAME_LEN: usize = 4 * 1024 * 1024;
 /// Size in bytes of the big-endian u32 body length.

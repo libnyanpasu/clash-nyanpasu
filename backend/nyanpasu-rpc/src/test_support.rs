@@ -40,7 +40,7 @@ impl RpcAuditSink for AuditSink {
 
 // These commands exercise generated parsing, execution and serialization without
 // adding capabilities to the production registry or touching application state.
-#[nyanpasu_rpc::rpc(http, scope = settings)]
+#[nyanpasu_rpc::rpc(http, permission = settings:write)]
 async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
     if fail {
         Err(std::io::Error::other(value))
@@ -175,9 +175,14 @@ pub const CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::HttpServer,
 ];
 
-/// Build an explicit full-scope bootstrap HTTP `Session` caller for router tests.
+/// Build an HTTP `Session` caller holding every permission, for router tests.
 pub fn test_http_auth() -> AuthContext {
-    AuthContext::session("test-session")
+    AuthContext::new(
+        nyanpasu_contracts::auth::Principal::Session {
+            id: "test-session".to_owned(),
+        },
+        nyanpasu_contracts::auth::Grant::Role(nyanpasu_contracts::auth::Role::Owner),
+    )
 }
 
 /// Wrap an HTTP router with a fixed [`AuthContext`] extension for authenticated unit tests.

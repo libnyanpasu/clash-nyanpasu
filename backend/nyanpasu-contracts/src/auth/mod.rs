@@ -1,4 +1,4 @@
-//! Transport-neutral caller principals, scopes, authorization contexts, and auth ports.
+//! Transport-neutral caller principals, grants, authorization contexts, and auth ports.
 
 pub mod grant;
 pub mod ports;
@@ -8,10 +8,9 @@ pub mod test_support;
 pub mod tls;
 pub mod types;
 
-use std::collections::BTreeSet;
-
 pub use grant::{Grant, GrantError};
-pub use nyanpasu_config::application::Scope;
+/// The permission model, defined beside the configuration that persists it.
+pub use nyanpasu_config::application::{Access, Permission, Permissions, Resource, Role};
 pub use ports::{AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError};
 pub use secrets::{SecretHash, SecretString};
 use serde::{Deserialize, Serialize};
@@ -27,60 +26,6 @@ pub use types::{
     MAX_TOKEN_NAME_LEN, ParsedAccessToken, RemoteAuthPolicy, SECRET_HEX_LEN, SessionId, TokenId,
     TokenName, is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
 };
-
-/// Canonical deduplicated set of independent permission scopes held by a caller.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Type)]
-#[serde(transparent)]
-pub struct ScopeSet(BTreeSet<Scope>);
-
-impl ScopeSet {
-    /// An empty scope set holding no permissions.
-    pub fn empty() -> Self {
-        Self(BTreeSet::new())
-    }
-
-    /// Every declared application scope.
-    pub fn full() -> Self {
-        Self(Scope::ALL.into_iter().collect())
-    }
-
-    /// Whether this set contains the requested scope.
-    pub fn contains(&self, scope: Scope) -> bool {
-        self.0.contains(&scope)
-    }
-
-    /// Whether no scopes are present.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Number of distinct scopes in the set.
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Iterate over held scopes in canonical `Scope::ALL` declaration order.
-    pub fn iter(&self) -> impl Iterator<Item = Scope> + '_ {
-        self.0.iter().copied()
-    }
-
-    /// Materialize held scopes in canonical `Scope::ALL` order.
-    pub fn to_vec(&self) -> Vec<Scope> {
-        self.iter().collect()
-    }
-}
-
-impl FromIterator<Scope> for ScopeSet {
-    fn from_iter<T: IntoIterator<Item = Scope>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-impl<const N: usize> From<[Scope; N]> for ScopeSet {
-    fn from(scopes: [Scope; N]) -> Self {
-        scopes.into_iter().collect()
-    }
-}
 
 /// Public identity of the resolved caller attached at transport admission.
 ///
@@ -105,7 +50,7 @@ pub enum Principal {
         /// Public non-secret session correlation identifier (never a cookie or access token).
         id: String,
     },
-    /// Scoped bearer token identified by its public ID and user-assigned label.
+    /// Bearer token identified by its public ID and user-assigned label.
     Token {
         /// Public non-secret token identifier.
         id: String,
@@ -129,54 +74,55 @@ impl Principal {
     }
 }
 
-/// Resolved authorization identity and effective permission set for a call or stream.
+/// The authentication result: who is calling, and the permissions their grant expands to.
 ///
-/// Separate from `RpcOwner`, which keys server-side resource lifetimes.
+/// Admission reads only [`AuthContext::permissions`]. Separate from `RpcOwner`, which keys
+/// server-side resource lifetimes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct AuthContext {
     pub principal: Principal,
-    pub scopes: ScopeSet,
+    /// The role the permissions expand from; `None` for a custom permission map. Only
+    /// discovery and the user interface read it.
+    pub role: Option<Role>,
+    pub permissions: Permissions,
 }
 
 impl AuthContext {
-    /// Construct an authorization context from a resolved principal and scope set.
-    pub fn new(principal: Principal, scopes: ScopeSet) -> Self {
-        Self { principal, scopes }
+    /// A caller holding `grant`, expanded once here.
+    pub fn new(principal: Principal, grant: Grant) -> Self {
+        Self {
+            principal,
+            role: grant.role(),
+            permissions: grant.permissions(),
+        }
     }
 
-    /// Native desktop shell context holding every declared scope for `window`.
+    /// The desktop window: the owner.
     pub fn desktop(window: impl Into<String>) -> Self {
         Self::new(
             Principal::Desktop {
                 window: window.into(),
             },
-            ScopeSet::full(),
+            Grant::Role(Role::Owner),
         )
     }
 
-    /// Same-user local socket peer context holding every declared scope.
+    /// A same-user local socket peer: the owner.
     pub fn local_socket(user: impl Into<String>) -> Self {
         Self::new(
             Principal::LocalSocket { user: user.into() },
-            ScopeSet::full(),
+            Grant::Role(Role::Owner),
         )
     }
 
-    /// Authenticated HTTP session holding every declared scope, identified by a
-    /// non-secret session correlation ID.
-    pub fn session(id: impl Into<String>) -> Self {
-        Self::new(Principal::Session { id: id.into() }, ScopeSet::full())
-    }
-
-    /// Whether the caller holds `scope`. Scopes are independent; no implication applies.
-    pub fn has_scope(&self, scope: Scope) -> bool {
-        self.scopes.contains(scope)
-    }
-
-    /// Whether the caller holds `Scope::SensitiveRead` and may view unprojected
-    /// paths, URLs, host secrets, and raw error details.
-    pub fn has_sensitive_read(&self) -> bool {
-        self.has_scope(Scope::SensitiveRead)
+    /// An HTTP request without a credential: the `anonymous` role, which holds only capability
+    /// discovery, plus the configured `additional` permissions.
+    pub fn anonymous(additional: Permissions) -> Self {
+        Self {
+            principal: Principal::Anonymous,
+            role: Some(Role::Anonymous),
+            permissions: additional,
+        }
     }
 }
 
@@ -185,50 +131,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scope_set_deduplicates_and_orders_canonically() {
-        let scopes: ScopeSet = [Scope::System, Scope::Read, Scope::Proxy, Scope::Read]
-            .into_iter()
-            .collect();
-        assert_eq!(scopes.len(), 3);
-        assert_eq!(
-            scopes.to_vec(),
-            vec![Scope::Read, Scope::Proxy, Scope::System]
-        );
-        let json = serde_json::to_value(&scopes).unwrap();
-        assert_eq!(json, serde_json::json!(["read", "proxy", "system"]));
-    }
-
-    #[test]
-    fn scopes_are_independent_with_no_implied_grants() {
-        let proxy_only = AuthContext::new(Principal::Anonymous, ScopeSet::from([Scope::Proxy]));
-        assert!(proxy_only.has_scope(Scope::Proxy));
-        assert!(!proxy_only.has_scope(Scope::Read));
-        assert!(!proxy_only.has_sensitive_read());
-
-        let sensitive_only = AuthContext::new(
-            Principal::Token {
-                id: "tok_1".to_owned(),
-                name: "reader".to_owned(),
-            },
-            ScopeSet::from([Scope::SensitiveRead]),
-        );
-        assert!(sensitive_only.has_sensitive_read());
-        assert!(!sensitive_only.has_scope(Scope::Read));
-    }
-
-    #[test]
-    fn full_contexts_hold_every_scope_and_audit_labels_stay_non_secret() {
+    fn every_caller_construction_point_holds_its_role() {
         for auth in [
             AuthContext::desktop("main"),
             AuthContext::local_socket("S-1-5-21-1000"),
-            AuthContext::session("sess_public_1"),
         ] {
-            for scope in Scope::ALL {
-                assert!(auth.has_scope(scope));
-            }
-            assert!(auth.has_sensitive_read());
+            assert_eq!(auth.role, Some(Role::Owner));
+            assert_eq!(auth.permissions, Role::Owner.permissions());
         }
+        let anonymous = AuthContext::anonymous(Permissions::NONE);
+        assert_eq!(anonymous.principal, Principal::Anonymous);
+        assert_eq!(anonymous.role, Some(Role::Anonymous));
+        assert_eq!(anonymous.permissions, Permissions::NONE);
 
+        let custom = Permissions::NONE.with(
+            nyanpasu_config::application::Resource::Proxy,
+            nyanpasu_config::application::Access::Write,
+        );
+        let token = AuthContext::new(
+            Principal::Token {
+                id: "tok_1".to_owned(),
+                name: "agent".to_owned(),
+            },
+            Grant::Custom(custom),
+        );
+        assert_eq!(token.role, None);
+        assert_eq!(token.permissions, custom);
+    }
+
+    #[test]
+    fn audit_labels_stay_non_secret() {
         assert_eq!(
             Principal::Desktop {
                 window: "main".to_owned()

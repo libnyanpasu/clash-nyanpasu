@@ -44,7 +44,10 @@ export const Route = createFileRoute('/(editor)/editor/profile/')({
 
 function GuardedRouteComponent() {
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="profile:read"
+      fallback={<RestrictedContent />}
+    >
       <RouteComponent />
     </RequireCapability>
   )

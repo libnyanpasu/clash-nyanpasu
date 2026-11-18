@@ -263,7 +263,7 @@ mod tests {
             let name = command.get_name();
             if matches!(
                 name,
-                "help" | "mcp" | "context" | "install" | "skill" | "completion"
+                "help" | "context" | "install" | "skill" | "completion"
             ) {
                 continue;
             }
@@ -289,9 +289,6 @@ mod tests {
             "never create tokens",
             "remote-access settings",
             "never put a token",
-            "nyanpasu-cli mcp",
-            "--scope",
-            "--raw",
         ] {
             assert!(lower.contains(rule), "SKILL.md lacks the `{rule}` rule");
         }

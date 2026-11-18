@@ -185,7 +185,7 @@ const AllViewer = memo(function AllViewer({
   // `mutateAsync` is a new function on every render; the row renderer stays
   // the same and calls the latest one, so rows can skip re-rendering.
   // Closing a connection changes the core: `proxy` scope.
-  const canProxy = useCapabilities().hasScope('proxy')
+  const canProxy = useCapabilities().hasPermission('proxy:write')
 
   const deleteConnectionsRef = useRef(deleteConnections.mutateAsync)
   deleteConnectionsRef.current = deleteConnections.mutateAsync

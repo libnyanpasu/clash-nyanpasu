@@ -744,10 +744,8 @@ function publicRemoteAccessErrorMessage(
   switch (reason) {
     case 'port_zero':
       return m.error_config_remote_access_port_zero()
-    case 'local_open_scopes_empty':
-      return m.error_config_remote_access_local_open_scopes_empty()
-    case 'local_open_scope_forbidden':
-      return m.error_config_remote_access_local_open_scope_forbidden()
+    case 'anonymous_beyond_operator':
+      return m.error_config_remote_access_anonymous_beyond_operator()
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()
     case 'lan_requires_tls':
@@ -834,11 +832,9 @@ function remoteAccessErrorMessage(error: RemoteAccessError): string {
   switch (error.kind) {
     case 'port_zero':
       return m.error_config_remote_access_port_zero()
-    case 'local_open_scopes_empty':
-      return m.error_config_remote_access_local_open_scopes_empty()
-    case 'local_open_scope_forbidden':
-      return m.error_config_remote_access_local_open_scope_forbidden_scope({
-        scope: error.scope,
+    case 'anonymous_beyond_operator':
+      return m.error_config_remote_access_anonymous_beyond_operator_permission({
+        permission: `${error.resource}:${error.access}`,
       })
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()

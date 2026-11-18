@@ -62,7 +62,10 @@ function invalidateSnapshots(queryClient: QueryClient) {
 
 function GuardedRouteComponent() {
   return (
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="profile:read"
+      fallback={<RestrictedContent />}
+    >
       <RouteComponent />
     </RequireCapability>
   )

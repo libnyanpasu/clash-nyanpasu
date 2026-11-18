@@ -18,7 +18,7 @@ async fn handshake(stream: &mut DuplexStream) {
     frame::write_frame(
         stream,
         &Frame::Accept {
-            version: 1,
+            version: crate::frame::PROTOCOL_VERSION,
             features: vec![Feature::Rpc, Feature::Events, Feature::ConnectionDetails],
         },
     )

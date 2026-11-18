@@ -11,7 +11,7 @@ use nyanpasu_core::{
 use super::types::StorageEntry;
 use crate::registry::RpcState;
 
-#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetStorageItem, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetStorageItem, query, permission = settings:read, sensitive)]
 #[specta::specta]
 pub fn get_storage_item(
     storage: RpcState<'_, Storage>,
@@ -20,7 +20,7 @@ pub fn get_storage_item(
     Ok(storage.get_item(web_key(&key))?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::SetStorageItem, scope = settings)]
+#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::SetStorageItem, permission = settings:write)]
 #[specta::specta]
 pub fn set_storage_item(
     storage: RpcState<'_, Storage>,
@@ -30,20 +30,20 @@ pub fn set_storage_item(
     Ok(storage.set_item(web_key(&key), &value)?)
 }
 
-#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::RemoveStorageItem, scope = settings)]
+#[nyanpasu_rpc::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::RemoveStorageItem, permission = settings:write)]
 #[specta::specta]
 pub fn remove_storage_item(storage: RpcState<'_, Storage>, key: String) -> Result<StorageRevision> {
     Ok(storage.remove_item(web_key(&key))?)
 }
 
-#[nyanpasu_rpc::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query, permission = system:read)]
 #[specta::specta]
 pub async fn get_hotkeys(client: RpcState<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client.get_app_config().await?.hotkeys)
 }
 
 // See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_rpc::rpc(optional_capabilities(hotkey), privacy, scope = system)]
+#[nyanpasu_rpc::rpc(optional_capabilities(hotkey), privacy, permission = system:write)]
 #[specta::specta]
 pub async fn set_hotkeys(
     client: RpcState<'_, NyanpasuClient>,
@@ -62,7 +62,7 @@ pub async fn set_hotkeys(
 
 /// Debug: returns all frontend KV entries (keys with the `web:` prefix).
 /// Internal storage entries used by other subsystems are excluded.
-#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, permission = settings:read, sensitive)]
 #[specta::specta]
 pub fn get_all_storage_items(storage: RpcState<'_, Storage>) -> Result<Vec<StorageEntry>> {
     let items = storage.get_all()?;
@@ -81,7 +81,7 @@ pub fn get_all_storage_items(storage: RpcState<'_, Storage>) -> Result<Vec<Stora
 
 /// Debug: clears all frontend KV entries (keys with the `web:` prefix).
 /// Internal storage entries used by other subsystems are left intact.
-#[nyanpasu_rpc::rpc(http, scope = settings)]
+#[nyanpasu_rpc::rpc(http, permission = settings:write)]
 #[specta::specta]
 pub fn clear_storage(storage: RpcState<'_, Storage>) -> Result {
     let web_keys: Vec<String> = storage

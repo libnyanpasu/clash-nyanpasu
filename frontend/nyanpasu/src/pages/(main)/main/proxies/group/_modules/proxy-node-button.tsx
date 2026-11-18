@@ -62,8 +62,8 @@ export default memo(function ProxyNodeButton({
   searchText?: string
 }) {
   // A caller without the `proxy` scope reads the group but cannot change it.
-  const { hasScope } = useCapabilities()
-  const canProxy = hasScope('proxy')
+  const { hasPermission } = useCapabilities()
+  const canProxy = hasPermission('proxy:write')
 
   const handleSelectProxy = useLockFn(async () => {
     // The core picks this group's member on its own.

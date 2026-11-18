@@ -1,10 +1,10 @@
 //! Capability discovery over `rpc_describe`.
 //!
 //! The response is decoded into the canonical [`RpcDescribeResponse`] of the wire crate,
-//! with the canonical [`Scope`], so the CLI and the shell agree on one contract.
+//! with the canonical permission types, so the CLI and the shell agree on one contract.
 
-pub use nyanpasu_contracts::auth::Scope;
-use nyanpasu_contracts::auth::{Principal, ScopeSet};
+use nyanpasu_contracts::auth::Principal;
+pub use nyanpasu_contracts::auth::{Access, Permission, Permissions, Resource, Role};
 use nyanpasu_rpc_wire::{DescribedCommand, RpcDescribeResponse, frame::PROTOCOL_VERSION};
 use serde_json::Value;
 
@@ -18,7 +18,7 @@ pub const DESCRIBE_METHOD: &str = "rpc_describe";
 pub enum Availability {
     /// Exposed on this transport and permitted for the principal.
     Allowed,
-    /// Exposed, but the principal's scopes do not permit it.
+    /// Exposed, but the principal's permissions do not permit it.
     Denied,
     /// Not exposed on this transport.
     NotExposed,
@@ -56,9 +56,14 @@ impl Capabilities {
             .map_err(|error| CliError::failed(format!("invalid rpc_describe response: {error}")))
     }
 
-    /// The scopes the principal holds.
-    pub fn scopes(&self) -> &ScopeSet {
-        &self.response.scopes
+    /// The permissions the principal holds.
+    pub fn permissions(&self) -> &Permissions {
+        &self.response.permissions
+    }
+
+    /// The role the principal's permissions expand from; `None` for a custom map.
+    pub fn role(&self) -> Option<Role> {
+        self.response.role
     }
 
     /// The principal the shell resolved this connection to.
@@ -71,9 +76,9 @@ impl Capabilities {
         &self.response.commands
     }
 
-    /// Whether the principal holds `scope`.
-    pub fn holds(&self, scope: Scope) -> bool {
-        self.response.scopes.contains(scope)
+    /// Whether the principal holds `permission`.
+    pub fn permits(&self, permission: Permission) -> bool {
+        self.response.permissions.permits(permission)
     }
 
     /// The exposed command named `method`, if the transport exposes it.
@@ -97,7 +102,7 @@ impl Capabilities {
     ///
     /// # Errors
     /// `Unsupported` when the transport does not expose the method, and
-    /// `Unauthenticated` when the principal lacks its scope.
+    /// `Unauthenticated` when the principal lacks its permission.
     pub fn require(&self, method: &str) -> Result<&DescribedCommand, CliError> {
         match self.command(method) {
             Some(command) if command.allowed => Ok(command),
@@ -116,10 +121,12 @@ pub(crate) mod fixtures {
     use nyanpasu_rpc_wire::{CommandEffect, RpcTarget, ServerInfo};
     use serde_json::Value;
 
-    use super::{Capabilities, DescribedCommand, Principal, RpcDescribeResponse, Scope};
+    use super::{
+        Capabilities, DescribedCommand, Permission, Permissions, Principal, RpcDescribeResponse,
+    };
 
-    /// A describe response holding `scopes` where every listed method is allowed.
-    pub fn describe(scopes: &[Scope], allowed: &[(&str, Scope)]) -> RpcDescribeResponse {
+    /// A describe response holding `held` where every listed method is allowed.
+    pub fn describe(held: Permissions, allowed: &[(&str, Permission)]) -> RpcDescribeResponse {
         RpcDescribeResponse {
             protocol: nyanpasu_rpc_wire::frame::PROTOCOL_VERSION,
             server: ServerInfo::desktop("2.0.0"),
@@ -128,25 +135,27 @@ pub(crate) mod fixtures {
                 id: "a1b2".into(),
                 name: "test".into(),
             },
-            scopes: scopes.iter().copied().collect(),
+            role: None,
+            permissions: held,
             commands: allowed
                 .iter()
-                .map(|(name, scope)| DescribedCommand {
+                .map(|(name, permission)| DescribedCommand {
                     name: (*name).into(),
                     effect: CommandEffect::Query,
-                    scope: *scope,
+                    permission: *permission,
+                    sensitive: false,
                     allowed: true,
                 })
                 .collect(),
         }
     }
 
-    pub fn describe_json(scopes: &[Scope], allowed: &[(&str, Scope)]) -> Value {
-        serde_json::to_value(describe(scopes, allowed)).expect("fixture serializes")
+    pub fn describe_json(held: Permissions, allowed: &[(&str, Permission)]) -> Value {
+        serde_json::to_value(describe(held, allowed)).expect("fixture serializes")
     }
 
-    pub fn capabilities(scopes: &[Scope], allowed: &[(&str, Scope)]) -> Capabilities {
-        Capabilities::from_json(describe_json(scopes, allowed)).expect("fixture is valid")
+    pub fn capabilities(held: Permissions, allowed: &[(&str, Permission)]) -> Capabilities {
+        Capabilities::from_json(describe_json(held, allowed)).expect("fixture is valid")
     }
 }
 
@@ -160,14 +169,19 @@ mod tests {
     #[test]
     fn decodes_the_canonical_response() {
         let capabilities = Capabilities::from_json(json!({
-            "protocol": 1,
+            "protocol": 2,
             "server": { "kind": "desktop", "version": "2.0.0" },
             "transport": "http",
             "principal": { "kind": "token", "id": "a1b2", "name": "laptop-cli" },
-            "scopes": ["read", "proxy"],
+            "role": null,
+            "permissions": { "proxy": "write", "logs": "read" },
             "commands": [
-                { "name": "select_proxy", "effect": "mutation", "scope": "proxy", "allowed": true },
-                { "name": "restart_sidecar", "effect": "mutation", "scope": "system", "allowed": false }
+                { "name": "select_proxy", "effect": "mutation",
+                  "permission": { "resource": "proxy", "access": "write" },
+                  "sensitive": false, "allowed": true },
+                { "name": "restart_sidecar", "effect": "mutation",
+                  "permission": { "resource": "system", "access": "write" },
+                  "sensitive": false, "allowed": false }
             ]
         }))
         .unwrap();
@@ -181,9 +195,11 @@ mod tests {
                 name: "laptop-cli".into()
             }
         );
-        assert!(capabilities.holds(Scope::Read));
-        assert!(capabilities.holds(Scope::Proxy));
-        assert!(!capabilities.holds(Scope::System));
+        assert_eq!(capabilities.role(), None);
+        assert!(capabilities.permits(Permission::new(Resource::Proxy, Access::Read)));
+        assert!(capabilities.permits(Permission::new(Resource::Logs, Access::Read)));
+        assert!(!capabilities.permits(Permission::new(Resource::Logs, Access::Write)));
+        assert!(!capabilities.permits(Permission::new(Resource::System, Access::Read)));
         assert_eq!(
             capabilities
                 .command("select_proxy")
@@ -206,18 +222,18 @@ mod tests {
 
     #[test]
     fn an_incompatible_protocol_is_unsupported_whatever_its_shape() {
-        let error = Capabilities::from_json(json!({ "protocol": 2 })).unwrap_err();
+        let error = Capabilities::from_json(json!({ "protocol": 1 })).unwrap_err();
         assert!(matches!(error, CliError::Unsupported { .. }), "{error}");
     }
 
     #[test]
     fn a_malformed_response_is_a_failure() {
         for malformed in [
-            json!({ "scopes": [] }),
-            json!({ "protocol": 1 }),
-            json!({ "protocol": 1, "server": { "kind": "desktop", "version": "2" },
+            json!({ "permissions": {} }),
+            json!({ "protocol": 2 }),
+            json!({ "protocol": 2, "server": { "kind": "desktop", "version": "2" },
                     "transport": "http", "principal": { "kind": "anonymous" },
-                    "scopes": ["everything"], "commands": [] }),
+                    "role": null, "permissions": { "secrets": "read" }, "commands": [] }),
         ] {
             let error = Capabilities::from_json(malformed).unwrap_err();
             assert!(matches!(error, CliError::Failed { .. }), "{error}");
@@ -226,8 +242,11 @@ mod tests {
 
     #[test]
     fn require_distinguishes_denied_from_unexposed() {
-        let capabilities =
-            fixtures::capabilities(&[Scope::Read], &[("get_core_status", Scope::Read)]);
+        let system_read = Permission::new(Resource::System, Access::Read);
+        let capabilities = fixtures::capabilities(
+            Permissions::NONE.with(Resource::System, Access::Read),
+            &[("get_core_status", system_read)],
+        );
         assert!(capabilities.require("get_core_status").is_ok());
         assert!(matches!(
             capabilities.require("restart_sidecar"),

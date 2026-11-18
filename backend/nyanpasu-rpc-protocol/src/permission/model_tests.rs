@@ -1,11 +1,9 @@
-//! The permission model in isolation from production admission: every requirement in the
-//! requirement table, checked against grants whose expected answers are written independently.
-
-use std::collections::BTreeSet;
+//! The permission model in isolation: every requirement in the resource table, checked against
+//! grants whose expected answers are written independently.
 
 use nyanpasu_config::application::{Access, Permission, Permissions, Resource, Role};
 
-use super::{REQUIREMENTS, RESOURCES, Requirement};
+use super::{RESOURCES, ResourceMetadata};
 
 const DOMAINS: [Resource; 8] = [
     Resource::Meta,
@@ -71,18 +69,6 @@ fn expected(held: &[(Resource, Access)], required: Permission) -> bool {
 }
 
 #[test]
-fn every_resource_has_one_requirement() {
-    let rows: BTreeSet<_> = RESOURCES.iter().map(|resource| resource.name).collect();
-    let required: Vec<_> = REQUIREMENTS
-        .iter()
-        .map(|requirement| requirement.name)
-        .collect();
-    let unique: BTreeSet<_> = required.iter().copied().collect();
-    assert_eq!(unique.len(), required.len(), "a name is listed twice");
-    assert_eq!(unique, rows);
-}
-
-#[test]
 fn every_requirement_is_decided_for_single_permissions() {
     let mut grants = vec![(Permissions::NONE, Vec::new())];
     for resource in DOMAINS {
@@ -93,9 +79,9 @@ fn every_requirement_is_decided_for_single_permissions() {
             ));
         }
     }
-    for Requirement {
+    for ResourceMetadata {
         name, permission, ..
-    } in REQUIREMENTS
+    } in RESOURCES
     {
         for (grant, held) in &grants {
             assert_eq!(
@@ -117,9 +103,9 @@ fn every_requirement_is_decided_for_every_role() {
         Role::Owner,
     ] {
         let permissions = role.permissions();
-        for Requirement {
+        for ResourceMetadata {
             name, permission, ..
-        } in REQUIREMENTS
+        } in RESOURCES
         {
             assert_eq!(
                 permissions.permits(*permission),
@@ -133,15 +119,15 @@ fn every_requirement_is_decided_for_every_role() {
 /// Only `rpc_describe` is admitted without any permission; the owner is admitted everywhere.
 #[test]
 fn the_extremes_of_the_role_table() {
-    let open: Vec<_> = REQUIREMENTS
+    let open: Vec<_> = RESOURCES
         .iter()
-        .filter(|requirement| Permissions::NONE.permits(requirement.permission))
-        .map(|requirement| requirement.name)
+        .filter(|resource| Permissions::NONE.permits(resource.permission))
+        .map(|resource| resource.name)
         .collect();
     assert_eq!(open, ["rpc_describe"]);
     assert!(
-        REQUIREMENTS
+        RESOURCES
             .iter()
-            .all(|requirement| Role::Owner.permissions().permits(requirement.permission))
+            .all(|resource| Role::Owner.permissions().permits(resource.permission))
     );
 }

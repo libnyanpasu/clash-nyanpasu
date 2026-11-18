@@ -28,14 +28,16 @@ use axum::{
     routing::{get, post},
 };
 use futures::{SinkExt, StreamExt};
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Scope};
+use nyanpasu_config::application::{
+    HttpAccessConfig, HttpAccessStrategy, HttpTls, Permissions, cap_anonymous_permissions,
+};
 use nyanpasu_contracts::auth::{
     SecretString, TlsCertificateSummary, TlsIdentity, parse_access_token,
 };
 use nyanpasu_core::client::http_server::{
     Error, HttpServerControl, HttpServerFault, HttpServerStatus,
 };
-use nyanpasu_rpc_protocol::{AuthContext, Principal, RpcError};
+use nyanpasu_rpc_protocol::{AuthContext, RpcError};
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort, rpc::CallResult};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
@@ -43,9 +45,7 @@ use tokio_tungstenite::tungstenite::{Message as WsMessage, client::IntoClientReq
 use tokio_util::sync::CancellationToken;
 
 use self::{
-    auth::{
-        HttpAuthError, HttpAuthenticator, PrincipalStreams, StreamGuard, clamp_local_open_scopes,
-    },
+    auth::{HttpAuthError, HttpAuthenticator, PrincipalStreams, StreamGuard},
     login::{
         LOGIN_PATH, LoginState, SESSION_COOKIE_NAME, clear_session_set_cookie,
         extract_cookie_value, is_json_content_type, login_logout, login_page, login_submit,
@@ -104,7 +104,7 @@ struct Running {
     bind_outside_certificate: bool,
     serve_webui: bool,
     strategy: HttpAccessStrategy,
-    local_open_scopes: Vec<Scope>,
+    anonymous_permissions: Permissions,
     cancellation: CancellationToken,
     task: tokio::task::JoinHandle<()>,
 }
@@ -172,7 +172,7 @@ impl HttpServerState {
         self.running.as_ref().is_some_and(|running| {
             running.serve_webui == config.serve_webui
                 && running.strategy == config.strategy
-                && running.local_open_scopes == config.local_open_scopes
+                && running.anonymous_permissions == config.anonymous_permissions
                 && running.bind == bind_address(config)
                 && running.tls == identity.map(TlsIdentity::summary)
                 && config.port.is_none_or(|port| port == running.port)
@@ -314,7 +314,7 @@ impl HttpServerState {
             }),
             serve_webui: config.serve_webui,
             strategy: config.strategy,
-            local_open_scopes: config.local_open_scopes.clone(),
+            anonymous_permissions: config.anonymous_permissions,
             cancellation,
             task,
         })
@@ -991,10 +991,9 @@ pub(crate) async fn http_auth_middleware(
         }
     } else {
         match state.access.strategy {
-            HttpAccessStrategy::LocalOpen => AuthContext::new(
-                Principal::Anonymous,
-                clamp_local_open_scopes(&state.access.local_open_scopes),
-            ),
+            HttpAccessStrategy::LocalOpen => AuthContext::anonymous(cap_anonymous_permissions(
+                &state.access.anonymous_permissions,
+            )),
             // The LAN strategy never trusts the peer address, so a loopback peer (a reverse proxy,
             // for one) needs a credential as well.
             HttpAccessStrategy::LocalAuthenticated | HttpAccessStrategy::LanAuthenticated => {
@@ -1263,8 +1262,9 @@ pub(crate) mod tests {
     use super::*;
     use axum::{body::to_bytes, http::Request as HttpRequest, routing::get};
     use nyanpasu_contracts::auth::{
-        AuthRevocation, AuthenticatedCaller, BrowserSessionSummary, EstablishedBrowserSession,
-        Scope, ScopeSet, SessionId, TokenId,
+        Access, AuthRevocation, AuthenticatedCaller, BrowserSessionSummary,
+        EstablishedBrowserSession, Grant, Permissions, Principal, Resource, Role, SessionId,
+        TokenId,
     };
     use parking_lot::Mutex;
     use tokio::sync::broadcast;
@@ -1309,17 +1309,15 @@ pub(crate) mod tests {
             format!("{}/?code={code}", origin.trim_end_matches('/'))
         }
 
-        pub(crate) fn full_scopes() -> ScopeSet {
-            [
-                Scope::Read,
-                Scope::SensitiveRead,
-                Scope::Proxy,
-                Scope::Profile,
-                Scope::Settings,
-                Scope::System,
-            ]
-            .into_iter()
-            .collect()
+        /// What a launch code opens: the `admin` role.
+        pub(crate) fn session_grant() -> Grant {
+            Grant::Role(Role::Admin)
+        }
+
+        /// The grant `auth` was expanded from.
+        fn grant_of(auth: &AuthContext) -> Grant {
+            auth.role
+                .map_or(Grant::Custom(auth.permissions), Grant::Role)
         }
 
         pub(crate) fn register_cookie(&self, cookie: &str, session_id: &str) {
@@ -1330,7 +1328,7 @@ pub(crate) mod tests {
                         Principal::Session {
                             id: session_id.to_owned(),
                         },
-                        Self::full_scopes(),
+                        Self::session_grant(),
                     ),
                     expires_at_ms: None,
                 },
@@ -1377,9 +1375,9 @@ pub(crate) mod tests {
             let parsed_session_id =
                 SessionId::parse(session_id.clone()).map_err(|_| HttpAuthError::Unavailable)?;
             let cookie = format!("nps_{session_id}_{}", "a".repeat(64));
-            let scopes = Self::full_scopes();
+            let grant = Self::session_grant();
             let caller = AuthenticatedCaller {
-                auth: AuthContext::new(Principal::Session { id: session_id }, scopes.clone()),
+                auth: AuthContext::new(Principal::Session { id: session_id }, grant),
                 expires_at_ms: None,
             };
             state.sessions.insert(cookie.clone(), caller.clone());
@@ -1387,7 +1385,7 @@ pub(crate) mod tests {
                 summary: BrowserSessionSummary {
                     id: parsed_session_id,
                     backing_token_id: None,
-                    scopes,
+                    grant,
                     created_at_ms: 0,
                     last_active_at_ms: 0,
                     token_expires_at_ms: None,
@@ -1416,9 +1414,9 @@ pub(crate) mod tests {
             let parsed_session_id =
                 SessionId::parse(session_id.clone()).map_err(|_| HttpAuthError::Unavailable)?;
             let cookie = format!("nps_{session_id}_{}", "b".repeat(64));
-            let scopes = caller.auth.scopes.clone();
+            let grant = Self::grant_of(&caller.auth);
             let session_caller = AuthenticatedCaller {
-                auth: AuthContext::new(Principal::Session { id: session_id }, scopes.clone()),
+                auth: AuthContext::new(Principal::Session { id: session_id }, grant),
                 expires_at_ms: caller.expires_at_ms,
             };
             state
@@ -1428,7 +1426,7 @@ pub(crate) mod tests {
                 summary: BrowserSessionSummary {
                     id: parsed_session_id,
                     backing_token_id,
-                    scopes,
+                    grant,
                     created_at_ms: 0,
                     last_active_at_ms: 0,
                     token_expires_at_ms: caller.expires_at_ms,
@@ -1919,7 +1917,7 @@ pub(crate) mod tests {
                 serde_json::json!({}),
                 StatusCode::NOT_FOUND,
                 serde_json::json!({
-                    "kind": "unknown_method", "message": "unknown command `missing_command`", "code": null,
+                    "kind": "unknown_method", "message": "unknown command", "code": null,
                     "retryable": null, "operation_id": null, "domain_error": null
                 }),
             ),
@@ -2372,14 +2370,14 @@ pub(crate) mod tests {
             assert!(!rendered.contains(&secret_hex), "{rendered}");
         }
 
-        // Create a Read-only token via NyanpasuClient.
+        // Create a viewer token via NyanpasuClient.
         let issued = fixture
             .rpc
             .dependencies
             .client
             .create_remote_access_token(CreateAccessTokenRequest {
                 name: TokenName::parse("readonly-ui").unwrap(),
-                scopes: ScopeSet::from([Scope::Read]),
+                grant: Grant::Role(Role::Viewer),
                 expires_at_ms: None,
             })
             .await
@@ -2411,8 +2409,8 @@ pub(crate) mod tests {
             .post(format!("{url}/bridge/rpc"))
             .header("authorization", format!("Bearer {raw_token}"))
             .json(&serde_json::json!({
-                "method": "get_core_log_status",
-                "params": {}
+                "method": "patch_app_config",
+                "params": { "patch": { "proxy_layout_column": 4 } }
             }))
             .send()
             .await
@@ -2533,7 +2531,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn local_open_clamps_anonymous_scopes_and_restarts_on_strategy_change() {
+    async fn local_open_caps_anonymous_permissions_and_restarts_on_strategy_change() {
         let fixture = crate::test_support::Fixture::new(false).await;
         let routes = Arc::new(routes::RpcHttpRoutes::default());
         routes.install(&fixture.rpc).unwrap();
@@ -2548,18 +2546,13 @@ pub(crate) mod tests {
         .await
         .unwrap();
 
-        let open_config = HttpAccessConfig {
+        // By default an anonymous caller holds only capability discovery.
+        let default_open = HttpAccessConfig {
             enabled: true,
             strategy: HttpAccessStrategy::LocalOpen,
-            local_open_scopes: vec![
-                Scope::Read,
-                Scope::SensitiveRead,
-                Scope::System,
-                Scope::RemoteAdmin,
-            ],
             ..Default::default()
         };
-        let status = server.configure(&open_config).await.unwrap();
+        let status = server.configure(&default_open).await.unwrap();
         let port = status.port.unwrap();
         let url = status.url.unwrap().trim_end_matches('/').to_owned();
         let client = reqwest::Client::builder()
@@ -2567,6 +2560,39 @@ pub(crate) mod tests {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap();
+        let described: nyanpasu_rpc_protocol::RpcDescribeResponse = client
+            .post(format!("{url}/bridge/rpc"))
+            .json(&serde_json::json!({ "method": "rpc_describe", "params": {} }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(described.principal, Principal::Anonymous);
+        assert_eq!(described.role, Some(Role::Anonymous));
+        assert_eq!(described.permissions, Permissions::NONE);
+        assert_eq!(
+            client
+                .post(format!("{url}/bridge/rpc"))
+                .json(&serde_json::json!({
+                    "method": "list_log_files",
+                    "params": { "source": "app" }
+                }))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        // A hand-edited configuration beyond the operator role is capped at it.
+        let open_config = HttpAccessConfig {
+            port: Some(port),
+            anonymous_permissions: Role::Owner.permissions(),
+            ..default_open
+        };
+        server.configure(&open_config).await.unwrap();
 
         let mut sse = client
             .get(format!("{url}/bridge/events"))
@@ -2586,7 +2612,7 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(described.principal, Principal::Anonymous);
-        assert_eq!(described.scopes, ScopeSet::from([Scope::Read]));
+        assert_eq!(described.permissions, Role::Operator.permissions());
 
         assert_eq!(
             client
@@ -2602,7 +2628,7 @@ pub(crate) mod tests {
             StatusCode::OK
         );
         for (method, expected) in [
-            ("get_core_log_status", StatusCode::FORBIDDEN),
+            ("get_core_log_status", StatusCode::OK),
             ("patch_system_settings", StatusCode::FORBIDDEN),
             ("list_remote_access_tokens", StatusCode::NOT_IMPLEMENTED),
         ] {
@@ -2615,10 +2641,11 @@ pub(crate) mod tests {
             assert_eq!(response.status(), expected, "{method}");
         }
 
-        // Changing local_open_scopes while enabled restarts the listener and updates scopes.
+        // Changing anonymous_permissions while enabled restarts the listener and updates them.
+        let proxy_writer = Permissions::NONE.with(Resource::Proxy, Access::Write);
         let narrowed = HttpAccessConfig {
             port: Some(port),
-            local_open_scopes: vec![Scope::Proxy],
+            anonymous_permissions: proxy_writer,
             ..open_config
         };
         server.configure(&narrowed).await.unwrap();
@@ -2637,7 +2664,7 @@ pub(crate) mod tests {
             .json()
             .await
             .unwrap();
-        assert_eq!(after_scope_change.scopes, ScopeSet::from([Scope::Proxy]));
+        assert_eq!(after_scope_change.permissions, proxy_writer);
 
         // Switching strategy to LocalAuthenticated restarts the listener and closes anonymous access.
         let authenticated_cfg = HttpAccessConfig {

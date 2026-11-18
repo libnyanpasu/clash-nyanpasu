@@ -11,7 +11,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { Route } from '../src/pages/(main)/main/settings/clash/ai/index'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const state = vi.hoisted(() => ({
   serviceMode: false,
@@ -51,7 +51,7 @@ const renderPage = () => {
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
 
-  return render(<RouterProvider router={router} />, { wrapper: AllScopes })
+  return render(<RouterProvider router={router} />, { wrapper: AllPermissions })
 }
 
 test('the page lists the skills of the current core', async () => {

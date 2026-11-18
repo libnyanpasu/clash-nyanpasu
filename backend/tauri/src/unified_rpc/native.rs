@@ -85,10 +85,9 @@ impl DesktopRpc {
     ) -> Result<Value, RpcError> {
         let caller = RpcCaller::desktop(window.label());
         if let Some(handler) = self.handlers.get(method) {
-            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             return self
                 .rpc
-                .call_native(method, caller, || {
+                .call_native(method, caller, |visibility| {
                     handler(app, window, webview, visibility, params)
                 })
                 .await;

@@ -70,13 +70,13 @@ function RouteComponent() {
         {m.settings_user_interface_title()}
       </PageTitle>
 
-      <ReadOnlyScope scopes={['settings']}>
+      <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
           <LanguageSettings />
 
           <ThemeModeSettings />
 
-          <RequireCapability scope="sensitive_read">
+          <RequireCapability permission="settings:read">
             <CustomCssSettings />
           </RequireCapability>
         </div>

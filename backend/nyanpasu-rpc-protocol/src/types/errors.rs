@@ -743,7 +743,7 @@ pub enum LocalSocketControlError {
     ReadStatus {},
 }
 
-/// Why a Clash read a caller without `sensitive_read` made has no result.
+/// Why a Clash read has no result, in a redacted response.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClashReadError {

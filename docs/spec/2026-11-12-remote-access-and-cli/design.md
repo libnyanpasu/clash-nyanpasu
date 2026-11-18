@@ -12,7 +12,8 @@ This design covers four connected pieces:
 2. Command capabilities: what each caller may call, over which transport.
 3. `nyanpasu-cli`, shipped with the app, talking to a running shell over HTTP or
    a local socket (Unix domain socket, Windows named pipe).
-4. An agent skill and an MCP server built on the CLI.
+4. An agent skill built on the CLI. (The CLI's MCP server was removed before
+   release; see [§9.2](#92-mcp).)
 
 It refines phase E of the
 [platform extraction plan](../../design/application-platform-extraction.md#next-stage)
@@ -62,7 +63,8 @@ Goals:
   local socket, and MCP.
 - `nyanpasu-cli` ships with every desktop bundle and drives a running desktop
   app; later the same binary drives `nyanpasu-server`.
-- MCP is a CLI subcommand, `nyanpasu-cli mcp`, over stdio.
+- ~~MCP is a CLI subcommand, `nyanpasu-cli mcp`, over stdio.~~ Removed before
+  release; the app will serve agents over streamable HTTP ([§9.2](#92-mcp)).
 - Every authenticated call is attributable to a principal in the audit log.
 
 Non-goals for this stage:
@@ -88,7 +90,7 @@ remote_access:
     lan_bind: null # null: all interfaces; or a specific address
     tls: http # http | self_signed; lan_authenticated requires self_signed
     serve_webui: true # API-only when false
-    local_open_scopes: [read] # what an anonymous loopback caller gets
+    anonymous_permissions: {} # added to an anonymous loopback caller, at most the operator role
   local_socket:
     enabled: false
 ```
@@ -96,7 +98,8 @@ remote_access:
 Progressive schema introduction:
 
 - PR 1 (`remote-access-foundation`) introduces `remote_access.http.{enabled, strategy, port, serve_webui}` with `local_authenticated` as the only representable strategy, so an unimplemented strategy cannot be saved or loaded before its enforcement exists.
-- PR 4 (`http-auth-and-scoped-ui`) adds `local_open` and `local_open_scopes`.
+- PR 4 (`http-auth-and-scoped-ui`) adds `local_open` and its anonymous grant, now
+  `anonymous_permissions` (see [§5](#5-command-capabilities)).
 - PR 5 (`local-socket-cli`) adds `local_socket.enabled`.
 - PR 7 (`lan-tls`) adds `lan_authenticated`, `lan_bind`, and `tls`.
 
@@ -120,7 +123,7 @@ Rules:
   actor in `nyanpasu-core`) runs commit, listener reconfiguration, and initial
   port persistence so concurrent edits cannot race or overwrite newer values.
 - `remote_access` itself can only be patched through Tauri IPC and the local
-  socket through a dedicated `remote_admin` command, never over HTTP (see
+  socket through a dedicated `remote:write` command, never over HTTP (see
   [§5.3](#53-hard-rules)). General config patches reject this section during
   decoding via the concrete `ApplicationPreferencesPatch` contract, preventing a
   remote caller from widening its own exposure or locking the owner out.
@@ -133,13 +136,13 @@ Rules:
 
 Every request resolves to exactly one principal before dispatch:
 
-| Principal          | How it is established                                      | Typical caller                     |
-| ------------------ | ---------------------------------------------------------- | ---------------------------------- |
-| `Desktop(window)`  | Tauri IPC, process boundary                                | Desktop webview                    |
-| `LocalSocket(uid)` | Accepted connection on the same-user socket                | `nyanpasu-cli`, `nyanpasu-cli mcp` |
-| `Token(id)`        | `Authorization: Bearer <token>` over HTTP                  | CLI/MCP/scripts over HTTP          |
-| `Session(id)`      | Browser session cookie, created by a launch link or login  | WebUI in a browser                 |
-| `Anonymous`        | Only in `local_open`, loopback request without credentials | Local scripts, local browser       |
+| Principal          | How it is established                                      | Typical caller               |
+| ------------------ | ---------------------------------------------------------- | ---------------------------- |
+| `Desktop(window)`  | Tauri IPC, process boundary                                | Desktop webview              |
+| `LocalSocket(uid)` | Accepted connection on the same-user socket                | `nyanpasu-cli`               |
+| `Token(id)`        | `Authorization: Bearer <token>` over HTTP                  | CLI/scripts over HTTP        |
+| `Session(id)`      | Browser session cookie, created by a launch link or login  | WebUI in a browser           |
+| `Anonymous`        | Only in `local_open`, loopback request without credentials | Local scripts, local browser |
 
 The principal identifies the authenticated caller for authorization and audit.
 `RpcOwner` identifies a resource lifetime, such as a log-reading cursor. They
@@ -156,7 +159,7 @@ authenticated principal (`session:<id>`, `token:<id>`, or `anonymous`) — a cli
 can never forge or cross into another principal's owner namespace. `client_nonce`
 comes from an optional client-supplied `X-Nyanpasu-Client-Id` header (validated
 as a short opaque identifier, defaulting to `default` when omitted). Each
-`nyanpasu-cli` / `nyanpasu-cli mcp` process generates an in-memory UUID for this
+`nyanpasu-cli` process generates an in-memory UUID for this
 header, and each browser tab generates one in `sessionStorage`, keeping
 concurrent clients using the same token independent. Abandoned log sessions
 expire automatically through `nyanpasu-logging`'s existing 45-second lease, and
@@ -166,11 +169,13 @@ streams for that principal via per-principal cancellation.
 ### 4.2 Access tokens
 
 - Long-lived, named, created by the owner from the desktop GUI or
-  `nyanpasu-cli remote token create` over the local socket.
+  `nyanpasu-cli remote token create <name> --role <viewer|operator|admin>` (or
+  repeated `--permission <resource:access>` for a custom map) over the local
+  socket.
 - Format `npk_<id>_<secret>`: a public id for listing, revoking and audit, and a
   256-bit random secret. Only a SHA-256 hash of the secret is kept (high
   entropy makes a slow hash unnecessary); the secret is shown once.
-- Each token carries a scope set ([§5](#5-command-capabilities)) and an optional
+- Each token carries a grant ([§5](#5-command-capabilities)) and an optional
   expiry. Revocation or expiry invalidates its derived browser sessions and ends
   active SSE streams for that principal. It prevents new admissions without
   cancelling already-admitted business work.
@@ -187,7 +192,8 @@ There are two ways to obtain one:
    today's per-start `access_token`, which is reusable for the whole run.
 2. **Login with a token** (all authenticated strategies, the only way from
    another device on the LAN): a minimal `/login` page accepts an access token
-   and exchanges it for a session cookie bound to that token's scopes.
+   and exchanges it for a session cookie bound to that token's grant. A launch
+   code opens an `admin` session.
 
 The WebUI preserves full multi-privilege behavior (**full-access**, **scoped
 token**, and **read-only / `local_open`** tiers) without complex in-memory
@@ -203,9 +209,9 @@ principal hot-swapping:
   - It calls `rpc_describe()` once.
   - On `401` (unauthenticated under an authenticated strategy), it renders or
     redirects to `/login` without mounting app providers.
-  - On success, it compares the resolved non-secret principal+scope key
-    (`principal.kind + principal.id + sorted(scopes)`) against a stored browser
-    marker in `localStorage`. If the principal or scope set changed (for
+  - On success, it compares the resolved non-secret principal+permission key
+    (`principal.kind + principal.id + permissions`) against a stored browser
+    marker in `localStorage`. If the principal or its permissions changed (for
     example, switching tokens or dropping into `local_open`), it synchronously
     clears persisted `nyanpasu-kv-*` / theme `localStorage` keys and calls
     `queryClient.clear()` **before** rendering `<NyanpasuQueryProvider>` or
@@ -216,15 +222,16 @@ principal hot-swapping:
   stream closes due to revocation/expiry, the client calls `rpc.dispose()`,
   clears `nyanpasu-kv-*` and the principal marker, and navigates via
   `window.location.replace('/login')`.
-- **Scope-aware UI gating.** A `useCapabilities()` hook exposes the immutable
-  `rpc_describe()` snapshot so routes, controls, and storage-backed UI features
-  gate cleanly:
-  - `sensitive_read` gates secrets and sensitive viewers (Clash `secret`,
-    subscription URLs, raw profile/config/log viewers, and custom CSS storage).
-  - Mutation controls gate on `proxy`, `profile`, `settings`, and `system` (via
-    both command `allowed` flags and scope checks).
-  - `remote_admin` controls are rendered only on Desktop (`bridge === 'tauri'`),
-    matching HTTP exposure rules.
+- **Permission-aware UI gating.** A `useCapabilities()` hook exposes the
+  immutable `rpc_describe()` snapshot so routes, controls, and storage-backed UI
+  features gate cleanly on permissions written `resource:access`:
+  - Pages and viewers gate on the `read` of the documents they show (for
+    example `profile:read` for profile contents, `settings:read` for custom CSS
+    storage, `logs:read` for log viewers).
+  - Mutation controls gate on the resource's `write` (via both command
+    `allowed` flags and permission checks).
+  - `remote` controls are rendered only on Desktop, matching HTTP exposure
+    rules.
 
 ### 4.4 Request checks per strategy
 
@@ -246,7 +253,8 @@ Notes:
   post to `local_open`. Origin checks cover the rest.
 - `local_open` trusts **every local process of every OS user** on the
   machine, because loopback TCP is not user-scoped. The settings UI states
-  this, and `local_open_scopes` defaults to `[read]`. Users who want an
+  this, and an anonymous caller holds only capability discovery unless
+  `anonymous_permissions` adds more. Users who want an
   unauthenticated CLI should use the local socket, which is same-user only.
 - Credential verification uses constant-time comparison over SHA-256 hashes;
   `401` responses carry no detail. Because secrets have 256 bits of random
@@ -282,54 +290,77 @@ tokens and a new certificate.
 
 ## 5. Command capabilities
 
+The permission model below replaced the original scope set before the stack was
+released; its design and the reviewed change list are in the
+[permission namespace spec](../2026-11-16-rpc-permission-namespace/design.md).
+
 ### 5.1 Two independent axes
 
 - **Exposure (per target):** whether a transport offers the command at all. This
   is per-target opt-in: `rpc(http)` (WebUI/HTTP) and `rpc(local)` (local
   socket). Tauri IPC exposes everything. A command not exposed on a target
   returns a structured `unsupported` error from the registry.
-- **Scope (per principal):** what a principal may do among the exposed
-  commands. Each command declares exactly one scope; each principal holds a
-  scope set.
+- **Permission (per caller):** what a caller may do among the exposed commands.
+  Each command requires exactly one permission, a resource and an access level
+  written `proxy:write`; each caller holds at most one level per resource.
 
-A call succeeds only if the command is exposed on the transport **and** its
-scope is in the principal's set. The CLI over HTTP therefore sees the HTTP
+A call succeeds only if the command is exposed on the transport **and** the
+caller holds its permission. The CLI over HTTP therefore sees the HTTP
 allowlist and the CLI over the socket sees the local allowlist. "CLI" is not a
 transport and gets no allowlist of its own.
 
-### 5.2 Scopes
+### 5.2 Permissions and roles
 
-| Scope            | Covers                                                                                                | Classification          |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | ----------------------- |
-| `read`           | Queries without secrets: status, proxies, profiles, rules, logs, traffic, connections, settings reads | Default for every query |
-| `sensitive_read` | Queries that return secrets: Clash `secret`, subscription URLs, profile contents, raw runtime config  | Declared per query      |
-| `proxy`          | Select proxy, latency tests, switch mode, close connections                                           | Declared per mutation   |
-| `profile`        | Profile and subscription CRUD, update subscriptions, chains, runtime patches                          | Declared per mutation   |
-| `settings`       | Application and Clash config patches that are not system or remote-access settings                    | Declared per mutation   |
-| `system`         | Core start/stop/restart/switch, system proxy, TUN, transparent proxy                                  | Declared per mutation   |
-| `remote_admin`   | `remote_access` settings, tokens, sessions                                                            | Declared per mutation   |
+| Resource   | Covers                                                                                |
+| ---------- | ------------------------------------------------------------------------------------- |
+| `meta`     | Capability discovery (`rpc_describe`) only; every resolved caller holds `meta:read`   |
+| `proxy`    | Proxy groups and nodes, selection, latency tests, the proxy mode, closing connections |
+| `profile`  | Profiles and subscriptions, chains, activation, the proxy group layout                |
+| `settings` | Ordinary application and Clash preferences; frontend key-value storage                |
+| `system`   | Core lifecycle, system proxy, TUN, transparent proxy, service mode, OS integration    |
+| `logs`     | Application and core logs                                                             |
+| `traffic`  | Traffic, connection lists and their history                                           |
+| `remote`   | `remote_access` settings, tokens, sessions, certificates; never over HTTP             |
 
-Declaration, extending the macro:
+`write` includes `read`. A query requires its resource's `read` and a mutation
+its `write`, with reviewed exceptions (latency tests require `proxy:write`; log
+sessions and connection-detail subscriptions require `read`). Declaration,
+until the namespace tree derives it:
 
 ```rust
-#[nyanpasu_macro::rpc(http, local, scope = proxy)]
+#[nyanpasu_rpc::rpc(http, local, permission = proxy:write)]
 pub async fn select_proxy(/* … */) -> Result<()> { /* … */ }
 
-#[nyanpasu_macro::rpc(http, local, scope = sensitive_read)]
-pub async fn get_profile_content(/* … */) -> Result<String> { /* … */ }
+#[nyanpasu_rpc::rpc(http, local, query, permission = profile:read, sensitive)]
+pub async fn read_profile_file(/* … */) -> Result<String> { /* … */ }
 ```
 
-- Queries default to `read`; a query that returns a secret must declare
-  `sensitive_read`, and the review of each `rpc(http)` query includes this
-  check. A mutation without `scope` fails to compile; the macro source tests
-  check every declaration.
-- A token holds `system` only when it was created with it; it is never part of
-  a default scope set.
-- `nyanpasu_config::application::Scope` is the single canonical scope enum used
-  across config validation (`local_open_scopes`), core auth, and
-  `nyanpasu-rpc-protocol`.
+Roles are named permission sets; admission never sees them:
 
-One scope per command requires matching request and response boundaries:
+| Role        | Holds                                                                   | Held by                                             |
+| ----------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `anonymous` | Nothing beyond `meta:read`, plus the configured `anonymous_permissions` | An HTTP request without a credential (`local_open`) |
+| `viewer`    | `read` on `proxy`, `profile`, `settings`, `system`, `logs`, `traffic`   | Tokens                                              |
+| `operator`  | `viewer`, plus `write` on `proxy`, `profile`, `settings`, `traffic`     | Tokens                                              |
+| `admin`     | `operator`, plus `write` on `system` and `logs`                         | Tokens; launch-code browser sessions                |
+| `owner`     | `admin`, plus `remote:write`                                            | The desktop window and the same-user local socket   |
+
+- A token stores a grant, `{ "role": "viewer" }` or a custom map
+  `{ "permissions": { "proxy": "write", "logs": "read" } }`. A role follows later
+  changes to its definition; a custom map stays as granted. Only `viewer`,
+  `operator` and `admin` can be granted, and a custom map never holds `remote`.
+  The grant is validated when the token is issued and when the stored record is
+  loaded. A browser session opened with a token holds the token's grant.
+- `sensitive` marks a command whose response may carry credentials,
+  subscription URLs, configuration text or diagnostics. It never takes part in
+  admission: a sensitive read requires its domain's `read`. The token dialog,
+  the anonymous settings and `nyanpasu-cli remote token create` list the
+  sensitive commands a grant reaches.
+- `nyanpasu_config::application::{Resource, Access, Permission, Permissions, Role}`
+  are the single definitions used across config validation
+  (`anonymous_permissions`), core auth, and `nyanpasu-rpc-protocol`.
+
+One permission per command requires matching request and response boundaries:
 
 - **Privilege-separated patches.** General `patch_app_config` and
   `patch_clash_config` accept ordinary preferences only
@@ -339,24 +370,26 @@ One scope per command requires matching request and response boundaries:
   `false`, empty-collection, and same-value unauthorized writes are rejected
   atomically before handler admission across all transports.
 - **Secret-free companion reads.** Queries exposing subscription URLs, Clash
-  secrets, raw profile/config text, or unsanitized logs require `sensitive_read`;
+  secrets, raw profile/config text, or unsanitized logs are marked `sensitive`;
   secret-free companion queries (safe settings, safe status/profile/log
-  summaries) serve unprivileged `read` callers.
-- **Response and outcome privacy.** Unprivileged callers without
-  `sensitive_read` receive bounded `PublicFailure` / redacted
+  summaries) carry the useful part without the marking.
+- **Response and outcome privacy.** Until the redaction layer has its own
+  rules, a caller sees an unredacted response only when it holds `write` on the
+  resource it called; others receive bounded `PublicFailure` / redacted
   `CommittedDegraded` views without filesystem paths, URLs, credentials, or raw
   internal diagnostics.
 
 ### 5.3 Hard rules
 
-- `remote_admin` is never exposed over HTTP. Remote access is managed from the
+- `remote` is never exposed over HTTP. Remote access is managed from the
   desktop GUI or the local socket only.
 - Elevation, OS integration and shell capabilities keep their existing
-  restrictions; a scope never grants a capability the shell does not provide.
-- `local_open` anonymous callers never hold `sensitive_read`, `system` or
-  `remote_admin`, whatever `local_open_scopes` says; validation rejects such a
-  patch.
-- `LocalSocket(uid)` holds all scopes: it is the same OS user who owns the app.
+  restrictions; a permission never grants a capability the shell does not
+  provide.
+- `local_open` anonymous callers never hold more than the `operator` role,
+  whatever `anonymous_permissions` says: validation rejects such a patch, and
+  the listener caps the stored value.
+- `LocalSocket(uid)` is the owner: it is the same OS user who owns the app.
 
 ### 5.4 Capability discovery
 
@@ -364,41 +397,42 @@ One scope per command requires matching request and response boundaries:
 
 ```json
 {
-  "protocol": 1,
+  "protocol": 2,
   "server": { "kind": "desktop", "version": "2.0.0" },
   "transport": "http",
   "principal": { "kind": "token", "id": "a1b2", "name": "laptop-cli" },
-  "scopes": ["read", "proxy"],
+  "role": null,
+  "permissions": { "proxy": "write", "logs": "read" },
   "commands": [
     {
       "name": "select_proxy",
-      "kind": "mutation",
-      "scope": "proxy",
+      "effect": "mutation",
+      "permission": { "resource": "proxy", "access": "write" },
+      "sensitive": false,
       "allowed": true
     }
   ]
 }
 ```
 
-Every resolved principal may inspect its own `rpc_describe` metadata without
-holding `read`; this own-only exception grants no business-data access, leaks no
-other principal's state, and admits no invalid credential. The CLI uses it to
-check protocol compatibility, filter subcommands, and intersect MCP tools;
-payload schemas for curated operations live in the CLI/MCP static table
-([§9.2](#92-mcp)).
+`rpc_describe` requires `meta:read`, which every resolved caller holds, so any
+resolved caller may inspect its own metadata; it grants no business-data access,
+leaks no other principal's state, and admits no invalid credential. The CLI uses
+it to check protocol compatibility and filter subcommands; payload schemas for
+curated operations live in the CLI's static table ([§8.4](#84-v0-before-the-typed-protocol)).
 
 ### 5.5 Direct HTTP routes and streams
 
 Routes outside `/bridge/rpc` pass through the same audited authorization policy
 before reading files, generating archives, or acquiring stream receivers:
 
-| Entry                        | Required scope and admission                                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `/bridge/logs/archive`       | `sensitive_read` before generating or reading diagnostic archives                                                     |
-| `/bridge/connection-details` | `read` before subscribing                                                                                             |
-| `/bridge/icons/{*path}`      | `read` before serving profile/group icons                                                                             |
-| `/bridge/events?name=…`      | Explicit per-event exposure and scope metadata (`StorageResync` at `read`; `StorageValueChanged` at `sensitive_read`) |
-| `/bridge/events` (unnamed)   | Deliver only HTTP-exposed events whose required scope the principal holds                                             |
+| Entry                        | Required permission and admission                                                                        |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `/bridge/logs/archive`       | `logs:read` (sensitive) before generating or reading diagnostic archives                                 |
+| `/bridge/connection-details` | `traffic:read` before subscribing                                                                        |
+| `/bridge/icons/{*path}`      | `system:read` before serving profile/group icons                                                         |
+| `/bridge/events?name=…`      | Explicit per-event exposure and permission (`storage-value-changed-event` at `settings:read`, sensitive) |
+| `/bridge/events` (unnamed)   | Deliver only HTTP-exposed events whose permission the caller holds                                       |
 
 Active HTTP SSE streams register under their principal's cancellation token and
 stop immediately when the backing token or session is revoked or expires.
@@ -439,16 +473,16 @@ stop immediately when the backing token or session is revoked or expires.
 
 ## 7. Ownership and packages
 
-| Piece                                                                           | Kind                 | Home                                                                                                |
-| ------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
-| `remote_access` settings schema, validation, canonical `Scope`                  | Pure                 | `nyanpasu-config`                                                                                   |
-| `RemoteAccessActor` / `RemoteAccessClient`: tokens, sessions, launch codes, TLS | Actor                | Core package family; exposed through `NyanpasuClient` domain operations                             |
-| Secret file storage (`auth-secrets.json`) and backup exclusion                  | Port + adapter       | Port in core, plain owner-only adapter in `nyanpasu-os` / `nyanpasu-paths`                          |
-| Scope and exposure metadata                                                     | Protocol             | `nyanpasu-rpc-protocol`                                                                             |
-| Authorization policy (exposure × scope) and response privacy                    | Registry + transport | Shared policy in `nyanpasu-rpc`, applied inside `dispatch_audited`, direct routes, and streams      |
-| HTTP listener, bearer/session/nonce extraction, Host/Origin, TLS                | Transport            | `nyanpasu-rpc/src/http/`                                                                            |
-| Local-socket listener and client                                                | Transport            | `nyanpasu-rpc/src/local/`                                                                           |
-| `nyanpasu-cli`, curated command/tool table, MCP subcommand                      | Client               | `backend/nyanpasu-cli`, production links protocol/transport only (`nyanpasu-core` in dev-deps only) |
+| Piece                                                                           | Kind                 | Home                                                                                                                 |
+| ------------------------------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `remote_access` settings schema, validation, the permission model and roles     | Pure                 | `nyanpasu-config`                                                                                                    |
+| `RemoteAccessActor` / `RemoteAccessClient`: tokens, sessions, launch codes, TLS | Actor                | Core package family; exposed through `NyanpasuClient` domain operations                                              |
+| Secret file storage (`auth-secrets.json`) and backup exclusion                  | Port + adapter       | Port in core, plain owner-only adapter in `nyanpasu-os` / `nyanpasu-paths`                                           |
+| Permission, sensitive marking and exposure metadata (generated resource table)  | Protocol             | `nyanpasu-rpc-protocol`                                                                                              |
+| Admission (exposure and capabilities, then permissions) and response redaction  | Registry + transport | `Authority` and the redaction layer in `nyanpasu-rpc`, applied inside `dispatch_audited`, direct routes, and streams |
+| HTTP listener, bearer/session/nonce extraction, Host/Origin, TLS                | Transport            | `nyanpasu-rpc/src/http/`                                                                                             |
+| Local-socket listener and client                                                | Transport            | `nyanpasu-rpc/src/local/`                                                                                            |
+| `nyanpasu-cli` and its curated command table                                    | Client               | `backend/nyanpasu-cli`, production links protocol/transport only (`nyanpasu-core` in dev-deps only)                  |
 
 No Tauri type enters any of these except the desktop composition root. The
 remote-access owner holds no reference to the HTTP server; the server consumes
@@ -494,7 +528,6 @@ nyanpasu-cli remote    status | http on|off|strategy <s> | socket on|off
 nyanpasu-cli methods                 # rpc_describe, human readable
 nyanpasu-cli call <method> [<json>]  # raw call of any allowed command
 nyanpasu-cli context   add | use | list | remove
-nyanpasu-cli mcp       [--scope <s>…] [--raw]
 nyanpasu-cli skill     path | install [--agent <name>]
 nyanpasu-cli completion <shell>
 ```
@@ -512,7 +545,7 @@ nyanpasu-cli completion <shell>
 | 1    | Application error (`RpcError` from the domain)            |
 | 2    | Usage error                                               |
 | 3    | Not reachable: app not running, socket disabled, HTTP off |
-| 4    | Not authenticated or scope denied                         |
+| 4    | Not authenticated or permission denied                    |
 | 5    | Unsupported on this target or shell                       |
 | 6    | Applied with degradation                                  |
 
@@ -522,12 +555,11 @@ The extraction plan schedules full protocol DTOs in E1b, after which CLI v1 can
 bind directly to typed request/response structs. To ship sooner without adding a
 1,600+ line custom AST schema generator:
 
-- **CLI v0** shares a small curated static command table (~15–20 operations)
-  with `nyanpasu-cli mcp`: RPC method name, scope, description, and compact JSON
-  input schema. `call <method> [<json>]` covers every other command.
+- **CLI v0** keeps a small curated static command table (~15–20 operations):
+  RPC method name, permission, description, and compact JSON input schema. `call <method> [<json>]` covers every other command.
 - **Integration test verification:** `nyanpasu-cli` includes `nyanpasu-core` as
   a `dev-dependency` solely to spin up a real in-process RPC server and exercise
-  every curated command and MCP tool end-to-end, catching any renamed field or
+  every curated command end-to-end, catching any renamed field or
   stale schema in CI before users ever hit it.
 
 ### 8.5 Shipping
@@ -557,6 +589,13 @@ boundary gate.
 - Tests verify that every command named in the skill exists in `nyanpasu-cli`.
 
 ### 9.2 MCP
+
+> **Removed.** The stdio server below was removed before release: a server inside
+> the CLI binary pinned agents to a CLI that the app's own updates replace, and the
+> server cannot tell an MCP connection from any other caller. Agents will be
+> served over streamable HTTP by the app instead (TODO; see the permission
+> namespace spec, extensions E-2 and E-4). The original design is kept below for
+> reference.
 
 - `nyanpasu-cli mcp` is a stdio MCP server reusing the CLI's connection logic,
   contexts, and credentials.
@@ -592,13 +631,14 @@ boundary gate.
   `0700`/`0600` on Unix, is excluded from backups even concurrently with first
   write, and rejects overlapping config dirs.
 - **Settings:** validation (`lan_authenticated` requires `self_signed`,
-  `local_open` scope cap), first-start port persistence, degraded status when a
+  anonymous permissions capped at the operator role), first-start port persistence, degraded status when a
   persisted port is busy, and serial actor ordering.
-- **Authorization & privacy:** exposure × scope matrix across all principals
-  (`remote_admin` rejected over HTTP, `unsupported` for unexposed commands);
-  atomic rejection of unauthorized or mixed general patches; `sensitive_read`
-  gating on secret-bearing queries; `PublicFailure` and `CommittedDegraded`
-  redaction; macro compile-fail test for mutations lacking `scope`.
+- **Authorization & privacy:** exposure × permission matrix across all callers
+  (`remote` rejected over HTTP, `unsupported` for unexposed commands);
+  atomic rejection of unauthorized or mixed general patches; the pinned
+  sensitive set, which takes no part in admission; `PublicFailure` and
+  `CommittedDegraded` redaction for callers without `write` on the called
+  resource; generator rejection of declarations lacking `permission`.
 - **HTTP & direct routes:** Host/Origin/JSON checks across strategies; bearer on
   static routes rejected; loopback not exempt under `lan_authenticated`; direct
   route and SSE event filtering (`resync` and revocation stop).
@@ -606,30 +646,31 @@ boundary gate.
   `/login` without mounting providers; switching principal/scope synchronously
   clears `nyanpasu-kv-*`, theme storage, and `QueryClient` before mount;
   runtime `401` disposes RPC and navigates to `/login`; `useCapabilities()`
-  hides `sensitive_read`, unauthorized mutations, and HTTP `remote_admin` UI.
-- **Local socket & CLI/MCP:** same-user socket rejection (Unix `SO_PEERCRED` /
+  hides pages whose documents the caller may not read, unauthorized
+  mutations, and HTTP `remote` UI.
+- **Local socket & CLI:** same-user socket rejection (Unix `SO_PEERCRED` /
   Windows pipe DACL); CLI target precedence with zero cross-target fallback;
-  TLS pinning and mismatch error (PR 7); exit codes 0–6; every curated CLI/MCP
-  tool exercised against a real core-backed test server; skill command check;
+  TLS pinning and mismatch error (PR 7); exit codes 0–6; every curated CLI
+  command exercised against a real core-backed test server; skill command check;
   production CLI links no core crate.
 
 ## 11. Decisions
 
-| #   | Question                      | Decision                                                                                                            |
-| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 1   | How a browser logs in         | 60s single-use launch link and token login only; no pairing code, no password                                       |
-| 2   | WebUI privilege tiers         | Preserve multi-privilege UI (full, scoped token, `local_open`); isolate via full-navigation + pre-mount gate        |
-| 3   | Resource ownership            | Derived `http:{principal_id}:{client_nonce}` + existing 45s logging lease; no resource-session endpoints/cookies    |
-| 4   | Secrets at rest & auth limits | Plain owner-only `auth-secrets.json` (excluded from backups); no keyring AEAD, ACL walkers, or peer rate limiter    |
-| 5   | CLI & MCP schemas             | Curated static command/tool table (~15–20 ops) + raw `call`/`call_method`, verified by core integration tests       |
-| 6   | TLS & LAN                     | Self-signed cert, pinned in CLI; deferred with `lan_authenticated` to the final PR after local/CLI/MCP ship         |
-| 7   | Port                          | First start picks a random free port and persists it                                                                |
-| 8   | Scope granularity             | Canonical `Scope` enum in §5.2 (`read`, `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`) |
-| 9   | Binary name & v0              | `nyanpasu-cli`; ship v0 on JSON + static table before E1b typed DTOs                                                |
-| 10  | Desktop/server & MCP form     | Desktop first (`nyanpasu-server` reuses pieces in E4); `nyanpasu-cli mcp` over stdio (no HTTP MCP)                  |
-| —   | Local socket switch           | Separate persisted switch (`local_socket.enabled`), off by default                                                  |
-| —   | CLI target selection          | Select one target before transport; zero fallback to another context or instance                                    |
-| —   | Discovery permission          | Every resolved principal may call `rpc_describe` for its own metadata without `read`                                |
+| #   | Question                      | Decision                                                                                                                                                                   |
+| --- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | How a browser logs in         | 60s single-use launch link and token login only; no pairing code, no password                                                                                              |
+| 2   | WebUI privilege tiers         | Preserve multi-privilege UI (full, scoped token, `local_open`); isolate via full-navigation + pre-mount gate                                                               |
+| 3   | Resource ownership            | Derived `http:{principal_id}:{client_nonce}` + existing 45s logging lease; no resource-session endpoints/cookies                                                           |
+| 4   | Secrets at rest & auth limits | Plain owner-only `auth-secrets.json` (excluded from backups); no keyring AEAD, ACL walkers, or peer rate limiter                                                           |
+| 5   | CLI & MCP schemas             | Curated static command/tool table (~15–20 ops) + raw `call`/`call_method`, verified by core integration tests                                                              |
+| 6   | TLS & LAN                     | Self-signed cert, pinned in CLI; deferred with `lan_authenticated` to the final PR after local/CLI/MCP ship                                                                |
+| 7   | Port                          | First start picks a random free port and persists it                                                                                                                       |
+| 8   | Scope granularity             | Canonical `Scope` enum (`read`, `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`); superseded before release by the resource permissions of §5.2 |
+| 9   | Binary name & v0              | `nyanpasu-cli`; ship v0 on JSON + static table before E1b typed DTOs                                                                                                       |
+| 10  | Desktop/server & MCP form     | Desktop first (`nyanpasu-server` reuses pieces in E4); `nyanpasu-cli mcp` over stdio, superseded: removed before release in favor of app-hosted streamable HTTP (TODO)     |
+| —   | Local socket switch           | Separate persisted switch (`local_socket.enabled`), off by default                                                                                                         |
+| —   | CLI target selection          | Select one target before transport; zero fallback to another context or instance                                                                                           |
+| —   | Discovery permission          | `rpc_describe` requires `meta:read`, which every resolved caller holds, and returns only the caller's own metadata                                                         |
 
 ## 12. Order
 

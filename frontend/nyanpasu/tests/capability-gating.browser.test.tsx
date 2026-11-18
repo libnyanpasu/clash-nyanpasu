@@ -14,53 +14,63 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { DelayHistoryTooltip } from '@/components/proxies/delay-history'
 import { m } from '@/paraglide/messages'
 import ProxyNodeButton from '../src/pages/(main)/main/proxies/group/_modules/proxy-node-button'
-import { withScopes } from './all-scopes'
+import { withPermissions } from './all-permissions'
 
 function Tiers() {
   const capabilities = useCapabilities()
 
   return (
     <output>
-      {(['read', 'sensitive_read', 'proxy', 'settings', 'system'] as const)
+      {(
+        [
+          'proxy:read',
+          'proxy:write',
+          'logs:read',
+          'settings:write',
+          'system:read',
+        ] as const
+      )
         .map(
-          (scope) =>
-            `${scope}:${capabilities.hasScope(scope)}:${capabilities.isReadOnly(scope)}`,
+          (permission) =>
+            `${permission}:${capabilities.hasPermission(permission)}:${capabilities.isReadOnly(permission)}`,
         )
         .join(' ')}
     </output>
   )
 }
 
-test('each tier is independent: holding proxy grants no read', async () => {
-  const view = await render(<Tiers />, { wrapper: withScopes(['proxy']) })
+test('write includes read on its resource and grants nothing on another', async () => {
+  const view = await render(<Tiers />, {
+    wrapper: withPermissions({ proxy: 'write' }),
+  })
 
   await expect
     .element(view.getByRole('status'))
     .toHaveTextContent(
-      'read:false:true sensitive_read:false:true proxy:true:false settings:false:true system:false:true',
+      'proxy:read:true:false proxy:write:true:false logs:read:false:true settings:write:false:true system:read:false:true',
     )
 })
 
-test('a caller holding every scope of the page sees no banner and live controls', async () => {
+test('a caller holding every permission of the page sees no banner and live controls', async () => {
   const view = await render(
-    <ReadOnlyScope scopes={['settings']}>
+    <ReadOnlyScope permissions={['settings:write']}>
       <button type="button">save</button>
     </ReadOnlyScope>,
-    { wrapper: withScopes(['read', 'settings']) },
+    { wrapper: withPermissions({ settings: 'write' }) },
   )
 
   await expect.element(view.getByRole('button', { name: 'save' })).toBeEnabled()
   expect(view.getByRole('status').query()).toBeNull()
 })
 
-test('a caller without the scope sees a read-only banner and inert controls', async () => {
+test('a caller without the permission sees a read-only banner and inert controls', async () => {
   const view = await render(
-    <ReadOnlyScope scopes={['settings', 'system']}>
+    <ReadOnlyScope permissions={['settings:write', 'system:write']}>
       <button type="button">save</button>
       <input aria-label="name" />
     </ReadOnlyScope>,
-    // `settings` alone does not cover a page that also needs `system`.
-    { wrapper: withScopes(['read', 'settings']) },
+    // `settings:write` alone does not cover a page that also needs `system:write`.
+    { wrapper: withPermissions({ settings: 'write', system: 'read' }) },
   )
 
   await expect
@@ -75,21 +85,30 @@ test('a caller without the scope sees a read-only banner and inert controls', as
 test('the banner is left to one sibling scope when another asks for none', async () => {
   const view = await render(
     <>
-      <ReadOnlyScope scopes={['system']}>
+      <ReadOnlyScope permissions={['system:write']}>
         <button type="button">one</button>
       </ReadOnlyScope>
-      <ReadOnlyScope scopes={['system']} banner={false}>
+      <ReadOnlyScope permissions={['system:write']} banner={false}>
         <button type="button">two</button>
       </ReadOnlyScope>
     </>,
-    { wrapper: withScopes(['read']) },
+    {
+      wrapper: withPermissions({
+        proxy: 'read',
+        profile: 'read',
+        settings: 'read',
+        system: 'read',
+        logs: 'read',
+        traffic: 'read',
+      }),
+    },
   )
 
   await expect.element(view.getByRole('button', { name: 'two' })).toBeDisabled()
   expect(view.getByRole('status').elements()).toHaveLength(1)
 })
 
-test('a view of secrets is not mounted without sensitive_read', async () => {
+test('a view of secrets is not mounted without its domain read', async () => {
   const mounted = vi.fn()
   function SecretView() {
     mounted()
@@ -97,10 +116,13 @@ test('a view of secrets is not mounted without sensitive_read', async () => {
   }
 
   const denied = await render(
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="profile:read"
+      fallback={<RestrictedContent />}
+    >
       <SecretView />
     </RequireCapability>,
-    { wrapper: withScopes(['read', 'proxy']) },
+    { wrapper: withPermissions({ proxy: 'write', logs: 'read' }) },
   )
 
   await expect
@@ -110,16 +132,19 @@ test('a view of secrets is not mounted without sensitive_read', async () => {
   await denied.unmount()
 
   const allowed = await render(
-    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+    <RequireCapability
+      permission="profile:read"
+      fallback={<RestrictedContent />}
+    >
       <SecretView />
     </RequireCapability>,
-    { wrapper: withScopes(['read', 'sensitive_read']) },
+    { wrapper: withPermissions({ profile: 'read' }) },
   )
 
   await expect.element(allowed.getByText('secret')).toBeVisible()
 })
 
-async function renderNode(scopes: Parameters<typeof withScopes>[0]) {
+async function renderNode(held: Parameters<typeof withPermissions>[0]) {
   const onSelect = vi.fn(async () => {})
   const onDelayTest = vi.fn(async () => {})
   const view = await render(
@@ -153,19 +178,26 @@ async function renderNode(scopes: Parameters<typeof withScopes>[0]) {
         </DelayHistoryTooltip>
       </TooltipProvider>
     </BlockTaskProvider>,
-    { wrapper: withScopes(scopes) },
+    { wrapper: withPermissions(held) },
   )
 
   return { view, onSelect, onDelayTest }
 }
 
-test('selecting a node needs the proxy scope', async () => {
-  const denied = await renderNode(['read'])
+test('selecting a node needs proxy:write', async () => {
+  const denied = await renderNode({
+    proxy: 'read',
+    profile: 'read',
+    settings: 'read',
+    system: 'read',
+    logs: 'read',
+    traffic: 'read',
+  })
   await denied.view.getByText('node-a').click()
   expect(denied.onSelect).not.toHaveBeenCalled()
   await denied.view.unmount()
 
-  const allowed = await renderNode(['read', 'proxy'])
+  const allowed = await renderNode({ proxy: 'write' })
   await allowed.view.getByText('node-a').click()
   await vi.waitFor(() => expect(allowed.onSelect).toHaveBeenCalledOnce())
   await allowed.view.unmount()

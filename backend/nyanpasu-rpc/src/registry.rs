@@ -132,6 +132,8 @@ pub struct RpcCallMeta {
     provided: Vec<ShellCapability>,
     /// The row admission admitted this call to: the seam the layers inside admission read.
     resource: ResourceMetadata,
+    /// What the redaction layer decided the caller sees of the result and errors.
+    visibility: ResponseVisibility,
 }
 
 impl RpcCallMeta {
@@ -139,6 +141,12 @@ impl RpcCallMeta {
     #[must_use]
     pub fn resource(&self) -> &ResourceMetadata {
         &self.resource
+    }
+
+    /// How the result and errors of this call are encoded for the caller.
+    #[must_use]
+    pub fn visibility(&self) -> ResponseVisibility {
+        self.visibility
     }
 
     /// Build a caller-scoped self-description snapshot for `rpc_describe`.
@@ -150,7 +158,8 @@ impl RpcCallMeta {
                 server: self.server.clone(),
                 transport: self.target,
                 principal: auth.principal.clone(),
-                scopes: auth.scopes.clone(),
+                role: auth.role,
+                permissions: auth.permissions,
                 commands: crate::permission::describe_commands(
                     &self.commands,
                     Authority::new(&self.provided),
@@ -160,6 +169,12 @@ impl RpcCallMeta {
             },
         }
     }
+}
+
+/// The refusal of a method the registry does not know. It has no resource whose `write` would lift
+/// redaction, so the name the caller sent is never echoed back.
+fn unknown_method(method: &str) -> RpcError {
+    RpcError::unknown_method_for(ResponseVisibility::Public, method)
 }
 
 /// Observe dispatch without changing its result, polling, cancellation or unwind.
@@ -254,7 +269,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_rpc::rpc(scope = settings, local, result, operation = SetStorageItem)]
+/// #[nyanpasu_rpc::rpc(local, result, operation = SetStorageItem, permission = settings:write)]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -266,7 +281,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -278,7 +293,7 @@ pub type RpcHandler =
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
 /// }
 /// ```
@@ -289,7 +304,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(local, operation = SetStorageItem, permission = settings:write)]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -458,7 +473,8 @@ impl UnifiedRpc {
             server: self.server.clone(),
             transport: target,
             principal: auth.principal.clone(),
-            scopes: auth.scopes.clone(),
+            role: auth.role,
+            permissions: auth.permissions,
             commands: crate::permission::describe_commands(
                 &self.commands,
                 self.authority(),
@@ -480,7 +496,8 @@ impl UnifiedRpc {
             target,
             commands: Arc::clone(&self.commands),
             provided: self.provided.clone(),
-            resource: self.commands[crate::permission::RPC_DESCRIBE_METHOD].metadata,
+            resource: self.commands["rpc_describe"].metadata,
+            visibility: ResponseVisibility::Full,
         }
     }
 
@@ -519,14 +536,16 @@ impl UnifiedRpc {
         if auth.is_none() {
             return Err(RpcError::unauthorized("authentication required"));
         }
-        let visibility = ResponseVisibility::for_auth(auth);
         let command = self
             .commands
             .get(method)
-            .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
+            .ok_or_else(|| unknown_method(method))?;
         command.neutral_handler(target)?;
-        self.authority()
-            .admit(&command.metadata, target, auth.map(|auth| &auth.scopes))
+        self.authority().admit(
+            &command.metadata,
+            target,
+            auth.map(|auth| &auth.permissions),
+        )
     }
 
     pub(crate) async fn call_with_admission(
@@ -545,23 +564,26 @@ impl UnifiedRpc {
         };
         dispatch_with_audit(invocation, || {
             let caller = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
-            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             let command = self
                 .commands
                 .get(method)
-                .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
+                .ok_or_else(|| unknown_method(method))?;
             let handler = command.neutral_handler(target)?;
             self.authority()
-                .admit(&command.metadata, target, Some(&caller.auth().scopes))?;
+                .admit(&command.metadata, target, Some(&caller.auth().permissions))?;
             admit_resource()?;
-            // Data sharing and redaction (TODO, permission namespace spec section 4.6) sit here,
-            // reading the admitted row from the call metadata.
+            // Data sharing (TODO, permission namespace spec section 4.6) sits here, reading the
+            // admitted row from the call metadata.
             let meta = RpcCallMeta {
                 server: self.server.clone(),
                 target,
                 commands: self.commands.clone(),
                 provided: self.provided.clone(),
                 resource: command.metadata,
+                visibility: crate::redaction::visibility(
+                    &command.metadata,
+                    &caller.auth().permissions,
+                ),
             };
             handler(self.dependencies.clone(), meta, caller, params)
         })
@@ -575,7 +597,7 @@ impl UnifiedRpc {
         &self,
         method: &str,
         caller: RpcCaller,
-        call: impl FnOnce() -> Result<RpcFuture, RpcError>,
+        call: impl FnOnce(ResponseVisibility) -> Result<RpcFuture, RpcError>,
     ) -> Result<Value, RpcError> {
         dispatch_audited(
             &self.dependencies.audit,
@@ -585,11 +607,10 @@ impl UnifiedRpc {
             || self.audit_command_name(method),
             None,
             || {
-                let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
                 let command = self
                     .commands
                     .get(method)
-                    .ok_or_else(|| RpcError::unknown_method_for(visibility, method))?;
+                    .ok_or_else(|| unknown_method(method))?;
                 if !command.metadata.is_native_command() {
                     return Err(crate::permission::unavailable(
                         &command.metadata,
@@ -599,9 +620,12 @@ impl UnifiedRpc {
                 self.authority().admit(
                     &command.metadata,
                     RpcTarget::Desktop,
-                    Some(&caller.auth().scopes),
+                    Some(&caller.auth().permissions),
                 )?;
-                call()
+                call(crate::redaction::visibility(
+                    &command.metadata,
+                    &caller.auth().permissions,
+                ))
             },
         )
         .await

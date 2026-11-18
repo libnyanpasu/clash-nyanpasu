@@ -825,13 +825,9 @@ test.each(
 test.each([
   [{ kind: 'port_zero' }, m.error_config_remote_access_port_zero()],
   [
-    { kind: 'local_open_scopes_empty' },
-    m.error_config_remote_access_local_open_scopes_empty(),
-  ],
-  [
-    { kind: 'local_open_scope_forbidden', scope: 'sensitive_read' },
-    m.error_config_remote_access_local_open_scope_forbidden_scope({
-      scope: 'sensitive_read',
+    { kind: 'anonymous_beyond_operator', resource: 'system', access: 'write' },
+    m.error_config_remote_access_anonymous_beyond_operator_permission({
+      permission: 'system:write',
     }),
   ],
   [

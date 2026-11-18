@@ -1,4 +1,4 @@
-//! HTTP authentication port, late-bound seam, scope clamping, and stream revocation registry.
+//! HTTP authentication port, late-bound seam, and stream revocation registry.
 
 use std::{
     collections::HashMap,
@@ -6,8 +6,8 @@ use std::{
 };
 
 use nyanpasu_contracts::auth::{
-    AuthRevocation, AuthenticatedCaller, EstablishedBrowserSession, Principal, Scope, ScopeSet,
-    SecretString, SessionId, TokenId,
+    AuthRevocation, AuthenticatedCaller, EstablishedBrowserSession, Principal, SecretString,
+    SessionId, TokenId,
 };
 use nyanpasu_core::client::{NyanpasuClient, RemoteAuthError, WeakNyanpasuClient};
 use parking_lot::Mutex;
@@ -224,22 +224,6 @@ impl HttpAuthenticator for RpcHttpAuthenticator {
             notified.await;
         }
     }
-}
-
-/// Clamp `local_open` anonymous scopes so `sensitive_read`, `system`, and `remote_admin`
-/// are never granted to unauthenticated callers regardless of persisted settings.
-#[must_use]
-pub fn clamp_local_open_scopes(scopes: &[Scope]) -> ScopeSet {
-    scopes
-        .iter()
-        .copied()
-        .filter(|scope| {
-            !matches!(
-                scope,
-                Scope::SensitiveRead | Scope::System | Scope::RemoteAdmin
-            )
-        })
-        .collect()
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -493,7 +477,7 @@ impl PrincipalStreams {
 mod tests {
     use std::collections::{BTreeMap, HashSet};
 
-    use nyanpasu_contracts::auth::{AuthRevocation, Principal, Scope, SessionId, TokenId};
+    use nyanpasu_contracts::auth::{AuthRevocation, Principal, SessionId, TokenId};
     use parking_lot::Mutex;
     use tokio::sync::{broadcast, mpsc};
     use tokio_util::sync::CancellationToken;
@@ -594,26 +578,6 @@ mod tests {
         ) -> Result<broadcast::Receiver<AuthRevocation>, HttpAuthError> {
             unreachable!("the test supplies its own receiver")
         }
-    }
-
-    #[test]
-    fn clamp_local_open_scopes_strips_privileged_scopes() {
-        let clamped = clamp_local_open_scopes(&[
-            Scope::Read,
-            Scope::SensitiveRead,
-            Scope::Proxy,
-            Scope::Profile,
-            Scope::Settings,
-            Scope::System,
-            Scope::RemoteAdmin,
-        ]);
-        assert!(clamped.contains(Scope::Read));
-        assert!(clamped.contains(Scope::Proxy));
-        assert!(clamped.contains(Scope::Profile));
-        assert!(clamped.contains(Scope::Settings));
-        assert!(!clamped.contains(Scope::SensitiveRead));
-        assert!(!clamped.contains(Scope::System));
-        assert!(!clamped.contains(Scope::RemoteAdmin));
     }
 
     #[tokio::test]

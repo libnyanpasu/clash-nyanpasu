@@ -1,6 +1,7 @@
 //! Dedicated settings command scope through the production dispatch paths.
 
 use axum::http::StatusCode;
+use nyanpasu_contracts::auth::{Access, Resource};
 use serde_json::{Value, json};
 
 use crate::{audit::RpcTransport, registry::RpcCaller, test_support::Fixture};
@@ -475,69 +476,70 @@ async fn remote_access_is_not_writable_through_the_general_patch() {
     fixture.shutdown().await;
 }
 
-/// Each privileged-field command: (command, scope, a body of its own class, a field of another class).
-fn scope_boundary_cases() -> Vec<(&'static str, nyanpasu_rpc_protocol::Scope, Value, Value)> {
-    use nyanpasu_rpc_protocol::Scope;
+/// Each privileged-field command: (command, the resource it writes, a body of its own class, a
+/// field of another class).
+fn scope_boundary_cases() -> Vec<(&'static str, Resource, Value, Value)> {
     vec![
         (
             "patch_app_config",
-            Scope::Settings,
+            Resource::Settings,
             json!({"patch": {"proxy_layout_column": 7}}),
             json!({"enable_system_proxy": false}),
         ),
         (
             "patch_system_settings",
-            Scope::System,
+            Resource::System,
             json!({"patch": {"proxy_guard_interval": 20}}),
             json!({"proxy_layout_column": 7}),
         ),
         (
             "patch_clash_config",
-            Scope::Settings,
+            Resource::Settings,
             json!({"patch": {"expand_include_all": false}}),
             json!({"enable_tun_mode": false}),
         ),
         (
             "patch_clash_system_config",
-            Scope::System,
+            Resource::System,
             json!({"patch": {"web_ui_list": ["https://example.test/ui"]}}),
             json!({"expand_include_all": false}),
         ),
         (
             "patch_runtime_overrides",
-            Scope::Settings,
+            Resource::Settings,
             json!({"patch": {"ipv6": true}}),
             json!({"mode": "global"}),
         ),
         (
             "patch_runtime_access",
-            Scope::System,
+            Resource::System,
             json!({"patch": {"secret": "a-new-secret"}}),
             json!({"mode": "global"}),
         ),
     ]
 }
 
-/// The catalog scope of a command is the class of the fields its request type can hold.
+/// The resource a command writes is the class of the fields its request type can hold.
 #[tokio::test]
-async fn each_request_command_declares_the_scope_of_its_fields() {
-    use nyanpasu_rpc_protocol::{CommandEffect, Scope, permission::RESOURCES};
-    let scope = |name: &str| {
+async fn each_request_command_writes_the_resource_of_its_fields() {
+    use nyanpasu_rpc_protocol::{CommandEffect, permission::RESOURCES};
+    let writes = |name: &str| {
         let metadata = RESOURCES
             .iter()
             .find(|command| command.name == name)
             .unwrap();
         assert_eq!(metadata.effect, CommandEffect::Mutation, "{name}");
-        metadata.scope
+        assert_eq!(metadata.permission.access, Access::Write, "{name}");
+        metadata.permission.resource
     };
     for (name, expected, _, _) in scope_boundary_cases() {
-        assert_eq!(scope(name), expected, "{name}");
+        assert_eq!(writes(name), expected, "{name}");
     }
-    assert_eq!(scope("set_proxy_mode"), Scope::Proxy);
+    assert_eq!(writes("set_proxy_mode"), Resource::Proxy);
     // The retry re-applies persisted desired state and writes no field, so it stays `system`:
     // a settings-only caller cannot retry, which fails closed.
-    assert_eq!(scope("retry_configuration_effect"), Scope::System);
-    assert_eq!(scope("retry_configuration_runtime"), Scope::System);
+    assert_eq!(writes("retry_configuration_effect"), Resource::System);
+    assert_eq!(writes("retry_configuration_runtime"), Resource::System);
 }
 
 #[tokio::test]

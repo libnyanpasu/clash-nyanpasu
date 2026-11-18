@@ -9,8 +9,8 @@ mod request;
 pub use command::{CommandKind, ShellCapability};
 pub use error::{ResponseVisibility, RpcError, RpcValue};
 pub use event::EventName;
-/// Canonical authentication and scope domain types shared across core and transports.
-pub use nyanpasu_contracts::auth::{AuthContext, Principal, Scope, ScopeSet};
+/// Canonical authentication types shared across core and transports.
+pub use nyanpasu_contracts::auth::{AuthContext, Principal};
 pub use nyanpasu_rpc_wire::{
     CommandEffect, DescribedCommand, RpcDescribeResponse, RpcTarget, ServerInfo, ServerKind,
 };

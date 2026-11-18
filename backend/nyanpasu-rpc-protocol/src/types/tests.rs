@@ -97,9 +97,7 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
         PublicFailure, PublicHotkeyErrorKind, PublicOsProxyError, PublicProfilesError,
         PublicRuntimeError, PublicStorageError, PublicSubscriptionFetchKind, PublicSystemDnsError,
     };
-    use crate::{
-        AuthContext, Principal, ResponseVisibility, RpcError as ServerRpcError, Scope, ScopeSet,
-    };
+    use crate::{ResponseVisibility, RpcError as ServerRpcError};
 
     let public = IpcError {
         kind: IpcErrorKind::Public(Box::new(PublicFailure::Profiles(
@@ -158,31 +156,6 @@ fn public_error_forms_omit_detail_and_preserve_decision_metadata() {
             })
         )
     ));
-
-    let read_only = AuthContext::new(
-        Principal::Desktop {
-            window: "test".into(),
-        },
-        ScopeSet::from_iter([Scope::Read]),
-    );
-    let full = AuthContext::new(
-        Principal::Desktop {
-            window: "test".into(),
-        },
-        ScopeSet::from_iter([Scope::Read, Scope::SensitiveRead]),
-    );
-    assert_eq!(
-        ResponseVisibility::for_auth(Some(&read_only)),
-        ResponseVisibility::Public
-    );
-    assert_eq!(
-        ResponseVisibility::for_auth(None),
-        ResponseVisibility::Public
-    );
-    assert_eq!(
-        ResponseVisibility::for_auth(Some(&full)),
-        ResponseVisibility::Full
-    );
 
     let public_unknown =
         ServerRpcError::unknown_method_for(ResponseVisibility::Public, "secret_method_token");

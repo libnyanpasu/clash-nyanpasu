@@ -18,7 +18,10 @@ pub mod describe;
 pub mod endpoint;
 pub mod error;
 pub mod install;
-pub mod mcp;
+// TODO(mcp): offer the curated operations to agents over streamable HTTP served by the app,
+// instead of the stdio server that was removed: a server inside the CLI binary pinned agents to
+// a CLI that the app's updates replace, and the server cannot tell an MCP connection from any
+// other caller (permission namespace spec, extensions E-2 and E-4).
 pub mod output;
 pub mod placement;
 pub mod remote;
@@ -64,8 +67,6 @@ pub async fn run_process() -> ExitCode {
             .map(PathBuf::from),
     };
     let environment = target::Environment::from_process();
-    // Standard output stays unlocked: `mcp` writes it through tokio on another thread, which
-    // would wait forever on a lock this thread held for the whole process.
     let (mut stdin, mut stdout, mut stderr) = (io::stdin(), io::stdout(), io::stderr());
     let status = app::execute(
         cli,

@@ -12,19 +12,19 @@ use crate::{
     registry::RpcState,
 };
 
-#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, permission = system:read, sensitive)]
 #[specta::specta]
 pub fn get_core_dir(resolver: RpcState<'_, dyn CoreDirectoryResolver>) -> Result<String> {
     resolver.core_directory()
 }
 
-#[nyanpasu_rpc::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query, permission = system:read)]
 #[specta::specta]
 pub fn is_appimage(environment: RpcState<'_, HostEnvironment>) -> Result<bool> {
     Ok(environment.is_appimage)
 }
 
-#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, permission = system:read, sensitive)]
 #[specta::specta]
 pub async fn get_service_install_prompt(
     prompt: RpcState<'_, dyn ServiceInstallPrompt>,
@@ -34,7 +34,7 @@ pub async fn get_service_install_prompt(
 }
 
 // See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_rpc::rpc(privacy, optional_capabilities(elevation, os_integration, presentation), scope = system)]
+#[nyanpasu_rpc::rpc(privacy, optional_capabilities(elevation, os_integration, presentation), permission = system:write)]
 #[specta::specta]
 pub async fn set_service_mode(
     client: RpcState<'_, NyanpasuClient>,
@@ -46,7 +46,7 @@ pub async fn set_service_mode(
 /// Remote access widens who can reach the application, so it has its own command, reachable from
 /// the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
 /// section.
-#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), permission = remote:write)]
 #[specta::specta]
 pub async fn set_remote_access(
     client: RpcState<'_, NyanpasuClient>,
@@ -58,7 +58,7 @@ pub async fn set_remote_access(
 /// Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
 /// the old fingerprint refuse the server until they pin the new one, so it is a remote
 /// administration command, never reachable over HTTP.
-#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), scope = remote_admin)]
+#[nyanpasu_rpc::rpc(local, privacy, capabilities(http_server), permission = remote:write)]
 #[specta::specta]
 pub async fn reset_remote_access_tls(
     client: RpcState<'_, NyanpasuClient>,
@@ -66,7 +66,7 @@ pub async fn reset_remote_access_tls(
     Ok(client.reset_remote_access_tls().await?.into())
 }
 
-#[nyanpasu_rpc::rpc(http, capabilities(accent_color), query)]
+#[nyanpasu_rpc::rpc(http, capabilities(accent_color), query, permission = system:read)]
 #[specta::specta]
 pub fn get_system_accent_color(
     accent: RpcState<'_, dyn AccentColorQuery>,

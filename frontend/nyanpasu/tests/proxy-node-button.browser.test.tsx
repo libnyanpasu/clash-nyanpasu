@@ -8,7 +8,7 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { DelayHistoryTooltip } from '@/components/proxies/delay-history'
 import ProxyNodeButton from '@/pages/(main)/main/proxies/group/_modules/proxy-node-button'
 import type { ClashProxiesQueryProxyItem } from '@nyanpasu/query'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const proxy: ClashProxiesQueryProxyItem = {
   name: 'node-a',
@@ -53,7 +53,7 @@ async function renderButton(
       </TooltipProvider>
     </BlockTaskProvider>,
 
-    { wrapper: AllScopes },
+    { wrapper: AllPermissions },
   )
   return { screen, onSelect, onDelayTest }
 }
@@ -131,7 +131,7 @@ test('retesting a measured node shows loading until the test finishes', async ()
       </TooltipProvider>
     </BlockTaskProvider>,
 
-    { wrapper: AllScopes },
+    { wrapper: AllPermissions },
   )
 
   try {
@@ -192,7 +192,7 @@ test('a long leaf truncates instead of clipping the feature chips', async () => 
       </TooltipProvider>
     </BlockTaskProvider>,
 
-    { wrapper: AllScopes },
+    { wrapper: AllPermissions },
   )
   const features = screen.container.querySelector<HTMLElement>(
     '[data-slot="proxy-node-features"]',

@@ -15,7 +15,7 @@ import { Route } from '../src/pages/(main)/main/settings/nyanpasu/remote-access'
 import AccessTokens from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/access-tokens'
 import BrowserSessions from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/browser-sessions'
 import ServerSettings from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/server-settings'
-import { AllScopes, withScopes } from './all-scopes'
+import { AllPermissions, withPermissions } from './all-permissions'
 
 const dialogs = vi.hoisted(() => ({
   ask: vi.fn(async () => true),
@@ -50,7 +50,7 @@ async function mount(
   ui: React.ReactNode,
   handlers: Record<string, RpcHandler> = {},
   http: HttpConfig = { enabled: false, port: null },
-  wrapper: typeof AllScopes = AllScopes,
+  wrapper: typeof AllPermissions = AllPermissions,
 ) {
   const state = { status: off as typeof off | typeof on, http }
   const saved = vi.fn()
@@ -220,7 +220,7 @@ test('the web interface switch and the port are saved without losing the rest', 
   })
 })
 
-test('local open warns, offers only anonymous scopes and keeps at least one', async ({
+test('local open warns and offers anonymous permissions up to the operator role', async ({
   onTestFinished,
 }) => {
   const { view, saved } = await mount(
@@ -259,47 +259,48 @@ test('local open warns, offers only anonymous scopes and keeps at least one', as
     )
     .toBeVisible()
 
-  // Never anonymous: secrets, system control and remote administration.
-  expect(
-    view
-      .getByRole('checkbox', {
-        name: m.settings_remote_access_scope_sensitive_read(),
-      })
-      .query(),
-  ).toBeNull()
-  expect(
-    view
-      .getByRole('checkbox', { name: m.settings_remote_access_scope_system() })
-      .query(),
-  ).toBeNull()
+  const row = (resource: () => string) =>
+    view.getByRole('radiogroup', { name: resource() })
+  const level = (resource: () => string, label: () => string) =>
+    row(resource).getByRole('radio', { name: label() })
 
-  const read = view.getByRole('checkbox', {
-    name: m.settings_remote_access_scope_read(),
-  })
-  const proxy = view.getByRole('checkbox', {
-    name: m.settings_remote_access_scope_proxy(),
-  })
-  await expect.element(read).toBeChecked()
+  // Nothing is granted by default, remote access is never offered, and the
+  // system and logs levels stop at what the operator role reads.
+  await expect
+    .element(
+      level(
+        m.settings_remote_access_resource_proxy,
+        m.settings_remote_access_access_none,
+      ),
+    )
+    .toBeChecked()
+  expect(row(m.settings_remote_access_resource_remote).query()).toBeNull()
+  for (const resource of [
+    m.settings_remote_access_resource_system,
+    m.settings_remote_access_resource_logs,
+  ]) {
+    await expect
+      .element(level(resource, m.settings_remote_access_access_write))
+      .toBeDisabled()
+    await expect
+      .element(level(resource, m.settings_remote_access_access_read))
+      .toBeEnabled()
+  }
 
-  await proxy.click()
+  await level(
+    m.settings_remote_access_resource_proxy,
+    m.settings_remote_access_access_write,
+  ).click()
   expect(saved).toHaveBeenLastCalledWith({
     config: {
       http: {
         enabled: true,
         port: 8765,
         strategy: 'local_open',
-        local_open_scopes: ['read', 'proxy'],
+        anonymous_permissions: { proxy: 'write' },
       },
     },
   })
-
-  await read.click()
-  await proxy.click()
-  // The last scope cannot be removed: nothing more is written.
-  const writes = saved.mock.calls.length
-  await expect.element(proxy).toBeChecked()
-  await proxy.click()
-  expect(saved.mock.calls.length).toBe(writes)
 })
 
 const lan = {
@@ -614,7 +615,7 @@ test('a certificate that cannot be prepared is reported while the setting stays 
 const token = (over: Partial<AccessTokenSummary> = {}): AccessTokenSummary => ({
   id: 't1',
   name: 'laptop',
-  scopes: ['read', 'proxy'],
+  grant: { role: 'viewer' },
   created_at_ms: Date.UTC(2026, 0, 2, 3, 4, 5),
   expires_at_ms: null,
   last_used_at_ms: null,
@@ -629,11 +630,14 @@ test('the token is shown once and the dialog stays until it is confirmed saved',
   const { view, testRpc } = await mount(onTestFinished, <AccessTokens />, {
     list_remote_access_tokens: () => [...tokens],
     create_remote_access_token: (params) => {
-      const request = params?.request as { name: string; scopes: string[] }
+      const request = params?.request as {
+        name: string
+        grant: AccessTokenSummary['grant']
+      }
       const summary = token({
         id: 'new',
         name: request.name,
-        scopes: request.scopes as AccessTokenSummary['scopes'],
+        grant: request.grant,
       })
       tokens.push(summary)
       return { summary, token: 'secret-token-value' }
@@ -656,18 +660,43 @@ test('the token is shown once and the dialog stays until it is confirmed saved',
   await dialog
     .getByRole('textbox', { name: m.settings_remote_access_token_name() })
     .fill('phone')
+  // A role is chosen by default; a custom map offers every resource but remote.
+  await expect
+    .element(
+      dialog.getByRole('radio', {
+        name: m.settings_remote_access_role_viewer(),
+      }),
+    )
+    .toBeChecked()
   await dialog
-    .getByRole('checkbox', { name: m.settings_remote_access_scope_proxy() })
+    .getByRole('radio', { name: m.settings_remote_access_role_custom() })
     .click()
-  // `remote_admin` belongs to the desktop app; a token is never offered it.
-  expect(dialog.getByRole('checkbox').elements()).toHaveLength(6)
+  expect(
+    dialog
+      .getByRole('radiogroup', {
+        name: m.settings_remote_access_resource_remote(),
+      })
+      .query(),
+  ).toBeNull()
+  // An empty custom map grants nothing, so it cannot be created.
+  await expect.element(create).toBeDisabled()
+  await dialog
+    .getByRole('radiogroup', {
+      name: m.settings_remote_access_resource_proxy(),
+    })
+    .getByRole('radio', { name: m.settings_remote_access_access_write() })
+    .click()
+  await dialog
+    .getByRole('radiogroup', { name: m.settings_remote_access_resource_logs() })
+    .getByRole('radio', { name: m.settings_remote_access_access_read() })
+    .click()
   await create.click()
 
   await expect.element(dialog.getByText('secret-token-value')).toBeVisible()
   expect(testRpc.invoke).toHaveBeenCalledWith('create_remote_access_token', {
     request: {
       name: 'phone',
-      scopes: ['read', 'proxy'],
+      grant: { permissions: { proxy: 'write', logs: 'read' } },
       expires_at_ms: null,
     },
   })
@@ -745,7 +774,7 @@ test('browser sessions name their token and are revoked by id', async ({
   const session = (over: Partial<BrowserSessionSummary>) => ({
     id: 's1',
     backing_token_id: null,
-    scopes: ['read'],
+    grant: { role: 'admin' } as const,
     created_at_ms: Date.UTC(2026, 0, 2),
     last_active_at_ms: Date.UTC(2026, 0, 3),
     token_expires_at_ms: null,
@@ -791,7 +820,7 @@ test('the page is offered to the desktop app alone', async ({
     <Page />,
     {},
     { enabled: true, port: 1 },
-    withScopes(['read', 'sensitive_read', 'remote_admin']),
+    withPermissions({ profile: 'read', settings: 'read', remote: 'write' }),
   )
 
   await expect
@@ -813,7 +842,7 @@ test('the page is offered to the desktop app alone', async ({
     <Page />,
     {},
     { enabled: false, port: null },
-    AllScopes,
+    AllPermissions,
   )
 
   await expect

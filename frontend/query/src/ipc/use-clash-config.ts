@@ -16,12 +16,12 @@ import { invokeMutation, unwrapQueryOptions } from './query-options'
 
 /**
  * The live core configuration (`/configs`) without the controller secret
- * (`ClashApiSettings`), so ordinary readers need only `read`.
+ * (`ClashApiSettings`), so it is not marked sensitive.
  *
- * `upsert` writes the ordinary runtime overrides (`settings` scope): log
+ * `upsert` writes the ordinary runtime overrides (`settings:write`): log
  * level, IPv6, unified delay and TCP concurrency. The proxy mode and the
  * controller exposure have their own hooks, `useProxyMode` and
- * `useClashAccess`, because each needs a different scope.
+ * `useClashAccess`, because each needs a different permission.
  */
 export const useClashConfig = () => {
   const api = useQueryApi()
@@ -54,9 +54,9 @@ export const useClashConfig = () => {
 }
 
 /**
- * The controller exposure (`system` scope): whether the core accepts LAN
+ * The controller exposure (`system:write`): whether the core accepts LAN
  * connections, and the secret that guards its controller. It only writes: the
- * full live configuration carries the secret and is `sensitive_read`, so the
+ * full live configuration carries the secret and is marked sensitive, so the
  * LAN flag is read through `useClashConfig`.
  */
 export const useClashAccess = () => {

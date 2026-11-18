@@ -17,13 +17,19 @@ import {
   ModalTrigger,
   useModal,
 } from '@nyanpasu/ui/modal'
+import {
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@nyanpasu/ui/segmented-button'
+import type { HeldPermissions } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { useRemoteAccessTokens } from '@nyanpasu/query'
-import type { CreatedRemoteAccessToken, Scope } from '@nyanpasu/rpc/types'
-import ScopeCheckboxes from './scope-checkboxes'
-import { TOKEN_SCOPES } from './scope-labels'
+import type { CreatedRemoteAccessToken, Grant } from '@nyanpasu/rpc/types'
+import PermissionGrid from './permission-grid'
+import { ROLE_LABELS, ROLE_PERMISSIONS, TOKEN_ROLES } from './permission-labels'
+import SensitiveReach from './sensitive-reach'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -49,7 +55,10 @@ function expiryLabel(id: ExpiryId) {
   }
 }
 
-const DEFAULT_SCOPES: Scope[] = ['read']
+/** A role, or `custom` for a hand-picked permission map. */
+type GrantChoice = (typeof TOKEN_ROLES)[number] | 'custom'
+
+const DEFAULT_CHOICE: GrantChoice = 'viewer'
 
 /** The form, then the one-time token; closing is blocked until the token is confirmed saved. */
 function CreateTokenDialog() {
@@ -57,7 +66,8 @@ function CreateTokenDialog() {
   const { create } = useRemoteAccessTokens()
 
   const [name, setName] = useState('')
-  const [scopes, setScopes] = useState<Scope[]>(DEFAULT_SCOPES)
+  const [choice, setChoice] = useState<GrantChoice>(DEFAULT_CHOICE)
+  const [custom, setCustom] = useState<HeldPermissions>({})
   const [expiry, setExpiry] = useState<ExpiryId>('never')
   const [created, setCreated] = useState<CreatedRemoteAccessToken | null>(null)
   const [confirmed, setConfirmed] = useState(false)
@@ -65,12 +75,18 @@ function CreateTokenDialog() {
 
   const trimmedName = name.trim()
   const saving = create.isPending
-  const canCreate = trimmedName !== '' && scopes.length > 0 && !saving
+  const grant: Grant =
+    choice === 'custom' ? { permissions: custom } : { role: choice }
+  const held: HeldPermissions =
+    choice === 'custom' ? custom : ROLE_PERMISSIONS[choice]
+  const canCreate =
+    trimmedName !== '' && Object.keys(held).length > 0 && !saving
   const mustConfirm = created != null && !confirmed
 
   const reset = () => {
     setName('')
-    setScopes(DEFAULT_SCOPES)
+    setChoice(DEFAULT_CHOICE)
+    setCustom({})
     setExpiry('never')
     setCreated(null)
     setConfirmed(false)
@@ -89,7 +105,7 @@ function CreateTokenDialog() {
       setCreated(
         await create.mutateAsync({
           name: trimmedName,
-          scopes,
+          grant,
           expires_at_ms: days == null ? null : Date.now() + days * DAY_MS,
         }),
       )
@@ -183,16 +199,41 @@ function CreateTokenDialog() {
                   onChange={(event) => setName(event.target.value)}
                 />
 
-                <fieldset className="flex flex-col gap-2">
+                <fieldset className="flex flex-col gap-3">
                   <legend className="mb-2 text-sm font-medium">
-                    {m.settings_remote_access_token_scopes()}
+                    {m.settings_remote_access_token_grant()}
                   </legend>
 
-                  <ScopeCheckboxes
-                    scopes={TOKEN_SCOPES}
-                    value={scopes}
-                    onChange={setScopes}
-                  />
+                  <SegmentedButton
+                    size="sm"
+                    aria-label={m.settings_remote_access_token_grant()}
+                    value={choice}
+                    onValueChange={(next) =>
+                      next && setChoice(next as GrantChoice)
+                    }
+                  >
+                    {TOKEN_ROLES.map((role) => (
+                      <SegmentedButtonItem key={role} value={role}>
+                        {ROLE_LABELS[role]()}
+                      </SegmentedButtonItem>
+                    ))}
+
+                    <SegmentedButtonItem value="custom">
+                      {m.settings_remote_access_role_custom()}
+                    </SegmentedButtonItem>
+                  </SegmentedButton>
+
+                  <p className="text-on-surface-variant text-sm">
+                    {choice === 'custom'
+                      ? m.settings_remote_access_role_custom_description()
+                      : m.settings_remote_access_role_description()}
+                  </p>
+
+                  {choice === 'custom' && (
+                    <PermissionGrid value={custom} onChange={setCustom} />
+                  )}
+
+                  <SensitiveReach held={held} />
                 </fieldset>
 
                 <DropdownMenu align="start">

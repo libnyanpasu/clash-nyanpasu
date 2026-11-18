@@ -222,6 +222,8 @@ enum Completion {
         audit: AuditInvocation,
         id: RequestId,
         result: Result<Subscription, SubscriptionErrorCode>,
+        /// What the redaction layer decided for the subscribed event or stream.
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
         permit: OwnedSemaphorePermit,
     },
 }
@@ -434,12 +436,12 @@ impl Connection {
                         Some(event) => self.rpc.authority().admit(
                             event.resource(),
                             RpcTarget::Local,
-                            Some(&self.auth.scopes),
+                            Some(&self.auth.permissions),
                         ),
                         None => self.rpc.authority().admit(
                             crate::permission::declared(crate::permission::CONNECTION_DETAILS),
                             RpcTarget::Local,
-                            Some(&self.auth.scopes),
+                            Some(&self.auth.permissions),
                         ),
                     };
                     admission.err().map(|error| match error.kind {
@@ -502,8 +504,13 @@ impl Connection {
                     }
                     return;
                 }
-                let visibility =
-                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
+                let visibility = crate::redaction::visibility(
+                    event.map_or_else(
+                        || crate::permission::declared(crate::permission::CONNECTION_DETAILS),
+                        |event| event.resource(),
+                    ),
+                    &self.auth.permissions,
+                );
                 self.pending_resources += 1;
                 let rpc = self.rpc.clone();
                 let source = self.source.clone();
@@ -555,6 +562,7 @@ impl Connection {
                             audit,
                             id,
                             result,
+                            visibility,
                             permit,
                         }
                     }
@@ -649,6 +657,7 @@ impl Connection {
                 audit,
                 id,
                 result,
+                visibility,
                 permit,
             } => {
                 self.pending_resources -= 1;
@@ -705,8 +714,6 @@ impl Connection {
                             audits: vec![DeliveryAudit::new(audit)],
                         })
                         .await;
-                        let visibility =
-                            nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                         let forwarding = subscriptions::forward(
                             subscription,
                             stream,

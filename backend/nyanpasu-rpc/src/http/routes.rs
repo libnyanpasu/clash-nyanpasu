@@ -202,7 +202,10 @@ async fn http_icon(
     uri: axum::http::Uri,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let visibility = crate::redaction::for_caller(
+        crate::permission::declared(crate::permission::ICON_FETCH),
+        auth.as_ref(),
+    );
     let nonce_result = parse_client_nonce(&headers, None, visibility);
     let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let audit = rpc.dependencies.audit.invocation(
@@ -216,7 +219,7 @@ async fn http_icon(
         rpc.authority().admit(
             crate::permission::declared(crate::permission::ICON_FETCH),
             RpcTarget::Http,
-            auth.as_ref().map(|auth| &auth.scopes),
+            auth.as_ref().map(|auth| &auth.permissions),
         )?;
         let _nonce = nonce_result?;
         let path = uri
@@ -258,15 +261,18 @@ async fn http_icon(
 /// Exports the diagnostic log archive for HTTP callers.
 ///
 /// The text redactor in `nyanpasu_config::redact` leaves opaque URL host/path tokens intact, so
-/// its resource row (`commands/resources.rs`) must require `sensitive_read` until a token-safe
-/// archive view exists.
+/// its resource row (`commands/resources.rs`) is marked sensitive until a token-safe archive view
+/// exists.
 async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,
     auth: Option<Extension<AuthContext>>,
     headers: HeaderMap,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let visibility = crate::redaction::for_caller(
+        crate::permission::declared(crate::permission::LOGS_ARCHIVE),
+        auth.as_ref(),
+    );
     let nonce_result = parse_client_nonce(&headers, None, visibility);
     let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let audit = rpc.dependencies.audit.invocation(
@@ -280,7 +286,7 @@ async fn http_logs_archive(
         rpc.authority().admit(
             crate::permission::declared(crate::permission::LOGS_ARCHIVE),
             RpcTarget::Http,
-            auth.as_ref().map(|auth| &auth.scopes),
+            auth.as_ref().map(|auth| &auth.permissions),
         )?;
         let _nonce = nonce_result?;
         Ok(unreported(async move {
@@ -357,7 +363,10 @@ async fn http_connection_details(
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
     let revocation = revocation.map(|Extension(revocation)| revocation.0);
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let visibility = crate::redaction::for_caller(
+        crate::permission::declared(crate::permission::CONNECTION_DETAILS),
+        auth.as_ref(),
+    );
     let nonce_result = parse_client_nonce(
         &headers,
         query
@@ -401,7 +410,7 @@ async fn http_connection_details(
         rpc.authority().admit(
             crate::permission::declared(crate::permission::CONNECTION_DETAILS),
             RpcTarget::Http,
-            auth.as_ref().map(|auth| &auth.scopes),
+            auth.as_ref().map(|auth| &auth.permissions),
         )?;
         let _nonce = nonce_result?;
         Ok(unreported(async move {
@@ -466,7 +475,7 @@ async fn http_events(
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
     let revocation = revocation.map(|Extension(revocation)| revocation.0);
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let visibility = crate::redaction::UNADMITTED;
     let nonce_result = parse_client_nonce(
         &headers,
         request
@@ -514,12 +523,11 @@ async fn http_events(
     let result = dispatch_with_audit(&audit, || {
         let caller = auth.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
         let _nonce = nonce_result?;
-        let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&caller));
         if let Some(name) = request.name.as_deref() {
             let event = EventName::from_name(name)
-                .ok_or_else(|| RpcError::unknown_method_for(visibility, name))?;
+                .ok_or_else(|| RpcError::unknown_method_for(crate::redaction::UNADMITTED, name))?;
             rpc.authority()
-                .admit(event.resource(), RpcTarget::Http, Some(&caller.scopes))?;
+                .admit(event.resource(), RpcTarget::Http, Some(&caller.permissions))?;
         }
         Ok(unreported(async move {
             let receiver = rpc.dependencies.events.subscribe();
@@ -538,7 +546,7 @@ async fn http_events(
                                         crate::permission::Authority::new(&provided).visible(
                                             event.resource(),
                                             RpcTarget::Http,
-                                            &caller.scopes,
+                                            &caller.permissions,
                                         )
                                     });
                                 if !visible {
@@ -592,7 +600,7 @@ async fn http_call(
     request: Result<Json<Request>, JsonRejection>,
 ) -> Response {
     let auth = auth.map(|Extension(auth)| auth);
-    let visibility = nyanpasu_rpc_protocol::ResponseVisibility::for_auth(auth.as_ref());
+    let visibility = crate::redaction::UNADMITTED;
     let nonce_result = parse_client_nonce(&headers, None, visibility);
     let audit_nonce = nonce_result.as_ref().ok().cloned().unwrap_or_default();
     let owner = http_owner(auth.as_ref(), &audit_nonce);

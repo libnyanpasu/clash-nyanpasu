@@ -1,8 +1,8 @@
-//! The curated static command table shared by the CLI subcommands and the MCP tools.
+//! The curated static command table behind the CLI subcommands.
 //!
 //! CLI v0 ships before the typed protocol, so each curated operation is written
-//! down once here: the RPC method, its scope, a description, a compact JSON input
-//! schema and the MCP annotations. A CLI subcommand turns its arguments into an
+//! down once here: the RPC method, its permission, a description, a compact JSON input
+//! schema and the effect annotations. A CLI subcommand turns its arguments into an
 //! input object matching the schema; [`CuratedCommand::params`] maps that object to
 //! the method's real parameters. `call <method>` covers every other command.
 //!
@@ -11,9 +11,12 @@
 
 use serde_json::{Value, json};
 
-use crate::{describe::Scope, error::CliError};
+use crate::{
+    describe::{Access, Permission, Resource},
+    error::CliError,
+};
 
-/// How a curated operation affects state, for MCP annotations and confirmation.
+/// How a curated operation affects state, for confirmation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
     /// Reads state only (`readOnlyHint`).
@@ -34,15 +37,15 @@ pub enum Invocation {
 
 /// One curated operation.
 pub struct CuratedCommand {
-    /// Stable identity: the CLI path joined by `_`, and the MCP tool name.
+    /// Stable identity: the CLI path joined by `_`.
     pub name: &'static str,
     /// How the operation reaches the shell.
     pub invocation: Invocation,
-    /// The scope the principal must hold.
-    pub scope: Scope,
+    /// The permission the principal must hold; the shell's own requirement for the method.
+    pub permission: Permission,
     /// Query or mutation.
     pub effect: Effect,
-    /// A handwritten description for `--help` and MCP `tools/list`.
+    /// A handwritten description for `--help`.
     pub description: &'static str,
     /// The compact JSON Schema of the input object, as JSON text.
     pub input_schema: &'static str,
@@ -188,7 +191,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "status",
         invocation: Invocation::Method("get_core_status_summary"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::System, Access::Read),
         effect: Effect::Query,
         description: "Show the Clash core status: running state, core name and version.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -197,7 +200,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "core_version",
         invocation: Invocation::Method("clash_api_get_version"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::System, Access::Read),
         effect: Effect::Query,
         description: "Show the version reported by the running Clash core.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -206,7 +209,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "core_restart",
         invocation: Invocation::Method("restart_sidecar"),
-        scope: Scope::System,
+        permission: Permission::new(Resource::System, Access::Write),
         effect: Effect::Mutation { destructive: true },
         description: "Restart the Clash core. Active connections are dropped.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -215,7 +218,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "core_switch",
         invocation: Invocation::Method("change_clash_core"),
-        scope: Scope::System,
+        permission: Permission::new(Resource::System, Access::Write),
         effect: Effect::Mutation { destructive: true },
         description: "Switch to another Clash core and restart. Active connections are dropped.",
         input_schema: r#"{"type":"object","properties":{"core":{"type":"string","description":"Core name, such as mihomo."}},"required":["core"]}"#,
@@ -224,7 +227,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "mode_get",
         invocation: Invocation::Method("get_clash_settings"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Settings, Access::Read),
         effect: Effect::Query,
         description: "Show the Clash settings, including the active proxy mode.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -233,7 +236,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "mode_set",
         invocation: Invocation::Method("set_proxy_mode"),
-        scope: Scope::Proxy,
+        permission: Permission::new(Resource::Proxy, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Switch the proxy mode to rule, global or direct.",
         input_schema: r#"{"type":"object","properties":{"mode":{"type":"string","enum":["rule","global","direct"]}},"required":["mode"]}"#,
@@ -242,7 +245,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "proxy_groups",
         invocation: Invocation::Method("get_proxies"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Proxy, Access::Read),
         effect: Effect::Query,
         description: "List proxy groups with their members and current selections.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -251,7 +254,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "proxy_select",
         invocation: Invocation::Method("select_proxy"),
-        scope: Scope::Proxy,
+        permission: Permission::new(Resource::Proxy, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Select a proxy inside a proxy group.",
         input_schema: r#"{"type":"object","properties":{"group":{"type":"string"},"name":{"type":"string","description":"Proxy to select."}},"required":["group","name"]}"#,
@@ -260,7 +263,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "proxy_test",
         invocation: Invocation::Method("clash_api_get_proxy_delay"),
-        scope: Scope::Proxy,
+        permission: Permission::new(Resource::Proxy, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Run a latency test against one proxy.",
         input_schema: r#"{"type":"object","properties":{"name":{"type":"string"},"provider":{"type":"string"},"group":{"type":"string"},"url":{"type":"string"},"expected":{"type":"string"}},"required":["name"]}"#,
@@ -269,7 +272,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "proxy_test_group",
         invocation: Invocation::Method("clash_api_get_group_delay"),
-        scope: Scope::Proxy,
+        permission: Permission::new(Resource::Proxy, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Run a latency test against every proxy of a group.",
         input_schema: r#"{"type":"object","properties":{"group":{"type":"string"},"url":{"type":"string"},"expected":{"type":"string"}},"required":["group"]}"#,
@@ -278,7 +281,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "profile_list",
         invocation: Invocation::Method("get_profiles_listing"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Profile, Access::Read),
         effect: Effect::Query,
         description: "List profiles and which of them are active.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -287,7 +290,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "profile_use",
         invocation: Invocation::Method("activate_profile"),
-        scope: Scope::Profile,
+        permission: Permission::new(Resource::Profile, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Activate a profile and rebuild the runtime configuration.",
         input_schema: r#"{"type":"object","properties":{"uid":{"type":"string","description":"Profile id."}},"required":["uid"]}"#,
@@ -296,7 +299,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "profile_update",
         invocation: Invocation::Method("update_profile"),
-        scope: Scope::Profile,
+        permission: Permission::new(Resource::Profile, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Refresh a remote profile from its subscription URL.",
         input_schema: r#"{"type":"object","properties":{"uid":{"type":"string","description":"Profile id."}},"required":["uid"]}"#,
@@ -305,7 +308,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "profile_import",
         invocation: Invocation::Method("import_profile"),
-        scope: Scope::Profile,
+        permission: Permission::new(Resource::Profile, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Import a remote profile from a subscription URL.",
         input_schema: r#"{"type":"object","properties":{"url":{"type":"string"},"name":{"type":"string"}},"required":["url"]}"#,
@@ -314,7 +317,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "profile_show",
         invocation: Invocation::Method("read_profile_file"),
-        scope: Scope::SensitiveRead,
+        permission: Permission::new(Resource::Profile, Access::Read),
         effect: Effect::Query,
         description: "Show a profile's file content. It may contain credentials.",
         input_schema: r#"{"type":"object","properties":{"uid":{"type":"string","description":"Profile id."}},"required":["uid"]}"#,
@@ -323,7 +326,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "sysproxy_status",
         invocation: Invocation::Method("get_sys_proxy"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::System, Access::Read),
         effect: Effect::Query,
         description: "Show the operating system proxy settings.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -332,7 +335,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "sysproxy_set",
         invocation: Invocation::Method("patch_system_settings"),
-        scope: Scope::System,
+        permission: Permission::new(Resource::System, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Turn the operating system proxy on or off.",
         input_schema: r#"{"type":"object","properties":{"enabled":{"type":"boolean"}},"required":["enabled"]}"#,
@@ -341,7 +344,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "tun_status",
         invocation: Invocation::Method("get_clash_settings"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Settings, Access::Read),
         effect: Effect::Query,
         description: "Show the Clash settings, including whether TUN mode is enabled.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -350,7 +353,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "tun_set",
         invocation: Invocation::Method("patch_clash_system_config"),
-        scope: Scope::System,
+        permission: Permission::new(Resource::System, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Turn TUN mode on or off.",
         input_schema: r#"{"type":"object","properties":{"enabled":{"type":"boolean"}},"required":["enabled"]}"#,
@@ -359,7 +362,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "conn_list",
         invocation: Invocation::ConnectionDetails,
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Traffic, Access::Read),
         effect: Effect::Query,
         description: "Show the current connections.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -368,7 +371,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "conn_close",
         invocation: Invocation::Method("clash_api_delete_connections"),
-        scope: Scope::Proxy,
+        permission: Permission::new(Resource::Proxy, Access::Write),
         effect: Effect::Mutation { destructive: true },
         description: "Close one connection by id, or every connection when no id is given.",
         input_schema: r#"{"type":"object","properties":{"id":{"type":"string","description":"Connection id; omit to close all."}}}"#,
@@ -377,7 +380,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "logs_tail",
         invocation: Invocation::Method("query_core_logs"),
-        scope: Scope::SensitiveRead,
+        permission: Permission::new(Resource::Logs, Access::Read),
         effect: Effect::Query,
         description: "Show the latest core log rows.",
         input_schema: r#"{"type":"object","properties":{"level":{"type":"string"},"keyword":{"type":"string"},"limit":{"type":"integer","minimum":1}}}"#,
@@ -386,7 +389,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "traffic",
         invocation: Invocation::Method("get_traffic_summary"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Traffic, Access::Read),
         effect: Effect::Query,
         description: "Show the traffic summary.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -395,7 +398,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "config_get",
         invocation: Invocation::Method("get_app_settings"),
-        scope: Scope::Read,
+        permission: Permission::new(Resource::Settings, Access::Read),
         effect: Effect::Query,
         description: "Show the application settings.",
         input_schema: r#"{"type":"object","properties":{}}"#,
@@ -404,7 +407,7 @@ pub const COMMANDS: &[CuratedCommand] = &[
     CuratedCommand {
         name: "config_patch",
         invocation: Invocation::Method("patch_app_config"),
-        scope: Scope::Settings,
+        permission: Permission::new(Resource::Settings, Access::Write),
         effect: Effect::Mutation { destructive: false },
         description: "Patch ordinary application settings with a JSON object.",
         input_schema: r#"{"type":"object","properties":{"patch":{"type":"object"}},"required":["patch"]}"#,
@@ -517,8 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn sensitive_and_destructive_entries_are_annotated() {
-        assert_eq!(find("profile_show").unwrap().scope, Scope::SensitiveRead);
+    fn destructive_entries_are_annotated() {
         assert!(matches!(
             find("core_restart").unwrap().effect,
             Effect::Mutation { destructive: true }
@@ -531,29 +533,24 @@ mod tests {
     }
 
     #[test]
-    fn no_curated_command_requires_remote_admin() {
+    fn no_curated_command_requires_remote() {
         assert!(
             COMMANDS
                 .iter()
-                .all(|command| command.scope != Scope::RemoteAdmin)
+                .all(|command| command.permission.resource != Resource::Remote)
         );
     }
 
     #[test]
-    fn queries_hold_read_scopes_and_mutations_do_not() {
+    fn queries_read_and_mutations_write_except_latency_tests() {
         for command in COMMANDS {
-            match command.effect {
-                Effect::Query => assert!(
-                    matches!(command.scope, Scope::Read | Scope::SensitiveRead),
-                    "{}",
-                    command.name
-                ),
-                Effect::Mutation { .. } => assert!(
-                    !matches!(command.scope, Scope::Read | Scope::SensitiveRead),
-                    "{}",
-                    command.name
-                ),
-            }
+            let expected = match command.effect {
+                // A latency test sends traffic through the proxy, so it requires `proxy:write`.
+                Effect::Query if command.name.starts_with("proxy_test") => Access::Write,
+                Effect::Query => Access::Read,
+                Effect::Mutation { .. } => Access::Write,
+            };
+            assert_eq!(command.permission.access, expected, "{}", command.name);
         }
     }
 

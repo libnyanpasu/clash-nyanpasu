@@ -15,12 +15,12 @@ Application commands use the neutral `nyanpasu-rpc` registry, with Tauri IPC, HT
 Allowed shape:
 
 ```rust
-#[nyanpasu_rpc::rpc(http)]
+#[nyanpasu_rpc::rpc(http, privacy, permission = settings:write)]
 pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
     patch: ApplicationPreferencesPatch,
-) -> Result<MutationOutcome<()>> {
-    Ok(client.patch_app_config(patch.into()).await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.patch_app_config(patch.into()).await?.into())
 }
 ```
 
@@ -38,29 +38,29 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 ### Use the unified RPC surface
 
-A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. Scopes are independent permissions, so each `patch_*` command has a concrete request type that writes only fields of its declared class; reject out-of-scope fields while decoding the request type, and split the domain when another such field or a policy group would grow the exception list.
+A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. Each command requires one permission, so each `patch_*` command has a concrete request type that writes only fields of the resource it writes; reject fields of another resource while decoding the request type, and split the domain when another such field or a policy group would grow the exception list.
 
-| Request type (`nyanpasu-config`) | Command                     | Scope      | Writes                                                                                        |
-| -------------------------------- | --------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
-| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings` | ordinary application preferences                                                              |
-| `SystemSettingsPatch`            | `patch_system_settings`     | `system`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
-| `ClashSettingsPatch`             | `patch_clash_config`        | `settings` | `expand_include_all`, `break_connection`                                                      |
-| `ClashSystemPatch`               | `patch_clash_system_config` | `system`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
-| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
-| `ClashAccessPatch`               | `patch_runtime_access`      | `system`   | `allow-lan`, `secret`                                                                         |
-| `Mode`                           | `set_proxy_mode`            | `proxy`    | the proxy mode                                                                                |
+| Request type (`nyanpasu-config`) | Command                     | Permission       | Writes                                                                                        |
+| -------------------------------- | --------------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
+| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings:write` | ordinary application preferences                                                              |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system:write`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
+| `ClashSettingsPatch`             | `patch_clash_config`        | `settings:write` | `expand_include_all`, `break_connection`                                                      |
+| `ClashSystemPatch`               | `patch_clash_system_config` | `system:write`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
+| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings:write` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
+| `ClashAccessPatch`               | `patch_runtime_access`      | `system:write`   | `allow-lan`, `secret`                                                                         |
+| `Mode`                           | `set_proxy_mode`            | `proxy:write`    | the proxy mode                                                                                |
 
 The network rules (`network_automation`) are a `system` setting rather than an ordinary
 preference: applying a rule writes the system proxy, TUN and transparent proxy switches, so a
-principal without `system` must not be able to change them through a policy. Their live status
-carries the Wi-Fi name and gateway, so `get_network_automation_status` is a `sensitive_read` query;
-`apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system`
-mutations that return the status as `RpcNetworkAutomationStatus`: a caller without `sensitive_read`
-receives `NetworkAutomationSummary` (supported, whether a rule matched and what each switch did),
-with no Wi-Fi name, gateway, rule id or refusal text, and a refused policy reaches it only as the
-fixed `invalid_network_automation` public error. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
+caller without `system:write` must not be able to change them through a policy. Their live status
+carries the Wi-Fi name and gateway, so `get_network_automation_status` is marked `sensitive`;
+`apply_network_automation` and `request_wifi_name_access` (an OS location prompt) are `system:write`
+mutations that return the status as `RpcNetworkAutomationStatus`: a redacted response
+carries `NetworkAutomationSummary` (supported, whether a rule matched and what each switch did),
+with no Wi-Fi name, gateway, rule id or refusal text. A refused policy is projected to the fixed
+`invalid_network_automation` public error; an admitted `system` writer receives the full diagnostic. All three are Desktop-only. The rules themselves name Wi-Fi networks and gateway
 MAC addresses, so the safe settings view (`get_app_settings`) reduces them to
-`network_automation_enabled`; the rule editor reads the full config (`sensitive_read`) and
+`network_automation_enabled`; the rule editor reads the full config (a sensitive query) and
 writes through `patch_system_settings`.
 
 Hotkeys, service mode, remote access and the core selection keep their dedicated commands
@@ -84,23 +84,26 @@ fields. For an ordinary field `null` is a no-op; only the double-option fields
 schema is derived from the fields of the request type and never advertises a field of
 another class.
 
-`remote_access` is written only by `set_remote_access`, a `scope = remote_admin` mutation reachable
+`remote_access` is written only by `set_remote_access`, a `remote:write` mutation reachable
 from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
 them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, `lan_bind`, `tls`,
-`local_open_scopes` or certificate changes), and a listener that cannot follow is a
+`anonymous_permissions` or certificate changes), and a listener that cannot follow is a
 `http_server_unavailable` degradation, never a rollback. A single serial owner
 (`RemoteAccessClient` in core) runs the whole operation, so concurrent edits cannot
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
-`local_open` with empty `local_open_scopes` or forbidden `sensitive_read`/`system`/`remote_admin`
-scopes, and `lan_authenticated` without `tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+`anonymous_permissions` beyond the `operator` role, and `lan_authenticated` without
+`tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
-`remote_admin` query on Desktop and Local only. Access tokens and browser sessions are managed
-through `scope = remote_admin` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
+`remote:read` query on Desktop and Local only. Access tokens and browser sessions are managed
+through `remote` commands in `nyanpasu-rpc/src/commands/remote_access.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
-socket may call and HTTP never offers. A token cannot be created with the `remote_admin` scope.
+socket may call and HTTP never offers. A token holds a `Grant`: the `viewer`, `operator` or
+`admin` role, or a custom permission map without `remote`; it is validated when the token is
+issued and again when the stored record is loaded, so loading rejects a grant that issuance
+forbids (`owner`, `anonymous`, or a custom map holding `remote`).
 When the bounded browser-session table is full, a login evicts the caller's least recently
 active session first (or the least recently active session overall) and announces its
 revocation; capacity never turns into a global login denial.
@@ -111,7 +114,7 @@ launch codes are not kept in a client cache.
 authentication owner generates it on first use (an `HttpTlsIdentitySource` port, installed late
 like the authenticator; `nyanpasu-os` implements the generator) and keeps it with the token hashes
 in `auth-secrets.json`; it is replaced only on expiry or by `reset_remote_access_tls`
-(`remote_admin`, Desktop and Local only), because a new certificate breaks every pinned client.
+(`remote:write`, Desktop and Local only), because a new certificate breaks every pinned client.
 A listener that must serve HTTPS and has no usable certificate, or one it cannot build a TLS
 configuration from, stops with the `tls_unavailable` fault; it never falls back to plain HTTP, and
 `reset_remote_access_tls` repairs it. A certificate is valid from one day before it was made, so a
@@ -169,7 +172,7 @@ declare `RpcState<'_, NyanpasuClient>` (or `Storage` or `PathResolver`) from the
 explicit `RpcDependencies` slots, `rpc(owner)` with `RpcCaller` as the annotated
 source marker (which the macro rewrites to `RpcOwner` on the generated
 underlying implementation function, so command bodies receive only `RpcOwner`
-rather than full caller scopes or metadata), and (for `rpc_describe`)
+rather than the caller's permissions or metadata), and (for `rpc_describe`)
 `RpcDescribeContext` built from `RpcCallMeta` and `RpcCaller`. These neutral
 declaration types live in `nyanpasu-rpc::registry` and are omitted from Specta's
 schema. At dispatch, the generated neutral handler receives borrowed
@@ -201,18 +204,20 @@ fail-closed admission in `nyanpasu-rpc::permission::Authority`: authentication r
 missing HTTP auth context rejecting with `401 unauthorized`) precedes method and
 event availability lookup; resolved callers are then checked in order for known
 name (`unknown_method`), target/capability/native-linkage availability
-(`unsupported`), caller scope (`403 forbidden`), resource admission, and
-parameter decoding/execution. The same target/capability/scope policy applies
-across direct HTTP routes (`/bridge/logs/archive` at `sensitive_read`;
-`/bridge/connection-details` and `/bridge/icons/{*path}` at `read`), named and
-unnamed `/bridge/events` SSE (filtering by target/capability/scope plus `resync`
+(`unsupported`), the required permission (`403 forbidden`, naming it:
+`missing permission proxy:write`), resource admission, and
+parameter decoding/execution. The same target/capability/permission policy applies
+across direct HTTP routes (`/bridge/logs/archive` at `logs:read`,
+`/bridge/connection-details` at `traffic:read` and `/bridge/icons/{*path}` at `system:read`), named and
+unnamed `/bridge/events` SSE (filtering by target/capability/permission plus `resync`
 and session revocation cancellation), and `LocalServer` `Subscribe` (refusing
 `Forbidden`/`Unsupported` before snapshot or event-stream allocation).
-`rpc_describe` is callable by any resolved caller even without `Scope::Read`
-(including `local_open` anonymous callers via the user-approved
-`own-only` self-inspection exception; unresolved/unauthenticated callers still
-receive `401 unauthorized`), and `allowed` reflects target, capabilities, native
-linkage, and caller scopes without disclosing other principals or credentials.
+`rpc_describe` requires `meta:read`, which every resolved caller holds, so any resolved
+caller may describe itself (unresolved/unauthenticated callers still receive
+`401 unauthorized`); it reports the caller's role (absent for a custom map) and permissions,
+and for each command its permission, its `sensitive` marking and whether `allowed` holds for
+this target, capabilities, native linkage and permissions, without disclosing other principals
+or credentials.
 `LocalSocket` attributes the peer OS user (`UID`/`SID` in
 `nyanpasu-single-instance`). HTTP consumes a late-bound `HttpAuthenticator` port
 (`RpcHttpAuthenticator` / `NyanpasuClientHttpAuthenticator`) backed by
@@ -220,8 +225,11 @@ linkage, and caller scopes without disclosing other principals or credentials.
 checks on `/bridge/rpc`, credentials resolve in order as `Authorization: Bearer <token>` on
 `/bridge/*` only (`Principal::Token`), `nyanpasu_session` (`HttpOnly; SameSite=Strict; Path=/`)
 cookie (`Principal::Session`, `sess_...`), or (when `strategy` is `local_open`)
-`Principal::Anonymous` clamped via `clamp_local_open_scopes` so `sensitive_read`, `system`,
-and `remote_admin` are never granted. Unauthenticated HTML document `GET` requests redirect
+`Principal::Anonymous` with the `anonymous` role, which holds only capability discovery, plus
+`anonymous_permissions` capped at the `operator` role by `cap_anonymous_permissions`, whatever
+the persisted settings say. The desktop window and the same-user local socket are the `owner`;
+a launch-code session is `admin`; a token, and every browser session opened with it, holds the
+token's grant. Unauthenticated HTML document `GET` requests redirect
 (`302`) to the CSP-locked `/login` page; `GET /?code=...` exchanges a 60-second single-use
 launch code for a session cookie (`303 /`); `POST /bridge/login` (JSON `{ token }`) creates a
 token-backed browser session; and `POST /bridge/logout` revokes the session and clears the
@@ -234,48 +242,59 @@ log at `WARN` on `nyanpasu::remote_access` with peer IP and optional public toke
 never raw secrets, cookies, or launch codes; audit headers log only non-secret public
 principal identifiers (`desktop:<window>`, `local_socket:<user>`, `session:<id>`,
 `token:<id>`, `anonymous`). Layer 09 delivers public typed
-application and transport-parse error privacy across non-`SensitiveRead` scopes
-(`PublicFailure`, `CoreLogCommandError`, optional `IpcError::detail`, and
-`ResponseVisibility` projection across RPC, parse/route rejections, `/bridge/icons/*`,
-`/bridge/events`, and `LocalServer`); error and `CommittedDegraded` projection keeps
-non-`SensitiveRead` scopes safe for scoped tokens and `local_open`.
+application and transport-parse error privacy (`PublicFailure`, `CoreLogCommandError`,
+optional `IpcError::detail`, and `ResponseVisibility` projection across RPC, parse/route
+rejections, `/bridge/icons/*`, `/bridge/events`, and `LocalServer`). The redaction layer
+(`nyanpasu-rpc::redaction`) decides the visibility after admission and stores it in the call
+metadata (`RpcCallMeta::visibility`); the `rpc` wrapper encodes results and errors for it.
+Until the layer has its own rules it applies the transitional rule of the
+[permission namespace spec](../spec/2026-11-16-rpc-permission-namespace/design.md#25-脱敏投影)
+(C-2): a caller that holds `write` on the resource it called gets `Full` visibility, every other
+caller `Public`. Visibility projects errors and the replies that implement
+`RpcResponseProjection` (declared with `rpc(privacy)`); ordinary successful values and event
+payloads are returned unchanged, so a caller admitted to a sensitive query receives its value.
+Errors of requests and subscriptions that no admitted resource produced (a malformed request,
+an unknown method or event) are always `Public`.
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed resource table `nyanpasu-rpc-protocol/src/permission/generated.rs`
 (`RESOURCES`, rows of `ResourceMetadata`) is the only source of the authorization metadata of
 every resource a caller is admitted to — commands, shared events, direct HTTP routes and
-streams: name, logical namespace, kind, effect, scope, source, targets and capabilities.
+streams: name, logical namespace, kind, effect, permission, `sensitive`, source, targets and
+capabilities.
 `#[rpc]` registers only implementation facts (`CommandEntry`: name, kind, whether the neutral
 handler is transport-neutral, and the handler); the registry matches each linked entry to its
 row by name and refuses an entry without one (`SetupError::UndeclaredCommand`).
 
 Events, routes and streams are declared with `nyanpasu_rpc::resource!`, for example
-`resource!(event "core-logs-changed", targets = [desktop, http, local], scope = sensitive_read)`;
+`resource!(event "core-logs-changed", targets = [desktop, http, local], permission = logs:read, sensitive)`;
 it expands to nothing and only the generator reads it. Their targets are explicit, because
 routes and streams are not offered to the desktop. `EventName` keeps only the wire identities;
 `EventName::resource()` returns an event's row, and a protocol test requires every identity to
 have exactly one row. Transports admit a route or stream through its named row
-(`permission::declared(ICON_FETCH)`), never a scope literal.
+(`permission::declared(ICON_FETCH)`), never a permission literal.
 
-`Authority::admit` takes the row, the transport and the caller's grant, not its identity, and
+`Authority::admit` takes the row, the transport and the caller's `Permissions`, never its
+identity, role or the row's `sensitive` marking, and
 refuses in a fixed order: `401` for an unresolved caller, `unsupported` for a row not offered on
 the transport or whose capabilities the host lacks, `403` for a missing requirement; the registry
 resolves the name (`unknown_method`) and the linked handler before it. `Authority::visible` is
 the same predicate for filtering event deliveries and `rpc_describe`. After admission the call
 metadata carries the admitted row (`RpcCallMeta::resource`): the seam for the reserved data
-sharing and redaction layers of the
+sharing layer and for the redaction layer of the
 [permission namespace spec](../spec/2026-11-16-rpc-permission-namespace/design.md#46-rpc-的生命周期与请求管线).
 
 The table's development-only generator in `nyanpasu-rpc-macro` follows the explicitly listed
 production roots (currently `tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`, treated
 as one module tree) through inline and ordinary external modules, records each declaration's
 module path below its root as the row's `namespace`, inherits ancestor `cfg`/`cfg_attr` guards
-and excludes test fixtures. It owns every rule about what a declaration may say: a mutation must
-name a scope, only the desktop root may declare native commands, and a `resource!` names its
-kind (`event`, `route`, `stream`), scope and targets. It reports every invalid
+and excludes test fixtures. It owns every rule about what a declaration may say: a legacy
+declaration must name `permission = resource:access`, only the desktop root may declare native
+commands, and a `resource!` names its kind (`event`, `route`, `stream`), a `read` permission and
+targets. The `rpc` attribute rejects a resource or level the permission model does not have. It reports every invalid
 declaration at once. It does not resolve arbitrary Rust module systems or add a protocol build
 dependency on application code. Every row is currently `PermissionSource::Legacy` (a
-`scope = ...` written on the declaration); `MAX_LEGACY` in the protocol tests equals their
+`permission = ...` written on the declaration); `MAX_LEGACY` in the protocol tests equals their
 number and only goes down. When commands move, migrate the roots, schema and handler
 inventories together. Run from `backend/`:
 
@@ -286,7 +305,8 @@ cargo test -p nyanpasu-rpc-macro --features syn/full export_capability_inventory
 ```
 
 The exporter writes explicitly; the freshness test only compares. Regenerate
-after changing names, targets, capabilities, scopes, modules or declaration guards. The
+after changing names, targets, capabilities, permissions, markings, modules or declaration
+guards. The
 registry loads the table before associating linked handlers, so an unlinked native
 wrapper leaves a known command returning `unsupported`. The host coverage test
 (`assert_command_category_inventory`) checks that each row has exactly one linked declaration
@@ -298,8 +318,11 @@ as well; this seam must leave them unchanged.
 
 `nyanpasu-rpc/src/permission_baseline.rs` compares the authorization of every command, event,
 route and stream with the reviewed baseline in `nyanpasu-rpc/tests/fixtures/permission-baseline.txt`,
-on every transport for the unresolved caller and every subset of the scopes. A change that is
-not meant to alter authorization must leave that comparison empty.
+on every transport for the unresolved caller and every combination of levels on the grantable
+resources. A change that is not meant to alter authorization must leave that comparison empty.
+The scope table the permission switch replaced is kept, frozen, in
+`permission-scope-baseline.txt`; `permission_baseline/mapping.rs` checks that every admission
+difference between it and the current table is in the reviewed change list.
 
 The capability inventory uses Linux's rows as one `[baseline]`, with per-platform
 differences: `+ row` adds or replaces a command and `- name` removes it. Its
@@ -315,44 +338,54 @@ port is absent and return `unsupported`. Executable resolution, icon files,
 service-install prompt formatting and accent queries use consumer-owned ports in
 `nyanpasu-rpc::ports`; the shell supplies the AppImage process value explicitly.
 
-### Declare effect and scope
+### Declare effect and permission
 
-Every `rpc` declaration states what the command does and which scope a principal must hold
-to call it. The declaration is the single source: the generator turns it into the `effect` and
-`scope` fields of the committed resource table and the capability inventory, and the Specta
-query/mutation groups that become the frontend bindings are checked against it.
+Every `rpc` declaration states what the command does and which permission a caller must hold
+to call it. A permission is a resource and an access level, written `proxy:write`; `write`
+includes `read`, and every resolved caller holds `meta:read`. The declaration is the single
+source: the generator turns it into the `effect`, `permission` and `sensitive` fields of the
+committed resource table and the capability inventory, and the Specta query/mutation groups
+that become the frontend bindings are checked against it.
 
-- `query` marks a command that only reads and changes nothing. It defaults to the `read`
-  scope. Declare another scope when the operation needs it: secret-bearing reads use
-  `sensitive_read`, latency measurements use `proxy`, and management queries can use
-  `remote_admin`. Effect and authorization class are independent.
-- Everything else is a mutation and MUST declare `scope = ...`; the resource table
-  generator rejects a mutation without one. A mutation may hold `read` when it only allocates a resource the caller owns
-  (a log session, a subscription). Operations that read but advance a cursor, allocate a
-  session or otherwise change application state are mutations. Observational queries may
-  refresh read models or measure network latency; their scope still limits who may request them.
-- The scopes are `nyanpasu_config::application::Scope` (re-exported by the protocol), the one
-  definition used by config validation, token storage and command metadata: `read`,
-  `sensitive_read`, `proxy`, `profile`, `settings`, `system`, `remote_admin`.
-- Classify by actual payload and effect. A response with a secret (the Clash secret,
-  subscription URLs, profile or runtime contents, generic storage, clipboard, sync logs that
-  echo request URLs) is `sensitive_read`; if a read-only client needs the useful part, add a
-  separate secret-free query instead of labelling the full response `read`. A shell, OS or
-  elevation facility needs `system`.
+- The resources are `nyanpasu_config::application::Resource`: `meta` (only `rpc_describe`),
+  `proxy`, `profile`, `settings`, `system`, `logs`, `traffic` and `remote` (never HTTP). Every
+  declaration names one with its level, `permission = resource:access`, until the namespace tree
+  derives it (permission namespace spec, P4).
+- `query` marks a command that only reads and changes nothing; it requires its resource's
+  `read`. Everything else is a mutation and requires `write`. The exceptions are reviewed and
+  budgeted: latency measurements are queries that require `proxy:write`, and the log session and
+  connection-detail subscriptions are mutations that require `read`, because they only allocate a
+  resource the caller owns. Operations that read but advance a cursor, allocate a session or
+  otherwise change application state are mutations.
+- `sensitive` marks a resource whose responses may carry credentials, subscription URLs,
+  configuration text, paths or diagnostics (the Clash secret, profile or runtime contents,
+  generic storage, the clipboard, sync logs that echo request URLs). It never takes part in
+  admission: a sensitive read requires its domain's `read` like any other. `rpc_describe` reports
+  it, the token dialog and the anonymous settings list the sensitive commands of the desktop that
+  a grant reaches, and `nyanpasu-cli remote token create` lists, in its human-readable output, those
+  its local connection describes, which omits HTTP-only commands. The reserved data sharing layer
+  will gate their responses. A shell, OS or elevation facility needs
+  `system:write`.
 - A secret-free companion query reduces fields, it does not redact them. Destructure the
   source type exhaustively (no `..`) so a new field is a compile error, replace a reduced field
   with an explicit flag (`pac_configured`) or omit it, and never return a placeholder, a
   syntax-filtered URL or a reconstructed value that a form could write back. A URL is not safe
   because it has no userinfo or query: its path or host can carry the credential. Callers that
-  need the original value use the `sensitive_read` query. The failures of a non-sensitive scope
-  are part of its contract: use a small typed error with fixed messages, carried as its own
-  domain so the discriminant survives RPC (`ClashReadError`), and never forward a source error.
-- Scope is independent of target. `scope = system` never makes a command HTTP- or
+  need the original value use the sensitive query. The failures of a query that is not marked
+  sensitive are part of its contract: use a small typed error with fixed messages, carried as its
+  own domain so the discriminant survives RPC (`ClashReadError`), and never forward a source
+  error.
+- The permission is independent of target. `system:write` never makes a command HTTP- or
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
-  capability admission still apply. `remote_admin` commands are never HTTP: only Desktop and
-  the same-user local socket, whose principal holds every scope, may call them.
-- The resource table tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
-  `remote_admin` set with its Local subset, so changing any of them is a reviewed change.
+  capability admission still apply. `remote` commands are never HTTP: only Desktop and the
+  same-user local socket, whose principal is the owner, may call them.
+- Roles are named permission sets, `Role::permissions` in `nyanpasu-config`: `anonymous`
+  (nothing beyond `meta:read`), `viewer` (`read` on `proxy`, `profile`, `settings`, `system`,
+  `logs` and `traffic`), `operator` (adds `proxy`,
+  `profile`, `settings` and `traffic` writes), `admin` (adds `system` and `logs` writes) and
+  `owner` (adds `remote:write`). Admission never sees a role, only the expanded permissions.
+- The resource table tests pin the sensitive set, the HTTP-reachable `system:write` set and the
+  `remote` set with its Local subset, so changing any of them is a reviewed change.
 
 ### Declare capabilities and preserve transport semantics
 
@@ -360,8 +393,8 @@ Authentication resolution precedes command availability lookup: missing HTTP
 auth context rejects with `401 unauthorized` before recognizing a method name or
 checking capabilities. For a resolved caller, the registry first recognizes the
 command name (`unknown_method`), then checks the requested target and every
-required capability (`unsupported`), then checks caller scope (`403 forbidden`,
-with `rpc_describe` exempt from `Scope::Read`), and only then parses arguments
+required capability (`unsupported`), then checks the required permission
+(`403 forbidden`), and only then parses arguments
 and runs the handler. All duplicate handler names fail registration before
 availability is considered. Rejections pass through `dispatch_audited`, and HTTP
 keeps its existing 501 mapping and `update_core` rejection before updater job
@@ -446,7 +479,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
-- Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given `ResponseVisibility::for_auth`) walks the source chain and preserves domain payloads and core retry metadata for `SensitiveRead` (`Full`) callers, while projecting non-`SensitiveRead` (`Public`) callers to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on settings-scoped core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
+- Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given the visibility the redaction layer decided) walks the source chain and preserves domain payloads and core retry metadata for `Full` responses, while projecting `Public` responses to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on the core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
 - Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback, except under `lan_authenticated`, which listens on the LAN over HTTPS only. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
@@ -774,8 +807,8 @@ The local command allowlist is exactly:
 - `rpc_describe`
 
 These declarations reuse shared handlers and retain the existing HTTP exposure, except
-that the `remote_admin` commands are never HTTP. The local principal is the same OS user
-that owns the application and holds every scope, `remote_admin` included; this is what lets
+that the `remote` commands are never HTTP. The local principal is the same OS user
+that owns the application and is the `owner`, `remote:write` included; this is what lets
 `nyanpasu-cli remote` administer the HTTP server, the socket, tokens and sessions, while
 tokens and browser sessions can never hold it. Mutations retain their optional
 runtime/service/elevation effects. Known commands outside this list return `unsupported`;

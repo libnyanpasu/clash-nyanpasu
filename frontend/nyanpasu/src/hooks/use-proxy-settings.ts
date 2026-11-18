@@ -30,10 +30,10 @@ export const useSystemProxy = () => {
 }
 
 export const useTunMode = () => {
-  const { hasScopes } = useCapabilities()
-  // The full config is where TUN is written, and it is secret-bearing: a
-  // caller without both scopes reads the state from the safe view.
-  const canControl = hasScopes(['system', 'sensitive_read'])
+  const { hasPermissions } = useCapabilities()
+  // The full config is where TUN is written, and it is sensitive: a caller
+  // that may not both write the system and read it uses the safe view.
+  const canControl = hasPermissions(['system:write', 'settings:read'])
   const tunSafe = useClashSetting('enable_tun_mode', { enabled: !canControl })
   const tunMode = useClashSystemSetting('enable_tun_mode', {
     enabled: canControl,
@@ -64,8 +64,8 @@ export const useTransparentProxy = () => {
   })
   const core = useSetting('core')
   const serviceMode = useSetting('enable_service_mode')
-  const { hasScopes } = useCapabilities()
-  const canControl = hasScopes(['system', 'sensitive_read'])
+  const { hasPermissions } = useCapabilities()
+  const canControl = hasPermissions(['system:write', 'settings:read'])
   const clash = useClashSystemSettings({ enabled: canControl })
   const clashSafe = useClashSettings({ enabled: !canControl })
   const api = useQueryApi()

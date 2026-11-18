@@ -73,8 +73,8 @@ pub enum Access {
     Write,
 }
 
-/// One requirement, written `proxy:write`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// One requirement, written `proxy:write`; on the wire `{ "resource": "proxy", "access": "write" }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct Permission {
     pub resource: Resource,
     pub access: Access,
@@ -133,6 +133,12 @@ impl Permissions {
     pub fn iter(&self) -> impl Iterator<Item = (Resource, Access)> + '_ {
         <Resource as strum::IntoEnumIterator>::iter()
             .filter_map(|resource| self.get(resource).map(|access| (resource, access)))
+    }
+}
+
+impl Type for Permissions {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        <BTreeMap<Resource, Access> as Type>::definition(types)
     }
 }
 
@@ -216,6 +222,21 @@ pub fn validate_anonymous_permissions(permissions: &Permissions) -> Result<(), P
         Some(held) => Err(PermissionError::AnonymousBeyondOperator { held }),
         None => Ok(()),
     }
+}
+
+/// The permissions an anonymous caller actually holds: `configured`, each level capped at what the
+/// `operator` role holds, so a hand-edited configuration cannot widen them past
+/// [`validate_anonymous_permissions`].
+pub fn cap_anonymous_permissions(configured: &Permissions) -> Permissions {
+    let bound = Role::Operator.permissions();
+    configured
+        .iter()
+        .fold(Permissions::NONE, |held, (resource, access)| {
+            match bound.get(resource) {
+                Some(limit) => held.with(resource, access.min(limit)),
+                None => held,
+            }
+        })
 }
 
 #[cfg(test)]

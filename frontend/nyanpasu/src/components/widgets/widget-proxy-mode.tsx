@@ -290,7 +290,7 @@ export function ProxyModeWidget(props: WidgetComponentProps) {
   const { sourceOnly, isOverlay, disabled } = useDndGridContext()
 
   // Switching the routing mode changes the core: `proxy` scope.
-  const canProxy = useCapabilities().hasScope('proxy')
+  const canProxy = useCapabilities().hasPermission('proxy:write')
 
   if (sourceOnly || isOverlay) return <ProxyModePreview id={props.id} />
 

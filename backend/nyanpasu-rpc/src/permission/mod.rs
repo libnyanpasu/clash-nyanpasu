@@ -2,24 +2,21 @@
 //!
 //! Every transport admits commands, events, direct routes and streams through [`Authority`],
 //! inside the audited admission seam. It reads a resource's requirement, exposure and
-//! capabilities from the generated resource table and the caller's grant, never the caller's
-//! identity.
+//! capabilities from the generated resource table and the caller's permissions, never the
+//! caller's identity or role.
 //!
 //! A call passes these layers, outside in (design section 4.6 of the permission namespace spec):
-//! transport, authentication, audit, resolution, admission here, then two reserved layers before
-//! the handler. Data sharing will intercept responses that need the user's consent; redaction
-//! will decide the response visibility, which today the `rpc` wrapper derives from the caller.
-//! Both read the admitted resource from [`crate::registry::RpcCallMeta`].
+//! transport, authentication, audit, resolution, admission here, then data sharing (reserved)
+//! and [`crate::redaction`] before the handler. Both read the admitted resource from
+//! [`crate::registry::RpcCallMeta`].
 
+use nyanpasu_contracts::auth::Permissions;
 use nyanpasu_rpc_protocol::{
-    AuthContext, DescribedCommand, RpcError, RpcTarget, ScopeSet, ShellCapability,
+    AuthContext, DescribedCommand, RpcError, RpcTarget, ShellCapability,
     permission::{self, ResourceKind, ResourceMetadata},
 };
 
 use crate::registry::CommandHandlers;
-
-/// The canonical self-inspection query any resolved caller may invoke.
-pub(crate) const RPC_DESCRIBE_METHOD: &str = "rpc_describe";
 
 /// The icon bytes route.
 pub(crate) const ICON_FETCH: (ResourceKind, &str) = (ResourceKind::Route, "icon_fetch");
@@ -53,13 +50,14 @@ impl<'a> Authority<'a> {
         &self,
         resource: &ResourceMetadata,
         target: RpcTarget,
-        caller: Option<&ScopeSet>,
+        caller: Option<&Permissions>,
     ) -> Result<(), RpcError> {
-        let scopes = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
+        let permissions =
+            caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;
         if !self.offers(resource, target) {
             return Err(unavailable(resource, target));
         }
-        if !permits(resource, scopes) {
+        if !permissions.permits(resource.permission) {
             return Err(forbidden(resource));
         }
         Ok(())
@@ -71,9 +69,9 @@ impl<'a> Authority<'a> {
         &self,
         resource: &ResourceMetadata,
         target: RpcTarget,
-        caller: &ScopeSet,
+        caller: &Permissions,
     ) -> bool {
-        self.offers(resource, target) && permits(resource, caller)
+        self.offers(resource, target) && caller.permits(resource.permission)
     }
 
     fn offers(&self, resource: &ResourceMetadata, target: RpcTarget) -> bool {
@@ -83,12 +81,6 @@ impl<'a> Authority<'a> {
                 .iter()
                 .all(|capability| self.provided.contains(capability))
     }
-}
-
-/// Whether `scopes` meet the requirement of `resource`. Any resolved caller may describe itself.
-fn permits(resource: &ResourceMetadata, scopes: &ScopeSet) -> bool {
-    (resource.is_command() && resource.name == RPC_DESCRIBE_METHOD)
-        || scopes.contains(resource.scope)
 }
 
 /// The `unsupported` refusal of a resource that exists but is not offered here.
@@ -113,13 +105,13 @@ pub(crate) fn unavailable(resource: &ResourceMetadata, target: RpcTarget) -> Rpc
 }
 
 fn forbidden(resource: &ResourceMetadata) -> RpcError {
-    let scope = resource.scope.as_str();
+    let permission = resource.permission;
     match resource.kind {
         ResourceKind::Event => RpcError::forbidden(format!(
-            "missing required scope `{scope}` for event `{}`",
+            "missing permission {permission} for event `{}`",
             resource.name
         )),
-        _ => RpcError::forbidden(format!("missing required scope `{scope}`")),
+        _ => RpcError::forbidden(format!("missing permission {permission}")),
     }
 }
 
@@ -139,9 +131,10 @@ pub(crate) fn describe_commands(
             DescribedCommand {
                 name: metadata.name.to_owned(),
                 effect: metadata.effect,
-                scope: metadata.scope,
+                permission: metadata.permission,
+                sensitive: metadata.sensitive,
                 allowed: command.linked(target)
-                    && authority.visible(metadata, target, &auth.scopes),
+                    && authority.visible(metadata, target, &auth.permissions),
             }
         })
         .collect();

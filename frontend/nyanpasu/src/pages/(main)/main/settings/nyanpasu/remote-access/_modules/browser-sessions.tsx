@@ -17,7 +17,7 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
-import { scopeLabel } from './scope-labels'
+import { grantLabel } from './permission-labels'
 
 export default function BrowserSessions() {
   const { query, revoke } = useRemoteBrowserSessions()
@@ -83,7 +83,7 @@ export default function BrowserSessions() {
                       <ItemLabelText>{tokenName(session)}</ItemLabelText>
 
                       <ItemLabelDescription>
-                        {session.scopes.map(scopeLabel).join(' · ')}
+                        {grantLabel(session.grant)}
                       </ItemLabelDescription>
 
                       <ItemLabelDescription>

@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react'
 import { page, userEvent } from 'vitest/browser'
 import { m } from '@/paraglide/messages'
 import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
-import { AllScopes } from './all-scopes'
+import { AllPermissions } from './all-permissions'
 
 const fakes = vi.hoisted(() => ({
   setThemeMode: vi.fn(),
@@ -76,7 +76,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 })
 
 test('top-level arrows switch menus and Escape returns focus to the active trigger', async () => {
-  await render(<HeaderMenu />, { wrapper: AllScopes })
+  await render(<HeaderMenu />, { wrapper: AllPermissions })
 
   const file = page.getByRole('menuitem', {
     name: m.header_file_action_title(),
@@ -95,7 +95,7 @@ test('top-level arrows switch menus and Escape returns focus to the active trigg
 })
 
 test('settings menu options call the theme and system proxy handlers', async () => {
-  await render(<HeaderMenu />, { wrapper: AllScopes })
+  await render(<HeaderMenu />, { wrapper: AllPermissions })
 
   await page
     .getByRole('menuitem', { name: m.header_settings_action_title() })
@@ -127,7 +127,7 @@ test('settings menu options call the theme and system proxy handlers', async () 
 })
 
 test('the settings menu exposes transparent capture', async () => {
-  await render(<HeaderMenu />, { wrapper: AllScopes })
+  await render(<HeaderMenu />, { wrapper: AllPermissions })
   await page
     .getByRole('menuitem', { name: m.header_settings_action_title() })
     .click()
@@ -143,7 +143,7 @@ test('the settings menu exposes transparent capture', async () => {
 })
 
 test('the update link stays outside the menubar and Help invokes its action', async () => {
-  const view = await render(<HeaderMenu />, { wrapper: AllScopes })
+  const view = await render(<HeaderMenu />, { wrapper: AllPermissions })
 
   const update = page.getByRole('link', { name: m.header_new_version() })
   await expect

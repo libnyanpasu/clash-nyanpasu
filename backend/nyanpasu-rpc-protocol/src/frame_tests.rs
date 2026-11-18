@@ -33,7 +33,13 @@ fn session() -> Session {
 fn ready() -> Session {
     let mut session = session();
     let accept = session.receive(&hello()).unwrap().unwrap();
-    assert!(matches!(accept, Frame::Accept { version: 1, .. }));
+    assert!(matches!(
+        accept,
+        Frame::Accept {
+            version: PROTOCOL_VERSION,
+            ..
+        }
+    ));
     session.send(&accept).unwrap();
     session
 }
@@ -151,7 +157,7 @@ fn local_frames_preserve_json_and_big_endian_lengths() {
         },
     ];
     assert_eq!(MAX_FRAME_LEN, 4 * 1024 * 1024);
-    assert_eq!(PROTOCOL_VERSION, 1);
+    assert_eq!(PROTOCOL_VERSION, 2);
     for frame in frames {
         let bytes = frame::encode(&frame).unwrap();
         assert_eq!(
@@ -207,7 +213,7 @@ fn local_handshake_rejects_incompatible_versions_before_dispatch() {
         waiting.receive(&request(1)).is_err(),
         "accept must pass the ordered writer first"
     );
-    for versions in [vec![], vec![0], vec![2, u32::MAX]] {
+    for versions in [vec![], vec![0], vec![1, 3, u32::MAX]] {
         let mut session = session();
         let mut greeting = hello();
         let Frame::Hello {
@@ -243,14 +249,14 @@ fn local_handshake_rejects_incompatible_versions_before_dispatch() {
 fn local_required_features_are_negotiated() {
     let mut server = Session::new(vec![Feature::Rpc, Feature::Events], 8, 2);
     let greeting = Frame::Hello {
-        versions: vec![99, 1, 0],
+        versions: vec![99, PROTOCOL_VERSION, 0],
         required_features: vec!["rpc".into(), "events".into()],
         optional_features: vec!["unknown".into(), "connection-details".into()],
     };
     assert_eq!(
         server.receive(&greeting).unwrap(),
         Some(Frame::Accept {
-            version: 1,
+            version: PROTOCOL_VERSION,
             features: vec![Feature::Rpc, Feature::Events]
         })
     );
@@ -259,7 +265,7 @@ fn local_required_features_are_negotiated() {
         assert_eq!(
             session
                 .receive(&Frame::Hello {
-                    versions: vec![1],
+                    versions: vec![PROTOCOL_VERSION],
                     required_features: required.into_iter().map(str::to_owned).collect(),
                     optional_features: vec!["rpc".into()]
                 })
@@ -845,8 +851,8 @@ fn malformed_frames_never_dispatch() {
 fn canonical_local_examples_decode_as_real_command_results() {
     // These are the version-1 wire examples, independent of Rust field spelling.
     let examples = r#"
-{"type":"hello","versions":[1],"requiredFeatures":["rpc"],"optionalFeatures":["events","connection-details"]}
-{"type":"accept","version":1,"features":["rpc","events","connection-details"]}
+{"type":"hello","versions":[2],"requiredFeatures":["rpc"],"optionalFeatures":["events","connection-details"]}
+{"type":"accept","version":2,"features":["rpc","events","connection-details"]}
 {"type":"request","id":1,"method":"get_profiles","params":null}
 {"type":"response","id":1,"result":{"valid":[],"items":[]}}
 {"type":"subscribe","id":2,"stream":"events","event":"core-logs-changed"}
@@ -899,7 +905,7 @@ fn canonical_local_examples_decode_as_real_command_results() {
     }
     assert_eq!(
         serde_json::to_value(hello()).unwrap(),
-        json!({"type":"hello","versions":[1],"requiredFeatures":["rpc"],"optionalFeatures":["events","connection-details"]})
+        json!({"type":"hello","versions":[2],"requiredFeatures":["rpc"],"optionalFeatures":["events","connection-details"]})
     );
     assert_eq!(
         serde_json::to_value(reset()).unwrap(),

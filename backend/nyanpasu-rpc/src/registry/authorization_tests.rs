@@ -8,9 +8,10 @@ use axum::{
     http::{Request, StatusCode},
 };
 use futures::StreamExt as _;
+use nyanpasu_contracts::auth::{Access, Grant, Permission, Permissions, Resource, Role};
 use nyanpasu_rpc_protocol::{
-    AuthContext, CommandEffect, EventName, Principal, RpcDescribeResponse, RpcTarget, Scope,
-    ScopeSet, ServerInfo, ServerKind, ShellCapability,
+    AuthContext, CommandEffect, EventName, Principal, RpcDescribeResponse, RpcTarget, ServerInfo,
+    ServerKind, ShellCapability,
 };
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -30,23 +31,48 @@ use crate::{
     },
 };
 
-fn auth_with_scopes(scopes: impl IntoIterator<Item = Scope>) -> AuthContext {
+/// A token holding exactly `held`.
+fn token_holding(held: &[(Resource, Access)]) -> AuthContext {
     AuthContext::new(
         Principal::Token {
             id: "tok_test_01".to_owned(),
-            name: "scoped-token".to_owned(),
+            name: "custom-token".to_owned(),
         },
-        scopes.into_iter().collect(),
+        Grant::Custom(
+            held.iter()
+                .fold(Permissions::NONE, |permissions, (resource, access)| {
+                    permissions.with(*resource, *access)
+                }),
+        ),
+    )
+}
+
+/// A token holding `role`.
+fn token_with_role(role: Role) -> AuthContext {
+    AuthContext::new(
+        Principal::Token {
+            id: "tok_test_01".to_owned(),
+            name: "role-token".to_owned(),
+        },
+        Grant::Role(role),
+    )
+}
+
+/// An HTTP browser session holding every permission, as the owner does.
+fn full_session(id: &str) -> AuthContext {
+    AuthContext::new(
+        Principal::Session { id: id.to_owned() },
+        Grant::Role(Role::Owner),
     )
 }
 
 #[tokio::test]
-async fn scopes_are_independent_across_commands_and_direct_routes() {
+async fn permissions_are_independent_across_commands_and_direct_routes() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
 
-    // `Proxy` cannot read logs (`Read`), sensitive logs (`SensitiveRead`),
-    // system settings (`System`), or app settings (`Settings`), nor hit direct routes.
+    // `proxy:write` cannot read logs (`logs:read`), patch system settings (`system:write`) or
+    // app settings (`settings:write`), nor hit direct routes of other resources.
     let versions_before = fixture
         .rpc
         .dependencies
@@ -60,7 +86,7 @@ async fn scopes_are_independent_across_commands_and_direct_routes() {
         .get_app_config()
         .await
         .unwrap();
-    let proxy_only = auth_with_scopes([Scope::Proxy]);
+    let proxy_only = token_holding(&[(Resource::Proxy, Access::Write)]);
     for (method, params) in [
         ("list_log_files", json!({ "source": "app" })),
         ("get_core_log_status", json!({})),
@@ -114,44 +140,36 @@ async fn scopes_are_independent_across_commands_and_direct_routes() {
         serde_json::to_value(&app_before).unwrap()
     );
 
-    // Even holding `SensitiveRead` does not imply `Read`.
-    let sensitive_only = auth_with_scopes([Scope::SensitiveRead]);
+    // Reading one resource does not reach another.
+    let profile_reader = token_holding(&[(Resource::Profile, Access::Read)]);
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
         "list_log_files",
         json!({ "source": "app" }),
         None,
-        Some(sensitive_only.clone()),
+        Some(profile_reader.clone()),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["kind"], "forbidden");
+    assert_eq!(body["message"], "missing permission logs:read");
 
-    // Holding `Read` permits `list_log_files` and `/bridge/connection-details`,
-    // while still refusing `SensitiveRead` (`/bridge/logs/archive` and `get_core_log_status`).
-    let read_only = auth_with_scopes([Scope::Read]);
-    let (status, body) = rpc_for_test_call_with_auth(
-        &router,
-        "list_log_files",
-        json!({ "source": "app" }),
-        None,
-        Some(read_only.clone()),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    // `logs:read` permits `list_log_files` and the sensitive `get_core_log_status`: the marking
+    // takes no part in admission.
+    let logs_reader = token_holding(&[(Resource::Logs, Access::Read)]);
+    for method in ["list_log_files", "get_core_log_status"] {
+        let params = if method == "list_log_files" {
+            json!({ "source": "app" })
+        } else {
+            json!({})
+        };
+        let (status, body) =
+            rpc_for_test_call_with_auth(&router, method, params, None, Some(logs_reader.clone()))
+                .await;
+        assert_eq!(status, StatusCode::OK, "{method}: {body}");
+    }
 
-    let (status, body) = rpc_for_test_call_with_auth(
-        &router,
-        "get_core_log_status",
-        json!({}),
-        None,
-        Some(read_only.clone()),
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(body["kind"], "forbidden");
-
-    let response = with_http_auth(router.clone(), read_only.clone())
+    let response = with_http_auth(router.clone(), profile_reader.clone())
         .oneshot(
             Request::get("/bridge/logs/archive")
                 .body(Body::empty())
@@ -191,9 +209,9 @@ async fn scopes_are_independent_across_commands_and_direct_routes() {
         }));
     }
 
-    // `/bridge/icons/*` requires `Scope::Read` before cookie/path parsing and keeps security
+    // `/bridge/icons/*` requires `system:read` before cookie/path parsing and keeps security
     // headers + `cache-control: no-store` on both `401` and `403`.
-    for expected_auth in [None, Some(sensitive_only)] {
+    for expected_auth in [None, Some(profile_reader)] {
         let mut request = Request::get("/bridge/icons/tray?mode=normal")
             .body(Body::empty())
             .unwrap();
@@ -279,23 +297,24 @@ async fn unauthenticated_http_routes_fail_closed_with_401() {
 }
 
 #[tokio::test]
-async fn rpc_describe_is_callable_without_read_and_reflects_capabilities_and_scopes() {
+async fn rpc_describe_is_callable_without_permissions_and_reflects_capabilities() {
     let fixture = Fixture::with_capabilities(false, &[ShellCapability::OsIntegration]).await;
     let router = fixture.rpc.clone().router();
 
-    // Zero scopes still permits `rpc_describe` (own-only exception), while reporting
-    // business commands as `allowed: false`.
-    let empty_auth = auth_with_scopes([]);
+    // No permission still permits `rpc_describe` (`meta:read`), while reporting business
+    // commands as `allowed: false`.
+    let empty_auth = token_holding(&[]);
     let (status, body) =
         rpc_for_test_call_with_auth(&router, "rpc_describe", json!({}), None, Some(empty_auth))
             .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let described: RpcDescribeResponse = serde_json::from_value(body).unwrap();
-    assert_eq!(described.protocol, 1);
+    assert_eq!(described.protocol, 2);
     assert_eq!(described.server.kind, ServerKind::Desktop);
     assert_eq!(described.server.version, "0.0.0-test");
     assert_eq!(described.transport, RpcTarget::Http);
-    assert_eq!(described.scopes, ScopeSet::empty());
+    assert_eq!(described.role, None);
+    assert_eq!(described.permissions, Permissions::NONE);
 
     let rpc_describe_entry = described
         .commands
@@ -303,8 +322,18 @@ async fn rpc_describe_is_callable_without_read_and_reflects_capabilities_and_sco
         .find(|cmd| cmd.name == "rpc_describe")
         .unwrap();
     assert_eq!(rpc_describe_entry.effect, CommandEffect::Query);
-    assert_eq!(rpc_describe_entry.scope, Scope::Read);
+    assert_eq!(rpc_describe_entry.permission, Permission::META_READ);
+    assert!(!rpc_describe_entry.sensitive);
     assert!(rpc_describe_entry.allowed);
+    // Every command reports its sensitive marking.
+    assert!(
+        described
+            .commands
+            .iter()
+            .find(|cmd| cmd.name == "get_profiles")
+            .unwrap()
+            .sensitive
+    );
 
     let list_files = described
         .commands
@@ -313,14 +342,17 @@ async fn rpc_describe_is_callable_without_read_and_reflects_capabilities_and_sco
         .unwrap();
     assert!(!list_files.allowed);
 
-    // Grant `Read`: `list_log_files` becomes `allowed: true`, while `get_system_accent_color`
-    // (`AccentColor` missing) and `patch_system_settings` (`System` missing) stay `allowed: false`.
-    let read_auth = auth_with_scopes([Scope::Read]);
+    // The viewer role: `list_log_files` becomes `allowed: true`, while `get_system_accent_color`
+    // (`AccentColor` missing) and `patch_system_settings` (`system:write` missing) stay
+    // `allowed: false`.
+    let read_auth = token_with_role(Role::Viewer);
     let (status, body) =
         rpc_for_test_call_with_auth(&router, "rpc_describe", json!({}), None, Some(read_auth))
             .await;
     assert_eq!(status, StatusCode::OK);
     let described: RpcDescribeResponse = serde_json::from_value(body).unwrap();
+    assert_eq!(described.role, Some(Role::Viewer));
+    assert_eq!(described.permissions, Role::Viewer.permissions());
     assert!(
         described
             .commands
@@ -422,6 +454,8 @@ async fn rpc_describe_is_callable_without_read_and_reflects_capabilities_and_sco
     .unwrap();
     let described_headless =
         headless.describe(RpcTarget::Local, &AuthContext::local_socket("1000"));
+    assert_eq!(described_headless.role, Some(Role::Owner));
+    assert_eq!(described_headless.permissions, Role::Owner.permissions());
     assert_eq!(described_headless.server.kind, ServerKind::Headless);
     assert_eq!(described_headless.server.version, "2.0.0-test");
 
@@ -430,13 +464,14 @@ async fn rpc_describe_is_callable_without_read_and_reflects_capabilities_and_sco
 }
 
 #[tokio::test]
-async fn http_events_enforce_target_capability_scope_filtering_and_revocation() {
+async fn http_events_enforce_target_capability_permission_filtering_and_revocation() {
     let fixture = Fixture::with_capabilities(false, &[ShellCapability::OsIntegration]).await;
     let router = fixture.rpc.clone().router();
-    let full_http = AuthContext::session("sess_ev_full");
-    let read_only = auth_with_scopes([Scope::Read]);
+    let full_http = full_session("sess_ev_full");
+    // Settings read only: the storage and state events, not logs or system events.
+    let settings_reader = token_holding(&[(Resource::Settings, Access::Read)]);
 
-    // Desktop-only events are refused as `501 unsupported` even with full scopes.
+    // Desktop-only events are refused as `501 unsupported` even with every permission.
     for desktop_event in [
         EventName::WindowMessage.as_str(),
         EventName::SchemeRequestReceived.as_str(),
@@ -463,23 +498,25 @@ async fn http_events_enforce_target_capability_scope_filtering_and_revocation() 
     assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
     assert_eq!(fixture.rpc.dependencies.events.subscriber_count(), 0);
 
-    // `SensitiveRead` event rejected as `403 forbidden` for `Scope::Read` before subscribing.
+    // A `logs:read` event is rejected as `403 forbidden` for a settings reader before
+    // subscribing.
     let mut req = Request::get(format!(
         "/bridge/events?name={}",
         EventName::CoreLogsChanged.as_str()
     ))
     .body(Body::empty())
     .unwrap();
-    req.extensions_mut().insert(read_only.clone());
+    req.extensions_mut().insert(settings_reader.clone());
     let response = router.clone().oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(fixture.rpc.dependencies.events.subscriber_count(), 0);
 
-    // Unnamed `/bridge/events` with `Scope::Read` skips `SensitiveRead`, desktop-only, and
-    // missing-capability events, while forwarding `Scope::Read` events and closing on revocation.
+    // Unnamed `/bridge/events` for a settings reader skips events of other resources,
+    // desktop-only and missing-capability events, while forwarding its own and closing on
+    // revocation.
     let revocation = CancellationToken::new();
     let mut req = Request::get("/bridge/events").body(Body::empty()).unwrap();
-    req.extensions_mut().insert(read_only);
+    req.extensions_mut().insert(settings_reader);
     req.extensions_mut()
         .insert(HttpSessionRevocation(revocation.clone(), Arc::new(None)));
     let response = router.clone().oneshot(req).await.unwrap();
@@ -490,8 +527,8 @@ async fn http_events_enforce_target_capability_scope_filtering_and_revocation() 
     assert!(std::str::from_utf8(&ready).unwrap().contains("ready"));
 
     fixture.rpc.dependencies.events.publish(
-        EventName::StorageValueChanged.as_str(),
-        json!({ "key": "k", "value": SECRET }),
+        EventName::CoreLogsChanged.as_str(),
+        json!({ "line": SECRET }),
     );
     fixture.rpc.dependencies.events.publish(
         EventName::WindowMessage.as_str(),
@@ -525,7 +562,7 @@ async fn http_events_enforce_target_capability_scope_filtering_and_revocation() 
     .unwrap();
     named_req
         .extensions_mut()
-        .insert(auth_with_scopes([Scope::Read]));
+        .insert(token_with_role(Role::Viewer));
     named_req.extensions_mut().insert(HttpSessionRevocation(
         named_revocation.clone(),
         Arc::new(None),
@@ -557,7 +594,7 @@ async fn audit_records_public_principal_and_never_logs_secret_token_name_or_http
             id: "tok_public_01".to_owned(),
             name: SECRET.to_owned(),
         },
-        [].into(),
+        Grant::Custom(Permissions::NONE),
     );
 
     async {
@@ -715,6 +752,9 @@ async fn real_bootstrap_http_session_assigns_non_secret_session_principal() {
         }
         other => panic!("expected Principal::Session, got {other:?}"),
     }
+    // A launch code opens an `admin` session: everything but remote administration.
+    assert_eq!(described.role, Some(Role::Admin));
+    assert_eq!(described.permissions, Role::Admin.permissions());
 
     {
         let records = sink.records.lock();
@@ -847,17 +887,17 @@ async fn headless_loopback_middleware_enforces_401_and_assigns_non_secret_sessio
 }
 
 #[tokio::test]
-async fn scoped_session_test_anonymous_and_system_only_principals_follow_explicit_scopes() {
+async fn session_anonymous_and_system_only_callers_follow_their_permissions() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
 
-    // 1. Explicitly scoped `Session`: zero scopes permits own `rpc_describe` only;
-    //    `Read`-only `Session` permits `Read` queries and denies `SensitiveRead`/`Settings`.
+    // 1. A `Session` without permissions may only describe itself; a viewer `Session` reads
+    //    every domain, sensitive queries included, and writes nothing.
     let session_empty = AuthContext::new(
         Principal::Session {
             id: "sess_empty_01".to_owned(),
         },
-        ScopeSet::empty(),
+        Grant::Custom(Permissions::NONE),
     );
     fixture.sink.records.lock().clear();
     let (status, body) = rpc_for_test_call_with_auth(
@@ -876,7 +916,7 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
             id: "sess_empty_01".to_owned(),
         }
     );
-    assert_eq!(described.scopes, ScopeSet::empty());
+    assert_eq!(described.permissions, Permissions::NONE);
     assert!(
         described
             .commands
@@ -916,7 +956,7 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
         Principal::Session {
             id: "sess_scoped_01".to_owned(),
         },
-        [Scope::Read].into(),
+        Grant::Role(Role::Viewer),
     );
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
@@ -934,23 +974,23 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
             id: "sess_scoped_01".to_owned(),
         }
     );
-    assert_eq!(described.scopes, [Scope::Read].into());
-    assert!(
-        described
-            .commands
-            .iter()
-            .find(|cmd| cmd.name == "list_log_files")
-            .unwrap()
-            .allowed
-    );
-    assert!(
-        !described
-            .commands
-            .iter()
-            .find(|cmd| cmd.name == "get_core_log_status")
-            .unwrap()
-            .allowed
-    );
+    assert_eq!(described.role, Some(Role::Viewer));
+    for (name, allowed) in [
+        ("list_log_files", true),
+        ("get_core_log_status", true),
+        ("patch_app_config", false),
+    ] {
+        assert_eq!(
+            described
+                .commands
+                .iter()
+                .find(|cmd| cmd.name == name)
+                .unwrap()
+                .allowed,
+            allowed,
+            "{name}"
+        );
+    }
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
         "list_log_files",
@@ -960,23 +1000,28 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    for (method, params) in [
-        ("get_core_log_status", json!({})),
-        (
-            "patch_app_config",
-            json!({ "patch": { "proxy_layout_column": 4 } }),
-        ),
-    ] {
-        let (status, body) =
-            rpc_for_test_call_with_auth(&router, method, params, None, Some(session_read.clone()))
-                .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{method}: {body}");
-        assert_eq!(body["kind"], "forbidden");
-    }
+    let (status, body) = rpc_for_test_call_with_auth(
+        &router,
+        "get_core_log_status",
+        json!({}),
+        None,
+        Some(session_read.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = rpc_for_test_call_with_auth(
+        &router,
+        "patch_app_config",
+        json!({ "patch": { "proxy_layout_column": 4 } }),
+        None,
+        Some(session_read.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["kind"], "forbidden");
 
-    // 2. Test-only resolved `Anonymous` (production anonymous strategy remains unavailable):
-    //    follows the own-only `rpc_describe` exception and explicit `ScopeSet` checks.
-    let anon_empty = AuthContext::new(Principal::Anonymous, ScopeSet::empty());
+    // 2. The anonymous role holds only capability discovery unless permissions are configured.
+    let anon_empty = AuthContext::anonymous(Permissions::NONE);
     fixture.sink.records.lock().clear();
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
@@ -989,7 +1034,8 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
     assert_eq!(status, StatusCode::OK, "{body}");
     let described: RpcDescribeResponse = serde_json::from_value(body).unwrap();
     assert_eq!(described.principal, Principal::Anonymous);
-    assert_eq!(described.scopes, ScopeSet::empty());
+    assert_eq!(described.role, Some(Role::Anonymous));
+    assert_eq!(described.permissions, Permissions::NONE);
     assert!(
         described
             .commands
@@ -1025,30 +1071,24 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
             .all(|record| record.header.principal.as_deref() == Some("anonymous"))
     );
 
-    let anon_read = AuthContext::new(Principal::Anonymous, [Scope::Read].into());
+    let anon_logs = AuthContext::anonymous(Permissions::NONE.with(Resource::Logs, Access::Read));
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
         "list_log_files",
         json!({ "source": "app" }),
         None,
-        Some(anon_read.clone()),
+        Some(anon_logs.clone()),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let (status, body) = rpc_for_test_call_with_auth(
-        &router,
-        "get_core_log_status",
-        json!({}),
-        None,
-        Some(anon_read),
-    )
-    .await;
+    let (status, body) =
+        rpc_for_test_call_with_auth(&router, "get_proxies", json!({}), None, Some(anon_logs)).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(body["kind"], "forbidden");
 
-    // 3. `System`-only `Token`: `Scope::System` does NOT implicitly grant `Read`,
-    //    `SensitiveRead`, or `Settings`, while permitting `rpc_describe` and `Scope::System`.
-    let system_only = auth_with_scopes([Scope::System]);
+    // 3. A `system:write` token: writing one resource includes reading it, but grants nothing on
+    //    another resource.
+    let system_only = token_holding(&[(Resource::System, Access::Write)]);
     let (status, body) = rpc_for_test_call_with_auth(
         &router,
         "rpc_describe",
@@ -1059,13 +1099,17 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let described: RpcDescribeResponse = serde_json::from_value(body).unwrap();
-    assert_eq!(described.scopes, [Scope::System].into());
+    assert_eq!(
+        described.permissions,
+        Permissions::NONE.with(Resource::System, Access::Write)
+    );
     for (name, expected_allowed) in [
         ("rpc_describe", true),
         ("list_log_files", false),
         ("get_core_log_status", false),
         ("patch_app_config", false),
         ("patch_system_settings", true),
+        ("get_core_status", true),
     ] {
         assert_eq!(
             described
@@ -1093,11 +1137,7 @@ async fn scoped_session_test_anonymous_and_system_only_principals_follow_explici
         assert_eq!(status, StatusCode::FORBIDDEN, "{method}: {body}");
         assert_eq!(body["kind"], "forbidden");
     }
-    for path in [
-        "/bridge/connection-details",
-        "/bridge/logs/archive",
-        "/bridge/icons/tray?mode=normal",
-    ] {
+    for path in ["/bridge/connection-details", "/bridge/logs/archive"] {
         let response = with_http_auth(router.clone(), system_only.clone())
             .oneshot(Request::get(path).body(Body::empty()).unwrap())
             .await
@@ -1190,7 +1230,7 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
             json!({
                 "request": {
                     "name": "admin-check",
-                    "scopes": [Scope::Read],
+                    "grant": { "role": "viewer" },
                 }
             }),
         ),
@@ -1213,12 +1253,13 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
         ("reset_remote_access_tls", json!({})),
     ];
 
-    // 1. Even a full-scope HTTP caller gets `unsupported` (`501`), and `rpc_describe` omits the
+    // 1. Even an HTTP caller holding every permission gets `unsupported` (`501`), and
+    //    `rpc_describe` omits the
     //    commands there and reports `allowed: true` on Desktop. The local socket offers the same
     //    commands except the launch URL, a browser credential that stays with the desktop; the
     //    local socket's own behavior is covered by
     //    `the_local_socket_administers_remote_access_and_http_never_does`.
-    let full_http = AuthContext::session("sess_full_check");
+    let full_http = full_session("sess_full_check");
     let http_desc = rpc.describe(RpcTarget::Http, &full_http);
     let local_ctx = AuthContext::local_socket("1000");
     let local_desc = rpc.describe(RpcTarget::Local, &local_ctx);
@@ -1273,7 +1314,7 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
             Principal::Desktop {
                 window: "main".to_owned(),
             },
-            ScopeSet::empty(),
+            Grant::Custom(Permissions::NONE),
         );
         let forbidden_err = rpc
             .call(
@@ -1397,7 +1438,7 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
             json!({
                 "request": {
                     "name": "cli-helper",
-                    "scopes": [Scope::Read, Scope::Proxy],
+                    "grant": { "permissions": { "proxy": "write", "logs": "read" } },
                 }
             }),
         )
@@ -1489,7 +1530,7 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
 async fn http_owner_isolation_supports_sse_client_id_query_and_rejects_invalid_nonce() {
     let fixture = Fixture::new(false).await;
     let router = fixture.rpc.clone().router();
-    let token_auth = auth_with_scopes([Scope::Read]);
+    let token_auth = token_with_role(Role::Viewer);
 
     // Same token with two distinct `?client_id=` SSE query nonces produces distinct owner hashes.
     let mut req_alpha_query = Request::get("/bridge/events?client_id=tab-alpha")
@@ -1595,53 +1636,34 @@ async fn http_owner_isolation_supports_sse_client_id_query_and_rejects_invalid_n
 }
 
 #[tokio::test]
-async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
-    use nyanpasu_config::application::{
-        HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig, Scope as ConfigScope,
-    };
+async fn set_remote_access_rejects_anonymous_permissions_beyond_the_operator_role() {
+    use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig};
     use nyanpasu_core::client::SetRemoteAccessError;
 
     let fixture = Fixture::new(false).await;
     let client = fixture.rpc.dependencies.client.clone();
     let initial = client.remote_access_config();
-
-    let empty_err = client
-        .set_remote_access(RemoteAccessConfig {
-            http: HttpAccessConfig {
-                enabled: true,
-                strategy: HttpAccessStrategy::LocalOpen,
-                local_open_scopes: vec![],
-                ..Default::default()
-            },
+    let local_open = |anonymous_permissions| RemoteAccessConfig {
+        http: HttpAccessConfig {
+            enabled: true,
+            strategy: HttpAccessStrategy::LocalOpen,
+            anonymous_permissions,
             ..Default::default()
-        })
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(empty_err, SetRemoteAccessError::Client { .. }),
-        "{empty_err:?}"
-    );
-    assert!(
-        format!("{empty_err:?}").contains("LocalOpenScopesEmpty"),
-        "{empty_err:?}"
-    );
-    assert_eq!(client.remote_access_config(), initial);
+        },
+        ..Default::default()
+    };
 
-    for forbidden in [
-        ConfigScope::SensitiveRead,
-        ConfigScope::System,
-        ConfigScope::RemoteAdmin,
+    for (resource, access) in [
+        (Resource::System, Access::Write),
+        (Resource::Logs, Access::Write),
+        (Resource::Remote, Access::Read),
     ] {
         let err = client
-            .set_remote_access(RemoteAccessConfig {
-                http: HttpAccessConfig {
-                    enabled: true,
-                    strategy: HttpAccessStrategy::LocalOpen,
-                    local_open_scopes: vec![ConfigScope::Read, forbidden],
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
+            .set_remote_access(local_open(
+                Permissions::NONE
+                    .with(Resource::Proxy, Access::Read)
+                    .with(resource, access),
+            ))
             .await
             .unwrap_err();
         assert!(
@@ -1649,7 +1671,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
             "{err:?}"
         );
         assert!(
-            format!("{err:?}").contains("InvalidRemoteAccess"),
+            format!("{err:?}").contains("AnonymousBeyondOperator"),
             "{err:?}"
         );
         assert_eq!(client.remote_access_config(), initial);
@@ -1663,15 +1685,7 @@ async fn set_remote_access_rejects_empty_or_forbidden_local_open_scopes() {
             "set_remote_access",
             RpcCaller::desktop("main"),
             json!({
-                "config": RemoteAccessConfig {
-                    http: HttpAccessConfig {
-                        enabled: true,
-                        strategy: HttpAccessStrategy::LocalOpen,
-                        local_open_scopes: vec![ConfigScope::System],
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
+                "config": local_open(Permissions::NONE.with(Resource::System, Access::Write))
             }),
         )
         .await
@@ -1688,13 +1702,13 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
     use nyanpasu_rpc_protocol::RpcOwner;
 
     let fixture = Fixture::new(false).await;
-    let local = |scopes: ScopeSet| {
+    let local = |grant: Grant| {
         RpcCaller::new(
             AuthContext::new(
                 Principal::LocalSocket {
                     user: "1000".to_owned(),
                 },
-                scopes,
+                grant,
             ),
             RpcOwner::local_connection("test", 1),
         )
@@ -1705,8 +1719,8 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
             .call(RpcTransport::Local, method, caller, params)
     };
 
-    // The same-user principal holds every scope, `remote_admin` included.
-    let owner = || local(ScopeSet::full());
+    // The same-user principal is the owner, `remote:write` included.
+    let owner = || local(Grant::Role(Role::Owner));
     let listed: Vec<nyanpasu_contracts::auth::AccessTokenSummary> = serde_json::from_value(
         call(owner(), "list_remote_access_tokens", json!({}))
             .await
@@ -1718,7 +1732,7 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
     let created = call(
         owner(),
         "create_remote_access_token",
-        json!({"request": {"name": "cli-made", "scopes": [Scope::Read]}}),
+        json!({"request": {"name": "cli-made", "grant": {"role": "viewer"}}}),
     )
     .await
     .unwrap();
@@ -1734,15 +1748,20 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
     assert_eq!(listed.len(), 1);
     assert!(!format!("{listed:?}").contains(&secret));
 
-    // No bearer token may hold the scope that administers remote access.
-    let refused = call(
-        owner(),
-        "create_remote_access_token",
-        json!({"request": {"name": "wide", "scopes": [Scope::RemoteAdmin]}}),
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(refused.kind, "application_error", "{refused:?}");
+    // No bearer token may hold `remote` or the owner role.
+    for grant in [
+        json!({"permissions": {"remote": "read"}}),
+        json!({"role": "owner"}),
+    ] {
+        let refused = call(
+            owner(),
+            "create_remote_access_token",
+            json!({"request": {"name": "wide", "grant": grant}}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(refused.kind, "application_error", "{refused:?}");
+    }
 
     let sessions: Vec<nyanpasu_contracts::auth::BrowserSessionSummary> = serde_json::from_value(
         call(owner(), "list_remote_browser_sessions", json!({}))
@@ -1782,11 +1801,8 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
     .await
     .unwrap();
 
-    // Without the scope, the same commands are forbidden, whatever the transport exposes.
-    let without_admin: ScopeSet = Scope::ALL
-        .into_iter()
-        .filter(|scope| *scope != Scope::RemoteAdmin)
-        .collect();
+    // Without `remote`, the same commands are forbidden, whatever the transport exposes.
+    let without_admin = Grant::Role(Role::Admin);
     for (method, params) in [
         ("list_remote_access_tokens", json!({})),
         ("get_local_socket_status", json!({})),
@@ -1796,14 +1812,14 @@ async fn the_local_socket_administers_remote_access_and_http_never_does() {
         ),
         ("reset_remote_access_tls", json!({})),
     ] {
-        let denied = call(local(without_admin.clone()), method, params)
+        let denied = call(local(without_admin), method, params)
             .await
             .unwrap_err();
         assert_eq!(denied.kind, "forbidden", "{method}: {denied:?}");
     }
 
-    // Over HTTP the commands are not offered at all, even to a principal that holds every scope.
-    let session = AuthContext::session("sess_full_check");
+    // Over HTTP the commands are not offered at all, even to a caller holding every permission.
+    let session = full_session("sess_full_check");
     let router = fixture.rpc.clone().router();
     for method in [
         "list_remote_access_tokens",

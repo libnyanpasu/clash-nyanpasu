@@ -28,7 +28,7 @@ use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_contracts::auth::{
     AccessTokenSummary, AuthClock, AuthRevocation, AuthenticatedCaller, BrowserSessionSummary,
     CreateAccessTokenRequest, EntropySource, EstablishedBrowserSession, IssuedAccessToken,
-    IssuedLaunchCode, Principal, RemoteAuthPolicy, ScopeSet, SecretStore, SecretString, SessionId,
+    IssuedLaunchCode, Principal, RemoteAuthPolicy, SecretStore, SecretString, SessionId,
     TlsCertificateGenerator, TlsCertificateSummary, TlsIdentity, TokenId,
 };
 use nyanpasu_runtime_values::runtime::MutationOutcome;
@@ -336,12 +336,9 @@ impl RemoteAccessAuthClient {
             .await
     }
 
-    /// Mints a single-use code that opens a browser session holding `scopes`.
-    pub async fn issue_launch_code(
-        &self,
-        scopes: ScopeSet,
-    ) -> Result<IssuedLaunchCode, RemoteAuthError> {
-        self.call(|reply| AuthMessage::IssueLaunchCode { scopes, reply })
+    /// Mints a single-use code that opens a browser session holding the `admin` role.
+    pub async fn issue_launch_code(&self) -> Result<IssuedLaunchCode, RemoteAuthError> {
+        self.call(|reply| AuthMessage::IssueLaunchCode { reply })
             .await
     }
 
@@ -357,7 +354,7 @@ impl RemoteAccessAuthClient {
             .await
     }
 
-    /// Opens a browser session holding a token's scopes. It ends when the token does.
+    /// Opens a browser session holding a token's grant. It ends when the token does.
     pub async fn login_with_token(
         &self,
         token: SecretString,

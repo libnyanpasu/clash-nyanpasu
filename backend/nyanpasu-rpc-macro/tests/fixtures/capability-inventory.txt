@@ -85,6 +85,7 @@ get_profiles_listing | desktop,http,local | - | - | query | profile:read
 get_proxies | desktop,http,local | - | presentation | query | proxy:read
 get_proxy_group_icons | desktop,http | - | presentation | query | proxy:read
 get_release_channel | desktop | - | - | query | settings:read
+get_remote_access_certificate | desktop | - | - | query | remote:read
 get_runtime_config | desktop,http | - | - | query | profile:read
 get_runtime_exists | desktop,http | - | - | query | profile:read
 get_runtime_yaml | desktop,http | - | - | query | profile:read
@@ -127,6 +128,7 @@ open_core_dir | desktop | opener | - | mutation | system:write
 open_log_session | desktop,http,local | - | - | mutation | logs:read
 open_logs_dir | desktop | opener | - | mutation | system:write
 open_native_file_dialog | desktop | dialog | - | mutation | system:write
+open_remote_access_certificate | desktop | opener | - | mutation | remote:write
 open_that | desktop | opener | - | mutation | system:write
 open_web_url | desktop | opener | - | mutation | system:write
 patch_app_config | desktop,http,local | - | os_integration,presentation,elevation | mutation | settings:write

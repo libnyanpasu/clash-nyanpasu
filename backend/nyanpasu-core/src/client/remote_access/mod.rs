@@ -47,7 +47,7 @@ use self::{
 pub use self::{
     auth_error::RemoteAuthError,
     auth_store::MAX_SECRET_RECORD_BYTES,
-    error::{LaunchUrlError, SetRemoteAccessError},
+    error::{LaunchUrlError, RemoteAccessCertificateError, SetRemoteAccessError},
 };
 use super::{
     application::ApplicationClient,
@@ -255,6 +255,13 @@ impl RemoteAccessAuthClient {
     /// The public view of the certificate, or `None` before the first one was generated.
     pub async fn tls_summary(&self) -> Result<Option<TlsCertificateSummary>, RemoteAuthError> {
         self.call(|reply| AuthMessage::TlsSummary { reply }).await
+    }
+
+    /// The DER encoding of the certificate, or `None` before the first one was generated. It is
+    /// public: every TLS client receives it.
+    pub async fn tls_certificate(&self) -> Result<Option<Vec<u8>>, RemoteAuthError> {
+        self.call(|reply| AuthMessage::TlsCertificate { reply })
+            .await
     }
 
     /// Replaces the certificate. Pinned clients must pin the new fingerprint.

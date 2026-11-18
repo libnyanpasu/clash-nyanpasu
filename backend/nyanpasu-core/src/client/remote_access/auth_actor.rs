@@ -96,6 +96,10 @@ pub(super) enum Message {
     TlsSummary {
         reply: Reply<Option<TlsCertificateSummary>>,
     },
+    /// The DER encoding of the certificate, or `None` while none was generated yet.
+    TlsCertificate {
+        reply: Reply<Option<Vec<u8>>>,
+    },
     /// Replaces the certificate, which changes its fingerprint.
     ResetTls {
         addresses: Vec<IpAddr>,
@@ -273,6 +277,12 @@ impl Actor for RemoteAccessAuthActor {
             }
             Message::TlsSummary { reply } => {
                 let _ = reply.send(Ok(state.tls.as_ref().map(TlsIdentity::summary)));
+            }
+            Message::TlsCertificate { reply } => {
+                let _ = reply.send(Ok(state
+                    .tls
+                    .as_ref()
+                    .map(|identity| identity.certificate_der().to_vec())));
             }
             Message::ResetTls { addresses, reply } => {
                 let _ = reply.send(state.reset_tls(addresses).await);

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
 import {
   SegmentedButton,
   SegmentedButtonItem,
@@ -24,26 +23,12 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../../../../_modules/settings-card'
+import AccessAddresses from './access-addresses'
 import CertificateSettings from './certificate-settings'
 import LanAllowList, { defaultLanAllow } from './lan-allow-list'
 import PermissionGrid from './permission-grid'
-import SaveField from './save-field'
+import PortSettings from './port-settings'
 import SensitiveReach from './sensitive-reach'
-
-const PORT_MAX = 65535
-
-/** The persisted port, or null when the field is empty; undefined when it is not a port. */
-function parsePort(text: string): number | null | undefined {
-  const trimmed = text.trim()
-  if (trimmed === '') {
-    return null
-  }
-
-  const port = Number(trimmed)
-  return Number.isInteger(port) && port >= 1 && port <= PORT_MAX
-    ? port
-    : undefined
-}
 
 const LISTEN_SCOPES = ['local', 'lan', 'any'] as const satisfies HttpListen[]
 
@@ -53,11 +38,12 @@ const AUTH_MODES = [
 ] as const satisfies HttpAuthentication[]
 
 /**
- * The listener's switch, web interface, who can reach it, how they authenticate and its port, and
- * what is listening now.
+ * The addresses of the running server, then the listener's switch and web interface, followed by
+ * the settings that decide together who can connect and how: the port, HTTPS, the reach and the
+ * authentication, which leads into the access tokens below.
  */
 export default function ServerSettings() {
-  const { status, http, update, openInBrowser } = useRemoteAccess()
+  const { status, http, update } = useRemoteAccess()
   const networks = useLocalNetworks({ enabled: http != null })
   const [error, setError] = useState<string | null>(null)
 
@@ -115,6 +101,8 @@ export default function ServerSettings() {
 
   return (
     <div data-slot="remote-access-server-container">
+      <AccessAddresses />
+
       <SettingsLabel>{m.settings_remote_access_http_label()}</SettingsLabel>
 
       <SettingsGroup>
@@ -140,27 +128,6 @@ export default function ServerSettings() {
                 onCheckedChange={(enabled) => change({ enabled })}
               />
             </ItemContainer>
-
-            {status.data?.url && (
-              <span data-slot="remote-access-listening" className="select-text">
-                {m.settings_remote_access_listening({ url: status.data.url })}
-              </span>
-            )}
-
-            {status.data?.enabled && (
-              <div>
-                <Button
-                  data-slot="remote-access-open"
-                  disabled={openInBrowser.isPending}
-                  onClick={() => {
-                    setError(null)
-                    openInBrowser.mutate(undefined, { onError: reportFailure })
-                  }}
-                >
-                  {m.settings_remote_access_open()}
-                </Button>
-              </div>
-            )}
 
             {status.data?.fault && (
               <p
@@ -204,6 +171,40 @@ export default function ServerSettings() {
                 onCheckedChange={(serve_webui) => change({ serve_webui })}
               />
             </ItemContainer>
+          </SettingsCardContent>
+        </SettingsCard>
+
+        <PortSettings
+          port={http?.port ?? null}
+          disabled={locked}
+          onApply={(port) => update.mutateAsync({ port })}
+        />
+
+        <SettingsCard>
+          <SettingsCardContent>
+            <ItemContainer>
+              <ItemLabel>
+                <ItemLabelText>
+                  {m.settings_remote_access_tls_title()}
+                </ItemLabelText>
+
+                <ItemLabelDescription>
+                  {m.settings_remote_access_tls_description()}
+                </ItemLabelDescription>
+              </ItemLabel>
+
+              <Switch
+                aria-label={m.settings_remote_access_tls_title()}
+                checked={http?.tls === 'self_signed'}
+                // A network scope cannot run without HTTPS.
+                disabled={locked || listen !== 'local'}
+                onCheckedChange={(on) =>
+                  change({ tls: on ? 'self_signed' : 'http' })
+                }
+              />
+            </ItemContainer>
+
+            {http?.tls === 'self_signed' && <CertificateSettings />}
           </SettingsCardContent>
         </SettingsCard>
 
@@ -266,17 +267,6 @@ export default function ServerSettings() {
                 disabled={locked}
                 onChange={(lan_allow) => change({ lan_allow })}
               />
-            )}
-
-            {listen !== 'local' && status.data?.port != null && (
-              <span
-                data-slot="remote-access-lan-url-hint"
-                className="text-on-surface-variant text-sm select-text"
-              >
-                {m.settings_remote_access_lan_url_hint({
-                  port: status.data.port,
-                })}
-              </span>
             )}
           </SettingsCardContent>
         </SettingsCard>
@@ -354,53 +344,6 @@ export default function ServerSettings() {
                 </div>
               </>
             )}
-          </SettingsCardContent>
-        </SettingsCard>
-
-        <SettingsCard>
-          <SettingsCardContent>
-            <ItemContainer>
-              <ItemLabel>
-                <ItemLabelText>
-                  {m.settings_remote_access_tls_title()}
-                </ItemLabelText>
-
-                <ItemLabelDescription>
-                  {m.settings_remote_access_tls_description()}
-                </ItemLabelDescription>
-              </ItemLabel>
-
-              <Switch
-                aria-label={m.settings_remote_access_tls_title()}
-                checked={http?.tls === 'self_signed'}
-                // A network scope cannot run without HTTPS.
-                disabled={locked || listen !== 'local'}
-                onCheckedChange={(on) =>
-                  change({ tls: on ? 'self_signed' : 'http' })
-                }
-              />
-            </ItemContainer>
-
-            {http?.tls === 'self_signed' && (
-              <CertificateSettings tls={status.data?.tls ?? undefined} />
-            )}
-          </SettingsCardContent>
-        </SettingsCard>
-
-        <SettingsCard>
-          <SettingsCardContent>
-            <SaveField
-              key={http?.port ?? 'none'}
-              slot="remote-access-port"
-              title={m.settings_remote_access_port_title()}
-              description={m.settings_remote_access_port_description()}
-              invalidMessage={m.settings_remote_access_port_invalid()}
-              inputMode="numeric"
-              committed={http?.port ?? null}
-              parse={parsePort}
-              disabled={locked}
-              onSave={(port) => change({ port })}
-            />
           </SettingsCardContent>
         </SettingsCard>
       </SettingsGroup>

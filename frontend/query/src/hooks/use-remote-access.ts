@@ -27,6 +27,8 @@ export function useRemoteAccess() {
     refetchInterval: 2000,
   })
 
+  const certificateKey = api.queries.getRemoteAccessCertificate().queryKey
+
   const setCommand = api.mutations.setRemoteAccess
   const update = useMutation({
     mutationKey: setCommand.mutationKey,
@@ -53,6 +55,8 @@ export function useRemoteAccess() {
         queryClient.invalidateQueries({
           queryKey: api.queries.getAppConfig().queryKey,
         }),
+        // A listener that starts serving HTTPS generates the first certificate.
+        queryClient.invalidateQueries({ queryKey: certificateKey }),
       ]),
   })
 
@@ -63,7 +67,10 @@ export function useRemoteAccess() {
       unwrapResult(await invokeMutation(resetCertificateCommand, [])),
     // The listener restarts with the new certificate, whose fingerprint the status reports.
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: statusOptions.queryKey }),
+        queryClient.invalidateQueries({ queryKey: certificateKey }),
+      ]),
   })
 
   const launchCommand = api.mutations.createHttpLaunchUrl
@@ -87,6 +94,28 @@ export function useRemoteAccess() {
     resetCertificate,
     openInBrowser,
   }
+}
+
+/**
+ * The saved HTTPS certificate's fields, readable while nothing listens, and the platform's
+ * certificate viewer for it.
+ */
+export function useRemoteAccessCertificate() {
+  const api = useQueryApi()
+
+  const certificateOptions = api.queries.getRemoteAccessCertificate()
+  const query = useQuery({
+    queryKey: certificateOptions.queryKey,
+    queryFn: async () => unwrapResult(await invokeQuery(certificateOptions)),
+  })
+
+  const openCommand = api.mutations.openRemoteAccessCertificate
+  const openInViewer = useMutation({
+    mutationKey: openCommand.mutationKey,
+    mutationFn: async () => unwrapResult(await invokeMutation(openCommand, [])),
+  })
+
+  return { query, openInViewer }
 }
 
 /**

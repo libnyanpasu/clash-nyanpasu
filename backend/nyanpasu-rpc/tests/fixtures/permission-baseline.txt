@@ -83,6 +83,7 @@ command | get_profiles_listing | profile:read |  | query | desktop,http,local | 
 command | get_proxies | proxy:read |  | query | desktop,http,local |  | presentation
 command | get_proxy_group_icons | proxy:read | sensitive | query | desktop,http |  | presentation
 command | get_release_channel | settings:read |  | query | desktop |  |
+command | get_remote_access_certificate | remote:read |  | query | desktop |  |
 command | get_runtime_config | profile:read | sensitive | query | desktop,http |  |
 command | get_runtime_exists | profile:read |  | query | desktop,http |  |
 command | get_runtime_yaml | profile:read | sensitive | query | desktop,http |  |
@@ -125,6 +126,7 @@ command | open_core_dir | system:write |  | mutation | desktop | opener |
 command | open_log_session | logs:read |  | mutation | desktop,http,local |  |
 command | open_logs_dir | system:write |  | mutation | desktop | opener |
 command | open_native_file_dialog | system:write |  | mutation | desktop | dialog |
+command | open_remote_access_certificate | remote:write |  | mutation | desktop | opener |
 command | open_that | system:write |  | mutation | desktop | opener |
 command | open_web_url | system:write |  | mutation | desktop | opener |
 command | patch_app_config | settings:write |  | mutation | desktop,http,local |  | os_integration,presentation,elevation

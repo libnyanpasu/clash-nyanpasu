@@ -101,7 +101,13 @@ activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
 `remote:read` query on Desktop and Local only. `list_local_networks` returns the host's IPv4
 networks (interface name, address and CIDR network) that `lan_allow` may name; it is a Desktop-only
-`remote:read` query, so the reviewed Local allowlist is unchanged. Access tokens and browser sessions are managed
+`remote:read` query, so the reviewed Local allowlist is unchanged. `get_remote_access_certificate`
+(a Desktop-only `remote:read` query) reads the saved certificate without generating one and returns
+its viewer fields (`TlsCertificateDetails`: subject, issuer, serial, validity, SANs, algorithms and
+SHA-256/SHA-1 fingerprints), so the settings page shows it while nothing listens.
+`open_remote_access_certificate` (a Desktop-only native `remote:write` mutation, capability `opener`)
+shows it in the platform's read-only viewer: the Windows certificate dialog, Quick Look on macOS,
+or `gcr-viewer`, else `xdg-open`, on Linux; none of them imports it into a trust store. Access tokens and browser sessions are managed
 through the `remote` commands in `nyanpasu-rpc/src/commands/remote/{tokens,sessions,settings}.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local

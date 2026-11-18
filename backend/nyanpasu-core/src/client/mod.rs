@@ -70,7 +70,8 @@ mod transparent_proxy;
 
 pub use self::remote_access::{
     Error as RemoteAccessSpawnError, LaunchUrlError, MAX_SECRET_RECORD_BYTES,
-    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
+    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAccessCertificateError, RemoteAuthError,
+    SetRemoteAccessError,
 };
 use self::{
     application::ApplicationClient,
@@ -1076,6 +1077,34 @@ impl NyanpasuClient {
     ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsCertificateSummary>, RemoteAuthError>
     {
         self.inner.remote_auth.tls_summary().await
+    }
+
+    /// The fields of the saved certificate, or `None` before the HTTPS listener first needed one.
+    /// It is read without generating one, so the settings page can show it while nothing listens.
+    ///
+    /// # Errors
+    /// Fails when the owner stopped or the saved certificate cannot be read.
+    pub async fn remote_access_certificate(
+        &self,
+    ) -> std::result::Result<
+        Option<nyanpasu_contracts::auth::TlsCertificateDetails>,
+        RemoteAccessCertificateError,
+    > {
+        let Some(der) = self.remote_access_certificate_der().await? else {
+            return Ok(None);
+        };
+        Ok(Some(
+            nyanpasu_contracts::auth::TlsCertificateDetails::parse(&der)
+                .map_err(|source| RemoteAccessCertificateError::Parse { source })?,
+        ))
+    }
+
+    /// The DER encoding of the saved certificate, for a certificate viewer, or `None` before the
+    /// first one was generated.
+    pub async fn remote_access_certificate_der(
+        &self,
+    ) -> std::result::Result<Option<Vec<u8>>, RemoteAuthError> {
+        self.inner.remote_auth.tls_certificate().await
     }
 
     /// Replaces the certificate, then makes the listener present the new one.

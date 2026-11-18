@@ -130,6 +130,38 @@ async fn a_generated_certificate_covers_loopback_and_the_requested_address() {
     assert_ne!(identity.fingerprint(), other.fingerprint());
 }
 
+#[tokio::test]
+async fn a_generated_certificate_reads_back_as_a_self_signed_one() {
+    use nyanpasu_contracts::auth::{
+        TlsCertificateDetails, TlsCertificateGenerator as _, TlsCertificateRequest,
+    };
+
+    use super::RcgenCertificateGenerator;
+
+    let request = TlsCertificateRequest {
+        addresses: vec!["192.168.77.5".parse().unwrap()],
+        not_before_ms: 1_700_000_000_000,
+        not_after_ms: 1_700_000_000_000 + 86_400_000,
+    };
+    let identity = RcgenCertificateGenerator
+        .generate(request.clone())
+        .await
+        .unwrap();
+
+    let details = TlsCertificateDetails::parse(identity.certificate_der()).unwrap();
+    assert_eq!(details.subject, "CN=Clash Nyanpasu");
+    assert_eq!(details.issuer, details.subject, "it signs itself");
+    assert_eq!(details.not_before_ms, request.not_before_ms);
+    assert_eq!(details.not_after_ms, request.not_after_ms);
+    assert!(details.dns_names.iter().any(|name| name == "localhost"));
+    assert_eq!(details.ip_addresses, identity.addresses());
+    assert_eq!(details.signature_algorithm, "ecdsa-with-SHA256");
+    assert_eq!(details.sha256, identity.fingerprint());
+    assert_eq!(details.sha1.len(), 20 * 3 - 1);
+
+    assert!(TlsCertificateDetails::parse(b"not a certificate").is_err());
+}
+
 /// A TLS handshake in which the client trusts the generated certificate as its only root and
 /// checks the name, so the certificate's names and usages are the ones a real client enforces.
 async fn handshake(

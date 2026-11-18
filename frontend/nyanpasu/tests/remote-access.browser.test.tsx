@@ -77,6 +77,8 @@ async function mount(
     list_remote_access_tokens: () => [],
     list_remote_browser_sessions: () => [],
     list_local_networks: () => networks,
+    get_remote_access_certificate: () => null,
+    open_remote_access_certificate: () => null,
     ...handlers,
   })
   const client = new QueryClient({
@@ -108,11 +110,7 @@ test('the switch writes the whole remote access section and shows the origin', a
 
   await expect.element(toggle).toBeChecked()
   await expect
-    .element(
-      view.getByText(
-        m.settings_remote_access_listening({ url: 'http://127.0.0.1:12345/' }),
-      ),
-    )
+    .element(view.getByText('http://127.0.0.1:12345/', { exact: true }))
     .toBeVisible()
   expect(saved).toHaveBeenLastCalledWith({
     config: { http: { enabled: true, port: null } },
@@ -211,22 +209,38 @@ test('the web interface switch and the port are saved without losing the rest', 
     config: { http: { enabled: true, port: 8765, serve_webui: false } },
   })
 
-  const port = view.getByRole('textbox', {
+  // The row shows the saved port and opens a dialog with one field.
+  await view
+    .getByRole('button', {
+      name: `${m.settings_remote_access_port_title()} 8765`,
+    })
+    .click()
+  const dialog = view.getByRole('dialog')
+  const port = dialog.getByRole('textbox', {
     name: m.settings_remote_access_port_title(),
   })
-  const save = view.getByRole('button', { name: m.common_save() })
-  await expect.element(save).toBeDisabled()
-
-  await port.fill('70000')
-  await expect
-    .element(view.getByRole('alert'))
-    .toHaveTextContent(m.settings_remote_access_port_invalid())
-  await expect.element(save).toBeDisabled()
+  await expect.element(port).toHaveValue('8765')
 
   await port.fill('9000')
-  await save.click()
+  await dialog.getByRole('button', { name: m.common_apply() }).click()
   expect(saved).toHaveBeenLastCalledWith({
     config: { http: { enabled: true, port: 9000, serve_webui: false } },
+  })
+  await expect.element(dialog).not.toBeInTheDocument()
+
+  // An empty field leaves the choice to the server's first start.
+  await view
+    .getByRole('button', {
+      name: `${m.settings_remote_access_port_title()} 9000`,
+    })
+    .click()
+  await view.getByRole('dialog').getByRole('textbox').fill('')
+  await view
+    .getByRole('dialog')
+    .getByRole('button', { name: m.common_apply() })
+    .click()
+  expect(saved).toHaveBeenLastCalledWith({
+    config: { http: { enabled: true, port: null, serve_webui: false } },
   })
 })
 
@@ -489,27 +503,128 @@ test('HTTPS can be chosen on its own for the loopback scope', async ({
   })
 })
 
-test('other devices are told where to connect while the server listens', async ({
+const listeningOverHttps = () => ({
+  ...on,
+  url: 'https://127.0.0.1:12345/',
+  tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
+})
+
+test('the addresses of the allowed networks are listed at the top while the server listens', async ({
   onTestFinished,
 }) => {
   const { view } = await mount(
     onTestFinished,
     <ServerSettings />,
-    {
-      get_http_server_status: () => ({
-        ...on,
-        url: 'https://127.0.0.1:12345/',
-        tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
-      }),
-    },
+    { get_http_server_status: listeningOverHttps },
     lan,
   )
 
   await expect
+    .element(view.getByText(m.settings_remote_access_addresses_title()))
+    .toBeVisible()
+  for (const url of [
+    'https://127.0.0.1:12345/',
+    'https://192.168.1.20:12345/',
+  ]) {
+    await expect.element(view.getByText(url, { exact: true })).toBeVisible()
+  }
+  // Tailscale is attached but not allowed, so it is not offered as an address.
+  expect(
+    view.getByText('https://100.101.102.103:12345/', { exact: true }).query(),
+  ).toBeNull()
+
+  await view
+    .getByRole('button', {
+      name: `${m.common_copy()} https://192.168.1.20:12345/`,
+    })
+    .click()
+  expect(dialogs.copy).toHaveBeenCalledWith('https://192.168.1.20:12345/')
+})
+
+test('every address of this computer is listed for every network', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    { get_http_server_status: listeningOverHttps },
+    { ...lan, listen: 'any' },
+  )
+
+  for (const url of [
+    'https://192.168.1.20:12345/',
+    'https://100.101.102.103:12345/',
+  ]) {
+    await expect.element(view.getByText(url, { exact: true })).toBeVisible()
+  }
+})
+
+test('no address is listed while the server does not listen', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(onTestFinished, <ServerSettings />, {}, lan)
+
+  await expect.element(enabledSwitch(view)).toBeEnabled()
+  expect(
+    view.getByText(m.settings_remote_access_addresses_title()).query(),
+  ).toBeNull()
+})
+
+const certificate = {
+  subject: 'CN=Clash Nyanpasu',
+  issuer: 'CN=Clash Nyanpasu',
+  serial: '01:02:03',
+  not_before_ms: Date.UTC(2026, 10, 18),
+  not_after_ms: Date.UTC(2028, 0, 2),
+  dns_names: ['localhost', 'nyan.local'],
+  ip_addresses: ['127.0.0.1', '192.168.1.20'],
+  signature_algorithm: 'ecdsa-with-SHA256',
+  public_key_algorithm: 'id-ecPublicKey',
+  sha256: fingerprint,
+  sha1: '11:22:33',
+}
+
+test('the saved certificate is summarized, detailed, and opened in the system viewer', async ({
+  onTestFinished,
+}) => {
+  const { view, testRpc } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    // Nothing listens, yet the saved certificate is shown.
+    { get_remote_access_certificate: () => certificate },
+    lan,
+  )
+
+  await expect.element(view.getByText(fingerprint)).toBeVisible()
+  await expect
     .element(
-      view.getByText(m.settings_remote_access_lan_url_hint({ port: 12345 })),
+      view.getByText(
+        `CN=Clash Nyanpasu (${m.settings_remote_access_certificate_self_signed()})`,
+      ),
     )
     .toBeVisible()
+
+  await view
+    .getByRole('button', {
+      name: m.settings_remote_access_certificate_details(),
+    })
+    .click()
+  const dialog = view.getByRole('dialog')
+  await expect.element(dialog.getByText('01:02:03')).toBeVisible()
+  await expect.element(dialog.getByText('localhost, nyan.local')).toBeVisible()
+  await expect.element(dialog.getByText('11:22:33')).toBeVisible()
+
+  await dialog
+    .getByRole('button', {
+      name: m.settings_remote_access_certificate_open_viewer(),
+    })
+    .click()
+  await vi.waitFor(() =>
+    expect(testRpc.invoke).toHaveBeenCalledWith(
+      'open_remote_access_certificate',
+      undefined,
+    ),
+  )
 })
 
 test('the certificate fingerprint is shown and replacing it asks first', async ({
@@ -519,10 +634,8 @@ test('the certificate fingerprint is shown and replacing it asks first', async (
     onTestFinished,
     <ServerSettings />,
     {
-      get_http_server_status: () => ({
-        ...on,
-        tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
-      }),
+      get_http_server_status: listeningOverHttps,
+      get_remote_access_certificate: () => certificate,
       reset_remote_access_tls: () => committed,
     },
     lan,
@@ -552,7 +665,7 @@ test('the certificate fingerprint is shown and replacing it asks first', async (
   )
 })
 
-test('a certificate the listener cannot serve can still be replaced', async ({
+test('a certificate not made yet is explained and can be made by replacing it', async ({
   onTestFinished,
 }) => {
   const { view, testRpc } = await mount(

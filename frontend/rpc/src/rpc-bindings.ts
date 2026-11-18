@@ -42,6 +42,39 @@ export function createRpcClient(
       typedError<LocalNetwork[], IpcError_Serialize>(
         __RPC_INVOKE('list_local_networks'),
       ),
+    /**
+     *  The fields of the saved HTTPS certificate, or `None` before the listener first needed one. It
+     *  is read without generating one, so the settings page shows it while nothing listens. Every TLS
+     *  client receives the certificate, but only the desktop settings page asks for it.
+     */
+    getRemoteAccessCertificate: () =>
+      typedError<
+        {
+          /**  The distinguished name of the subject, `CN=Clash Nyanpasu`. */
+          subject: string
+          /**  The distinguished name of the issuer; the same as the subject for a self-signed one. */
+          issuer: string
+          /**  The serial number, upper-case hexadecimal pairs separated by `:`. */
+          serial: string
+          /**  Start of validity, in Unix epoch milliseconds. */
+          not_before_ms: number
+          /**  End of validity, in Unix epoch milliseconds. */
+          not_after_ms: number
+          /**  The DNS names of the subject alternative name extension. */
+          dns_names: string[]
+          /**  The IP addresses of the subject alternative name extension. */
+          ip_addresses: string[]
+          /**  The signature algorithm's short name, `ecdsa-with-SHA256`, or its dotted OID. */
+          signature_algorithm: string
+          /**  The public key algorithm's short name, `id-ecPublicKey`, or its dotted OID. */
+          public_key_algorithm: string
+          /**  SHA-256 of the DER encoding, the value clients pin. */
+          sha256: string
+          /**  SHA-1 of the DER encoding, the thumbprint some viewers show instead. */
+          sha1: string
+        } | null,
+        IpcError_Serialize
+      >(__RPC_INVOKE('get_remote_access_certificate')),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
@@ -673,6 +706,14 @@ export function createRpcClient(
     openWebUrl: (url: string) =>
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('open_web_url', { url }),
+      ),
+    /**
+     *  Shows the saved HTTPS certificate in the platform's read-only certificate viewer. It opens a
+     *  window on this computer, so only the desktop offers it.
+     */
+    openRemoteAccessCertificate: () =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('open_remote_access_certificate'),
       ),
     openCoreDir: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
@@ -9086,6 +9127,32 @@ export type SystemSettingsPatch_Serialize = {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+/**  The certificate's fields, as a certificate viewer names them. */
+export type TlsCertificateDetails = {
+  /**  The distinguished name of the subject, `CN=Clash Nyanpasu`. */
+  subject: string
+  /**  The distinguished name of the issuer; the same as the subject for a self-signed one. */
+  issuer: string
+  /**  The serial number, upper-case hexadecimal pairs separated by `:`. */
+  serial: string
+  /**  Start of validity, in Unix epoch milliseconds. */
+  not_before_ms: number
+  /**  End of validity, in Unix epoch milliseconds. */
+  not_after_ms: number
+  /**  The DNS names of the subject alternative name extension. */
+  dns_names: string[]
+  /**  The IP addresses of the subject alternative name extension. */
+  ip_addresses: string[]
+  /**  The signature algorithm's short name, `ecdsa-with-SHA256`, or its dotted OID. */
+  signature_algorithm: string
+  /**  The public key algorithm's short name, `id-ecPublicKey`, or its dotted OID. */
+  public_key_algorithm: string
+  /**  SHA-256 of the DER encoding, the value clients pin. */
+  sha256: string
+  /**  SHA-1 of the DER encoding, the thumbprint some viewers show instead. */
+  sha1: string
+}
 
 /**  What the settings page and the CLI may show of the certificate: nothing secret. */
 export type TlsCertificateSummary = {

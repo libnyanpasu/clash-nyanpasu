@@ -83,6 +83,7 @@ command | get_profiles_listing | profile:read | profile.store |  |  | desktop,ht
 command | get_proxies | proxy:read | proxy.groups |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
 command | get_proxy_group_icons | proxy:read | proxy.groups | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
 command | get_release_channel | settings:read | settings.app |  |  | desktop | tauri/src/ipc.rs
+command | get_remote_access_certificate | remote:read | remote.settings |  |  | desktop | nyanpasu-rpc/src/commands/remote/settings.rs
 command | get_runtime_config | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_runtime_exists | profile:read | profile.runtime |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_runtime_yaml | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
@@ -125,6 +126,7 @@ command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_native_file_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_remote_access_certificate | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | open_that | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_web_url | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | patch_app_config | settings:write | settings.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs

@@ -3,6 +3,7 @@
 //! Only failures that happen before the settings commit are errors. Once the commit
 //! succeeded, the listener's failure to follow is a degradation on the outcome.
 
+use nyanpasu_contracts::auth::TlsCertificateParseError;
 use snafu::Snafu;
 
 use super::auth_error::RemoteAuthError;
@@ -33,6 +34,17 @@ pub enum SetRemoteAccessError {
     /// The owner stopped, or the shutdown began, before it accepted the change.
     #[snafu(display("the remote access owner is stopped"))]
     OwnerStopped,
+}
+
+/// Why the saved certificate could not be shown.
+#[derive(Debug, Snafu)]
+pub enum RemoteAccessCertificateError {
+    /// The authentication owner did not answer.
+    #[snafu(context(false), display("the TLS certificate could not be read"))]
+    Owner { source: RemoteAuthError },
+    /// The saved certificate is not a readable X.509 certificate.
+    #[snafu(display("the saved TLS certificate is malformed"))]
+    Parse { source: TlsCertificateParseError },
 }
 
 /// Why a browser launch URL could not be produced.

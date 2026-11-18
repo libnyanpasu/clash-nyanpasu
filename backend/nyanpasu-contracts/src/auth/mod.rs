@@ -1,5 +1,6 @@
 //! Transport-neutral caller principals, grants, authorization contexts, and auth ports.
 
+pub mod certificate;
 pub mod grant;
 pub mod ports;
 pub mod secrets;
@@ -8,6 +9,7 @@ pub mod test_support;
 pub mod tls;
 pub mod types;
 
+pub use certificate::{TlsCertificateDetails, TlsCertificateParseError};
 pub use grant::{Grant, GrantError};
 /// The permission model, defined beside the configuration that persists it.
 pub use nyanpasu_config::application::{Access, Permission, Permissions, Resource, Role};

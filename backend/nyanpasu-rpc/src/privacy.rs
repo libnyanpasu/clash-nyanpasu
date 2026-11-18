@@ -916,7 +916,13 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
                 RemoteAccessError::UseDedicatedCommand => {
                     PublicRemoteAccessErrorKind::UseDedicatedCommand
                 }
-                RemoteAccessError::LanRequiresTls => PublicRemoteAccessErrorKind::LanRequiresTls,
+                RemoteAccessError::OptionalAuthenticationBeyondLocal => {
+                    PublicRemoteAccessErrorKind::OptionalAuthenticationBeyondLocal
+                }
+                RemoteAccessError::NetworkRequiresTls => {
+                    PublicRemoteAccessErrorKind::NetworkRequiresTls
+                }
+                RemoteAccessError::LanAllowEmpty => PublicRemoteAccessErrorKind::LanAllowEmpty,
             },
         },
         ConfigError::InvalidNetworkAutomation { .. } => PublicConfigError::InvalidNetworkAutomation,

@@ -111,6 +111,7 @@ command | is_appimage | system:read | system.os |  |  | desktop,http | nyanpasu-
 command | is_portable | system:read | system.os |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | is_tray_icon_set | system:read | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
 command | is_widget_icon_set | system:read | system.icons |  |  | desktop,http | nyanpasu-rpc/src/commands/icons.rs
+command | list_local_networks | remote:read | remote.settings |  |  | desktop | nyanpasu-rpc/src/commands/remote/settings.rs
 command | list_log_files | logs:read | logs.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | list_remote_access_tokens | remote:read | remote.tokens |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs
 command | list_remote_browser_sessions | remote:read | remote.sessions |  |  | desktop,local | nyanpasu-rpc/src/commands/remote_access.rs

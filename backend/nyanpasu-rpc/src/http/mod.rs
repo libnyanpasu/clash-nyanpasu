@@ -28,8 +28,10 @@ use axum::{
     routing::{get, post},
 };
 use futures::{SinkExt, StreamExt};
+use ipnet::Ipv4Net;
 use nyanpasu_config::application::{
-    HttpAccessConfig, HttpAccessStrategy, HttpTls, Permissions, cap_anonymous_permissions,
+    HttpAccessConfig, HttpAuthentication, HttpListen, HttpTls, Permissions,
+    cap_anonymous_permissions,
 };
 use nyanpasu_contracts::auth::{
     SecretString, TlsCertificateSummary, TlsIdentity, parse_access_token,
@@ -99,11 +101,10 @@ struct Running {
     bind: IpAddr,
     /// The certificate it presents, when it serves HTTPS.
     tls: Option<TlsCertificateSummary>,
-    /// The address is not one the certificate covers, so a client that connects to it fails the
-    /// name check of the certificate.
-    bind_outside_certificate: bool,
     serve_webui: bool,
-    strategy: HttpAccessStrategy,
+    auth: HttpAuthentication,
+    listen: HttpListen,
+    lan_allow: Vec<Ipv4Net>,
     anonymous_permissions: Permissions,
     cancellation: CancellationToken,
     task: tokio::task::JoinHandle<()>,
@@ -120,15 +121,42 @@ pub struct HttpServerState {
     generation: u64,
 }
 
-/// The address a configuration binds: the LAN strategy listens on the configured address, or on
-/// every IPv4 interface; the loopback strategies never leave this computer.
+/// The address a configuration binds: the network scopes listen on every IPv4 interface, and
+/// [`PeerPolicy`] narrows the LAN scope; the loopback scope never leaves this computer.
 fn bind_address(config: &HttpAccessConfig) -> IpAddr {
-    match config.strategy {
-        HttpAccessStrategy::LanAuthenticated => {
-            config.lan_bind.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+    match config.listen {
+        HttpListen::Lan | HttpListen::Any => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        HttpListen::Local => IpAddr::V4(Ipv4Addr::LOCALHOST),
+    }
+}
+
+/// Which peers a listener accepts a connection from. A refused peer is dropped before the TLS
+/// handshake, so it never reaches the authentication or the Host policy.
+#[derive(Debug, Clone)]
+enum PeerPolicy {
+    Any,
+    /// Loopback and the addresses in these networks.
+    Networks(Arc<[Ipv4Net]>),
+}
+
+impl PeerPolicy {
+    fn of(config: &HttpAccessConfig) -> Self {
+        match config.listen {
+            HttpListen::Lan => Self::Networks(config.lan_allow.iter().copied().collect()),
+            HttpListen::Local | HttpListen::Any => Self::Any,
         }
-        HttpAccessStrategy::LocalAuthenticated | HttpAccessStrategy::LocalOpen => {
-            IpAddr::V4(Ipv4Addr::LOCALHOST)
+    }
+
+    fn admits(&self, peer: IpAddr) -> bool {
+        match self {
+            Self::Any => true,
+            // This computer reaches a LAN listener through loopback, and still authenticates.
+            Self::Networks(networks) => match peer.to_canonical() {
+                IpAddr::V4(peer) => {
+                    peer.is_loopback() || networks.iter().any(|network| network.contains(&peer))
+                }
+                IpAddr::V6(peer) => peer.is_loopback(),
+            },
         }
     }
 }
@@ -157,10 +185,6 @@ impl HttpServerState {
             }),
             port: self.running.as_ref().map(|r| r.port),
             tls: self.running.as_ref().and_then(|r| r.tls.clone()),
-            bind_outside_certificate: self
-                .running
-                .as_ref()
-                .is_some_and(|r| r.bind_outside_certificate),
             fault: self.fault,
         }
     }
@@ -171,7 +195,9 @@ impl HttpServerState {
     fn follows(&self, config: &HttpAccessConfig, identity: Option<&TlsIdentity>) -> bool {
         self.running.as_ref().is_some_and(|running| {
             running.serve_webui == config.serve_webui
-                && running.strategy == config.strategy
+                && running.auth == config.auth
+                && running.listen == config.listen
+                && running.lan_allow == config.lan_allow
                 && running.anonymous_permissions == config.anonymous_permissions
                 && running.bind == bind_address(config)
                 && running.tls == identity.map(TlsIdentity::summary)
@@ -185,10 +211,8 @@ impl HttpServerState {
         config: &HttpAccessConfig,
     ) -> Result<Option<TlsIdentity>, tls::HttpTlsUnavailable> {
         match config.tls {
-            // Credentials must not cross the LAN in the clear, whatever was committed.
-            HttpTls::Http if config.strategy == HttpAccessStrategy::LanAuthenticated => {
-                Err(tls::HttpTlsUnavailable)
-            }
+            // Credentials must not cross the network in the clear, whatever was committed.
+            HttpTls::Http if config.listen != HttpListen::Local => Err(tls::HttpTlsUnavailable),
             HttpTls::Http => Ok(None),
             HttpTls::SelfSigned => match &self.tls {
                 Some(source) => source.identity().await.map(Some),
@@ -251,8 +275,8 @@ impl HttpServerState {
         acceptor: Option<TlsAcceptor>,
     ) -> Result<Running> {
         let local = listener.local_addr()?;
-        let endpoint = match (&identity, config.strategy) {
-            (_, HttpAccessStrategy::LanAuthenticated) => HttpEndpoint::lan(
+        let endpoint = match (&identity, config.listen) {
+            (_, HttpListen::Lan | HttpListen::Any) => HttpEndpoint::lan(
                 local.port(),
                 identity
                     .as_ref()
@@ -286,11 +310,12 @@ impl HttpServerState {
         let watcher = tokio::spawn(async move {
             streams.watch(watcher_auth, watcher_stop).await;
         });
+        let peers = PeerPolicy::of(config);
         let task = tokio::spawn(async move {
             // Dropping serve's connection tasks alone does not
             // stop upgraded sockets; frontend upgrades share this token.
             if let Some(acceptor) = acceptor {
-                tls::serve(listener, acceptor, app, shutdown).await;
+                tls::serve(listener, acceptor, peers, app, shutdown).await;
             } else if let Err(error) = axum::serve(
                 listener,
                 app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -309,11 +334,10 @@ impl HttpServerState {
             port: local.port(),
             bind: local.ip(),
             tls: identity.as_ref().map(TlsIdentity::summary),
-            bind_outside_certificate: identity.as_ref().is_some_and(|identity| {
-                !local.ip().is_unspecified() && !identity.covers_address(local.ip())
-            }),
             serve_webui: config.serve_webui,
-            strategy: config.strategy,
+            auth: config.auth,
+            listen: config.listen,
+            lan_allow: config.lan_allow.clone(),
             anonymous_permissions: config.anonymous_permissions,
             cancellation,
             task,
@@ -390,7 +414,7 @@ impl Actor for HttpServerActor {
                             state.fault = None;
                         }
                         Ok(identity) => {
-                            // A changed port, address, asset mode, strategy or certificate needs
+                            // A changed port, scope, asset mode, authentication or certificate needs
                             // a new listener; the old one is released first so a persisted port
                             // can be bound again.
                             state.stop().await;
@@ -990,23 +1014,22 @@ pub(crate) async fn http_auth_middleware(
             }
         }
     } else {
-        match state.access.strategy {
-            HttpAccessStrategy::LocalOpen => AuthContext::anonymous(cap_anonymous_permissions(
+        // A network listener never trusts the peer address, so a loopback peer (a reverse proxy,
+        // for one) needs a credential as well.
+        if state.access.admits_anonymous() {
+            AuthContext::anonymous(cap_anonymous_permissions(
                 &state.access.anonymous_permissions,
-            )),
-            // The LAN strategy never trusts the peer address, so a loopback peer (a reverse proxy,
-            // for one) needs a credential as well.
-            HttpAccessStrategy::LocalAuthenticated | HttpAccessStrategy::LanAuthenticated => {
-                tracing::warn!(
-                    target: "nyanpasu::remote_access",
-                    peer = ?peer,
-                    "unauthenticated HTTP request rejected"
-                );
-                if is_document_get {
-                    return redirect_to_login(false);
-                }
-                return reject_unauthorized(&path, false);
+            ))
+        } else {
+            tracing::warn!(
+                target: "nyanpasu::remote_access",
+                peer = ?peer,
+                "unauthenticated HTTP request rejected"
+            );
+            if is_document_get {
+                return redirect_to_login(false);
             }
+            return reject_unauthorized(&path, false);
         }
     };
 
@@ -2531,7 +2554,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn local_open_caps_anonymous_permissions_and_restarts_on_strategy_change() {
+    async fn optional_auth_caps_anonymous_permissions_and_restarts_when_required() {
         let fixture = crate::test_support::Fixture::new(false).await;
         let routes = Arc::new(routes::RpcHttpRoutes::default());
         routes.install(&fixture.rpc).unwrap();
@@ -2549,7 +2572,7 @@ pub(crate) mod tests {
         // By default an anonymous caller holds only capability discovery.
         let default_open = HttpAccessConfig {
             enabled: true,
-            strategy: HttpAccessStrategy::LocalOpen,
+            auth: HttpAuthentication::Optional,
             ..Default::default()
         };
         let status = server.configure(&default_open).await.unwrap();
@@ -2666,9 +2689,9 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(after_scope_change.permissions, proxy_writer);
 
-        // Switching strategy to LocalAuthenticated restarts the listener and closes anonymous access.
+        // Requiring authentication restarts the listener and closes anonymous access.
         let authenticated_cfg = HttpAccessConfig {
-            strategy: HttpAccessStrategy::LocalAuthenticated,
+            auth: HttpAuthentication::Required,
             ..narrowed
         };
         server.configure(&authenticated_cfg).await.unwrap();

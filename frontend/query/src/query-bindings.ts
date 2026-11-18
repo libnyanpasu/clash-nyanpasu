@@ -25,6 +25,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getLocalSocketStatus', ...args],
         queryFn: () => commands.getLocalSocketStatus(...args),
       }),
+    listLocalNetworks: (
+      ...args: Parameters<typeof commands.listLocalNetworks>
+    ) =>
+      queryOptions({
+        queryKey: ['listLocalNetworks', ...args],
+        queryFn: () => commands.listLocalNetworks(...args),
+      }),
     getConfigurationStatus: (
       ...args: Parameters<typeof commands.getConfigurationStatus>
     ) =>

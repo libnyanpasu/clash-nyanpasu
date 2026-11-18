@@ -139,7 +139,7 @@ impl From<Permissions> for BTreeMap<Resource, Access> {
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Role {
-    /// An HTTP request without a credential, under the `local_open` listening strategy.
+    /// An HTTP request without a credential to the loopback listener under `auth: optional`.
     Anonymous,
     Viewer,
     Operator,

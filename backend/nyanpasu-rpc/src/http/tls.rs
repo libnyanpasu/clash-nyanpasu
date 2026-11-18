@@ -23,7 +23,7 @@ use tokio::{net::TcpListener, task::JoinSet};
 use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 
-use super::listener;
+use super::{PeerPolicy, listener};
 use crate::registry::SetupError;
 
 /// A client that does not finish the TLS handshake in this time is dropped, so idle sockets
@@ -113,10 +113,12 @@ pub(super) fn acceptor(identity: &TlsIdentity) -> Result<TlsAcceptor, rustls::Er
     Ok(TlsAcceptor::from(Arc::new(config)))
 }
 
-/// Serves `app` over TLS until `stop` is cancelled, then drains the open connections.
+/// Serves `app` over TLS to the peers `peers` admits until `stop` is cancelled, then drains the
+/// open connections.
 pub(super) async fn serve(
     listener: TcpListener,
     acceptor: TlsAcceptor,
+    peers: PeerPolicy,
     app: Router,
     stop: CancellationToken,
 ) {
@@ -129,6 +131,13 @@ pub(super) async fn serve(
                 nyanpasu_owner_support::blocking::join(joined);
             }
             accepted = listener.accept() => match accepted {
+                Ok((_, peer)) if !peers.admits(peer.ip()) => {
+                    tracing::debug!(
+                        target: "nyanpasu::remote_access",
+                        %peer,
+                        "connection from a network outside the LAN allow list dropped"
+                    );
+                }
                 Ok((stream, peer)) => {
                     let (acceptor, app, stop) = (acceptor.clone(), app.clone(), stop.child_token());
                     connections.spawn(async move {

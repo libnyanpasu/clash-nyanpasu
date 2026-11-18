@@ -1,9 +1,9 @@
-//! HTTPS listener behavior: the certificate it presents, secure cookies, the LAN strategy's
-//! credential and Host rules, and failing closed when no certificate is available.
+//! HTTPS listener behavior: the certificate it presents, secure cookies, the network scopes'
+//! peer, credential and Host rules, and failing closed when no certificate is available.
 
 use std::{net::IpAddr, sync::Arc};
 
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls};
+use nyanpasu_config::application::{HttpAccessConfig, HttpListen, HttpTls};
 use nyanpasu_contracts::auth::{
     CreateAccessTokenRequest, Grant, Role, TlsFingerprint, TlsIdentity, TokenName,
 };
@@ -12,7 +12,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use super::{
-    HttpEndpoint, HttpServerClient, HttpServerFault, HttpServerStatus, auth, routes,
+    HttpEndpoint, HttpServerClient, HttpServerFault, HttpServerStatus, PeerPolicy, auth, routes,
     test_support::{StaticTlsIdentity, self_signed_identity},
     tls::HttpTlsIdentitySource,
 };
@@ -84,9 +84,11 @@ fn tls_config() -> HttpAccessConfig {
     }
 }
 
+/// A LAN listener whose allow list leaves this computer's loopback peer to the loopback rule.
 fn lan_config() -> HttpAccessConfig {
     HttpAccessConfig {
-        strategy: HttpAccessStrategy::LanAuthenticated,
+        listen: HttpListen::Lan,
+        lan_allow: vec!["10.0.0.0/8".parse().unwrap()],
         ..tls_config()
     }
 }
@@ -230,7 +232,7 @@ async fn a_certificate_that_is_unavailable_never_falls_back_to_plain_http() {
         assert_eq!(status.fault, Some(HttpServerFault::TlsUnavailable));
     }
 
-    // The LAN strategy refuses plain HTTP even if an unvalidated value reaches the listener.
+    // A network listener refuses plain HTTP even if an unvalidated value reaches the listener.
     let harness = Harness::start().await;
     let status = harness
         .configure(HttpAccessConfig {
@@ -244,17 +246,6 @@ async fn a_certificate_that_is_unavailable_never_falls_back_to_plain_http() {
 
     server.shutdown().await.unwrap();
     fixture.shutdown().await;
-}
-
-/// The certificate and key of `identity` with the addresses it claims to cover replaced.
-fn covering(identity: &TlsIdentity, addresses: Vec<IpAddr>) -> TlsIdentity {
-    TlsIdentity::new(
-        identity.certificate_der().to_vec(),
-        identity.private_key_der().to_vec(),
-        identity.dns_names().to_vec(),
-        addresses,
-        identity.not_after_ms(),
-    )
 }
 
 #[tokio::test]
@@ -280,36 +271,6 @@ async fn a_certificate_that_cannot_be_served_is_unavailable_not_a_bind_failure()
     let status = harness.configure(lan_config()).await;
     assert!(status.enabled);
     assert_eq!(status.fault, None);
-
-    harness.finish().await;
-}
-
-#[tokio::test]
-async fn a_bind_address_the_certificate_does_not_cover_is_reported_until_it_is_replaced() {
-    let harness = Harness::start().await;
-    let covered = harness.identity.identity().await.unwrap();
-    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
-    let on_loopback = HttpAccessConfig {
-        lan_bind: Some(loopback),
-        ..lan_config()
-    };
-
-    // The certificate was made before this address was configured.
-    harness.identity.replace(covering(&covered, Vec::new()));
-    let status = harness.configure(on_loopback.clone()).await;
-    assert!(status.enabled);
-    assert!(status.bind_outside_certificate);
-
-    // Every interface has no single address to check against.
-    let status = harness.configure(lan_config()).await;
-    assert!(status.enabled);
-    assert!(!status.bind_outside_certificate);
-
-    // The certificate is replaced by one that covers it; the listener follows.
-    harness.identity.replace(covering(&covered, vec![loopback]));
-    let status = harness.configure(on_loopback).await;
-    assert!(status.enabled);
-    assert!(!status.bind_outside_certificate);
 
     harness.finish().await;
 }
@@ -372,9 +333,9 @@ async fn replacing_the_certificate_restarts_the_listener_on_the_same_port() {
 }
 
 #[tokio::test]
-async fn the_lan_strategy_needs_a_credential_also_from_loopback() {
+async fn a_network_listener_needs_a_credential_also_from_loopback() {
     let harness = Harness::start().await;
-    // No address configured: every IPv4 interface, reachable here through loopback.
+    // Every IPv4 interface, reachable here through loopback whatever the allow list says.
     let status = harness.configure(lan_config()).await;
     let url = url_of(&status);
     assert!(url.starts_with("https://127.0.0.1:"), "{url}");
@@ -403,7 +364,7 @@ async fn the_lan_strategy_needs_a_credential_also_from_loopback() {
 }
 
 #[tokio::test]
-async fn the_lan_strategy_answers_only_to_addresses_and_known_names() {
+async fn a_network_listener_answers_only_to_addresses_and_known_names() {
     let harness = Harness::start().await;
     let status = harness.configure(lan_config()).await;
     let url = url_of(&status);
@@ -543,7 +504,7 @@ fn an_origin_must_match_the_request_scheme_and_authority_exactly() {
 }
 
 #[tokio::test]
-async fn leaving_the_lan_strategy_stops_answering_to_lan_names_on_the_same_port() {
+async fn leaving_the_lan_scope_stops_answering_to_lan_names_on_the_same_port() {
     let harness = Harness::start().await;
     let lan = harness.configure(lan_config()).await;
     let port = lan.port.unwrap();
@@ -563,7 +524,7 @@ async fn leaving_the_lan_strategy_stops_answering_to_lan_names_on_the_same_port(
         StatusCode::OK
     );
 
-    // The loopback strategy takes the port over, so only its own authority is answered.
+    // The loopback scope takes the port over, so only its own authority is answered.
     let loopback = harness
         .configure(HttpAccessConfig {
             port: Some(port),
@@ -585,32 +546,66 @@ async fn leaving_the_lan_strategy_stops_answering_to_lan_names_on_the_same_port(
 }
 
 #[tokio::test]
-async fn an_ipv6_lan_address_is_served_and_named_in_brackets() {
-    // A host without IPv6 loopback cannot run this.
-    if std::net::TcpListener::bind(("::1", 0)).is_err() {
-        return;
-    }
+async fn every_network_scope_listens_on_every_interface_over_https() {
     let harness = Harness::start().await;
-    let status = harness
-        .configure(HttpAccessConfig {
-            lan_bind: Some("::1".parse().unwrap()),
-            ..lan_config()
-        })
-        .await;
-    let port = status.port.unwrap();
-    assert_eq!(
-        status.url.as_deref(),
-        Some(format!("https://[::1]:{port}/").as_str())
-    );
-
-    let response = insecure_client()
-        .get(format!("https://[::1]:{port}/login"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    for config in [
+        lan_config(),
+        HttpAccessConfig {
+            listen: HttpListen::Any,
+            ..tls_config()
+        },
+    ] {
+        let status = harness.configure(config).await;
+        assert!(status.enabled, "{status:?}");
+        // This computer reaches it through loopback.
+        let url = url_of(&status);
+        assert!(url.starts_with("https://127.0.0.1:"), "{url}");
+        let response = insecure_client()
+            .get(format!("{url}/login"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 
     harness.finish().await;
+}
+
+#[test]
+fn a_lan_listener_admits_loopback_and_its_networks_only() {
+    let lan = PeerPolicy::of(&HttpAccessConfig {
+        listen: HttpListen::Lan,
+        lan_allow: vec![
+            "192.168.1.0/24".parse().unwrap(),
+            "100.64.0.0/10".parse().unwrap(),
+        ],
+        ..tls_config()
+    });
+    for admitted in [
+        "192.168.1.7",
+        "100.101.102.103",
+        "127.0.0.1",
+        "::1",
+        "::ffff:192.168.1.7",
+    ] {
+        let peer: IpAddr = admitted.parse().unwrap();
+        assert!(lan.admits(peer), "{admitted}");
+    }
+    for refused in [
+        "192.168.2.7",
+        "10.0.0.1",
+        "203.0.113.9",
+        "fd00::1",
+        "::ffff:10.0.0.1",
+    ] {
+        let peer: IpAddr = refused.parse().unwrap();
+        assert!(!lan.admits(peer), "{refused}");
+    }
+    let any = PeerPolicy::of(&HttpAccessConfig {
+        listen: HttpListen::Any,
+        ..lan_config()
+    });
+    assert!(any.admits("203.0.113.9".parse().unwrap()));
 }
 
 #[tokio::test]

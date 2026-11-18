@@ -34,6 +34,14 @@ export function createRpcClient(
       typedError<LocalSocketStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_local_socket_status'),
       ),
+    /**
+     *  The host's IPv4 networks the LAN listen scope may allow, for the settings page. Only the
+     *  desktop offers it: the local socket allowlist is reviewed separately.
+     */
+    listLocalNetworks: () =>
+      typedError<LocalNetwork[], IpcError_Serialize>(
+        __RPC_INVOKE('list_local_networks'),
+      ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
@@ -3593,7 +3601,14 @@ export type HttpAccessConfig = {
   /**  Master switch. Off by default. */
   enabled?: boolean
   /**  Kept while the switch is off, so turning it on restores the earlier choice. */
-  strategy?: HttpAccessStrategy
+  auth?: HttpAuthentication
+  /**  Kept while the switch is off, so turning it on restores the earlier choice. */
+  listen?: HttpListen
+  /**
+   *  The networks [`HttpListen::Lan`] accepts connections from, besides loopback. Kept while
+   *  another listen scope is selected.
+   */
+  lan_allow?: string[]
   /**
    *  `None` until the first start binds a free port and records it. Later starts
    *  reuse the recorded port, so URLs stay valid across restarts.
@@ -3602,38 +3617,44 @@ export type HttpAccessConfig = {
   /**  Serve the bundled web UI. When false only the API is served. */
   serve_webui?: boolean
   /**
-   *  What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`] beyond capability
-   *  discovery, at most the `operator` role. Empty by default; kept while another strategy is
-   *  selected.
+   *  What an anonymous caller holds under [`HttpAuthentication::Optional`] beyond capability
+   *  discovery, at most the `operator` role. Empty by default; kept while authentication is
+   *  required.
    */
   anonymous_permissions?: Partial<{ [key in Resource]: Access }>
   /**
-   *  The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
-   *  IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
-   */
-  lan_bind?: string | null
-  /**
-   *  [`HttpAccessStrategy::LanAuthenticated`] requires [`HttpTls::SelfSigned`]; the loopback
-   *  strategies may opt into it.
+   *  Listening beyond loopback requires [`HttpTls::SelfSigned`]; [`HttpListen::Local`] may opt
+   *  into it.
    */
   tls?: HttpTls
 }
 
-/**  How the HTTP listener decides who may call it. */
-export type HttpAccessStrategy =
-  /**  Loopback only; every request must carry a valid credential. */
-  | 'local_authenticated'
+/**  Whether an HTTP caller must present a credential. */
+export type HttpAuthentication =
   /**
-   *  Loopback only; a request without a credential is an anonymous caller holding capability
-   *  discovery plus [`HttpAccessConfig::anonymous_permissions`]. Every local process of every
-   *  OS user can reach it, because loopback TCP is not user-scoped.
+   *  Every request must carry a valid credential, also one from a loopback peer: a reverse
+   *  proxy makes every request look local.
    */
-  | 'local_open'
+  | 'required'
   /**
-   *  Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
-   *  one from a loopback peer: a reverse proxy makes every request look local.
+   *  A request without a credential is an anonymous caller holding capability discovery plus
+   *  [`HttpAccessConfig::anonymous_permissions`]. Only [`HttpListen::Local`] allows it, and even
+   *  then every local process of every OS user can reach it, because loopback TCP is not
+   *  user-scoped.
    */
-  | 'lan_authenticated'
+  | 'optional'
+
+/**  Which peers the HTTP listener can be reached from. */
+export type HttpListen =
+  /**  `127.0.0.1` only. */
+  | 'local'
+  /**
+   *  Every IPv4 interface, accepting connections from loopback and from
+   *  [`HttpAccessConfig::lan_allow`] only.
+   */
+  | 'lan'
+  /**  Every IPv4 interface, accepting connections from anywhere. */
+  | 'any'
 
 /**  Why an HTTP server query or setting change could not be performed. */
 export type HttpServerControlError =
@@ -3659,7 +3680,10 @@ export type HttpServerFault =
  */
 export type HttpServerStatus = {
   enabled: boolean
-  /**  The bound origin, for example `http://127.0.0.1:41234/` or `https://192.168.1.20:41234/`. */
+  /**
+   *  An origin this computer reaches the listener at, `http://127.0.0.1:41234/` or
+   *  `https://127.0.0.1:41234/`; a listener on every interface is reached through loopback.
+   */
   url: string | null
   /**  The bound port, which the facade records when the settings leave it open. */
   port: number | null
@@ -3668,18 +3692,12 @@ export type HttpServerStatus = {
    *  client pins; it is public to every TLS client, so it is not a secret.
    */
   tls: TlsCertificateSummary | null
-  /**
-   *  The listener is bound to one address that its certificate does not cover, because the
-   *  certificate was made before that address was configured. A client that connects to it
-   *  fails the certificate's name check until the certificate is replaced.
-   */
-  bind_outside_certificate: boolean
   fault: HttpServerFault | null
 }
 
 /**  Whether the listener speaks plain HTTP or HTTPS with the generated self-signed certificate. */
 export type HttpTls =
-  /**  Plain HTTP. Only the loopback strategies may use it. */
+  /**  Plain HTTP. Only [`HttpListen::Local`] may use it. */
   | 'http'
   /**  HTTPS with the application's self-signed certificate, which clients pin by fingerprint. */
   | 'self_signed'
@@ -3908,6 +3926,16 @@ export type LocalBinding_Serialize =
       target: ExternalProfilePath
       mode: ExternalMode
     }
+
+/**  An IPv4 network this computer is attached to, offered as a LAN network to allow. */
+export type LocalNetwork = {
+  /**  The interface's name as the OS shows it, such as `Ethernet` or `Tailscale`. */
+  interface: string
+  /**  This computer's address on the network. */
+  address: string
+  /**  The network in CIDR notation, `192.168.1.0/24`. */
+  network: string
+}
 
 /**  Local socket listener settings. */
 export type LocalSocketAccessConfig = {
@@ -7246,7 +7274,9 @@ export type PublicRemoteAccessErrorKind =
   | 'port_zero'
   | 'anonymous_beyond_operator'
   | 'use_dedicated_command'
-  | 'lan_requires_tls'
+  | 'optional_authentication_beyond_local'
+  | 'network_requires_tls'
+  | 'lan_allow_empty'
 
 /**  Safe public runtime build failure discriminant without script output logs. */
 export type PublicRuntimeBuildKind =
@@ -7794,8 +7824,12 @@ export type RemoteAccessError =
    *  general application patch.
    */
   | { kind: 'use_dedicated_command' }
-  /**  Credentials would cross the LAN in the clear. */
-  | { kind: 'lan_requires_tls' }
+  /**  Only loopback callers may skip the credential. */
+  | { kind: 'optional_authentication_beyond_local' }
+  /**  Credentials would cross the network in the clear. */
+  | { kind: 'network_requires_tls' }
+  /**  A LAN listener that allows no network is reachable from loopback only. */
+  | { kind: 'lan_allow_empty' }
 
 /**  The sync policy; the user agent is a request header value, so it is a flag. */
 export type RemoteListingOptions = {
@@ -7896,7 +7930,7 @@ export type RevisionSummary = {
  *  where a grant is assigned or expanded.
  */
 export type Role =
-  /**  An HTTP request without a credential, under the `local_open` listening strategy. */
+  /**  An HTTP request without a credential to the loopback listener under `auth: optional`. */
   | 'anonymous'
   | 'viewer'
   | 'operator'

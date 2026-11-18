@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     cli::{
-        HttpCommand, HttpStrategy, LanBind, RemoteCommand, SessionCommand, SwitchOnOff,
+        HttpAuthMode, HttpCommand, HttpListenScope, RemoteCommand, SessionCommand, SwitchOnOff,
         TokenCommand, TokenCreate,
     },
     describe::{Access, Capabilities, Permission, Resource},
@@ -83,39 +83,50 @@ pub async fn run<T: Transport>(
             })
             .await
         }
-        RemoteCommand::Http(HttpCommand::Strategy { strategy }) => {
-            if *strategy == HttpStrategy::LocalOpen {
+        RemoteCommand::Http(HttpCommand::Auth { mode }) => {
+            if *mode == HttpAuthMode::Optional {
                 writeln!(
                     output.stderr,
-                    "warning: local_open lets every local process of every OS user call the \
+                    "warning: auth optional lets every local process of every OS user call the \
                      HTTP API with the configured anonymous permissions"
                 )?;
             }
-            if *strategy == HttpStrategy::LanAuthenticated {
+            change(transport, capabilities, output, |config| {
+                set(config, "/http/auth", json!(mode.as_str()))
+            })
+            .await
+        }
+        RemoteCommand::Http(HttpCommand::Listen { scope }) => {
+            let reach = match scope {
+                HttpListenScope::Local => None,
+                HttpListenScope::Lan => Some("on the networks of `lan-allow`"),
+                HttpListenScope::Any => Some("on any network"),
+            };
+            if let Some(reach) = reach {
                 writeln!(
                     output.stderr,
-                    "warning: lan_authenticated lets every device that can reach this \
-                     computer's network try to sign in over HTTPS; keep tokens narrow and \
-                     compare the certificate fingerprint before pinning it"
+                    "warning: listen {} lets every device {reach} that can reach this computer \
+                     try to sign in over HTTPS; keep tokens narrow and compare the certificate \
+                     fingerprint before pinning it",
+                    scope.as_str()
                 )?;
             }
             change(transport, capabilities, output, |config| {
-                set(config, "/http/strategy", json!(strategy.as_str()))?;
-                // Credentials must not cross the LAN in the clear, so this strategy brings TLS.
-                if *strategy == HttpStrategy::LanAuthenticated {
+                set(config, "/http/listen", json!(scope.as_str()))?;
+                // Credentials must not cross the network in the clear, and only this computer may
+                // skip them, so a network scope brings TLS and requires authentication.
+                if reach.is_some() {
                     set(config, "/http/tls", json!("self_signed"))?;
+                    set(config, "/http/auth", json!(HttpAuthMode::Required.as_str()))?;
                 }
                 Ok(())
             })
             .await
         }
-        RemoteCommand::Http(HttpCommand::LanBind { address }) => {
-            let value = match address {
-                LanBind::All => Value::Null,
-                LanBind::Address(address) => json!(address.to_string()),
-            };
+        RemoteCommand::Http(HttpCommand::LanAllow { networks }) => {
+            let networks: Vec<String> = networks.iter().map(ToString::to_string).collect();
             change(transport, capabilities, output, |config| {
-                set(config, "/http/lan_bind", value)
+                set(config, "/http/lan_allow", json!(networks))
             })
             .await
         }

@@ -90,6 +90,23 @@ export function useRemoteAccess() {
 }
 
 /**
+ * The IPv4 networks this computer is attached to, which the LAN listen scope may allow. Read
+ * fresh on every mount, since interfaces such as a VPN come and go.
+ */
+export function useLocalNetworks({ enabled }: { enabled: boolean }) {
+  const api = useQueryApi()
+
+  const listOptions = api.queries.listLocalNetworks()
+
+  return useQuery({
+    queryKey: listOptions.queryKey,
+    queryFn: async () => unwrapResult(await invokeQuery(listOptions)),
+    enabled,
+    staleTime: 0,
+  })
+}
+
+/**
  * The access tokens' metadata and their administration. A token's secret is returned once, by the
  * creating mutation, and is not kept: the mutation is dropped as soon as nothing observes it.
  */

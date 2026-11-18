@@ -1,6 +1,6 @@
 //! The remote-access settings, the HTTPS certificate and the local socket's state.
 
-use nyanpasu_config::application::RemoteAccessConfig;
+use nyanpasu_config::application::{LocalNetwork, RemoteAccessConfig};
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
 
@@ -27,6 +27,16 @@ pub async fn reset_remote_access_tls(
     client: RpcState<'_, NyanpasuClient>,
 ) -> Result<RpcUnitMutationOutcome> {
     Ok(client.reset_remote_access_tls().await?.into())
+}
+
+/// The host's IPv4 networks the LAN listen scope may allow, for the settings page. Only the
+/// desktop offers it: the local socket allowlist is reviewed separately.
+#[nyanpasu_rpc::rpc(query, expose = [])]
+#[specta::specta]
+pub async fn list_local_networks(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<Vec<LocalNetwork>> {
+    Ok(client.local_networks().await)
 }
 
 /// The local socket's state. Its endpoint is a filesystem path, so only a remote administrator

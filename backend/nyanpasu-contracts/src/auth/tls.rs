@@ -201,7 +201,7 @@ impl fmt::Debug for TlsIdentity {
 /// What a new certificate must cover and for how long.
 ///
 /// The generator always adds the loopback addresses, `localhost`, and the host name and
-/// interface addresses it can discover; `addresses` adds the configured `lan_bind`.
+/// interface addresses it can discover; `addresses` adds more.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TlsCertificateRequest {
     /// Addresses beyond the ones the generator discovers.

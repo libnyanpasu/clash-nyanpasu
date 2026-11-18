@@ -25,6 +25,7 @@ http = [
   'dep:hyper-util',
   'dep:chrono',
   'dep:futures',
+  'dep:ipnet',
   'dep:ractor',
   'dep:reqwest',
   'dep:rustls',
@@ -81,6 +82,7 @@ dirs = '7'
 futures = { version = '0.3', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }
 inventory = '0.3'
+ipnet = { version = '2.12', optional = true }
 interprocess = { workspace = true, features = ['tokio'], optional = true }
 serde = { version = '1', features = ['derive', 'rc'] }
 serde_json = { version = '1.0', features = ['preserve_order'] }

@@ -1,18 +1,19 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
+  SegmentedButton,
+  SegmentedButtonItem,
+} from '@nyanpasu/ui/segmented-button'
 import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
-import { useRemoteAccess } from '@nyanpasu/query'
+import { useLocalNetworks, useRemoteAccess } from '@nyanpasu/query'
 import { ANONYMOUS_PERMISSIONS_LIMIT } from '@nyanpasu/rpc'
-import type { HttpAccessStrategy, HttpServerStatus } from '@nyanpasu/rpc/types'
+import type {
+  HttpAuthentication,
+  HttpListen,
+  HttpServerStatus,
+} from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
   ItemLabel,
@@ -24,6 +25,7 @@ import {
   SettingsLabel,
 } from '../../../../_modules/settings-card'
 import CertificateSettings from './certificate-settings'
+import LanAllowList, { defaultLanAllow } from './lan-allow-list'
 import PermissionGrid from './permission-grid'
 import SaveField from './save-field'
 import SensitiveReach from './sensitive-reach'
@@ -43,107 +45,20 @@ function parsePort(text: string): number | null | undefined {
     : undefined
 }
 
-const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+const LISTEN_SCOPES = ['local', 'lan', 'any'] as const satisfies HttpListen[]
 
-function isIpv4(text: string) {
-  const match = IPV4_PATTERN.exec(text)
+const AUTH_MODES = [
+  'required',
+  'optional',
+] as const satisfies HttpAuthentication[]
 
-  return match != null && match.slice(1).every((part) => Number(part) <= 255)
-}
-
-function isIpv6(text: string) {
-  if (!text.includes(':')) {
-    return false
-  }
-
-  try {
-    return new URL(`http://[${text}]/`).hostname !== ''
-  } catch {
-    return false
-  }
-}
-
-/** The address to listen on, or null when the field is empty; undefined when it is no address. */
-function parseLanBind(text: string): string | null | undefined {
-  const trimmed = text.trim()
-  if (trimmed === '') {
-    return null
-  }
-
-  return isIpv4(trimmed) || isIpv6(trimmed) ? trimmed : undefined
-}
-
-function StrategySelector({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: HttpAccessStrategy
-  disabled: boolean
-  onChange: (strategy: HttpAccessStrategy) => void
-}) {
-  const messages = {
-    local_authenticated:
-      m.settings_remote_access_strategy_local_authenticated(),
-    local_open: m.settings_remote_access_strategy_local_open(),
-    lan_authenticated: m.settings_remote_access_strategy_lan_authenticated(),
-  } as Partial<Record<HttpAccessStrategy, string>>
-
-  const descriptions = {
-    local_authenticated:
-      m.settings_remote_access_strategy_local_authenticated_description(),
-    local_open: m.settings_remote_access_strategy_local_open_description(),
-    lan_authenticated:
-      m.settings_remote_access_strategy_lan_authenticated_description(),
-  } as Partial<Record<HttpAccessStrategy, string>>
-
-  return (
-    <DropdownMenu align="end">
-      <DropdownMenuTrigger asChild disabled={disabled}>
-        <Button
-          className="text-on-surface! h-auto w-full rounded-none px-0 text-left text-base"
-          data-slot="remote-access-strategy-trigger"
-        >
-          <ItemContainer className="w-full">
-            <ItemLabel>
-              <ItemLabelText>
-                {m.settings_remote_access_strategy_title()}
-              </ItemLabelText>
-
-              <ItemLabelDescription>
-                {messages[value] ?? value}
-              </ItemLabelDescription>
-            </ItemLabel>
-
-            <ArrowForwardIosRounded />
-          </ItemContainer>
-        </Button>
-      </DropdownMenuTrigger>
-
-      <DropdownMenuContent>
-        {Object.entries(messages).map(([key, message]) => (
-          <DropdownMenuCheckboxItem
-            key={key}
-            checked={value === key}
-            onSelect={() => onChange(key as HttpAccessStrategy)}
-          >
-            <span className="flex flex-col">
-              <span>{message}</span>
-
-              <span className="text-on-surface-variant text-xs">
-                {descriptions[key as HttpAccessStrategy]}
-              </span>
-            </span>
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-/** The listener's switch, web interface, sign-in strategy and port, and what is listening now. */
+/**
+ * The listener's switch, web interface, who can reach it, how they authenticate and its port, and
+ * what is listening now.
+ */
 export default function ServerSettings() {
   const { status, http, update, openInBrowser } = useRemoteAccess()
+  const networks = useLocalNetworks({ enabled: http != null })
   const [error, setError] = useState<string | null>(null)
 
   const reportFailure = (value: unknown) => setError(formatError(value))
@@ -159,10 +74,44 @@ export default function ServerSettings() {
     tls_unavailable: m.settings_remote_access_fault_tls_unavailable(),
   } satisfies Record<NonNullable<HttpServerStatus['fault']>, string>
 
+  const listenLabels = {
+    local: m.settings_remote_access_listen_local(),
+    lan: m.settings_remote_access_listen_lan(),
+    any: m.settings_remote_access_listen_any(),
+  } satisfies Record<HttpListen, string>
+
+  const authLabels = {
+    required: m.settings_remote_access_auth_required(),
+    optional: m.settings_remote_access_auth_optional(),
+  } satisfies Record<HttpAuthentication, string>
+
   const loaded = http != null
   const locked = !loaded || update.isPending
-  const strategy = http?.strategy ?? 'local_authenticated'
+  const listen = http?.listen ?? 'local'
+  const auth = http?.auth ?? 'required'
+  const lanAllow = http?.lan_allow ?? []
   const anonymousPermissions = http?.anonymous_permissions ?? {}
+  // Nothing to allow yet, so the LAN scope would be refused.
+  const noLanNetwork =
+    lanAllow.length === 0 && networks.isSuccess && networks.data.length === 0
+
+  const chooseListen = (next: HttpListen) => {
+    if (next === 'local') {
+      change({ listen: next })
+      return
+    }
+
+    // Credentials must not cross the network in the clear, and only this computer may skip them,
+    // so a network scope brings HTTPS and authentication with it.
+    change({
+      listen: next,
+      tls: 'self_signed',
+      auth: 'required',
+      ...(next === 'lan' && lanAllow.length === 0
+        ? { lan_allow: defaultLanAllow(networks.data ?? []) }
+        : {}),
+    })
+  }
 
   return (
     <div data-slot="remote-access-server-container">
@@ -260,28 +209,124 @@ export default function ServerSettings() {
 
         <SettingsCard>
           <SettingsCardContent>
-            <StrategySelector
-              value={strategy}
-              disabled={locked}
-              onChange={(next) =>
-                // Credentials must not cross the network in the clear, so the LAN strategy
-                // brings HTTPS with it.
-                change(
-                  next === 'lan_authenticated'
-                    ? { strategy: next, tls: 'self_signed' }
-                    : { strategy: next },
-                )
-              }
-            />
+            <div
+              className="flex flex-col gap-3"
+              data-slot="remote-access-listen"
+            >
+              <ItemLabel>
+                <ItemLabelText>
+                  {m.settings_remote_access_listen_title()}
+                </ItemLabelText>
 
-            {strategy === 'local_open' && (
+                <ItemLabelDescription>
+                  {m.settings_remote_access_listen_description()}
+                </ItemLabelDescription>
+              </ItemLabel>
+
+              <SegmentedButton
+                className="w-full"
+                aria-label={m.settings_remote_access_listen_title()}
+                disabled={locked}
+                value={listen}
+                onValueChange={(next) => {
+                  if (next && next !== listen) {
+                    chooseListen(next as HttpListen)
+                  }
+                }}
+              >
+                {LISTEN_SCOPES.map((scope) => (
+                  <SegmentedButtonItem
+                    key={scope}
+                    value={scope}
+                    disabled={scope === 'lan' && noLanNetwork}
+                  >
+                    {listenLabels[scope]}
+                  </SegmentedButtonItem>
+                ))}
+              </SegmentedButton>
+            </div>
+
+            {listen !== 'local' && (
+              <p
+                role="note"
+                data-slot="remote-access-network-warning"
+                className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
+              >
+                {listen === 'lan'
+                  ? m.settings_remote_access_listen_lan_warning()
+                  : m.settings_remote_access_listen_any_warning()}
+              </p>
+            )}
+
+            {listen === 'lan' && (
+              <LanAllowList
+                value={lanAllow}
+                networks={networks.data}
+                failed={networks.isError}
+                disabled={locked}
+                onChange={(lan_allow) => change({ lan_allow })}
+              />
+            )}
+
+            {listen !== 'local' && status.data?.port != null && (
+              <span
+                data-slot="remote-access-lan-url-hint"
+                className="text-on-surface-variant text-sm select-text"
+              >
+                {m.settings_remote_access_lan_url_hint({
+                  port: status.data.port,
+                })}
+              </span>
+            )}
+          </SettingsCardContent>
+        </SettingsCard>
+
+        <SettingsCard>
+          <SettingsCardContent>
+            <div className="flex flex-col gap-3" data-slot="remote-access-auth">
+              <ItemLabel>
+                <ItemLabelText>
+                  {m.settings_remote_access_auth_title()}
+                </ItemLabelText>
+
+                <ItemLabelDescription>
+                  {listen === 'local'
+                    ? m.settings_remote_access_auth_description()
+                    : m.settings_remote_access_auth_optional_unavailable()}
+                </ItemLabelDescription>
+              </ItemLabel>
+
+              <SegmentedButton
+                className="w-full"
+                aria-label={m.settings_remote_access_auth_title()}
+                disabled={locked}
+                value={auth}
+                onValueChange={(next) => {
+                  if (next && next !== auth) {
+                    change({ auth: next as HttpAuthentication })
+                  }
+                }}
+              >
+                {AUTH_MODES.map((mode) => (
+                  <SegmentedButtonItem
+                    key={mode}
+                    value={mode}
+                    disabled={mode === 'optional' && listen !== 'local'}
+                  >
+                    {authLabels[mode]}
+                  </SegmentedButtonItem>
+                ))}
+              </SegmentedButton>
+            </div>
+
+            {auth === 'optional' && (
               <>
                 <p
                   role="note"
-                  data-slot="remote-access-local-open-warning"
+                  data-slot="remote-access-auth-optional-warning"
                   className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
                 >
-                  {m.settings_remote_access_strategy_local_open_warning()}
+                  {m.settings_remote_access_auth_optional_warning()}
                 </p>
 
                 <div
@@ -309,41 +354,6 @@ export default function ServerSettings() {
                 </div>
               </>
             )}
-
-            {strategy === 'lan_authenticated' && (
-              <>
-                <p
-                  role="note"
-                  data-slot="remote-access-lan-warning"
-                  className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
-                >
-                  {m.settings_remote_access_strategy_lan_authenticated_warning()}
-                </p>
-
-                <SaveField
-                  key={http?.lan_bind ?? 'all'}
-                  slot="remote-access-lan-bind"
-                  title={m.settings_remote_access_lan_bind_title()}
-                  description={m.settings_remote_access_lan_bind_description()}
-                  invalidMessage={m.settings_remote_access_lan_bind_invalid()}
-                  committed={http?.lan_bind ?? null}
-                  parse={parseLanBind}
-                  disabled={locked}
-                  onSave={(lan_bind) => change({ lan_bind })}
-                />
-
-                {status.data?.port != null && (
-                  <span
-                    data-slot="remote-access-lan-url-hint"
-                    className="text-on-surface-variant text-sm select-text"
-                  >
-                    {m.settings_remote_access_lan_url_hint({
-                      port: status.data.port,
-                    })}
-                  </span>
-                )}
-              </>
-            )}
           </SettingsCardContent>
         </SettingsCard>
 
@@ -363,8 +373,8 @@ export default function ServerSettings() {
               <Switch
                 aria-label={m.settings_remote_access_tls_title()}
                 checked={http?.tls === 'self_signed'}
-                // The LAN strategy cannot run without HTTPS.
-                disabled={locked || strategy === 'lan_authenticated'}
+                // A network scope cannot run without HTTPS.
+                disabled={locked || listen !== 'local'}
                 onCheckedChange={(on) =>
                   change({ tls: on ? 'self_signed' : 'http' })
                 }
@@ -372,12 +382,7 @@ export default function ServerSettings() {
             </ItemContainer>
 
             {http?.tls === 'self_signed' && (
-              <CertificateSettings
-                tls={status.data?.tls ?? undefined}
-                bindOutsideCertificate={
-                  status.data?.bind_outside_certificate ?? false
-                }
-              />
+              <CertificateSettings tls={status.data?.tls ?? undefined} />
             )}
           </SettingsCardContent>
         </SettingsCard>

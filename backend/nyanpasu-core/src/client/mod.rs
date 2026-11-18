@@ -349,6 +349,7 @@ struct NyanpasuClientInner {
     direct_egress: Arc<dyn DirectEgressProbe>,
     icons: crate::service::icon::IconService,
     network_diagnostics: Arc<dyn NetworkDiagnostics>,
+    local_networks: Arc<dyn nyanpasu_contracts::local_networks::LocalNetworkSource>,
     local_source: Arc<traffic::LocalSourceCache>,
     /// Held for its actor, which stops with the last handle; the traffic pump only holds the
     /// index it publishes.
@@ -828,6 +829,7 @@ impl NyanpasuClient {
                 direct_egress,
                 icons,
                 network_diagnostics: host_adapters.network_diagnostics,
+                local_networks: host_adapters.local_networks,
                 local_source,
                 geo_index,
                 os_proxy,
@@ -1063,10 +1065,8 @@ impl NyanpasuClient {
     pub async fn remote_access_tls_identity(
         &self,
     ) -> std::result::Result<nyanpasu_contracts::auth::TlsIdentity, RemoteAuthError> {
-        self.inner
-            .remote_auth
-            .tls_identity(self.remote_access_lan_addresses())
-            .await
+        // The generator covers every interface address it finds; the LAN scope adds none.
+        self.inner.remote_auth.tls_identity(Vec::new()).await
     }
 
     /// The fingerprint to pin and the expiry of the certificate, or `None` before the HTTPS
@@ -1087,22 +1087,16 @@ impl NyanpasuClient {
         nyanpasu_runtime_values::runtime::MutationOutcome<()>,
         SetRemoteAccessError,
     > {
-        self.inner
-            .remote_auth
-            .reset_tls(self.remote_access_lan_addresses())
-            .await?;
+        self.inner.remote_auth.reset_tls(Vec::new()).await?;
         self.inner.remote_access.reconcile().await
     }
 
-    /// The configured LAN address, which a new certificate must cover.
-    fn remote_access_lan_addresses(&self) -> Vec<std::net::IpAddr> {
-        self.inner
-            .remote_access
-            .config()
-            .http
-            .lan_bind
-            .into_iter()
-            .collect()
+    /// The host's IPv4 networks, which the LAN listen scope may allow.
+    pub async fn local_networks(&self) -> Vec<nyanpasu_config::application::LocalNetwork> {
+        let source = self.inner.local_networks.clone();
+        nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || source.networks()).await,
+        )
     }
 
     /// Makes all configured listeners follow the committed settings, as at startup.

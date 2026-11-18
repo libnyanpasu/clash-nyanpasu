@@ -12,7 +12,7 @@ use nyanpasu_cli::{
     error::ExitStatus,
     target::Environment,
 };
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Role};
+use nyanpasu_config::application::{HttpAccessConfig, HttpListen, HttpTls, Role};
 use nyanpasu_contracts::auth::{CreateAccessTokenRequest, Grant, TlsFingerprint, TokenName};
 use nyanpasu_rpc::{
     http::{
@@ -54,7 +54,7 @@ impl Lan {
         let status = server
             .configure(&HttpAccessConfig {
                 enabled: true,
-                strategy: HttpAccessStrategy::LanAuthenticated,
+                listen: HttpListen::Any,
                 tls: HttpTls::SelfSigned,
                 ..Default::default()
             })

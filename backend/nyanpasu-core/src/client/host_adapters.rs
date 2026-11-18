@@ -9,6 +9,7 @@ use super::{
     reconciler::ports::RuntimeBuildPort,
 };
 use nyanpasu_contracts::{
+    local_networks::LocalNetworkSource,
     net::{ChangelogHttp, IconFetcher, NetworkDiagnostics, SelfProxyPortSource},
     network_environment::NetworkEnvironmentPort,
     profiles::ports::{ProfileFsPort, ProfileMaterializationPort, SubscriptionFetcher},
@@ -60,4 +61,6 @@ pub struct ClientHostAdapters {
     pub local_socket: Option<Arc<LocalSocketFactory>>,
     /// Reads the host's network for network automation; `None` leaves the feature unsupported.
     pub network_environment: Option<Arc<dyn NetworkEnvironmentPort>>,
+    /// Lists the host's networks that remote access may allow.
+    pub local_networks: Arc<dyn LocalNetworkSource>,
 }

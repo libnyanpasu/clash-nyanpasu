@@ -52,6 +52,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::meta::rpc_describe,
             commands::system::status::get_http_server_status,
             commands::remote::settings::get_local_socket_status,
+            commands::remote::settings::list_local_networks,
             commands::system::status::get_configuration_status,
             commands::system::status::get_configuration_status_summary,
             commands::system::service::get_service_status_summary,

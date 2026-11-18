@@ -26,9 +26,10 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
 import { useRemoteAccessTokens } from '@nyanpasu/query'
+import { ASSIGNABLE_ROLES, ROLE_PERMISSIONS } from '@nyanpasu/rpc'
 import type { CreatedRemoteAccessToken, Grant } from '@nyanpasu/rpc/types'
 import PermissionGrid from './permission-grid'
-import { ROLE_LABELS, ROLE_PERMISSIONS, TOKEN_ROLES } from './permission-labels'
+import { ROLE_LABELS } from './permission-labels'
 import SensitiveReach from './sensitive-reach'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -56,7 +57,7 @@ function expiryLabel(id: ExpiryId) {
 }
 
 /** A role, or `custom` for a hand-picked permission map. */
-type GrantChoice = (typeof TOKEN_ROLES)[number] | 'custom'
+type GrantChoice = (typeof ASSIGNABLE_ROLES)[number] | 'custom'
 
 const DEFAULT_CHOICE: GrantChoice = 'viewer'
 
@@ -212,7 +213,7 @@ function CreateTokenDialog() {
                       next && setChoice(next as GrantChoice)
                     }
                   >
-                    {TOKEN_ROLES.map((role) => (
+                    {ASSIGNABLE_ROLES.map((role) => (
                       <SegmentedButtonItem key={role} value={role}>
                         {ROLE_LABELS[role]()}
                       </SegmentedButtonItem>

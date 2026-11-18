@@ -4,12 +4,9 @@ import {
 } from '@nyanpasu/ui/segmented-button'
 import type { HeldPermissions } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
+import { GRANTABLE_RESOURCES } from '@nyanpasu/rpc'
 import type { Access } from '@nyanpasu/rpc/types'
-import {
-  ACCESS_LABELS,
-  GRANTABLE_RESOURCES,
-  RESOURCE_LABELS,
-} from './permission-labels'
+import { ACCESS_LABELS, RESOURCE_LABELS } from './permission-labels'
 
 const LEVELS = ['none', 'read', 'write'] as const
 

@@ -24,6 +24,7 @@ serde = { version = '1.0', features = ['derive'] }
 semver = '1.0'
 sha2 = '0.11'
 snafu = { workspace = true }
+strum = '0.28'
 specta = { version = '^2.0.0-rc.25' }
 url = { version = '2', features = ['serde'] }
 tempfile = '3'

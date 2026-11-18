@@ -1174,6 +1174,64 @@ export function createRpcClient(
 
 export type RpcClient = ReturnType<typeof createRpcClient>
 
+/* Constants */
+export const ANONYMOUS_PERMISSIONS_LIMIT = {
+  logs: 'read',
+  profile: 'write',
+  proxy: 'write',
+  settings: 'write',
+  system: 'read',
+  traffic: 'write',
+} as const
+
+export const ASSIGNABLE_ROLES = ['viewer', 'operator', 'admin'] as const
+
+export const GRANTABLE_RESOURCES = [
+  'logs',
+  'profile',
+  'proxy',
+  'settings',
+  'system',
+  'traffic',
+] as const
+
+export const ROLE_PERMISSIONS = {
+  admin: {
+    logs: 'write',
+    profile: 'write',
+    proxy: 'write',
+    settings: 'write',
+    system: 'write',
+    traffic: 'write',
+  },
+  anonymous: {},
+  operator: {
+    logs: 'read',
+    profile: 'write',
+    proxy: 'write',
+    settings: 'write',
+    system: 'read',
+    traffic: 'write',
+  },
+  owner: {
+    logs: 'write',
+    profile: 'write',
+    proxy: 'write',
+    remote: 'write',
+    settings: 'write',
+    system: 'write',
+    traffic: 'write',
+  },
+  viewer: {
+    logs: 'read',
+    profile: 'read',
+    proxy: 'read',
+    settings: 'read',
+    system: 'read',
+    traffic: 'read',
+  },
+} as const
+
 /* Types */
 /**  An access level. The derived order is the implication: `Write >= Read`. */
 export type Access = 'read' | 'write'

@@ -429,8 +429,8 @@ impl State {
                     GrantError::UnassignableRole { .. } => {
                         "a token can only hold the viewer, operator or admin role"
                     }
-                    GrantError::RemoteInCustomPermissions => {
-                        "a token cannot hold remote permissions"
+                    GrantError::UngrantableResource { .. } => {
+                        "a token cannot hold meta or remote permissions"
                     }
                 },
             })?;

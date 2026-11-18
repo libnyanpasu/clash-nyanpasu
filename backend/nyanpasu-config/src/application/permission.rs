@@ -3,7 +3,6 @@
 //! A permission is a domain [`Resource`] and an [`Access`] level; a caller holds at most one level
 //! per resource, and `write` includes `read`. Requirements, roles and grants are all expressed in
 //! these terms; the permission layer reads only [`Permissions`].
-// TODO(E-6): generate `Resource` from the top-level `namespace!` declarations.
 
 use std::{collections::BTreeMap, fmt};
 
@@ -11,45 +10,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use strum::EnumCount;
 
-/// A domain resource: the part of the application a permission covers.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    Type,
-    strum::EnumCount,
-    strum::EnumIter,
-    strum::Display,
-)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-#[repr(u8)]
-pub enum Resource {
-    /// Capability discovery; every resolved caller holds `meta:read`.
-    Meta,
-    /// The running routing state: proxy groups and nodes, selection, latency tests, the proxy
-    /// mode, closing connections.
-    Proxy,
-    /// Stored profile definitions, subscriptions, chains and the proxy group layout.
-    Profile,
-    /// Ordinary application and Clash preferences and the frontend key-value storage.
-    Settings,
-    /// The core lifecycle, system proxy, TUN, service mode and OS integration.
-    System,
-    /// Application and core logs.
-    Logs,
-    /// Traffic, connection lists and their history.
-    Traffic,
-    /// Remote access settings, tokens, sessions and certificates; never offered over HTTP.
-    Remote,
-}
+// One variant per top-level `namespace!`; written by `export_rpc_resource_table`.
+mod generated;
+
+pub use generated::Resource;
 
 /// An access level. The derived order is the implication: `Write >= Read`.
 #[derive(

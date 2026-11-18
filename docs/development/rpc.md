@@ -314,8 +314,14 @@ compile time.
 To add a command, put the function in the module of its domain and write `#[rpc]` or
 `#[rpc(query)]`: it derives its requirement and exposure, and every role that holds the
 requirement reaches it. A new top-level module is a new `Resource`, which changes the
-permission model and the roles; that is a reviewed change of its own. When commands move,
-migrate the roots, schema and handler inventories together.
+permission model and the roles; that is a reviewed change of its own. The generator writes
+the `Resource` enum (`nyanpasu-config/src/application/permission/generated.rs`) from the
+top-level `namespace!` declarations, one variant per module in name order, documented by
+the first paragraph of the module documentation. The roles stay hand-written: the tests that
+`owner` writes every resource and that pin the resource names fail until both name it. Resource
+names are persisted in tokens and settings, so renaming a top-level module is a migration of
+the stored names, not only a move. When commands move, migrate the roots, schema and
+handler inventories together.
 Run from `backend/`:
 
 ```sh

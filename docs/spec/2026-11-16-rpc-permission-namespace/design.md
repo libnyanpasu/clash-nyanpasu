@@ -107,7 +107,7 @@ pub struct Permissions([Option<Access>; Resource::COUNT]);   // 按资源索引�
 | `traffic`  | 流量、连接列表与历史、历史的录制与清空                                 |
 | `remote`   | 远程访问设置、token、会话、证书；不对 HTTP 暴露                        |
 
-> **TODO（E-6）：** `Resource` 目前是手写的，生成器只校验“顶层模块名是它的一个变体”。目标是由生成器从顶层的 `namespace!` 声明生成这个枚举。可行性已核实，不会形成编译期的循环依赖；做法与护栏见 §9 E-6。
+> **E-6（已实施）：** `Resource` 由生成器从顶层的 `namespace!` 声明生成：每个顶层 `namespace!` 一个变体，按名字排序，文档取该模块文档的第一段。做法与护栏见 §9 E-6。
 
 没有 `secrets` 资源。现在由 `sensitive_read` 保护的操作各回各的领域，要求该领域的 `read`（`query_logs` 等例外见 §3.3），并带上 §2.3 的敏感标记。
 
@@ -387,7 +387,7 @@ registry 仍在启动时按方法名把 handler 与表关联。宏的注册项�
 
 ```rust
 // nyanpasu-config/src/application/permission.rs —— 手写
-// TODO(E-6)：Resource 改由生成器从顶层的 namespace! 声明生成；其余类型保持手写。
+// E-6 之后 Resource 由生成器从顶层的 namespace! 声明生成（permission/generated.rs）；其余类型保持手写。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type,
          strum::EnumCount, strum::EnumIter, strum::Display)]
 #[serde(rename_all = "snake_case")]
@@ -1135,7 +1135,7 @@ backend/
 │  │  └─ render.rs                     输出 generated.rs
 │  └─ tests/                           只放 fixtures 与能力清单这类数据
 ├─ nyanpasu-config/src/application/
-│  ├─ permission.rs                    手写：Resource、Access、Permission、Permissions（取代 scope.rs）；TODO(E-6) Resource 改为生成
+│  ├─ permission.rs                    手写：Access、Permission、Permissions（取代 scope.rs）；Resource 由 E-6 生成
 │  ├─ role.rs                          手写：Role 与展开
 │  └─ remote_access.rs                 anonymous_permissions（现有文件）
 ├─ nyanpasu-contracts/src/auth/
@@ -1239,7 +1239,7 @@ backend/
 
 - **E-4 数据共享层（预留）。** §4.5。`Authority` 内侧的一层，按上下文里的表项元数据控制数据怎样交出；MCP 是它的第一个使用者。单独设计，本稿只留接缝。
 
-- **E-6 `Resource` 枚举由生成器生成（TODO）。** 现在它是手写的。调研结论（子代理在基线分支上核对了现有生成器的源码）：
+- **E-6 `Resource` 枚举由生成器生成（已实施，P5 之后单独一个提交）。** 生成器一并写出 `nyanpasu-config/src/application/permission/generated.rs`，变体按名字排序。实施前的调研结论（子代理在基线分支上核对了现有生成器的源码）：
   - **不会形成循环依赖。** 现有的生成器是 `nyanpasu-macro` 里一个 `#[ignore]` 的测试（`command_catalog.rs:201–209`），整个模块只在测试下编译（`lib.rs:5–6`）；它用 `syn` 读源码文本，按 `CARGO_MANIFEST_DIR` 的相对路径找两个声明根，宿主 crate 只依赖 `syn`、`quote`、`proc-macro2`。它写文件，不产生 cargo 的依赖边。让它多写一个 `nyanpasu-config` 里的文件，同样没有边。
   - **真正的风险是自举，不是环。** 生成器必须在生成文件损坏或过期时仍然编译得过。现状满足这一点：宿主不依赖它要重写的 crate。所以 `nyanpasu-rpc-macro` 不得有任何会把 `nyanpasu-config` 带进编译的依赖（含 dev-dependencies），并用一个测试钉住。
   - **做法：** 沿用“显式导出 + 提交 + 新鲜度测试”。生成器从两个声明根顶层的 `namespace!` 收集资源名，同时输出 config 里的枚举与 protocol 里的表，共用一个新鲜度测试。不用 `build.rs`（会让最底层的 crate 在每次改命令文件后重编，并让基础层去读 GUI crate 的源码），也不用编译期的过程宏读兄弟目录（稳定版没有路径跟踪，增量构建会拿到过期结果）。

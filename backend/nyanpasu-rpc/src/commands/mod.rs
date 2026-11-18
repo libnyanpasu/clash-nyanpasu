@@ -7,6 +7,7 @@ pub mod icons;
 pub mod logs;
 pub mod meta;
 pub mod profiles;
+pub mod proxy;
 pub mod remote;
 mod resources;
 pub mod runtime;

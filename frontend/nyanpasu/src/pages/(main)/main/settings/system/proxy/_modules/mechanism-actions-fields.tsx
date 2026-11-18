@@ -1,3 +1,7 @@
+import NetworkPing from '~icons/material-symbols/network-ping-rounded'
+import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
+import ShieldRounded from '~icons/material-symbols/shield-rounded'
+import type { ReactNode } from 'react'
 import {
   Select,
   SelectContent,
@@ -8,6 +12,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { PlatformLinux } from '@nyanpasu/platform/react'
 import type { MechanismAction, MechanismActions } from '@nyanpasu/rpc/types'
+import { OptionRow, OptionRowLabel } from './option-row'
 
 const ACTIONS = [
   'keep',
@@ -15,7 +20,7 @@ const ACTIONS = [
   'disable',
 ] as const satisfies readonly MechanismAction[]
 
-const actionLabel = (action: MechanismAction) => {
+export const actionLabel = (action: MechanismAction) => {
   switch (action) {
     case 'keep':
       return m.settings_system_proxy_network_automation_action_keep()
@@ -27,20 +32,19 @@ const actionLabel = (action: MechanismAction) => {
 }
 
 function ActionSelect({
+  icon,
   label,
   value = 'keep',
   onChange,
 }: {
+  icon: ReactNode
   label: string
   value?: MechanismAction
   onChange: (action: MechanismAction) => void
 }) {
   return (
-    <div
-      className="flex items-center justify-between gap-4"
-      data-slot="mechanism-action-select"
-    >
-      <span className="text-sm">{label}</span>
+    <OptionRow data-slot="mechanism-action-select">
+      <OptionRowLabel icon={icon}>{label}</OptionRowLabel>
 
       <Select
         variant="chip"
@@ -59,7 +63,7 @@ function ActionSelect({
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </OptionRow>
   )
 }
 
@@ -72,14 +76,16 @@ export default function MechanismActionsFields({
   onChange: (next: MechanismActions) => void
 }) {
   return (
-    <div className="flex flex-col gap-2" data-slot="mechanism-actions-fields">
+    <div className="flex flex-col gap-1" data-slot="mechanism-actions-fields">
       <ActionSelect
+        icon={<NetworkPing aria-hidden />}
         label={m.settings_system_proxy_system_proxy_label()}
         value={value.system_proxy}
         onChange={(system_proxy) => onChange({ ...value, system_proxy })}
       />
 
       <ActionSelect
+        icon={<SettingsEthernet aria-hidden />}
         label={m.settings_system_proxy_tun_mode_label()}
         value={value.tun}
         onChange={(tun) => onChange({ ...value, tun })}
@@ -87,6 +93,7 @@ export default function MechanismActionsFields({
 
       <PlatformLinux>
         <ActionSelect
+          icon={<ShieldRounded aria-hidden />}
           label={m.settings_clash_transparent_proxy_label()}
           value={value.transparent_proxy}
           onChange={(transparent_proxy) =>

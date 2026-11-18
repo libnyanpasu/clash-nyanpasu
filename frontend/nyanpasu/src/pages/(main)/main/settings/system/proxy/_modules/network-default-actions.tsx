@@ -32,7 +32,7 @@ export default function NetworkDefaultActions() {
 
   return (
     <div
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       data-slot="network-default-actions-container"
     >
       <ItemLabel>

@@ -1,4 +1,6 @@
+import CloudOffOutlineRounded from '~icons/material-symbols/cloud-off-outline-rounded'
 import { Button } from '@nyanpasu/ui/button'
+import { MaterialShape } from '@nyanpasu/ui/material-shape'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -12,6 +14,14 @@ import type {
   NetworkState,
   WifiName,
 } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+} from '../../../../_modules/settings-card'
+import { InterfaceKindIcon } from './interface-kind'
 import WifiNameNotice from './wifi-name-notice'
 
 const describeWifi = (wifi: WifiName) => {
@@ -71,11 +81,9 @@ export default function NetworkAutomationStatus() {
   const status = query.data
   const matched = status?.applied?.matched
 
-  const wifi =
-    status?.network?.state === 'online' &&
-    status.network.network.interface_kind === 'wifi'
-      ? status.network.network.wifi
-      : undefined
+  const online =
+    status?.network?.state === 'online' ? status.network.network : undefined
+  const wifi = online?.interface_kind === 'wifi' ? online.wifi : undefined
 
   const matchedRule =
     matched?.kind === 'rule'
@@ -106,32 +114,53 @@ export default function NetworkAutomationStatus() {
   }
 
   return (
-    <div className="flex flex-col gap-3" data-slot="network-automation-status">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-on-surface-variant text-sm">
-            {m.settings_system_proxy_network_automation_current_network()}
-          </span>
+    <div className="flex flex-col gap-4" data-slot="network-automation-status">
+      <ItemContainer>
+        <div className="flex min-w-0 items-center gap-4">
+          <MaterialShape
+            active={Boolean(online)}
+            className={cn(
+              'size-12 shrink-0 [&>svg]:size-6',
+              'bg-primary-container text-on-primary-container',
+            )}
+          >
+            {status?.network?.state === 'offline' ? (
+              <CloudOffOutlineRounded aria-hidden />
+            ) : (
+              <InterfaceKindIcon kind={online?.interface_kind ?? 'any'} />
+            )}
+          </MaterialShape>
 
-          <span className="font-medium">
-            {describeState(status?.network ?? null)}
-          </span>
+          <ItemLabel className="min-w-0">
+            <ItemLabelDescription>
+              {m.settings_system_proxy_network_automation_current_network()}
+            </ItemLabelDescription>
 
-          {matched && (
-            <span className="text-on-surface-variant text-sm">
-              {matchedRule
-                ? m.settings_system_proxy_network_automation_matched_rule({
-                    name: matchedRule.name,
-                  })
-                : m.settings_system_proxy_network_automation_matched_default()}
-            </span>
-          )}
+            <ItemLabelText className="[overflow-wrap:anywhere]">
+              {describeState(status?.network ?? null)}
+            </ItemLabelText>
+
+            {matched && (
+              <ItemLabelDescription>
+                {matchedRule
+                  ? m.settings_system_proxy_network_automation_matched_rule({
+                      name: matchedRule.name,
+                    })
+                  : m.settings_system_proxy_network_automation_matched_default()}
+              </ItemLabelDescription>
+            )}
+          </ItemLabel>
         </div>
 
-        <Button onClick={handleApply} loading={applyNow.isPending}>
+        <Button
+          variant="raised"
+          className="shrink-0"
+          onClick={handleApply}
+          loading={applyNow.isPending}
+        >
           {m.settings_system_proxy_network_automation_apply_now()}
         </Button>
-      </div>
+      </ItemContainer>
 
       {wifi && <WifiNameNotice wifi={wifi} />}
     </div>

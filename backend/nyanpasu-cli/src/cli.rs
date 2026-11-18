@@ -455,36 +455,44 @@ impl TokenCreate {
     }
 }
 
-/// A role a token may hold: `viewer`, `operator` or `admin`.
+/// A role a token may hold: one of [`Grant::ASSIGNABLE_ROLES`].
 fn parse_token_role(text: &str) -> Result<Role, String> {
     match serde_json::from_value::<Role>(Value::String(text.to_owned())) {
-        Ok(role @ (Role::Viewer | Role::Operator | Role::Admin)) => Ok(role),
+        Ok(role) if Grant::ASSIGNABLE_ROLES.contains(&role) => Ok(role),
         _ => Err(format!(
-            "`{text}` is not a role a token can hold; choose from viewer, operator, admin"
+            "`{text}` is not a role a token can hold; choose from {}",
+            Grant::ASSIGNABLE_ROLES
+                .map(|role| role.to_string())
+                .join(", ")
         )),
     }
 }
 
-/// A permission a token may hold, `resource:access`. `remote` stays with the owner, and every
-/// caller already holds `meta:read`.
+/// A permission a token may hold, `resource:access`, on one of [`Grant::grantable_resources`].
 fn parse_token_permission(text: &str) -> Result<Permission, String> {
-    const RESOURCES: &str = "proxy, profile, settings, system, logs, traffic";
+    let resources = Grant::grantable_resources()
+        .map(|resource| resource.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
     let invalid = || {
-        format!("`{text}` is not `resource:access`; resources: {RESOURCES}; access: read, write")
+        format!("`{text}` is not `resource:access`; resources: {resources}; access: read, write")
     };
     let (resource, access) = text.split_once(':').ok_or_else(invalid)?;
     let resource = serde_json::from_value::<Resource>(Value::String(resource.to_owned()))
         .map_err(|_| invalid())?;
     let access = serde_json::from_value(Value::String(access.to_owned())).map_err(|_| invalid())?;
     match resource {
+        _ if Grant::is_grantable(resource) => Ok(Permission::new(resource, access)),
         Resource::Remote => Err(format!(
             "a token never holds remote; remote access is administered from the app or \
-             `nyanpasu-cli remote`; resources: {RESOURCES}"
+             `nyanpasu-cli remote`; resources: {resources}"
         )),
         Resource::Meta => Err(format!(
-            "every caller already holds meta:read; resources: {RESOURCES}"
+            "every caller already holds meta:read; resources: {resources}"
         )),
-        _ => Ok(Permission::new(resource, access)),
+        _ => Err(format!(
+            "a token cannot hold {resource}; resources: {resources}"
+        )),
     }
 }
 

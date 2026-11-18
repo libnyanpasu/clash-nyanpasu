@@ -297,7 +297,32 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
 
     let (query_bindings, builder) = command_set;
 
-    (query_bindings, builder.dangerously_cast_bigints_to_number())
+    (
+        query_bindings,
+        permission_constants(builder).dangerously_cast_bigints_to_number(),
+    )
+}
+
+/// The role expansions, the anonymous limit and what a token can be granted, which the frontend
+/// offers and explains to the user; only the backend validates and admits.
+fn permission_constants(
+    builder: tauri_specta::Builder<tauri::Wry>,
+) -> tauri_specta::Builder<tauri::Wry> {
+    use nyanpasu_config::application::{ANONYMOUS_PERMISSIONS_LIMIT, Role};
+    use nyanpasu_contracts::auth::Grant;
+    use strum::IntoEnumIterator as _;
+
+    let roles = Role::iter()
+        .map(|role| (role.to_string(), role.permissions()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    builder
+        .constant("ROLE_PERMISSIONS", roles)
+        .constant("ANONYMOUS_PERMISSIONS_LIMIT", ANONYMOUS_PERMISSIONS_LIMIT)
+        .constant("ASSIGNABLE_ROLES", Grant::ASSIGNABLE_ROLES)
+        .constant(
+            "GRANTABLE_RESOURCES",
+            Grant::grantable_resources().collect::<Vec<_>>(),
+        )
 }
 
 pub(crate) fn adapt_rpc_bindings(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
@@ -387,7 +412,13 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "import type {{ RpcTransport }} from './transport'\nimport {{ createDefaultRpcTransport }} from './transport'\n\nexport function createRpcClient(transport: RpcTransport = createDefaultRpcTransport()) {{\n  const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)\n"
     );
     let commands = source[command_at..events_at].replacen(commands_start, "const commands = {", 1);
-    let events_and_separator = source[events_at..types_at].replacen(events_start, "", 1);
+    // Constants follow the events; they stay module exports, outside the client factory.
+    let (events, constants) = source[events_at..types_at].split_at(
+        source[events_at..types_at]
+            .find("/* Constants */")
+            .unwrap_or(types_at - events_at),
+    );
+    let events_and_separator = events.replacen(events_start, "", 1);
     let event_object_at = events_and_separator
         .find("export const events = {")
         .ok_or_else(|| Error::new(ErrorKind::InvalidData, "missing generated event object"))?;
@@ -397,7 +428,7 @@ fn adapt_command_transport(path: impl AsRef<std::path::Path>) -> std::io::Result
         "const events = {",
     );
     let commands_and_events = format!(
-        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, icons: transport.icons, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n"
+        "{prefix}{commands}{events_and_separator}\n  return {{ ...commands, events, icons: transport.icons, listenResync: transport.events.listenResync.bind(transport.events), dispose: () => transport.events.dispose() }}\n}}\n\nexport type RpcClient = ReturnType<typeof createRpcClient>\n\n{constants}\n"
     );
     let source = format!(
         "{}{}{}",

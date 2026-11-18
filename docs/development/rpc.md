@@ -103,9 +103,9 @@ through the `remote` commands in `nyanpasu-rpc/src/commands/remote/{tokens,sessi
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
 socket may call and HTTP never offers. A token holds a `Grant`: the `viewer`, `operator` or
-`admin` role, or a custom permission map without `remote`; it is validated when the token is
+`admin` role, or a custom permission map without `meta` or `remote`; it is validated when the token is
 issued and again when the stored record is loaded, so loading rejects a grant that issuance
-forbids (`owner`, `anonymous`, or a custom map holding `remote`).
+forbids (`owner`, `anonymous`, or a custom map holding `meta` or `remote`).
 When the bounded browser-session table is full, a login evicts the caller's least recently
 active session first (or the least recently active session overall) and announces its
 revocation; capacity never turns into a global login denial.
@@ -409,6 +409,10 @@ that become the frontend bindings are checked against it.
   `logs` and `traffic`), `operator` (adds `proxy`,
   `profile`, `settings` and `traffic` writes), `admin` (adds `system` and `logs` writes) and
   `owner` (adds `remote:write`). Admission never sees a role, only the expanded permissions.
+  The RPC bindings export the expansions as `ROLE_PERMISSIONS`, the anonymous limit as
+  `ANONYMOUS_PERMISSIONS_LIMIT`, and what a token can be granted (`Grant::ASSIGNABLE_ROLES`,
+  `Grant::grantable_resources`) as `ASSIGNABLE_ROLES` and `GRANTABLE_RESOURCES`; the frontend
+  reads them from `@nyanpasu/rpc` rather than copying them.
 - The resource table tests pin the sensitive set, the HTTP-reachable `system:write` set and the
   `remote` set with its Local subset, so changing any of them is a reviewed change.
 

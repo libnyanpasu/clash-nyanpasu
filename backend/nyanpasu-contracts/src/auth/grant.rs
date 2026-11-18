@@ -36,17 +36,35 @@ impl Grant {
         }
     }
 
-    /// Checks a grant before it is issued. Only `viewer`, `operator` and `admin` can be
-    /// assigned: `anonymous` is the absence of a credential and `owner` is structural. The power
-    /// to grant stays with the owner, so a custom map never holds `remote`.
+    /// The roles a grant can name, from the least to the most: `anonymous` is the absence of a
+    /// credential and `owner` is structural.
+    pub const ASSIGNABLE_ROLES: [Role; 3] = [Role::Viewer, Role::Operator, Role::Admin];
+
+    /// Whether a custom map can hold `resource`. Every caller already holds `meta:read`, and the
+    /// power to grant stays with the owner, so never `meta` or `remote`.
+    pub const fn is_grantable(resource: Resource) -> bool {
+        !matches!(resource, Resource::Meta | Resource::Remote)
+    }
+
+    /// The resources a custom map can hold, in resource order.
+    pub fn grantable_resources() -> impl Iterator<Item = Resource> {
+        <Resource as strum::IntoEnumIterator>::iter()
+            .filter(|resource| Self::is_grantable(*resource))
+    }
+
+    /// Checks a grant before it is issued: a role from [`Self::ASSIGNABLE_ROLES`], or a custom
+    /// map of [`Self::grantable_resources`].
     pub fn validate(&self) -> Result<(), GrantError> {
         match self {
-            Self::Role(Role::Viewer | Role::Operator | Role::Admin) => Ok(()),
+            Self::Role(role) if Self::ASSIGNABLE_ROLES.contains(role) => Ok(()),
             Self::Role(role) => Err(GrantError::UnassignableRole { role: *role }),
-            Self::Custom(permissions) if permissions.get(Resource::Remote).is_some() => {
-                Err(GrantError::RemoteInCustomPermissions)
-            }
-            Self::Custom(_) => Ok(()),
+            Self::Custom(permissions) => match permissions
+                .iter()
+                .find(|(resource, _)| !Self::is_grantable(*resource))
+            {
+                Some((resource, _)) => Err(GrantError::UngrantableResource { resource }),
+                None => Ok(()),
+            },
         }
     }
 }
@@ -56,8 +74,8 @@ impl Grant {
 pub enum GrantError {
     #[snafu(display("the {role} role cannot be granted"))]
     UnassignableRole { role: Role },
-    #[snafu(display("custom permissions cannot include remote"))]
-    RemoteInCustomPermissions,
+    #[snafu(display("custom permissions cannot include {resource}"))]
+    UngrantableResource { resource: Resource },
 }
 
 #[cfg(test)]
@@ -109,11 +127,24 @@ mod tests {
             );
         }
         assert_eq!(Grant::Custom(Role::Admin.permissions()).validate(), Ok(()));
-        for access in [Access::Read, Access::Write] {
-            assert_eq!(
-                Grant::Custom(Permissions::NONE.with(Resource::Remote, access)).validate(),
-                Err(GrantError::RemoteInCustomPermissions)
-            );
+        for resource in [Resource::Meta, Resource::Remote] {
+            for access in [Access::Read, Access::Write] {
+                assert_eq!(
+                    Grant::Custom(Permissions::NONE.with(resource, access)).validate(),
+                    Err(GrantError::UngrantableResource { resource })
+                );
+            }
         }
+    }
+
+    #[test]
+    fn grantable_resources_are_every_resource_but_meta_and_remote() {
+        let names: Vec<_> = Grant::grantable_resources()
+            .map(|resource| resource.to_string())
+            .collect();
+        assert_eq!(
+            names,
+            ["logs", "profile", "proxy", "settings", "system", "traffic"]
+        );
     }
 }

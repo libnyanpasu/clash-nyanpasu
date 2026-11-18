@@ -4,7 +4,13 @@ export * from './event-transport'
 export * from './icon-transport'
 export * from './result'
 export type { Result } from './result'
-export { createRpcClient } from './rpc-bindings'
+export {
+  ANONYMOUS_PERMISSIONS_LIMIT,
+  ASSIGNABLE_ROLES,
+  createRpcClient,
+  GRANTABLE_RESOURCES,
+  ROLE_PERMISSIONS,
+} from './rpc-bindings'
 export * from './rpc-failure'
 export * from './transport'
 export type * from './types'

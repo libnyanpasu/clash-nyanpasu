@@ -123,7 +123,19 @@ impl From<Permissions> for BTreeMap<Resource, Access> {
 
 /// A named set of permissions. The permission layer never sees a role: a role only appears
 /// where a grant is assigned or expanded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Type,
+    strum::Display,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Role {
@@ -174,33 +186,36 @@ pub enum PermissionError {
     AnonymousBeyondOperator { held: Permission },
 }
 
-/// Checks the permissions configured for anonymous callers: at most the `operator` role, which
-/// also keeps `remote` out of reach.
+/// The most an anonymous caller may hold: the `operator` role, which also keeps `remote` out of
+/// reach.
+pub const ANONYMOUS_PERMISSIONS_LIMIT: Permissions = Role::Operator.permissions();
+
+/// Checks the permissions configured for anonymous callers against
+/// [`ANONYMOUS_PERMISSIONS_LIMIT`].
 pub fn validate_anonymous_permissions(permissions: &Permissions) -> Result<(), PermissionError> {
-    let bound = Role::Operator.permissions();
     match permissions
         .iter()
         .map(|(resource, access)| Permission::new(resource, access))
-        .find(|held| !bound.permits(*held))
+        .find(|held| !ANONYMOUS_PERMISSIONS_LIMIT.permits(*held))
     {
         Some(held) => Err(PermissionError::AnonymousBeyondOperator { held }),
         None => Ok(()),
     }
 }
 
-/// The permissions an anonymous caller actually holds: `configured`, each level capped at what the
-/// `operator` role holds, so a hand-edited configuration cannot widen them past
+/// The permissions an anonymous caller actually holds: `configured`, each level capped at
+/// [`ANONYMOUS_PERMISSIONS_LIMIT`], so a hand-edited configuration cannot widen them past
 /// [`validate_anonymous_permissions`].
 pub fn cap_anonymous_permissions(configured: &Permissions) -> Permissions {
-    let bound = Role::Operator.permissions();
     configured
         .iter()
-        .fold(Permissions::NONE, |held, (resource, access)| {
-            match bound.get(resource) {
+        .fold(
+            Permissions::NONE,
+            |held, (resource, access)| match ANONYMOUS_PERMISSIONS_LIMIT.get(resource) {
                 Some(limit) => held.with(resource, access.min(limit)),
                 None => held,
-            }
-        })
+            },
+        )
 }
 
 #[cfg(test)]

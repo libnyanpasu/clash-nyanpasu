@@ -937,6 +937,8 @@ async fn a_stored_grant_that_cannot_be_issued_fails_closed() {
         serde_json::json!({"role": "anonymous"}),
         serde_json::json!({"permissions": {"remote": "read"}}),
         serde_json::json!({"permissions": {"proxy": "write", "remote": "write"}}),
+        serde_json::json!({"permissions": {"meta": "read"}}),
+        serde_json::json!({"permissions": {"proxy": "read", "meta": "write"}}),
     ] {
         let mut edited = saved.clone();
         edited["tokens"][0]["grant"] = grant.clone();

@@ -11,6 +11,7 @@ import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { useRemoteAccess } from '@nyanpasu/query'
+import { ANONYMOUS_PERMISSIONS_LIMIT } from '@nyanpasu/rpc'
 import type { HttpAccessStrategy, HttpServerStatus } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -24,7 +25,6 @@ import {
 } from '../../../../_modules/settings-card'
 import CertificateSettings from './certificate-settings'
 import PermissionGrid from './permission-grid'
-import { ANONYMOUS_LIMIT } from './permission-labels'
 import SaveField from './save-field'
 import SensitiveReach from './sensitive-reach'
 
@@ -300,7 +300,7 @@ export default function ServerSettings() {
 
                   <PermissionGrid
                     value={anonymousPermissions}
-                    limit={ANONYMOUS_LIMIT}
+                    limit={ANONYMOUS_PERMISSIONS_LIMIT}
                     disabled={locked}
                     onChange={(next) => change({ anonymous_permissions: next })}
                   />

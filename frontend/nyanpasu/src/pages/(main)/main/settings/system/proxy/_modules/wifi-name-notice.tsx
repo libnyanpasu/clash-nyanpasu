@@ -1,3 +1,4 @@
+import InfoOutlineRounded from '~icons/material-symbols/info-outline-rounded'
 import { Button } from '@nyanpasu/ui/button'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -7,6 +8,7 @@ import { matchPlatform } from '@nyanpasu/platform'
 import { usePlatform } from '@nyanpasu/platform/react'
 import { useNetworkAutomationStatus } from '@nyanpasu/query'
 import type { NetworkAutomationStatus, WifiName } from '@nyanpasu/rpc/types'
+import { cn } from '@nyanpasu/utils'
 import { openExternal } from '../../../_modules/open-external'
 
 /** The system pane where the user lets this app use location. */
@@ -55,16 +57,23 @@ export default function WifiNameNotice({
 
   return (
     <div
-      className="flex items-center justify-between gap-4"
+      className={cn(
+        'flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4',
+        'bg-tertiary-container text-on-tertiary-container',
+      )}
       data-slot="wifi-name-notice"
     >
-      <span className="text-on-surface-variant text-sm">
+      <InfoOutlineRounded className="size-5 shrink-0" aria-hidden />
+
+      <span className="min-w-0 flex-1 py-1 text-sm">
         {describeReason(wifi.reason)}
       </span>
 
       {wifi.reason === 'permission_required' && (
         <Button
           type="button"
+          variant="raised"
+          className="shrink-0"
           onClick={handleAllow}
           loading={requestWifiName.isPending}
         >
@@ -73,7 +82,12 @@ export default function WifiNameNotice({
       )}
 
       {wifi.reason === 'permission_denied' && settingsUrl && (
-        <Button type="button" onClick={() => openExternal(settingsUrl)}>
+        <Button
+          type="button"
+          variant="raised"
+          className="shrink-0"
+          onClick={() => openExternal(settingsUrl)}
+        >
           {m.settings_system_proxy_network_automation_wifi_open_settings()}
         </Button>
       )}

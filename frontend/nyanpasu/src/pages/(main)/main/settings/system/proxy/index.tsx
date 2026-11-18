@@ -111,13 +111,21 @@ const NetworkRules = () => {
 
         <AnimatePresence initial={false}>
           {policy?.enabled && (
-            <SettingsCard asChild>
+            <SettingsCard key="status" asChild>
               <SettingsCardAnimatedItem>
                 <SettingsCardContent>
                   <NetworkAutomationStatus />
+                </SettingsCardContent>
+              </SettingsCardAnimatedItem>
+            </SettingsCard>
+          )}
 
-                  <NetworkRuleList />
+          {policy?.enabled && <NetworkRuleList key="rules" />}
 
+          {policy?.enabled && (
+            <SettingsCard key="default-actions" asChild>
+              <SettingsCardAnimatedItem>
+                <SettingsCardContent>
                   <NetworkDefaultActions />
                 </SettingsCardContent>
               </SettingsCardAnimatedItem>

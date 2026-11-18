@@ -261,7 +261,7 @@ async fn http_icon(
 /// Exports the diagnostic log archive for HTTP callers.
 ///
 /// The text redactor in `nyanpasu_config::redact` leaves opaque URL host/path tokens intact, so
-/// its resource row (`commands/resources.rs`) is marked sensitive until a token-safe archive view
+/// its resource row (`commands/logs/app.rs`) is marked sensitive until a token-safe archive view
 /// exists.
 async fn http_logs_archive(
     State(rpc): State<UnifiedRpc>,

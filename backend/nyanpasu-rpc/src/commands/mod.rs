@@ -6,7 +6,6 @@ pub mod meta;
 pub mod profile;
 pub mod proxy;
 pub mod remote;
-mod resources;
 pub mod settings;
 pub mod system;
 pub mod traffic;

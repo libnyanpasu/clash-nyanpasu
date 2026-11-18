@@ -1,4 +1,4 @@
-//! Shared logs command adapters.
+//! Application logs: log files, log sessions and frontend event reports.
 
 use nyanpasu_core::client::NyanpasuClient;
 
@@ -7,7 +7,22 @@ use crate::{
     registry::{RpcCaller, RpcState},
 };
 
-#[nyanpasu_rpc::rpc(local, http, result, operation = nyanpasu_rpc_protocol::operations::ListLogFiles, query, permission = logs:read)]
+nyanpasu_rpc::resource!(route "logs_archive", targets = [http], sensitive);
+
+#[nyanpasu_rpc::rpc(result, owner, operation = nyanpasu_rpc_protocol::operations::CloseLogSession, access = read)]
+#[specta::specta]
+pub async fn close_log_session(
+    window: RpcCaller,
+    client: RpcState<'_, NyanpasuClient>,
+    source: nyanpasu_contracts::logs::LogSource,
+    session: String,
+) -> nyanpasu_logging::LogResult<()> {
+    client
+        .close_log_session(source, window.label().to_string(), session)
+        .await
+}
+
+#[nyanpasu_rpc::rpc(result, operation = nyanpasu_rpc_protocol::operations::ListLogFiles, query)]
 #[specta::specta]
 pub async fn list_log_files(
     client: RpcState<'_, NyanpasuClient>,
@@ -16,7 +31,7 @@ pub async fn list_log_files(
     client.list_log_files(source).await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::OpenLogSession, permission = logs:read)]
+#[nyanpasu_rpc::rpc(result, owner, operation = nyanpasu_rpc_protocol::operations::OpenLogSession, access = read)]
 #[specta::specta]
 pub async fn open_log_session(
     window: RpcCaller,
@@ -29,7 +44,7 @@ pub async fn open_log_session(
         .await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::QueryLogs, permission = logs:read, sensitive)]
+#[nyanpasu_rpc::rpc(result, owner, operation = nyanpasu_rpc_protocol::operations::QueryLogs, access = read, sensitive)]
 #[specta::specta]
 pub async fn query_logs(
     window: RpcCaller,
@@ -43,7 +58,7 @@ pub async fn query_logs(
 }
 
 /// Public app and service log page summary without message text, raw lines, target strings, or text filters.
-#[nyanpasu_rpc::rpc(http, result, owner, permission = logs:read)]
+#[nyanpasu_rpc::rpc(result, owner, access = read, expose = [http])]
 #[specta::specta]
 pub async fn query_logs_summary(
     window: RpcCaller,
@@ -56,20 +71,7 @@ pub async fn query_logs_summary(
         .await
 }
 
-#[nyanpasu_rpc::rpc(local, http, result, owner, operation = nyanpasu_rpc_protocol::operations::CloseLogSession, permission = logs:read)]
-#[specta::specta]
-pub async fn close_log_session(
-    window: RpcCaller,
-    client: RpcState<'_, NyanpasuClient>,
-    source: nyanpasu_contracts::logs::LogSource,
-    session: String,
-) -> nyanpasu_logging::LogResult<()> {
-    client
-        .close_log_session(source, window.label().to_string(), session)
-        .await
-}
-
-#[nyanpasu_rpc::rpc(http, owner, permission = logs:write)]
+#[nyanpasu_rpc::rpc(owner, expose = [http])]
 #[specta::specta]
 pub fn report_frontend_events(
     window: RpcCaller,

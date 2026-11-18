@@ -104,7 +104,7 @@ impl specta::function::FunctionArg for RpcCaller {
 
 const RPC_DESCRIBE_PROTOCOL_VERSION: u32 = nyanpasu_rpc_protocol::frame::PROTOCOL_VERSION;
 
-/// Host and caller snapshot injected into [`crate::commands::describe::rpc_describe`].
+/// Host and caller snapshot injected into [`crate::commands::meta::rpc_describe`].
 pub struct RpcDescribeContext {
     response: RpcDescribeResponse,
 }

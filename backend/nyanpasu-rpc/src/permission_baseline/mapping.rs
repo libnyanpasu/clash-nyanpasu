@@ -359,6 +359,17 @@ fn the_resource_table_holds_the_mapping() {
         assert_eq!(row.sensitive, expected.sensitive, "{key:?}");
         assert_eq!(row.targets, expected.targets, "{key:?}");
     }
+    // A resource that moved into the namespace tree sits where the mapping placed it.
+    for resource in nyanpasu_rpc_protocol::permission::RESOURCES {
+        if resource.source == nyanpasu_rpc_protocol::permission::PermissionSource::Legacy {
+            continue;
+        }
+        let expected = mapped
+            .iter()
+            .find(|((_, name), _)| name == resource.name)
+            .map(|(_, mapped)| mapped.namespace.as_str());
+        assert_eq!(Some(resource.namespace), expected, "{}", resource.name);
+    }
 }
 
 #[test]

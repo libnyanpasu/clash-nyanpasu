@@ -1,11 +1,8 @@
-//! Remote-access administration commands.
-//!
-//! They are reachable from the desktop shell and the same-user local socket, never over HTTP:
-//! no bearer token or browser session can hold `remote`.
+//! Named access tokens for HTTP callers.
 
 use nyanpasu_contracts::auth::{
-    AccessTokenSummary, BrowserSessionSummary,
-    CreateAccessTokenRequest as CoreCreateAccessTokenRequest, Grant, SessionId, TokenId, TokenName,
+    AccessTokenSummary, CreateAccessTokenRequest as CoreCreateAccessTokenRequest, Grant, TokenId,
+    TokenName,
 };
 use nyanpasu_core::client::NyanpasuClient;
 use serde::{Deserialize, Serialize};
@@ -32,7 +29,7 @@ pub struct CreatedRemoteAccessToken {
     pub token: String,
 }
 
-#[nyanpasu_rpc::rpc(local, query, permission = remote:read)]
+#[nyanpasu_rpc::rpc(query)]
 #[specta::specta]
 pub async fn list_remote_access_tokens(
     client: RpcState<'_, NyanpasuClient>,
@@ -40,7 +37,7 @@ pub async fn list_remote_access_tokens(
     Ok(client.list_remote_access_tokens().await?)
 }
 
-#[nyanpasu_rpc::rpc(local, permission = remote:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn create_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
@@ -59,39 +56,11 @@ pub async fn create_remote_access_token(
     })
 }
 
-#[nyanpasu_rpc::rpc(local, permission = remote:write)]
+#[nyanpasu_rpc::rpc]
 #[specta::specta]
 pub async fn revoke_remote_access_token(
     client: RpcState<'_, NyanpasuClient>,
     id: TokenId,
 ) -> Result<()> {
     Ok(client.revoke_remote_access_token(id).await?)
-}
-
-#[nyanpasu_rpc::rpc(local, query, permission = remote:read)]
-#[specta::specta]
-pub async fn list_remote_browser_sessions(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<Vec<BrowserSessionSummary>> {
-    Ok(client.list_remote_browser_sessions().await?)
-}
-
-#[nyanpasu_rpc::rpc(local, permission = remote:write)]
-#[specta::specta]
-pub async fn revoke_remote_browser_session(
-    client: RpcState<'_, NyanpasuClient>,
-    id: SessionId,
-) -> Result<()> {
-    Ok(client.revoke_remote_browser_session(id).await?)
-}
-
-/// A URL that logs the caller into the running HTTP server. It is a credential, so it is a
-/// desktop-only mutation: a query would keep it in a client cache, and no remote transport may
-/// return it.
-#[nyanpasu_rpc::rpc(capabilities(http_server), permission = remote:write)]
-#[specta::specta]
-pub async fn create_http_launch_url(
-    client: RpcState<'_, NyanpasuClient>,
-) -> Result<Option<String>> {
-    Ok(client.http_launch_url().await?)
 }

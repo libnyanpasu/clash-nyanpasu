@@ -7,8 +7,24 @@
 use crate::{CommandEffect, CommandKind, RpcTarget, Scope, ShellCapability};
 
 mod generated;
+mod requirements;
 
 pub use generated::RESOURCES;
+use nyanpasu_config::application::Permission;
+pub use requirements::REQUIREMENTS;
+
+/// The requirement a resource takes in the permission model, and whether its responses may
+/// disclose secrets. Production admission still reads the legacy scope; the switch replaces it
+/// with these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Requirement {
+    /// The resource's wire name, unique across kinds.
+    pub name: &'static str,
+    pub permission: Permission,
+    /// Responses may carry credentials, subscription URLs, configuration text or diagnostics.
+    /// It never takes part in admission.
+    pub sensitive: bool,
+}
 
 /// What kind of object a resource is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +85,9 @@ impl ResourceMetadata {
         self.kind == ResourceKind::Command(CommandKind::Native)
     }
 }
+
+#[cfg(test)]
+mod model_tests;
 
 #[cfg(test)]
 mod tests {

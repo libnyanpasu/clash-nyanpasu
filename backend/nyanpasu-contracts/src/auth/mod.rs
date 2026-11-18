@@ -1,5 +1,6 @@
 //! Transport-neutral caller principals, scopes, authorization contexts, and auth ports.
 
+pub mod grant;
 pub mod ports;
 pub mod secrets;
 #[cfg(any(test, feature = "test-support"))]
@@ -9,6 +10,7 @@ pub mod types;
 
 use std::collections::BTreeSet;
 
+pub use grant::{Grant, GrantError};
 pub use nyanpasu_config::application::Scope;
 pub use ports::{AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError};
 pub use secrets::{SecretHash, SecretString};

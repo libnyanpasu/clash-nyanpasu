@@ -77,8 +77,6 @@ pub struct ApplicationSettings {
     pub enable_tray_text: bool,
     pub enable_tray_traffic: bool,
     pub use_legacy_ui: bool,
-    #[cfg(target_os = "macos")]
-    #[specta(skip)]
     pub enable_macos_colored_icons: bool,
 }
 
@@ -129,7 +127,6 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             enable_tray_text,
             enable_tray_traffic,
             use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons,
         } = config;
 
@@ -178,7 +175,6 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             enable_tray_text: *enable_tray_text,
             enable_tray_traffic: *enable_tray_traffic,
             use_legacy_ui: *use_legacy_ui,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons: *enable_macos_colored_icons,
         }
     }

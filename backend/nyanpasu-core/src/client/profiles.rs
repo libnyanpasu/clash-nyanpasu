@@ -282,6 +282,12 @@ impl ProfilesClient {
         Arc::new(self.inner.snapshot.load().state.clone())
     }
 
+    /// The version of the last committed catalog, for a caller that plans
+    /// against it and must be refused when it moved.
+    pub fn version(&self) -> nyanpasu_state_engine::Version {
+        self.inner.snapshot.load().version
+    }
+
     /// The read side for anything that needs the committed document together
     /// with its files.
     pub(crate) fn content_reader(&self) -> ProfileContentReader {

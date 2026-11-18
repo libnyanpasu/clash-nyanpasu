@@ -15,9 +15,16 @@ use std::{
 };
 
 mod error;
+pub mod layout;
+mod logical;
 #[cfg(windows)]
 pub use error::RegistryError;
 pub use error::{CreateDirError, DiscoverError, InstallDirError, Root};
+pub use layout::{
+    EnumerateError, ItemCodec, Membership, PathClass, PathEntry, Skipped, SyncDocumentKind,
+    SyncEnumeration, SyncItem, SyncRule,
+};
+pub use logical::{LogicalPath, LogicalPathError};
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod platform;

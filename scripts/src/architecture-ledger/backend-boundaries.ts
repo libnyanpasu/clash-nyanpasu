@@ -54,6 +54,7 @@ const IMPLEMENTATION = [
   'nyanpasu-profile-io',
   'nyanpasu-net',
   'nyanpasu-os',
+  'nyanpasu-sync-opendal',
 ]
 
 /** What neither the wire crate nor a client standing on it may pull in. */

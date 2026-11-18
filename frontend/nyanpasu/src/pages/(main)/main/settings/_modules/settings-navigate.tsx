@@ -1,5 +1,6 @@
 import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
 import DesktopWindowsRounded from '~icons/material-symbols/desktop-windows-rounded'
@@ -242,6 +243,14 @@ export default function SettingsNavigate() {
           icon={<SystemUpdateAltRounded />}
           label={m.settings_label_updates()}
           description={m.settings_label_updates_description()}
+        />
+
+        <SettingsNavigationItem
+          to="/main/settings/sync"
+          color="cyan"
+          icon={<CloudSyncRounded />}
+          label={m.settings_label_sync()}
+          description={m.settings_label_sync_description()}
         />
 
         <RequireCapability scope="remote_admin">

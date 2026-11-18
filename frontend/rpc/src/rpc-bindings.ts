@@ -513,6 +513,29 @@ export function createRpcClient(
       typedError<BrowserSessionSummary[], IpcError_Serialize>(
         __RPC_INVOKE('list_remote_browser_sessions'),
       ),
+    /**  The sync status, without the credentials a provider may hold. */
+    getSyncStatus: () =>
+      typedError<SyncStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_status'),
+      ),
+    /**  Settings, whether credentials exist, and the provider kinds this build has. */
+    getSyncSettings: () =>
+      typedError<SyncSettingsView, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_settings'),
+      ),
+    /**  Provider kinds compiled into this build. */
+    getSyncProviderKinds: () =>
+      typedError<ProviderKind[], IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_provider_kinds'),
+      ),
+    /**  Open conflicts with both values. */
+    listSyncConflicts: () =>
+      typedError<SyncConflict_Serialize[], IpcError_Serialize>(
+        __RPC_INVOKE('list_sync_conflicts'),
+      ),
+    /**  Pre-image snapshots this device took. */
+    listSyncSnapshots: () =>
+      __RPC_INVOKE<SnapshotSummary[]>('list_sync_snapshots'),
     writeClipboardText: (text: string) =>
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('write_clipboard_text', { text }),
@@ -1027,6 +1050,47 @@ export function createRpcClient(
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
+    /**  Saves the provider, its secrets and the sync options. */
+    configureSync: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('configure_sync', { settings, secrets }),
+      ),
+    /**  Checks reachability and credentials without saving anything. */
+    testSyncConnection: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('test_sync_connection', { settings, secrets }),
+      ),
+    /**  Runs the first cycle and keeps syncing. */
+    enableSync: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('enable_sync')),
+    /**  Stops syncing; local data and the remote vault stay. */
+    disableSync: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('disable_sync')),
+    /**  Runs one cycle now. */
+    syncNow: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('sync_now')),
+    /**  Records a conflict resolution and runs a cycle. */
+    resolveSyncConflict: (conflictId: string, choice: ConflictChoice) =>
+      typedError<SyncRunView, IpcError_Serialize>(
+        __RPC_INVOKE('resolve_sync_conflict', { conflictId, choice }),
+      ),
+    /**  Re-applies a snapshot's pre-images; the next cycle pushes them. */
+    restoreSyncSnapshot: (snapshotId: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('restore_sync_snapshot', { snapshotId }),
+      ),
   }
 
   const events = {
@@ -1088,6 +1152,10 @@ export function createRpcClient(
     storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
       transport.events,
       'storage-value-changed-event',
+    ),
+    syncStatusChangedEvent: makeEvent<SyncStatusChanged>(
+      transport.events,
+      'sync-status-changed-event',
     ),
     windowMessageEvent: makeEvent<WindowMessageEvent>(
       transport.events,
@@ -1269,6 +1337,7 @@ export type ApplicationPreferencesPatch_Deserialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1316,6 +1385,7 @@ export type ApplicationPreferencesPatch_Serialize = {
   enable_tray_text?: boolean | null
   enable_tray_traffic?: boolean | null
   use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
 }
 
 /**
@@ -1387,6 +1457,7 @@ export type ApplicationSettings_Deserialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
 }
 
 /**
@@ -1449,6 +1520,13 @@ export type ApplicationSettings_Serialize = {
   enable_tray_text: boolean
   enable_tray_traffic: boolean
   use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
+}
+
+export type BlockedItem = {
+  /**  The logical key, or the physical path when it has no valid key. */
+  item: string
+  reason: SyncBlockedReason
 }
 
 export type BrandVersion = {
@@ -2237,6 +2315,14 @@ export type ConfigurationStatusSummary = {
 }
 
 export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
+/**  Which side of a conflict a resolution chooses. */
+export type ConflictChoice = 'local' | 'remote' | 'keep_both'
+
+/**  Which side wins a unit both sides changed. */
+export type ConflictPolicy =
+  /**  Each device keeps its value and the conflict stays open until resolved. */
+  'manual' | 'local_wins' | 'remote_wins'
 
 export type Connection = Connection_Serialize | Connection_Deserialize
 
@@ -3963,6 +4049,17 @@ export type LoggingLevel_Deserialize =
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
+/**
+ *  A slash-separated relative key, identical on every platform.
+ *
+ *  One to four segments. A segment starts with an ASCII letter or digit,
+ *  continues with letters, digits, `.`, `_` or `-`, does not end with `.`, and
+ *  its stem is not a Windows device name. Keys are compared by bytes; use
+ *  [`LogicalPath::case_folded`] to find names a case-insensitive filesystem
+ *  cannot hold together.
+ */
+export type LogicalPath = string
+
 /**  A runtime config field that Nyanpasu may take over from the profiles. */
 export type ManageableField<T> =
   /**
@@ -4391,6 +4488,16 @@ export type NyanpasuAppConfig_Deserialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons?: boolean
 }
 
 /**  `application.yaml` schema. */
@@ -4523,6 +4630,16 @@ export type NyanpasuAppConfig_Serialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons: boolean
 }
 
 export type OpenLogs = {
@@ -6109,6 +6226,30 @@ export type ProfilesListing_Serialize = {
   proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
   items: ProfileListingItem_Serialize[]
 }
+
+/**  Where a vault lives. Holds no secret: those travel as [`ProviderSecrets`]. */
+export type ProviderConfig =
+  | {
+      kind: 'webdav'
+      endpoint: string
+      /**  Directory on the server that contains the vault. */
+      root: string
+      username: string | null
+    }
+  | {
+      kind: 's3'
+      /**  `None` selects the AWS endpoint of `region`. */
+      endpoint: string | null
+      region: string
+      bucket: string
+      root: string
+      access_key_id: string
+      virtual_host_style: boolean
+    }
+  /**  A directory on this machine, such as a mounted share. */
+  | { kind: 'fs'; root: string }
+
+export type ProviderKind = 'webdav' | 's3' | 'fs'
 
 export type ProviderName = string
 
@@ -8277,6 +8418,13 @@ export type SnapshotDiffHunk = {
   lines: string[]
 }
 
+/**  The manifest of one snapshot, for the UI. */
+export type SnapshotSummary = {
+  id: string
+  created_at: string
+  items: LogicalPath[]
+}
+
 export type SourceOrigin =
   'scheduled_refresh' | 'manual_refresh' | 'external_file'
 
@@ -8549,9 +8697,113 @@ export type SubscriptionInfo_Serialize = {
   Expire: number
 }
 
+/**  Whether this build and this device can sync. */
+export type SyncAvailability =
+  /**  The shell supplied no sync adapters. */
+  'unsupported' | 'disabled' | 'enabled'
+
+/**  Why an item is held back rather than synced or applied. */
+export type SyncBlockedReason =
+  | { kind: 'schema_too_new'; remote_revision: number; supported: number }
+  | { kind: 'not_utf8' }
+  | { kind: 'unportable_name' }
+  | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict = SyncConflict_Serialize | SyncConflict_Deserialize
+
+export type SyncConflictKind =
+  'modify_modify' | 'modify_delete' | 'delete_active'
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Deserialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Serialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  A classified sync failure. The UI localizes by variant. */
+export type SyncError =
+  | { kind: 'unauthorized' }
+  | { kind: 'unreachable' }
+  | { kind: 'quota_exceeded' }
+  | { kind: 'vault_too_new'; found: number; supported: number }
+  | { kind: 'vault_mismatch' }
+  | { kind: 'provider_lacks_conditional_create' }
+  | { kind: 'storage'; reason: string }
+
+/**  The remote head, for the status card. */
+export type SyncHead = {
+  generation: number
+  device_name: string
+  created_at: string
+}
+
+/**  How sync reaches the provider. */
+export type SyncNetwork =
+  | 'direct'
+  | 'system'
+  /**  Through the running core's proxy. */
+  | 'through_core'
+
+export type SyncOutcome = 'synced' | 'up_to_date' | 'degraded' | 'failed'
+
 /**  A failed run is only `Failed`: its code and message are owner text. */
 export type SyncOutcomeKind =
   'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'skipped'
+
+/**  The phase of the current or last cycle. */
+export type SyncPhase =
+  | 'idle'
+  | 'scanning'
+  | 'fetching'
+  | 'planning'
+  | 'downloading'
+  | 'snapshotting'
+  | 'applying'
+  | 'uploading'
+  | 'committing'
+  | 'confirming'
+  | 'finalizing'
+
+export type SyncProgress = {
+  done: number
+  total: number
+}
 
 export type SyncRunPageSummary = {
   items: SyncRunSummary[]
@@ -8575,6 +8827,61 @@ export type SyncRunSummary = {
   finished_at: string | null
   state: SyncRunStateSummary
 }
+
+/**  One cycle's outcome, without conflict contents. */
+export type SyncRunView = {
+  outcome: SyncOutcome | null
+  pushed: number
+  pulled: number
+  merged: number
+  blocked: BlockedItem[]
+  conflicts: number
+}
+
+/**  Write-only credentials: accepted, never returned. */
+export type SyncSecrets = {
+  password?: string | null
+  secret_access_key?: string | null
+}
+
+/**  The sync settings of one device, stored without secrets. */
+export type SyncSettings = {
+  enabled: boolean
+  provider: ProviderConfig | null
+  device_name: string
+  conflict_policy: ConflictPolicy
+  /**  `0` means manual only, as for remote profile refresh. */
+  interval_minutes: number
+  sync_on_change: boolean
+  network: SyncNetwork
+}
+
+/**  The settings view: no secret value can appear in it. */
+export type SyncSettingsView = {
+  settings: SyncSettings
+  credentials_present: boolean
+  provider_kinds: ProviderKind[]
+}
+
+/**  The full sync status, published as `SyncStatusChanged`. */
+export type SyncStatus = {
+  /**  Increases with every change, so a delayed read cannot replace a newer value. */
+  revision: number
+  availability: SyncAvailability
+  phase: SyncPhase
+  progress: SyncProgress | null
+  last_success_at: number | null
+  last_result: SyncOutcome | null
+  last_error: SyncError | null
+  open_conflicts: number
+  blocked_items: BlockedItem[]
+  head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
+}
+
+/**  Full sync status, revisioned so a delayed read cannot replace a newer value. */
+export type SyncStatusChanged = SyncStatus
 
 /**
  *  Why the system DNS cache could not be flushed. No variant is compiled out

@@ -562,6 +562,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
+        sync_adapters: Some(build_sync_adapters(&paths, bundle_metadata)),
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     }))
@@ -781,6 +782,34 @@ enum TrafficStoreError {
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
+/// Builds the OpenDAL storage factory and the owner-only credential file.
+///
+/// The HTTP client follows the same proxy policy as subscriptions, so sync
+/// does not introduce a second transport or TLS stack.
+fn build_sync_adapters(
+    paths: &PathResolver,
+    bundle_metadata: BundleMetadata,
+) -> nyanpasu_core::client::sync::SyncAdapters {
+    let http = nyanpasu_net::policy::get_reqwest_client(
+        0,
+        &bundle_metadata,
+        &nyanpasu_os::system_proxy_source::OsSystemProxySource,
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!("sync falls back to a default HTTP client: {error}");
+        reqwest::Client::new()
+    });
+    nyanpasu_core::client::sync::SyncAdapters {
+        remote: Arc::new(nyanpasu_sync_opendal::OpendalStoreFactory::new(http)),
+        secrets: Arc::new(nyanpasu_sync_opendal::FileSecretStore::new(
+            paths
+                .app_data_dir()
+                .join("sync/credentials.json")
+                .into_std_path_buf(),
+        )),
+    }
+}
+
 fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficOwnerFactory>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
     let open = || -> Result<TrafficFileStorage, TrafficStoreError> {

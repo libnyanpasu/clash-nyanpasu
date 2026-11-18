@@ -53,6 +53,9 @@ export const events = {
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
+  syncStatusChangedEvent: makeEvent<SyncStatusChanged>(
+    'sync-status-changed-event',
+  ),
   windowMessageEvent: makeEvent<WindowMessageEvent>('window-message-event'),
 }
 
@@ -113,6 +116,12 @@ export type AppUpdateSummary = {
 }
 
 export type AppUpdateSummaryChanged = AppUpdateSummary
+
+export type BlockedItem = {
+  /**  The logical key, or the physical path when it has no valid key. */
+  item: string
+  reason: SyncBlockedReason
+}
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
@@ -1015,6 +1024,83 @@ export type StorageValueChangedEvent = {
   value: string | null
   revision: StorageRevision
 }
+
+/**  Whether this build and this device can sync. */
+export type SyncAvailability =
+  /**  The shell supplied no sync adapters. */
+  'unsupported' | 'disabled' | 'enabled'
+
+/**  Why an item is held back rather than synced or applied. */
+export type SyncBlockedReason =
+  | { kind: 'schema_too_new'; remote_revision: number; supported: number }
+  | { kind: 'not_utf8' }
+  | { kind: 'unportable_name' }
+  | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
+
+/**  A classified sync failure. The UI localizes by variant. */
+export type SyncError =
+  | { kind: 'unauthorized' }
+  | { kind: 'unreachable' }
+  | { kind: 'quota_exceeded' }
+  | { kind: 'vault_too_new'; found: number; supported: number }
+  | { kind: 'vault_mismatch' }
+  | { kind: 'provider_lacks_conditional_create' }
+  | { kind: 'storage'; reason: string }
+
+/**  The remote head, for the status card. */
+export type SyncHead = {
+  generation: number
+  device_name: string
+  created_at: string
+}
+
+export type SyncOutcome = 'synced' | 'up_to_date' | 'degraded' | 'failed'
+
+/**  The phase of the current or last cycle. */
+export type SyncPhase =
+  | 'idle'
+  | 'scanning'
+  | 'fetching'
+  | 'planning'
+  | 'downloading'
+  | 'snapshotting'
+  | 'applying'
+  | 'uploading'
+  | 'committing'
+  | 'confirming'
+  | 'finalizing'
+
+export type SyncProgress = {
+  done: number
+  total: number
+}
+
+/**  The full sync status, published as `SyncStatusChanged`. */
+export type SyncStatus = {
+  /**  Increases with every change, so a delayed read cannot replace a newer value. */
+  revision: number
+  availability: SyncAvailability
+  phase: SyncPhase
+  progress: SyncProgress | null
+  last_success_at: number | null
+  last_result: SyncOutcome | null
+  last_error: SyncError | null
+  open_conflicts: number
+  blocked_items: BlockedItem[]
+  head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
+}
+
+/**  Full sync status, revisioned so a delayed read cannot replace a newer value. */
+export type SyncStatusChanged = SyncStatus
 
 export type TrafficRate = {
   download: number

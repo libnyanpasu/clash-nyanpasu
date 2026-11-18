@@ -25,6 +25,12 @@ pub struct AppUpdateStateChanged(pub AppUpdateSnapshot);
 #[serde(transparent)]
 pub struct AppUpdateSummaryChanged(pub AppUpdateSummary);
 
+/// Full sync status, revisioned so a delayed read cannot replace a newer value.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(transparent)]
+#[tauri_specta(event_name = "sync-status-changed-event")]
+pub struct SyncStatusChanged(pub nyanpasu_runtime_values::sync::SyncStatus);
+
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct CoreStatusChangedEvent(pub CoreStatusInfo);
 

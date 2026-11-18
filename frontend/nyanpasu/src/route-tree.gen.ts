@@ -48,6 +48,7 @@ import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/ma
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
 import { Route as mainMainSettingsAboutIndexRouteImport } from './pages/(main)/main/settings/about/index'
 import { Route as mainMainSettingsDebugIndexRouteImport } from './pages/(main)/main/settings/debug/index'
+import { Route as mainMainSettingsSyncIndexRouteImport } from './pages/(main)/main/settings/sync/index'
 import { Route as mainMainTopologyDimensionIndexRouteImport } from './pages/(main)/main/topology/$dimension/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
@@ -283,6 +284,12 @@ const mainMainSettingsDebugIndexRoute =
     path: '/',
     getParentRoute: () => mainMainSettingsDebugRouteRoute,
   } as any)
+const mainMainSettingsSyncIndexRoute =
+  mainMainSettingsSyncIndexRouteImport.update({
+    id: '/sync/',
+    path: '/sync/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainTopologyDimensionIndexRoute =
   mainMainTopologyDimensionIndexRouteImport.update({
     id: '/$dimension/',
@@ -463,6 +470,7 @@ export interface FileRoutesByFullPath {
   '/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
+  '/main/settings/sync/': typeof mainMainSettingsSyncIndexRoute
   '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
@@ -514,6 +522,7 @@ export interface FileRoutesByTo {
   '/main/profiles/folder': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
+  '/main/settings/sync': typeof mainMainSettingsSyncIndexRoute
   '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
@@ -579,6 +588,7 @@ export interface FileRoutesById {
   '/(main)/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
+  '/(main)/main/settings/sync/': typeof mainMainSettingsSyncIndexRoute
   '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
@@ -645,6 +655,7 @@ export interface FileRouteTypes {
     | '/main/profiles/folder/'
     | '/main/settings/about/'
     | '/main/settings/debug/'
+    | '/main/settings/sync/'
     | '/main/topology/$dimension/'
     | '/main/topology/flow/'
     | '/main/topology/map/'
@@ -696,6 +707,7 @@ export interface FileRouteTypes {
     | '/main/profiles/folder'
     | '/main/settings/about'
     | '/main/settings/debug'
+    | '/main/settings/sync'
     | '/main/topology/$dimension'
     | '/main/topology/flow'
     | '/main/topology/map'
@@ -760,6 +772,7 @@ export interface FileRouteTypes {
     | '/(main)/main/profiles/folder/'
     | '/(main)/main/settings/about/'
     | '/(main)/main/settings/debug/'
+    | '/(main)/main/settings/sync/'
     | '/(main)/main/topology/$dimension/'
     | '/(main)/main/topology/flow/'
     | '/(main)/main/topology/map/'
@@ -1064,6 +1077,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/settings/debug/'
       preLoaderRoute: typeof mainMainSettingsDebugIndexRouteImport
       parentRoute: typeof mainMainSettingsDebugRouteRoute
+    }
+    '/(main)/main/settings/sync/': {
+      id: '/(main)/main/settings/sync/'
+      path: '/sync'
+      fullPath: '/main/settings/sync/'
+      preLoaderRoute: typeof mainMainSettingsSyncIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/topology/$dimension/': {
       id: '/(main)/main/topology/$dimension/'
@@ -1371,6 +1391,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
+  mainMainSettingsSyncIndexRoute: typeof mainMainSettingsSyncIndexRoute
   mainMainSettingsClashAiIndexRoute: typeof mainMainSettingsClashAiIndexRoute
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
   mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
@@ -1393,6 +1414,7 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
+  mainMainSettingsSyncIndexRoute: mainMainSettingsSyncIndexRoute,
   mainMainSettingsClashAiIndexRoute: mainMainSettingsClashAiIndexRoute,
   mainMainSettingsClashControlIndexRoute:
     mainMainSettingsClashControlIndexRoute,

@@ -1,0 +1,4 @@
+# The baseline rows of the commands declared differently outside Windows; edit by hand.
+# kind | name | scope | effect | targets | capabilities | optional_capabilities
+command | invoke_uwp_tool | system | mutation | desktop |  |
+command | set_custom_app_dir | system | mutation | desktop |  |

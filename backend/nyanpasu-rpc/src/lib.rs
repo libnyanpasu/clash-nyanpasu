@@ -21,6 +21,8 @@ pub mod test_support;
 
 #[cfg(test)]
 mod connection_tests;
+#[cfg(test)]
+mod permission_baseline;
 #[cfg(all(test, feature = "http"))]
 mod privacy_tests;
 #[cfg(test)]

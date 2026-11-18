@@ -634,6 +634,34 @@ test('single instance stands on libraries only, with no workspace or GUI package
   )
 })
 
+test('the RPC macro stands on syntax libraries only, with no workspace package', () => {
+  const workspaceMembers = [
+    'nyanpasu-rpc-macro',
+    'nyanpasu-config',
+    'nyanpasu-rpc-protocol',
+  ]
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-rpc-macro',
+      'nyanpasu-rpc-macro v0.1.0\nproc-macro2 v1.0\nquote v1.0\nsyn v3.0\n',
+      undefined,
+      workspaceMembers,
+    ),
+    [],
+  )
+  for (const dependency of ['nyanpasu-config', 'nyanpasu-rpc-protocol']) {
+    assert.deepStrictEqual(
+      dependencyViolations(
+        'nyanpasu-rpc-macro',
+        `nyanpasu-rpc-macro v0.1.0\n${dependency} v0.1.0\n`,
+        undefined,
+        workspaceMembers,
+      ),
+      [`nyanpasu-rpc-macro must not depend on ${dependency}`],
+    )
+  }
+})
+
 for (const owner of [
   'nyanpasu-config',
   'nyanpasu-contracts',

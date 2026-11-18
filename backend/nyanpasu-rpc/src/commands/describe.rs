@@ -11,7 +11,7 @@ use crate::registry::RpcDescribeContext;
 /// (enforced by [`crate::policy::admit_resolved_command`]); it returns own
 /// discovery metadata only and never discloses another principal or grants
 /// business data access.
-#[nyanpasu_macro::rpc(
+#[nyanpasu_rpc::rpc(
     local,
     http,
     query,

@@ -4,6 +4,7 @@ members = [
   'tauri',
   'boa_utils',
   'nyanpasu-macro',
+  'nyanpasu-rpc-macro',
   'nyanpasu-rpc-protocol',
   'nyanpasu-rpc-wire',
   'nyanpasu-cli',

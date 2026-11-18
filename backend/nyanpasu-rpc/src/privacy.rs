@@ -69,7 +69,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// [`ResponseVisibility`] and/or carries mutation audit metadata.
 ///
 /// Only canonical dual-shape wrappers ([`RpcMutationOutcome<T>`], [`RpcAppUpdateOutcome`])
-/// implement this trait so `#[nyanpasu_macro::rpc(..., privacy)]` enforces at compile time
+/// implement this trait so `#[nyanpasu_rpc::rpc(..., privacy)]` enforces at compile time
 /// that declared command signatures match both full and public wire payloads while resolving
 /// wrapper type aliases naturally through Rust's type system.
 ///
@@ -78,7 +78,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```compile_fail
 /// use nyanpasu_runtime_values::runtime::MutationOutcome;
 ///
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
 /// fn raw_outcome() -> MutationOutcome<()> {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -93,7 +93,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 ///
 /// type RawMutationAlias = MutationOutcome<()>;
 ///
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
 /// fn raw_alias_outcome() -> RawMutationAlias {
 ///     MutationOutcome::Committed {
 ///         value: (),
@@ -104,7 +104,7 @@ const PUBLIC_INTERNAL_MESSAGE: &str = "internal error";
 /// ```
 ///
 /// ```compile_fail
-/// #[nyanpasu_macro::rpc(privacy, scope = settings)]
+/// #[nyanpasu_rpc::rpc(privacy, scope = settings)]
 /// fn wrong_plain_type() -> String {
 ///     "not a dual-shape outcome".to_owned()
 /// }

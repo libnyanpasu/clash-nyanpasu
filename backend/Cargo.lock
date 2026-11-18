@@ -1921,7 +1921,6 @@ dependencies = [
  "nyanpasu-ipc",
  "nyanpasu-jobs",
  "nyanpasu-logging",
- "nyanpasu-macro",
  "nyanpasu-migration",
  "nyanpasu-net",
  "nyanpasu-observers",
@@ -7581,13 +7580,13 @@ dependencies = [
  "nyanpasu-ipc",
  "nyanpasu-jobs",
  "nyanpasu-logging",
- "nyanpasu-macro",
  "nyanpasu-migration",
  "nyanpasu-observers",
  "nyanpasu-owner-support",
  "nyanpasu-paths",
  "nyanpasu-persistence",
  "nyanpasu-profile-transform",
+ "nyanpasu-rpc-macro",
  "nyanpasu-rpc-protocol",
  "nyanpasu-runtime-values",
  "nyanpasu-single-instance",
@@ -7620,6 +7619,15 @@ dependencies = [
  "whoami",
  "yaml_serde",
  "zip 9.6.0",
+]
+
+[[package]]
+name = "nyanpasu-rpc-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
 ]
 
 [[package]]

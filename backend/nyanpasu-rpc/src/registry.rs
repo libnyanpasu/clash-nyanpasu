@@ -238,7 +238,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// type WriteResult = Result<StorageRevision, std::io::Error>;
-/// #[nyanpasu_macro::rpc(scope = settings, local, result, operation = SetStorageItem)]
+/// #[nyanpasu_rpc::rpc(scope = settings, local, result, operation = SetStorageItem)]
 /// fn set_storage_item(key: String, value: String) -> WriteResult {
 ///     Ok(StorageRevision::INITIAL)
 /// }
@@ -250,7 +250,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_request_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: u64, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }
@@ -262,7 +262,7 @@ pub type RpcHandler =
 /// ```compile_fail,E0308
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// fn operation_response_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn set_storage_item(key: String, value: String) -> bool { true }
 /// }
 /// ```
@@ -271,7 +271,7 @@ pub type RpcHandler =
 ///
 /// ```compile_fail
 /// fn a_mutation_without_a_scope_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(http)]
+///     #[nyanpasu_rpc::rpc(http)]
 ///     fn reorder() -> bool { true }
 /// }
 /// ```
@@ -279,7 +279,7 @@ pub type RpcHandler =
 /// Effect and scope are independent: a query may explicitly require `proxy` permission.
 ///
 /// ```no_run
-/// #[nyanpasu_macro::rpc(http, query, scope = proxy)]
+/// #[nyanpasu_rpc::rpc(http, query, scope = proxy)]
 /// fn proxy_scoped_query() -> bool { true }
 /// ```
 ///
@@ -289,7 +289,7 @@ pub type RpcHandler =
 /// use nyanpasu_rpc_protocol::operations::SetStorageItem;
 /// use nyanpasu_runtime_values::storage::StorageRevision;
 /// fn operation_method_mismatch_fails_to_compile() {
-///     #[nyanpasu_macro::rpc(scope = settings, local, operation = SetStorageItem)]
+///     #[nyanpasu_rpc::rpc(scope = settings, local, operation = SetStorageItem)]
 ///     fn different_method(key: String, value: String) -> StorageRevision {
 ///         StorageRevision::INITIAL
 ///     }

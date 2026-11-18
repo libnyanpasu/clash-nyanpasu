@@ -11,7 +11,7 @@ use crate::{error::Result, registry::RpcState};
 
 /// The agent skills a core ships. Their folders are on the host that runs
 /// Nyanpasu, which is also where an agent driving the core has to run.
-#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn get_core_agent_skills(
     client: RpcState<'_, NyanpasuClient>,
@@ -22,7 +22,7 @@ pub async fn get_core_agent_skills(
 
 /// Safe agent skill names and descriptions without local filesystem directories.
 /// The full skills (including `dir`) are returned by [`get_core_agent_skills`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query)]
 #[specta::specta]
 pub async fn get_core_agent_skills_summary(
     client: RpcState<'_, NyanpasuClient>,
@@ -31,7 +31,7 @@ pub async fn get_core_agent_skills_summary(
     Ok(client.core_agent_skills_summary(core_type).await)
 }
 
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query)]
 #[specta::specta]
 pub async fn fetch_latest_core_versions(
     client: RpcState<'_, NyanpasuClient>,
@@ -39,7 +39,7 @@ pub async fn fetch_latest_core_versions(
     Ok(client.fetch_latest_core_versions().await?)
 }
 
-#[nyanpasu_macro::rpc(http, query, scope = sensitive_read)]
+#[nyanpasu_rpc::rpc(http, query, scope = sensitive_read)]
 #[specta::specta]
 pub async fn inspect_updater(
     client: RpcState<'_, NyanpasuClient>,
@@ -50,7 +50,7 @@ pub async fn inspect_updater(
 
 /// Safe updater progress without raw failure diagnostics. The full summary is
 /// [`inspect_updater`].
-#[nyanpasu_macro::rpc(http, query)]
+#[nyanpasu_rpc::rpc(http, query)]
 #[specta::specta]
 pub async fn inspect_updater_summary(
     client: RpcState<'_, NyanpasuClient>,

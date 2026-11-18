@@ -68,7 +68,7 @@ nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', featu
   'specta',
 ] }
 nyanpasu-traffic = { path = '../nyanpasu-traffic', features = ['specta'] }
-nyanpasu-macro = { path = '../nyanpasu-macro' }
+nyanpasu-rpc-macro = { path = '../nyanpasu-rpc-macro' }
 clash-api = { workspace = true }
 anyhow = '1.0'
 async-trait = '0.1.77'

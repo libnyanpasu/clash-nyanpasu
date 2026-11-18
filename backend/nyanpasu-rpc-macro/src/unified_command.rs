@@ -830,7 +830,7 @@ mod tests {
     #[test]
     fn scope_is_required_for_a_mutation() {
         let error = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http)]
+            #[nyanpasu_rpc::rpc(http)]
             fn update() -> bool { true }
         })
         .unwrap_err();
@@ -844,7 +844,7 @@ mod tests {
     #[test]
     fn scope_defaults_to_read_for_a_query() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, query)]
+            #[nyanpasu_rpc::rpc(http, query)]
             fn status() -> bool { true }
         })
         .unwrap()
@@ -857,7 +857,7 @@ mod tests {
     fn scope_is_independent_of_query_effect() {
         for scope in ["proxy", "remote_admin", "sensitive_read"] {
             let item = syn::parse_str(&format!(
-                "#[nyanpasu_macro::rpc(query, scope = {scope})] fn inspect() -> bool {{ true }}"
+                "#[nyanpasu_rpc::rpc(query, scope = {scope})] fn inspect() -> bool {{ true }}"
             ))
             .unwrap();
             let expanded = expand(item).unwrap().to_string();
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn scope_can_be_read_for_a_resource_mutation() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, scope = read)]
+            #[nyanpasu_rpc::rpc(http, scope = read)]
             fn open_resource() -> bool { true }
         })
         .unwrap()
@@ -886,7 +886,7 @@ mod tests {
             quote::quote!(WrappedOutcomeAlias),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_macro::rpc(privacy, scope = settings)]
+                #[nyanpasu_rpc::rpc(privacy, scope = settings)]
                 #[tauri::command]
                 fn test() -> #output { todo!() }
             })
@@ -913,7 +913,7 @@ mod tests {
             quote::quote!(Result<MutationOutcome<()>>),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_macro::rpc(scope = settings)]
+                #[nyanpasu_rpc::rpc(scope = settings)]
                 fn missing_privacy() -> #output { todo!() }
             })
             .unwrap();
@@ -926,7 +926,7 @@ mod tests {
 
         for output in [quote::quote!(Result<()>), quote::quote!(CommitReceipt)] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_macro::rpc(scope = settings)]
+                #[nyanpasu_rpc::rpc(scope = settings)]
                 fn ordinary() -> #output { todo!() }
             })
             .unwrap();
@@ -997,7 +997,7 @@ mod tests {
     #[test]
     fn operation_bindings_use_the_existing_generator() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(local, http, owner, result, operation = contracts::OpenLogSession, scope = settings)]
+            #[nyanpasu_rpc::rpc(local, http, owner, result, operation = contracts::OpenLogSession, scope = settings)]
             fn open_log_session(caller: RpcCaller, client: RpcState<'_, NyanpasuClient>, source: Source, request: OpenLogs) -> LogResult<LogSession> { todo!() }
         }).unwrap();
         syn::parse2::<syn::File>(expanded.clone()).unwrap();
@@ -1016,7 +1016,7 @@ mod tests {
     #[test]
     fn zero_argument_contracts_check_unit_without_changing_the_parser() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(local, operation = contracts::GetProfiles, scope = settings)]
+            #[nyanpasu_rpc::rpc(local, operation = contracts::GetProfiles, scope = settings)]
             fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Profiles> { todo!() }
         })
         .unwrap()
@@ -1030,7 +1030,7 @@ mod tests {
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, result, owner, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, result, owner, scope = settings)]
             #[tauri::command]
             pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
         };
@@ -1047,7 +1047,7 @@ mod tests {
 
     #[test]
     fn dependency_free_commands_can_use_http() {
-        let command = syn::parse_quote! { #[nyanpasu_macro::rpc(http, scope = settings)] pub fn functions() -> Vec<String> { vec![] } };
+        let command = syn::parse_quote! { #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn functions() -> Vec<String> { vec![] } };
         assert!(
             !expand(command)
                 .unwrap()
@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn the_path_resolver_state_is_served_from_the_http_dependencies() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, scope = settings)]
             #[tauri::command]
             pub fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> { todo!() }
         };
@@ -1072,7 +1072,7 @@ mod tests {
     #[test]
     fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(owner, scope = settings)]
+            #[nyanpasu_rpc::rpc(owner, scope = settings)]
             #[tauri::command]
             pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
         };
@@ -1088,7 +1088,7 @@ mod tests {
     #[test]
     fn channel_parameter_json_parser_uses_camel_case_fields() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(scope = settings)]
+            #[nyanpasu_rpc::rpc(scope = settings)]
             #[tauri::command]
             pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
                 todo!()
@@ -1106,27 +1106,27 @@ mod tests {
     fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
         for (source, supported) in [
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(scope = system)] pub fn open_that(path: String) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(scope = system)] pub fn open_that(path: String) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(http, scope = settings)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
                 true,
             ),
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(http, scope = settings)] pub fn generic<T>() -> Result<T> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn generic<T>() -> Result<T> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(http, scope = settings)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(http, scope = settings)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_macro::rpc(http, scope = settings)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(http, scope = settings)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {
@@ -1173,7 +1173,7 @@ mod tests {
             (quote::quote!(value: &str), quote::quote!(http)),
         ] {
             let command = syn::parse_quote! {
-                #[nyanpasu_macro::rpc(#options, scope = settings)]
+                #[nyanpasu_rpc::rpc(#options, scope = settings)]
                 #[tauri::command]
                 fn native(#arguments) -> Result<()> { todo!() }
             };
@@ -1233,7 +1233,7 @@ mod tests {
         ] {
             let name = format_ident!("{name}");
             commands.push(syn::parse_quote! {
-                #[nyanpasu_macro::rpc(scope = settings, owner, #targets)]
+                #[nyanpasu_rpc::rpc(scope = settings, owner, #targets)]
                 fn #name(client: RpcState<'_, NyanpasuClient>, owner: RpcCaller, value: String) -> String { value }
             });
         }
@@ -1338,7 +1338,7 @@ mod tests {
 
         assert!(
             plain_commands.is_empty(),
-            "Tauri application commands in ipc.rs must use #[nyanpasu_macro::rpc(..., scope = settings)]: {}",
+            "Tauri application commands in ipc.rs must use #[nyanpasu_rpc::rpc(..., scope = settings)]: {}",
             plain_commands.join(", ")
         );
         let source = std::fs::read_to_string(concat!(
@@ -1408,7 +1408,7 @@ mod tests {
     #[test]
     fn neutral_expansion_contains_no_tauri_types() {
         let command = syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, local, owner, result, scope = settings)]
+            #[nyanpasu_rpc::rpc(http, local, owner, result, scope = settings)]
             #[specta::specta]
             pub async fn shared(
                 client: RpcState<'_, NyanpasuClient>, storage: RpcState<'_, Storage>, paths: RpcState<'_, PathResolver>,
@@ -1437,7 +1437,7 @@ mod tests {
         assert!(expanded.contains("application_error_for (visibility"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, scope = settings)] fn empty() -> bool { true }
+            #[nyanpasu_rpc::rpc(http, scope = settings)] fn empty() -> bool { true }
         })
         .unwrap()
         .to_string();
@@ -1449,7 +1449,7 @@ mod tests {
     fn target_and_capability_metadata_is_generated_once() {
         assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), scope = settings)]
+            #[nyanpasu_rpc::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), scope = settings)]
             #[tauri::command]
             fn copy(value: String) -> String { value }
         }).unwrap().to_string();
@@ -1760,7 +1760,7 @@ mod tests {
     #[test]
     fn local_optional_elevation_expands_and_registers() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_macro::rpc(local, optional_capabilities(elevation), scope = settings)]
+            #[nyanpasu_rpc::rpc(local, optional_capabilities(elevation), scope = settings)]
             fn profile_mutation(value: String) -> String { value }
         })
         .unwrap()

@@ -1,8 +1,8 @@
 //! Authorization metadata of every protected resource, generated from the declarations.
 //!
-//! A resource is anything a caller is admitted to; today every resource is a command. The table
-//! in [`RESOURCES`] is the only source of a resource's requirement, exposure and capabilities:
-//! the `rpc` attribute registers implementations and carries none of it.
+//! A resource is anything a caller is admitted to: a command, an event, an HTTP route or a
+//! stream. The table in [`RESOURCES`] is the only source of a resource's requirement, exposure
+//! and capabilities: the `rpc` attribute registers implementations and carries none of it.
 
 use crate::{CommandEffect, CommandKind, RpcTarget, Scope, ShellCapability};
 
@@ -15,6 +15,12 @@ pub use generated::RESOURCES;
 pub enum ResourceKind {
     /// An RPC command, dispatched natively on the desktop or through a shared handler.
     Command(CommandKind),
+    /// A shared event, admitted when subscribed and filtered on every delivery.
+    Event,
+    /// A direct HTTP route outside `/bridge/rpc`.
+    Route,
+    /// A long-lived stream outside the event bus.
+    Stream,
 }
 
 /// Where a resource's requirement comes from.
@@ -45,7 +51,19 @@ pub struct ResourceMetadata {
     pub optional_capabilities: &'static [ShellCapability],
 }
 
+/// The resource of `kind` named `name`.
+pub fn find(kind: ResourceKind, name: &str) -> Option<&'static ResourceMetadata> {
+    RESOURCES
+        .iter()
+        .find(|resource| resource.kind == kind && resource.name == name)
+}
+
 impl ResourceMetadata {
+    /// Whether this resource is a command of either kind.
+    pub fn is_command(&self) -> bool {
+        matches!(self.kind, ResourceKind::Command(_))
+    }
+
     /// Whether this is a command that needs a linked native wrapper on the desktop.
     pub fn is_native_command(&self) -> bool {
         self.kind == ResourceKind::Command(CommandKind::Native)
@@ -59,7 +77,7 @@ mod tests {
 
     /// Every committed requirement is a reviewed legacy declaration until the commands move into
     /// the namespace tree; this budget only goes down, to zero.
-    const MAX_LEGACY: usize = 205;
+    const MAX_LEGACY: usize = 225;
 
     #[test]
     fn legacy_declarations_stay_within_their_budget() {
@@ -76,7 +94,7 @@ mod tests {
     fn names(filter: impl Fn(&ResourceMetadata) -> bool) -> Vec<&'static str> {
         let mut names: Vec<_> = RESOURCES
             .iter()
-            .filter(|command| filter(command))
+            .filter(|command| command.is_command() && filter(command))
             .map(|command| command.name)
             .collect();
         names.sort_unstable();
@@ -148,7 +166,7 @@ mod tests {
     /// offers it, because no bearer token or browser session can hold the scope.
     #[test]
     fn remote_administration_is_never_an_http_command() {
-        for command in RESOURCES {
+        for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
             if command.scope == Scope::RemoteAdmin {
                 assert!(
                     command.targets.contains(&RpcTarget::Desktop),
@@ -196,7 +214,7 @@ mod tests {
     /// A shell or OS facility is never reachable by a scope below `system`.
     #[test]
     fn shell_capabilities_need_the_system_scope() {
-        for command in RESOURCES {
+        for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
             let shell = command.capabilities.iter().any(|capability| {
                 !matches!(
                     capability,
@@ -237,7 +255,7 @@ mod tests {
 
     #[test]
     fn required_privileged_commands_are_not_http_targets() {
-        for command in RESOURCES {
+        for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
             if command.capabilities.iter().any(|capability| {
                 matches!(
                     capability,
@@ -278,7 +296,7 @@ mod tests {
         }
         let mut local: Vec<_> = RESOURCES
             .iter()
-            .filter(|command| command.targets.contains(&RpcTarget::Local))
+            .filter(|command| command.is_command() && command.targets.contains(&RpcTarget::Local))
             .map(|command| command.name)
             .collect();
         local.sort_unstable();

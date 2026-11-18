@@ -258,7 +258,7 @@ pub async fn test_client_args_with_endpoint(
 
 pub fn assert_duplicate_commands_rejected(entry: &'static crate::registry::CommandEntry) {
     assert!(matches!(
-        crate::registry::register_commands(RESOURCES, [entry, entry], &[]),
+        crate::registry::register_commands(RESOURCES, [entry, entry]),
         Err(crate::registry::SetupError::RegisterCommand { name }) if name == entry.name
     ));
 }

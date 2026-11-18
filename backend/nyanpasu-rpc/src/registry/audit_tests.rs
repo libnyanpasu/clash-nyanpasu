@@ -680,8 +680,14 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
 #[tokio::test]
 async fn headless_registry_knows_unlinked_native_commands() {
     let mut fixture = Fixture::with_capabilities(false, &[]).await;
-    fixture.rpc.commands = super::register_commands(RESOURCES, [], &[]).unwrap();
-    assert_eq!(fixture.rpc.command_names().len(), RESOURCES.len());
+    fixture.rpc.commands = super::register_commands(RESOURCES, []).unwrap();
+    assert_eq!(
+        fixture.rpc.command_names().len(),
+        RESOURCES
+            .iter()
+            .filter(|resource| resource.is_command())
+            .count()
+    );
     for metadata in RESOURCES
         .iter()
         .filter(|metadata| metadata.is_native_command())
@@ -710,8 +716,7 @@ async fn headless_registry_knows_unlinked_native_commands() {
         fixture.sink.records.lock()[0].header.method,
         "get_system_accent_color"
     );
-    let unlinked =
-        super::register_commands(RESOURCES, [], crate::test_support::CAPABILITIES).unwrap();
+    let unlinked = super::register_commands(RESOURCES, []).unwrap();
     assert_eq!(
         unlinked["read_clipboard_text"]
             .neutral_handler(RpcTarget::Desktop)

@@ -690,7 +690,7 @@ mod tests {
         let (query_bindings, _) = build_specta_builder();
         let (_, rest) = query_bindings.split_once("export const queries =").unwrap();
         let (queries, mutations) = rest.split_once("export const mutations =").unwrap();
-        for command in RESOURCES {
+        for command in RESOURCES.iter().filter(|resource| resource.is_command()) {
             let mut camel = String::new();
             let mut upper = false;
             for character in command.name.chars() {

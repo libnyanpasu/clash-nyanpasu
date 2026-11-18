@@ -197,7 +197,7 @@ The composition root explicitly supplies `ServerInfo` and available capabilities
 metadata describes availability, not authorization or elevation consent. The shared
 authorization slice (part of design Layer 05) adds `rpc_describe` as the
 fourteenth reviewed production local command (and on Desktop/HTTP) and enforces
-fail-closed admission in `nyanpasu-rpc::policy`: authentication resolution (and
+fail-closed admission in `nyanpasu-rpc::permission::Authority`: authentication resolution (and
 missing HTTP auth context rejecting with `401 unauthorized`) precedes method and
 event availability lookup; resolved callers are then checked in order for known
 name (`unknown_method`), target/capability/native-linkage availability
@@ -242,18 +242,37 @@ non-`SensitiveRead` scopes safe for scoped tokens and `local_open`.
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
 The committed resource table `nyanpasu-rpc-protocol/src/permission/generated.rs`
-(`RESOURCES`, rows of `ResourceMetadata`) is the only source of a command's authorization
-metadata: name, logical namespace, kind, effect, scope, source, targets and capabilities.
+(`RESOURCES`, rows of `ResourceMetadata`) is the only source of the authorization metadata of
+every resource a caller is admitted to — commands, shared events, direct HTTP routes and
+streams: name, logical namespace, kind, effect, scope, source, targets and capabilities.
 `#[rpc]` registers only implementation facts (`CommandEntry`: name, kind, whether the neutral
 handler is transport-neutral, and the handler); the registry matches each linked entry to its
 row by name and refuses an entry without one (`SetupError::UndeclaredCommand`).
+
+Events, routes and streams are declared with `nyanpasu_rpc::resource!`, for example
+`resource!(event "core-logs-changed", targets = [desktop, http, local], scope = sensitive_read)`;
+it expands to nothing and only the generator reads it. Their targets are explicit, because
+routes and streams are not offered to the desktop. `EventName` keeps only the wire identities;
+`EventName::resource()` returns an event's row, and a protocol test requires every identity to
+have exactly one row. Transports admit a route or stream through its named row
+(`permission::declared(ICON_FETCH)`), never a scope literal.
+
+`Authority::admit` takes the row, the transport and the caller's grant, not its identity, and
+refuses in a fixed order: `401` for an unresolved caller, `unsupported` for a row not offered on
+the transport or whose capabilities the host lacks, `403` for a missing requirement; the registry
+resolves the name (`unknown_method`) and the linked handler before it. `Authority::visible` is
+the same predicate for filtering event deliveries and `rpc_describe`. After admission the call
+metadata carries the admitted row (`RpcCallMeta::resource`): the seam for the reserved data
+sharing and redaction layers of the
+[permission namespace spec](../spec/2026-11-16-rpc-permission-namespace/design.md#46-rpc-的生命周期与请求管线).
 
 The table's development-only generator in `nyanpasu-rpc-macro` follows the explicitly listed
 production roots (currently `tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`, treated
 as one module tree) through inline and ordinary external modules, records each declaration's
 module path below its root as the row's `namespace`, inherits ancestor `cfg`/`cfg_attr` guards
 and excludes test fixtures. It owns every rule about what a declaration may say: a mutation must
-name a scope, and only the desktop root may declare native commands. It reports every invalid
+name a scope, only the desktop root may declare native commands, and a `resource!` names its
+kind (`event`, `route`, `stream`), scope and targets. It reports every invalid
 declaration at once. It does not resolve arbitrary Rust module systems or add a protocol build
 dependency on application code. Every row is currently `PermissionSource::Legacy` (a
 `scope = ...` written on the declaration); `MAX_LEGACY` in the protocol tests equals their

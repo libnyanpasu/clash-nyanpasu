@@ -8,7 +8,7 @@ use crate::registry::RpcDescribeContext;
 /// command availability for the resolved caller.
 ///
 /// Any resolved caller may invoke `rpc_describe` without holding `Scope::Read`
-/// (enforced by [`crate::policy::admit_resolved_command`]); it returns own
+/// (enforced by [`crate::permission::Authority::admit`]); it returns own
 /// discovery metadata only and never discloses another principal or grants
 /// business data access.
 #[nyanpasu_rpc::rpc(

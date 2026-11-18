@@ -66,7 +66,10 @@ async fn command_scope_is_identical_across_rpc_transports() {
         "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
-    for metadata in RESOURCES.iter().filter(|command| command.targets.len() > 1) {
+    for metadata in RESOURCES
+        .iter()
+        .filter(|command| command.is_command() && command.targets.len() > 1)
+    {
         let command = &fixture.rpc.commands[metadata.name];
         assert_eq!(command.metadata, *metadata);
         let mut requests = vec![

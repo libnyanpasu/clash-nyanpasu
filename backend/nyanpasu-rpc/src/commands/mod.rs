@@ -6,6 +6,7 @@ pub mod host;
 pub mod icons;
 pub mod logs;
 pub mod meta;
+pub mod profile;
 pub mod profiles;
 pub mod proxy;
 pub mod remote;

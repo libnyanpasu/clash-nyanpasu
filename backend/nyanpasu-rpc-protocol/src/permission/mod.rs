@@ -92,7 +92,7 @@ mod tests {
 
     /// Every committed requirement is a reviewed legacy declaration until the commands move into
     /// the namespace tree; this budget only goes down, to zero.
-    const MAX_LEGACY: usize = 201;
+    const MAX_LEGACY: usize = 165;
     /// Commands whose level differs from the one their effect derives (design section 3.3): the
     /// latency tests and the log and connection-detail subscriptions. Raising it is reviewed.
     const MAX_OVERRIDES: usize = 9;

@@ -13,7 +13,7 @@ use nyanpasu_config::{
 };
 
 use super::RuntimeBuildService;
-use crate::client::{application_workflow::ports::RuntimeBuildPort, runtime};
+use crate::client::{reconciler::ports::RuntimeBuildPort, runtime};
 
 #[derive(Default)]
 struct MemoryContent(BTreeMap<String, String>);
@@ -101,11 +101,11 @@ async fn frozen_content_preserves_lenient_build_and_strict_candidate_policy() {
     .unwrap();
     assert!(built.is_ok());
     let captured = f.builder.capture_content(&profiles).await;
-    let mut revisions = runtime::RuntimeRevisionAllocator::new();
+    let revisions = runtime::RuntimeRevisionAllocator::new();
     let build = |revision, strict| {
         f.builder.build(
             revision,
-            crate::client::application_workflow::inputs::RuntimeInputs {
+            crate::client::reconciler::inputs::RuntimeInputs {
                 profiles: Arc::new(profiles.clone()),
                 clash: ClashConfig::default(),
                 app: NyanpasuAppConfig::default(),

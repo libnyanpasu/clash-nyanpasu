@@ -7,14 +7,19 @@ mod event;
 mod owner;
 mod request;
 
-pub use command::{CommandKind, CommandMetadata, RpcTarget, ShellCapability};
+pub use command::{CommandKind, CommandMetadata, ShellCapability};
 pub use command_catalog::COMMAND_CATALOG;
-pub use error::{RpcError, RpcValue};
+pub use error::{ResponseVisibility, RpcError, RpcValue};
 pub use event::EventName;
-pub use owner::RpcOwner;
+/// Canonical authentication and scope domain types shared across core and transports.
+pub use nyanpasu_contracts::auth::{AuthContext, Principal, Scope, ScopeSet};
+pub use nyanpasu_rpc_wire::{
+    CommandEffect, DescribedCommand, RpcDescribeResponse, RpcTarget, ServerInfo, ServerKind,
+};
+pub use owner::{ClientNonce, ClientNonceError, MAX_CLIENT_NONCE_LEN, RpcOwner};
 pub use request::Request;
 
-pub mod frame;
+pub use nyanpasu_rpc_wire::frame;
 pub mod operation;
 pub mod operations;
 pub mod session;
@@ -23,3 +28,6 @@ pub mod values;
 
 #[cfg(feature = "local-client")]
 pub mod client;
+
+#[cfg(test)]
+mod frame_tests;

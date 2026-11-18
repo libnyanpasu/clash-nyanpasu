@@ -23,7 +23,7 @@ import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
 import {
-  useClashConfig,
+  useClashAccess,
   useClashInfo,
   useRuntimeProfile,
 } from '@nyanpasu/query'
@@ -54,7 +54,7 @@ function CoreSecretConfigForm() {
 
   const { data, refetch } = useClashInfo()
 
-  const { upsert } = useClashConfig()
+  const { upsert } = useClashAccess()
 
   const runtimeProfile = useRuntimeProfile()
 

@@ -6,7 +6,7 @@ use nyanpasu_contracts::logs::LogSource;
 use nyanpasu_logging::LogSession;
 use nyanpasu_owner_support::blocking;
 use nyanpasu_rpc_protocol::{
-    RpcError, RpcOwner,
+    AuthContext, RpcError, RpcOwner, RpcTarget, Scope,
     frame::{self, Feature, Frame, Reply, RequestId, SubscriptionErrorCode, SubscriptionTarget},
     session::{RECOVERABLE_EVENTS, Session},
 };
@@ -26,7 +26,7 @@ use super::subscriptions::{
 };
 use crate::{
     audit::{AuditInvocation, AuditPhase, DeliveryOutcome, RpcTransport, SubscriptionOutcome},
-    registry::{RpcFuture, UnifiedRpc, dispatch_with_audit, unreported},
+    registry::{RpcCaller, RpcFuture, UnifiedRpc, dispatch_with_audit, unreported},
 };
 
 /// Bounds are per connection, so a blocked peer cannot consume another's capacity.
@@ -86,6 +86,7 @@ impl LocalServer {
         listener: EndpointListener,
         shutdown: CancellationToken,
     ) -> Result<(), EndpointError> {
+        let auth = AuthContext::local_socket(listener.user());
         let mut connections = JoinSet::new();
         let mut number = 0u64;
         let result = loop {
@@ -96,7 +97,19 @@ impl LocalServer {
                 accepted = listener.accept() => match accepted {
                     Ok(stream) => {
                         number = number.checked_add(1).expect("local connection IDs exhausted");
-                        connections.spawn(serve_stream(stream, RpcOwner::local_connection(&self.instance, number), self.rpc.clone(), self.source.clone(), self.limits, shutdown.child_token()).with_current_subscriber());
+                        connections.spawn(
+                            serve_stream_with_drain(
+                                stream,
+                                RpcOwner::local_connection(&self.instance, number),
+                                auth.clone(),
+                                self.rpc.clone(),
+                                self.source.clone(),
+                                self.limits,
+                                shutdown.child_token(),
+                                CancellationToken::new(),
+                            )
+                            .with_current_subscriber(),
+                        );
                     }
                     Err(error) => break Err(error),
                 }
@@ -106,6 +119,67 @@ impl LocalServer {
         shutdown.cancel();
         while let Some(result) = connections.join_next().await {
             blocking::join(result);
+        }
+        result
+    }
+
+    /// Accept until shutdown, stop admitting new work immediately, and flush replies for
+    /// in-flight calls up to `drain_timeout` before force-closing remaining IO.
+    ///
+    /// # Errors
+    /// Reports an endpoint accept failure after draining already accepted connections.
+    pub async fn serve_with_drain(
+        self,
+        listener: EndpointListener,
+        shutdown: CancellationToken,
+        drain_timeout: std::time::Duration,
+    ) -> Result<(), EndpointError> {
+        let auth = AuthContext::local_socket(listener.user());
+        let drain = CancellationToken::new();
+        let force_stop = CancellationToken::new();
+        let mut connections = JoinSet::new();
+        let mut number = 0u64;
+        let result = loop {
+            tokio::select! {
+                biased;
+                () = shutdown.cancelled() => break Ok(()),
+                Some(result) = connections.join_next() => blocking::join(result),
+                accepted = listener.accept() => match accepted {
+                    Ok(stream) => {
+                        number = number.checked_add(1).expect("local connection IDs exhausted");
+                        connections.spawn(
+                            serve_stream_with_drain(
+                                stream,
+                                RpcOwner::local_connection(&self.instance, number),
+                                auth.clone(),
+                                self.rpc.clone(),
+                                self.source.clone(),
+                                self.limits,
+                                force_stop.child_token(),
+                                drain.child_token(),
+                            )
+                            .with_current_subscriber(),
+                        );
+                    }
+                    Err(error) => break Err(error),
+                }
+            }
+        };
+        drop(listener);
+        drain.cancel();
+        let drain_all = async {
+            while let Some(result) = connections.join_next().await {
+                blocking::join(result);
+            }
+        };
+        if tokio::time::timeout(drain_timeout, drain_all)
+            .await
+            .is_err()
+        {
+            force_stop.cancel();
+            while let Some(result) = connections.join_next().await {
+                blocking::join(result);
+            }
         }
         result
     }
@@ -156,6 +230,7 @@ struct Connection {
     rpc: UnifiedRpc,
     source: Arc<dyn SubscriptionSource>,
     owner: RpcOwner,
+    auth: AuthContext,
     session: Session,
     limits: ConnectionLimits,
     pending_resources: usize,
@@ -245,26 +320,29 @@ impl Connection {
             Frame::Request { id, method, params } => {
                 let opening = method == "open_log_session";
                 let log_call = opening || method == "close_log_session";
+                let command_admitted = self
+                    .rpc
+                    .admit_command(RpcTransport::Local, &method, Some(&self.auth))
+                    .is_ok();
+                let log_call = command_admitted && log_call;
                 if log_call {
                     self.pending_log_calls += 1;
                 }
-                let reserved = opening && self.has_capacity();
+                let reserved = command_admitted && opening && self.has_capacity();
                 if reserved {
                     self.pending_resources += 1;
                 }
-                let admission = if opening && !reserved {
-                    Err(RpcError::new(
-                        "resource_limit",
-                        "connection resource limit reached",
-                    ))
-                } else {
-                    Ok(())
-                };
+                let resource_limit_reached = command_admitted && opening && !reserved;
                 let rpc = self.rpc.clone();
                 let owner = self.owner.clone();
-                let audit =
-                    self.rpc
-                        .audit_invocation(RpcTransport::Local, &method, &owner, Some(id));
+                let caller = RpcCaller::new(self.auth.clone(), owner.clone());
+                let audit = self.rpc.audit_invocation(
+                    RpcTransport::Local,
+                    &method,
+                    &owner,
+                    Some(&self.auth.principal),
+                    Some(id),
+                );
                 self.calls.spawn(
                     async move {
                         let result = rpc
@@ -272,9 +350,18 @@ impl Connection {
                                 &audit,
                                 RpcTransport::Local,
                                 &method,
-                                owner,
+                                Some(caller),
                                 params.clone(),
-                                admission,
+                                move || {
+                                    if resource_limit_reached {
+                                        Err(RpcError::new(
+                                            "resource_limit",
+                                            "connection resource limit reached",
+                                        ))
+                                    } else {
+                                        Ok(())
+                                    }
+                                },
                             )
                             .await;
                         let opened = if opening {
@@ -323,16 +410,64 @@ impl Connection {
                 let audit = self.rpc.dependencies.audit.invocation(
                     RpcTransport::Local,
                     &self.owner,
+                    Some(&self.auth.principal),
                     "local_subscribe",
                     Some(id),
                 );
                 let pending = control.is_none();
-                let rejected = control.or_else(|| {
-                    (!self.has_capacity()).then_some(Frame::SubscriptionError {
-                        target: SubscriptionTarget::Id(id),
+                let is_resource_limit = matches!(
+                    control,
+                    Some(Frame::SubscriptionError {
                         code: SubscriptionErrorCode::ResourceLimit,
+                        ..
                     })
+                );
+                let check_policy = pending || is_resource_limit;
+                let event = (check_policy && stream != "connection-details").then(|| {
+                    RECOVERABLE_EVENTS
+                        .into_iter()
+                        .find(|name| Some(name.as_str()) == event.as_deref())
+                        .expect("session admitted a recoverable identity")
                 });
+                let policy_rejection = if check_policy {
+                    let admission = match event {
+                        Some(event) => crate::policy::admit_event(
+                            event,
+                            &self.rpc.provided,
+                            RpcTarget::Local,
+                            Some(&self.auth),
+                        ),
+                        None => crate::policy::admit_route(Scope::Read, Some(&self.auth)),
+                    };
+                    admission.err().map(|error| match error.kind {
+                        "unsupported" => SubscriptionErrorCode::Unsupported,
+                        _ => SubscriptionErrorCode::Forbidden,
+                    })
+                } else {
+                    None
+                };
+                let rejected = if is_resource_limit {
+                    policy_rejection
+                        .map(|code| Frame::SubscriptionError {
+                            target: SubscriptionTarget::Id(id),
+                            code,
+                        })
+                        .or(control)
+                } else {
+                    control
+                        .or_else(|| {
+                            policy_rejection.map(|code| Frame::SubscriptionError {
+                                target: SubscriptionTarget::Id(id),
+                                code,
+                            })
+                        })
+                        .or_else(|| {
+                            (!self.has_capacity()).then_some(Frame::SubscriptionError {
+                                target: SubscriptionTarget::Id(id),
+                                code: SubscriptionErrorCode::ResourceLimit,
+                            })
+                        })
+                };
                 if let Some(rejection) = rejected {
                     let code = match rejection {
                         Frame::SubscriptionError { code, .. } => code,
@@ -364,6 +499,8 @@ impl Connection {
                     }
                     return;
                 }
+                let visibility =
+                    nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                 self.pending_resources += 1;
                 let rpc = self.rpc.clone();
                 let source = self.source.clone();
@@ -373,34 +510,25 @@ impl Connection {
                     async move {
                         let mut failure = SubscriptionErrorCode::SnapshotUnavailable;
                         let result = dispatch_with_audit(&audit, || {
-                            let event = (stream != "connection-details").then(|| {
-                                RECOVERABLE_EVENTS
-                                    .into_iter()
-                                    .find(|name| Some(name.as_str()) == event.as_deref())
-                                    .expect("session admitted a recoverable identity")
-                            });
-                            if event
-                                == Some(nyanpasu_rpc_protocol::EventName::AppUpdateStateChanged)
-                                && !rpc.command_capabilities_available("get_app_update_state")
-                            {
-                                failure = SubscriptionErrorCode::Unsupported;
-                                return Err(RpcError::new(
-                                    "unsupported",
-                                    "application updates are unavailable in this shell",
-                                ));
-                            }
                             let failure = &mut failure;
                             Ok(unreported(async move {
                                 let Some(event) = event else {
-                                    return source.details().await.map(Subscription::Details);
-                                };
-                                let snapshot =
-                                    subscriptions::snapshot(source.as_ref(), event, &mut receiver)
+                                    return source
+                                        .details(visibility)
                                         .await
-                                        .map_err(|code| {
-                                            *failure = code;
-                                            subscription_error(code)
-                                        })?;
+                                        .map(Subscription::Details);
+                                };
+                                let snapshot = subscriptions::snapshot(
+                                    source.as_ref(),
+                                    event,
+                                    &mut receiver,
+                                    visibility,
+                                )
+                                .await
+                                .map_err(|code| {
+                                    *failure = code;
+                                    subscription_error(code)
+                                })?;
                                 if frame::encode(&Frame::Reset {
                                     subscription: "s18446744073709551615".into(),
                                     event: event.as_str().into(),
@@ -434,6 +562,7 @@ impl Connection {
                 let audit = self.rpc.dependencies.audit.invocation(
                     RpcTransport::Local,
                     &self.owner,
+                    Some(&self.auth.principal),
                     "local_unsubscribe",
                     Some(id),
                 );
@@ -573,10 +702,13 @@ impl Connection {
                             audits: vec![DeliveryAudit::new(audit)],
                         })
                         .await;
+                        let visibility =
+                            nyanpasu_rpc_protocol::ResponseVisibility::for_auth(Some(&self.auth));
                         let forwarding = subscriptions::forward(
                             subscription,
                             stream,
                             self.source.clone(),
+                            visibility,
                             Output::new(self.events.clone()),
                             stop,
                         );
@@ -632,6 +764,7 @@ mod tests;
 fn subscription_error(code: SubscriptionErrorCode) -> RpcError {
     let kind = match code {
         SubscriptionErrorCode::FeatureNotNegotiated => "feature_not_negotiated",
+        SubscriptionErrorCode::Forbidden => "forbidden",
         SubscriptionErrorCode::Unsupported => "unsupported",
         SubscriptionErrorCode::UnknownStream => "unknown_stream",
         SubscriptionErrorCode::ResourceLimit => "resource_limit",
@@ -654,13 +787,44 @@ fn subscription_id(frame: &Frame) -> Option<&str> {
     }
 }
 
+#[cfg(test)]
 pub(super) async fn serve_stream<S>(
-    mut stream: S,
+    stream: S,
     owner: RpcOwner,
+    auth: AuthContext,
     rpc: UnifiedRpc,
     source: Arc<dyn SubscriptionSource>,
     limits: ConnectionLimits,
     stop: CancellationToken,
+) where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    serve_stream_with_drain(
+        stream,
+        owner,
+        auth,
+        rpc,
+        source,
+        limits,
+        stop,
+        CancellationToken::new(),
+    )
+    .await;
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit connection boundary wiring without a catch-all context struct"
+)]
+async fn serve_stream_with_drain<S>(
+    mut stream: S,
+    owner: RpcOwner,
+    auth: AuthContext,
+    rpc: UnifiedRpc,
+    source: Arc<dyn SubscriptionSource>,
+    limits: ConnectionLimits,
+    stop: CancellationToken,
+    drain: CancellationToken,
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -701,8 +865,13 @@ pub(super) async fn serve_stream<S>(
         session.send(&accept).ok()?;
         Some(())
     };
-    if tokio::select! { biased; () = stop.cancelled() => None, result = handshake => result }
-        .is_none()
+    if tokio::select! {
+        biased;
+        () = stop.cancelled() => None,
+        () = drain.cancelled() => None,
+        result = handshake => result,
+    }
+    .is_none()
     {
         return;
     }
@@ -711,10 +880,11 @@ pub(super) async fn serve_stream<S>(
     let admission = Arc::new(Semaphore::new(limits.in_flight));
     let (outgoing, mut output) = mpsc::channel::<Delivery>(limits.output);
     let (events, mut updates) = mpsc::channel(limits.output);
-    let mut io = JoinSet::new();
     let reader_stop = stop.clone();
-    io.spawn(async move {
-        let _cancel_on_exit = reader_stop.clone().drop_guard();
+    let reader_drain = drain.clone();
+    let reader_task = tokio::spawn(async move {
+        let mut cancel_on_exit = Some(reader_stop.clone().drop_guard());
+        let mut drained = false;
         let reading = async {
             loop {
                 match frame::read_frame(&mut reader).await {
@@ -732,18 +902,29 @@ pub(super) async fn serve_stream<S>(
                     Ok(None) => break,
                     Err(error) => {
                         if incoming.try_send(Err(error.reject_code())).is_ok() {
-                            reader_stop.cancelled().await;
+                            tokio::select! {
+                                () = reader_stop.cancelled() => (),
+                                () = reader_drain.cancelled() => { drained = true; },
+                            }
                         }
                         break;
                     }
                 }
             }
         };
-        tokio::select! { () = reader_stop.cancelled() => (), () = reading => () }
-        reader_stop.cancel();
+        tokio::select! {
+            () = reader_stop.cancelled() => (),
+            () = reader_drain.cancelled() => { drained = true; },
+            () = reading => (),
+        }
+        if drained && let Some(guard) = cancel_on_exit.take() {
+            guard.disarm();
+        } else {
+            reader_stop.cancel();
+        }
     });
     let writer_stop = stop.clone();
-    io.spawn(
+    let mut writer_task = Some(tokio::spawn(
         async move {
             let _cancel_on_exit = writer_stop.clone().drop_guard();
             let writing = async {
@@ -766,16 +947,18 @@ pub(super) async fn serve_stream<S>(
                         let _ = written.send(());
                     }
                 }
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
             };
             tokio::select! { () = writer_stop.cancelled() => (), () = writing => () }
             writer_stop.cancel();
         }
         .with_current_subscriber(),
-    );
+    ));
     let mut connection = Connection {
         rpc,
         source,
         owner,
+        auth,
         session,
         limits,
         pending_resources: 0,
@@ -792,7 +975,7 @@ pub(super) async fn serve_stream<S>(
         tokio::select! {
             biased;
             () = stop.cancelled() => break,
-            Some(result) = io.join_next() => blocking::join(result),
+            () = drain.cancelled() => break,
             Some(result) = connection.calls.join_next() => connection.complete(blocking::join(result)).await,
             Some(result) = connection.forwarders.join_next() => blocking::join(result),
             Some(frame) = received.recv() => match frame {
@@ -807,26 +990,30 @@ pub(super) async fn serve_stream<S>(
             }
         }
     }
-    // Finish IO first so no admitted frame can race the final handoff drain.
-    while let Some(result) = io.join_next().await {
-        blocking::join(result);
+    // Always stop reading first so no admitted frame can race the final handoff drain.
+    blocking::join(reader_task.await);
+    if stop.is_cancelled()
+        && let Some(task) = writer_task.take()
+    {
+        blocking::join(task.await);
     }
     while let Ok(frame) = received.try_recv() {
         if let Ok((frame, permit)) = frame {
             connection.receive(frame, permit).await;
         }
     }
-    connection.session.close();
     let mut disconnected = Vec::new();
     for (_, task) in connection.subscriptions.drain() {
         task.stop.cancel();
         disconnected.push(task.audit);
     }
     connection.close_logs().await;
-    // Never abort accepted work: successful late resources are registered and closed.
+    // Never abort accepted work: successful late resources are registered and closed,
+    // and during graceful drain replies flush to the still-running writer task.
     while let Some(result) = connection.calls.join_next().await {
         connection.complete(blocking::join(result)).await;
     }
+    connection.session.close();
     connection.close_logs().await;
     while let Some(result) = connection.forwarders.join_next().await {
         blocking::join(result);
@@ -835,5 +1022,9 @@ pub(super) async fn serve_stream<S>(
         audit.record(AuditPhase::Subscription {
             outcome: SubscriptionOutcome::Disconnected,
         });
+    }
+    drop(connection);
+    if let Some(task) = writer_task.take() {
+        blocking::join(task.await);
     }
 }

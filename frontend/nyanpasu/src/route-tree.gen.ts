@@ -48,6 +48,7 @@ import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/ma
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
 import { Route as mainMainSettingsAboutIndexRouteImport } from './pages/(main)/main/settings/about/index'
 import { Route as mainMainSettingsDebugIndexRouteImport } from './pages/(main)/main/settings/debug/index'
+import { Route as mainMainSettingsSyncIndexRouteImport } from './pages/(main)/main/settings/sync/index'
 import { Route as mainMainTopologyDimensionIndexRouteImport } from './pages/(main)/main/topology/$dimension/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
@@ -64,6 +65,7 @@ import { Route as mainMainSettingsClashRuntimeIndexRouteImport } from './pages/(
 import { Route as mainMainSettingsNyanpasuInterfaceIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/index'
 import { Route as mainMainSettingsNyanpasuLogsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/logs/index'
 import { Route as mainMainSettingsNyanpasuPublicIpIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/public-ip/index'
+import { Route as mainMainSettingsNyanpasuRemoteAccessIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/remote-access/index'
 import { Route as mainMainSettingsNyanpasuShortcutsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/shortcuts/index'
 import { Route as mainMainSettingsNyanpasuTrayIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/tray/index'
 import { Route as mainMainSettingsNyanpasuUpdatesIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/updates/index'
@@ -282,6 +284,12 @@ const mainMainSettingsDebugIndexRoute =
     path: '/',
     getParentRoute: () => mainMainSettingsDebugRouteRoute,
   } as any)
+const mainMainSettingsSyncIndexRoute =
+  mainMainSettingsSyncIndexRouteImport.update({
+    id: '/sync/',
+    path: '/sync/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainTopologyDimensionIndexRoute =
   mainMainTopologyDimensionIndexRouteImport.update({
     id: '/$dimension/',
@@ -378,6 +386,12 @@ const mainMainSettingsNyanpasuPublicIpIndexRoute =
     path: '/nyanpasu/public-ip/',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
+const mainMainSettingsNyanpasuRemoteAccessIndexRoute =
+  mainMainSettingsNyanpasuRemoteAccessIndexRouteImport.update({
+    id: '/nyanpasu/remote-access/',
+    path: '/nyanpasu/remote-access/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsNyanpasuShortcutsIndexRoute =
   mainMainSettingsNyanpasuShortcutsIndexRouteImport.update({
     id: '/nyanpasu/shortcuts/',
@@ -416,6 +430,7 @@ const mainMainSettingsSystemServiceIndexRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
   '/tray-menu': typeof trayMenuTrayMenuRouteRouteWithChildren
   '/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
@@ -455,6 +470,7 @@ export interface FileRoutesByFullPath {
   '/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
+  '/main/settings/sync/': typeof mainMainSettingsSyncIndexRoute
   '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
@@ -470,6 +486,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/main/settings/nyanpasu/public-ip/': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
+  '/main/settings/nyanpasu/remote-access/': typeof mainMainSettingsNyanpasuRemoteAccessIndexRoute
   '/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -478,6 +495,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
@@ -504,6 +522,7 @@ export interface FileRoutesByTo {
   '/main/profiles/folder': typeof mainMainProfilesFolderIndexRoute
   '/main/settings/about': typeof mainMainSettingsAboutIndexRoute
   '/main/settings/debug': typeof mainMainSettingsDebugIndexRoute
+  '/main/settings/sync': typeof mainMainSettingsSyncIndexRoute
   '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
@@ -519,6 +538,7 @@ export interface FileRoutesByTo {
   '/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/main/settings/nyanpasu/logs': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/main/settings/nyanpasu/public-ip': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
+  '/main/settings/nyanpasu/remote-access': typeof mainMainSettingsNyanpasuRemoteAccessIndexRoute
   '/main/settings/nyanpasu/shortcuts': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/main/settings/nyanpasu/tray': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/main/settings/nyanpasu/updates': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -568,6 +588,7 @@ export interface FileRoutesById {
   '/(main)/main/profiles/folder/': typeof mainMainProfilesFolderIndexRoute
   '/(main)/main/settings/about/': typeof mainMainSettingsAboutIndexRoute
   '/(main)/main/settings/debug/': typeof mainMainSettingsDebugIndexRoute
+  '/(main)/main/settings/sync/': typeof mainMainSettingsSyncIndexRoute
   '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
@@ -583,6 +604,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   '/(main)/main/settings/nyanpasu/logs/': typeof mainMainSettingsNyanpasuLogsIndexRoute
   '/(main)/main/settings/nyanpasu/public-ip/': typeof mainMainSettingsNyanpasuPublicIpIndexRoute
+  '/(main)/main/settings/nyanpasu/remote-access/': typeof mainMainSettingsNyanpasuRemoteAccessIndexRoute
   '/(main)/main/settings/nyanpasu/shortcuts/': typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   '/(main)/main/settings/nyanpasu/tray/': typeof mainMainSettingsNyanpasuTrayIndexRoute
   '/(main)/main/settings/nyanpasu/updates/': typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -593,6 +615,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/'
     | '/editor'
     | '/tray-menu'
     | '/main/connections'
@@ -632,6 +655,7 @@ export interface FileRouteTypes {
     | '/main/profiles/folder/'
     | '/main/settings/about/'
     | '/main/settings/debug/'
+    | '/main/settings/sync/'
     | '/main/topology/$dimension/'
     | '/main/topology/flow/'
     | '/main/topology/map/'
@@ -647,6 +671,7 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/interface/'
     | '/main/settings/nyanpasu/logs/'
     | '/main/settings/nyanpasu/public-ip/'
+    | '/main/settings/nyanpasu/remote-access/'
     | '/main/settings/nyanpasu/shortcuts/'
     | '/main/settings/nyanpasu/tray/'
     | '/main/settings/nyanpasu/updates/'
@@ -655,6 +680,7 @@ export interface FileRouteTypes {
     | '/main/settings/system/service/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/editor'
     | '/main'
     | '/tray-menu'
@@ -681,6 +707,7 @@ export interface FileRouteTypes {
     | '/main/profiles/folder'
     | '/main/settings/about'
     | '/main/settings/debug'
+    | '/main/settings/sync'
     | '/main/topology/$dimension'
     | '/main/topology/flow'
     | '/main/topology/map'
@@ -696,6 +723,7 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/interface'
     | '/main/settings/nyanpasu/logs'
     | '/main/settings/nyanpasu/public-ip'
+    | '/main/settings/nyanpasu/remote-access'
     | '/main/settings/nyanpasu/shortcuts'
     | '/main/settings/nyanpasu/tray'
     | '/main/settings/nyanpasu/updates'
@@ -744,6 +772,7 @@ export interface FileRouteTypes {
     | '/(main)/main/profiles/folder/'
     | '/(main)/main/settings/about/'
     | '/(main)/main/settings/debug/'
+    | '/(main)/main/settings/sync/'
     | '/(main)/main/topology/$dimension/'
     | '/(main)/main/topology/flow/'
     | '/(main)/main/topology/map/'
@@ -759,6 +788,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/nyanpasu/interface/'
     | '/(main)/main/settings/nyanpasu/logs/'
     | '/(main)/main/settings/nyanpasu/public-ip/'
+    | '/(main)/main/settings/nyanpasu/remote-access/'
     | '/(main)/main/settings/nyanpasu/shortcuts/'
     | '/(main)/main/settings/nyanpasu/tray/'
     | '/(main)/main/settings/nyanpasu/updates/'
@@ -778,7 +808,7 @@ declare module '@tanstack/react-router' {
     '/(main)': {
       id: '/(main)'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof mainRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -1048,6 +1078,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsDebugIndexRouteImport
       parentRoute: typeof mainMainSettingsDebugRouteRoute
     }
+    '/(main)/main/settings/sync/': {
+      id: '/(main)/main/settings/sync/'
+      path: '/sync'
+      fullPath: '/main/settings/sync/'
+      preLoaderRoute: typeof mainMainSettingsSyncIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/topology/$dimension/': {
       id: '/(main)/main/topology/$dimension/'
       path: '/$dimension'
@@ -1158,6 +1195,13 @@ declare module '@tanstack/react-router' {
       path: '/nyanpasu/public-ip'
       fullPath: '/main/settings/nyanpasu/public-ip/'
       preLoaderRoute: typeof mainMainSettingsNyanpasuPublicIpIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/remote-access/': {
+      id: '/(main)/main/settings/nyanpasu/remote-access/'
+      path: '/nyanpasu/remote-access'
+      fullPath: '/main/settings/nyanpasu/remote-access/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuRemoteAccessIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/settings/nyanpasu/shortcuts/': {
@@ -1347,6 +1391,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
+  mainMainSettingsSyncIndexRoute: typeof mainMainSettingsSyncIndexRoute
   mainMainSettingsClashAiIndexRoute: typeof mainMainSettingsClashAiIndexRoute
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
   mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
@@ -1356,6 +1401,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsNyanpasuInterfaceIndexRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
   mainMainSettingsNyanpasuPublicIpIndexRoute: typeof mainMainSettingsNyanpasuPublicIpIndexRoute
+  mainMainSettingsNyanpasuRemoteAccessIndexRoute: typeof mainMainSettingsNyanpasuRemoteAccessIndexRoute
   mainMainSettingsNyanpasuShortcutsIndexRoute: typeof mainMainSettingsNyanpasuShortcutsIndexRoute
   mainMainSettingsNyanpasuTrayIndexRoute: typeof mainMainSettingsNyanpasuTrayIndexRoute
   mainMainSettingsNyanpasuUpdatesIndexRoute: typeof mainMainSettingsNyanpasuUpdatesIndexRoute
@@ -1368,6 +1414,7 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
+  mainMainSettingsSyncIndexRoute: mainMainSettingsSyncIndexRoute,
   mainMainSettingsClashAiIndexRoute: mainMainSettingsClashAiIndexRoute,
   mainMainSettingsClashControlIndexRoute:
     mainMainSettingsClashControlIndexRoute,
@@ -1384,6 +1431,8 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsNyanpasuLogsIndexRoute,
   mainMainSettingsNyanpasuPublicIpIndexRoute:
     mainMainSettingsNyanpasuPublicIpIndexRoute,
+  mainMainSettingsNyanpasuRemoteAccessIndexRoute:
+    mainMainSettingsNyanpasuRemoteAccessIndexRoute,
   mainMainSettingsNyanpasuShortcutsIndexRoute:
     mainMainSettingsNyanpasuShortcutsIndexRoute,
   mainMainSettingsNyanpasuTrayIndexRoute:

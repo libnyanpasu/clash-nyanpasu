@@ -1,5 +1,9 @@
 import { unwrapResult } from '@nyanpasu/rpc'
-import type { ProfileSyncStatus, RunCursorDto } from '@nyanpasu/rpc/types'
+import type {
+  ProfileSyncStatus,
+  ProfileSyncSummary,
+  RunCursorDto,
+} from '@nyanpasu/rpc/types'
 import {
   useInfiniteQuery,
   useIsMutating,
@@ -12,7 +16,7 @@ const LIVE_INTERVAL = 2000
 const IDLE_INTERVAL = 60_000
 
 const statusInterval = (
-  status: ProfileSyncStatus | undefined,
+  status: ProfileSyncStatus | ProfileSyncSummary | undefined,
   refreshing: boolean,
 ) => {
   if (refreshing || (status?.active.length ?? 0) > 0) return LIVE_INTERVAL
@@ -22,6 +26,17 @@ const statusInterval = (
   return Math.min(Math.max(untilNextRun, LIVE_INTERVAL), IDLE_INTERVAL)
 }
 
+const useProfileUpdating = (uid: string) => {
+  const api = useQueryApi()
+  return (
+    useIsMutating({
+      mutationKey: api.mutations.updateProfile.mutationKey,
+      predicate: (mutation) =>
+        (mutation.state.variables as { uid?: string } | undefined)?.uid === uid,
+    }) > 0
+  )
+}
+
 /**
  * Polls quickly only while a run is active or a manual refresh of this
  * profile (which runs the sync job) is in flight.
@@ -29,15 +44,27 @@ const statusInterval = (
 export function useProfileSyncStatus(uid: string) {
   const api = useQueryApi()
   const options = api.queries.getProfileSyncStatus(uid)
-  const refreshing =
-    useIsMutating({
-      mutationKey: api.mutations.updateProfile.mutationKey,
-      predicate: (mutation) =>
-        (mutation.state.variables as { uid?: string } | undefined)?.uid === uid,
-    }) > 0
+  const refreshing = useProfileUpdating(uid)
   return useQuery({
     queryKey: options.queryKey,
     queryFn: async () => unwrapResult(await api.getProfileSyncStatus(uid)),
+    refetchInterval: (query) => statusInterval(query.state.data, refreshing),
+  })
+}
+
+/**
+ * The secret-free counterpart of `useProfileSyncStatus` for ordinary surfaces
+ * such as dashboard cards: keeps schedule timing, active states and error
+ * flags without free-form error strings.
+ */
+export function useProfileSyncStatusSummary(uid: string) {
+  const api = useQueryApi()
+  const options = api.queries.getProfileSyncStatusSummary(uid)
+  const refreshing = useProfileUpdating(uid)
+  return useQuery({
+    queryKey: options.queryKey,
+    queryFn: async () =>
+      unwrapResult(await api.getProfileSyncStatusSummary(uid)),
     refetchInterval: (query) => statusInterval(query.state.data, refreshing),
   })
 }
@@ -53,6 +80,25 @@ export function useProfileSyncRuns(
     initialPageParam: null as RunCursorDto | null,
     queryFn: async ({ pageParam }) =>
       unwrapResult(await api.getProfileSyncRuns(uid, pageParam)),
+    getNextPageParam: (page) => page.next ?? undefined,
+    refetchInterval: options.refetchInterval,
+  })
+}
+
+/**
+ * The secret-free counterpart of `useProfileSyncRuns` for ordinary surfaces
+ * that show completed run outcomes without owner failure text or outputs.
+ */
+export function useProfileSyncRunsSummary(
+  uid: string,
+  options: { refetchInterval?: number | false } = {},
+) {
+  const api = useQueryApi()
+  return useInfiniteQuery({
+    queryKey: ['profile-sync-runs-summary', uid],
+    initialPageParam: null as RunCursorDto | null,
+    queryFn: async ({ pageParam }) =>
+      unwrapResult(await api.getProfileSyncRunsSummary(uid, pageParam)),
     getNextPageParam: (page) => page.next ?? undefined,
     refetchInterval: options.refetchInterval,
   })

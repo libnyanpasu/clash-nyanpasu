@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { profileTypeOf } from '@/pages/(main)/main/profiles/_modules/utils'
 import type { LabelPart, ProfileLookup } from '@/utils/profile-label'
-import { useProfile } from '@nyanpasu/query'
+import { useProfileListing } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -27,8 +27,10 @@ export function partsText(parts: LabelPart[], profiles: ProfileLookup) {
     .join('')
 }
 
-export function useProfileLookup(): ProfileLookup {
-  const { query } = useProfile()
+export function useProfileLookup(options?: {
+  enabled?: boolean
+}): ProfileLookup {
+  const query = useProfileListing(options)
   return useMemo(
     () => new Map(query.data?.items?.map((item) => [item.uid, item]) ?? []),
     [query.data?.items],

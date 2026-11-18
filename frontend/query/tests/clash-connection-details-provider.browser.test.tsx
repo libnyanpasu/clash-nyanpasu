@@ -7,7 +7,7 @@ import {
   type TestContext,
 } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { createRpcClient, RpcFailure } from '@nyanpasu/rpc'
+import { createRpcClient, getClientId, RpcFailure } from '@nyanpasu/rpc'
 import type { ClashConnectionDetails_Serialize } from '@nyanpasu/rpc/types'
 import { Channel } from '@tauri-apps/api/core'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
@@ -476,7 +476,9 @@ test('browser consumers share an SSE stream and release it on unmount', async ({
     rpc.dispose()
   })
   await expect.poll(() => streams.length).toBe(1)
-  expect(streams[0].url).toBe('/bridge/connection-details')
+  expect(streams[0].url).toBe(
+    `/bridge/connection-details?client_id=${getClientId()}`,
+  )
   streams[0].onerror?.(new Event('error'))
   await expect.poll(() => states.at(-1)?.status).toBe('error')
   streams[0].onopen?.()

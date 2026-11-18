@@ -177,6 +177,62 @@ fn namespace_names_are_restricted() {
     assert!(std::panic::catch_unwind(|| Namespace::new(too_long)).is_err());
 }
 
+#[test]
+fn verify_uid_accepts_only_expected_user() {
+    use super::{PeerMismatch, verify_uid};
+
+    assert_eq!(verify_uid(Some(1000), 1000), Ok(()));
+    assert_eq!(verify_uid(Some(0), 0), Ok(()));
+    assert_eq!(
+        verify_uid(Some(1001), 1000),
+        Err(PeerMismatch::Uid {
+            peer: 1001,
+            expected: 1000,
+        })
+    );
+    assert_eq!(
+        verify_uid(Some(0), 1000),
+        Err(PeerMismatch::Uid {
+            peer: 0,
+            expected: 1000,
+        })
+    );
+    assert_eq!(verify_uid(None, 1000), Err(PeerMismatch::MissingIdentity));
+}
+
+#[test]
+fn verify_sid_accepts_only_expected_user() {
+    use super::{PeerMismatch, verify_sid};
+
+    let expected = "S-1-5-21-100-200-300-1001";
+    assert_eq!(verify_sid(Some(expected), expected), Ok(()));
+    assert_eq!(
+        verify_sid(Some("S-1-5-21-100-200-300-1002"), expected),
+        Err(PeerMismatch::Sid {
+            peer: "S-1-5-21-100-200-300-1002".to_owned(),
+            expected: expected.to_owned(),
+        })
+    );
+    assert_eq!(
+        verify_sid(Some("S-1-5-18"), expected),
+        Err(PeerMismatch::Sid {
+            peer: "S-1-5-18".to_owned(),
+            expected: expected.to_owned(),
+        })
+    );
+    assert_eq!(
+        verify_sid(Some(""), ""),
+        Err(PeerMismatch::Sid {
+            peer: String::new(),
+            expected: String::new(),
+        })
+    );
+    assert_eq!(
+        verify_sid(None, expected),
+        Err(PeerMismatch::MissingIdentity)
+    );
+}
+
 #[cfg(windows)]
 #[path = "windows_tests.rs"]
 mod windows;

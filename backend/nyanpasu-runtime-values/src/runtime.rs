@@ -23,7 +23,6 @@ pub enum RuntimeCommitStatus {
     Deferred,
     SavedInactive,
     Unchanged,
-    RecoveryRequired,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -140,12 +139,6 @@ pub struct Degradation {
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum DegradationReason {
-    /// The runtime owner stopped before the mutation settled, or settled it as
-    /// needing recovery.
-    RuntimeRecoveryRequired {
-        operation_id: Option<String>,
-        cause: Option<Arc<RuntimeError>>,
-    },
     /// The runtime will apply the committed mutation later.
     RuntimeDeferred {
         cause: Arc<RuntimeError>,
@@ -174,6 +167,10 @@ pub enum DegradationReason {
         profile: ProfileId,
         cause: Arc<ProfilesError>,
     },
+    /// The remote-access settings were saved but the HTTP listener could not follow them.
+    HttpServerUnavailable,
+    /// The remote-access settings were saved but the local socket listener could not follow them.
+    LocalSocketUnavailable,
 }
 
 /// How closing the source instance's connections failed.
@@ -193,11 +190,7 @@ pub enum InterruptFailure {
 pub enum DegradationPhase {
     ProfileMaterialization,
     RuntimeBuild,
-    RuntimeCheck,
-    RuntimePromote,
-    RuntimePublish,
     RuntimeApply,
-    CoreRollback,
     SystemEffect,
     UiEffect,
 }

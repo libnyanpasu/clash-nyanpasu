@@ -1,4 +1,5 @@
 use crate::{
+    adapters::cli_install::{self, CliInstallation},
     utils::{help, proxy_env, proxy_env::CopyEnvOption},
     window::{
         WindowManager, kinds,
@@ -60,7 +61,7 @@ pub struct FileDialogFilter {
     pub extensions: Vec<String>,
 }
 
-#[nyanpasu_macro::rpc(capabilities(clipboard))]
+#[nyanpasu_macro::rpc(capabilities(clipboard), query, permission = "clipboard.text:reveal")]
 #[tauri::command]
 #[specta::specta]
 pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
@@ -70,7 +71,7 @@ pub async fn read_clipboard_text(app_handle: AppHandle) -> Result<String> {
         .map_err(|error| error.to_string())?)
 }
 
-#[nyanpasu_macro::rpc(capabilities(clipboard))]
+#[nyanpasu_macro::rpc(capabilities(clipboard), permission = "system.clipboard_text:write")]
 #[tauri::command]
 #[specta::specta]
 pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result {
@@ -81,7 +82,10 @@ pub async fn write_clipboard_text(app_handle: AppHandle, text: String) -> Result
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(notification))]
+#[nyanpasu_macro::rpc(
+    capabilities(notification),
+    permission = "system.native_notification:show"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_notification(
@@ -97,7 +101,7 @@ pub async fn show_native_notification(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(dialog))]
+#[nyanpasu_macro::rpc(capabilities(dialog), permission = "system.native_message_dialog:show")]
 #[tauri::command]
 #[specta::specta]
 pub async fn show_native_message_dialog(
@@ -150,7 +154,7 @@ pub async fn show_native_message_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc(capabilities(dialog))]
+#[nyanpasu_macro::rpc(capabilities(dialog), permission = "system.native_dialog:ask")]
 #[tauri::command]
 #[specta::specta]
 pub async fn ask_native_dialog(
@@ -182,7 +186,7 @@ pub async fn ask_native_dialog(
         .map_err(Into::into)
 }
 
-#[nyanpasu_macro::rpc(capabilities(dialog))]
+#[nyanpasu_macro::rpc(capabilities(dialog), permission = "system.native_file_dialog:open")]
 #[tauri::command]
 #[specta::specta]
 pub async fn open_native_file_dialog(
@@ -221,7 +225,7 @@ use nyanpasu_config::profile::{ProfileId, RemoteProfileOptionsPatch};
 
 /// Downloads a profile URL and suggests how to import it, for the user to
 /// confirm. Desktop-only: it sends a request to any URL the caller names.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "profile.url_probe:reveal")]
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_profile_url(
@@ -266,14 +270,14 @@ impl PendingDeepLinks {
 /// Take and clear the queued deep links, oldest first. The frontend calls it
 /// once its [`SchemeRequestReceivedEvent`] listener is registered, and again on
 /// every such event.
-#[nyanpasu_macro::rpc(capabilities(deep_link))]
+#[nyanpasu_macro::rpc(capabilities(deep_link), permission = "system.deep_links:take")]
 #[tauri::command]
 #[specta::specta]
 pub async fn take_pending_deep_links(pending: State<'_, PendingDeepLinks>) -> Result<Vec<String>> {
     Ok(pending.take_all())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.profile_view:show")]
 #[tauri::command]
 #[specta::specta]
 pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
@@ -285,7 +289,7 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "proxy.url_delay:measure")]
 #[tauri::command]
 #[specta::specta]
 pub async fn url_delay_test(
@@ -296,7 +300,7 @@ pub async fn url_delay_test(
     Ok(client.url_delay_test(&url, expected_status).await)
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "ip_lookup.ipsb_asn:view")]
 #[tauri::command]
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
@@ -310,7 +314,7 @@ pub async fn get_ipsb_asn(
 }
 
 /// Desktop-only: the host is whatever the caller types, like a URL probe.
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(permission = "settings.stun_server:test")]
 #[tauri::command]
 #[specta::specta]
 pub async fn test_stun_server(
@@ -325,7 +329,7 @@ pub async fn test_stun_server(
 
 use nyanpasu_config::application::{ClashCore, ReleaseChannel};
 
-#[nyanpasu_macro::rpc(capabilities(elevation))]
+#[nyanpasu_macro::rpc(capabilities(elevation), permission = "system.dns_cache:flush")]
 #[tauri::command]
 #[specta::specta]
 pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
@@ -333,7 +337,7 @@ pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.app_config_dir:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -341,7 +345,7 @@ pub fn open_app_config_dir(paths: State<'_, PathResolver>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.app_data_dir:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_app_data_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -355,7 +359,7 @@ pub struct ConfigBackupInfo {
     pub path: String,
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(permission = "settings.config_backup:create")]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_config_backup(client: State<'_, NyanpasuClient>) -> Result<ConfigBackupInfo> {
@@ -366,7 +370,7 @@ pub async fn create_config_backup(client: State<'_, NyanpasuClient>) -> Result<C
     })
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.backups_dir:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
@@ -374,7 +378,7 @@ pub fn open_backups_dir(client: State<'_, NyanpasuClient>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.core_dir:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_core_dir() -> Result<()> {
@@ -386,7 +390,17 @@ pub fn open_core_dir() -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+/// Links the bundled `nyanpasu-cli` onto the user's `PATH`, for the macOS app and the AppImage.
+#[nyanpasu_macro::rpc(capabilities(os_integration), permission = "system.cli:install")]
+#[tauri::command]
+#[specta::specta]
+pub async fn install_cli(paths: State<'_, PathResolver>) -> Result<CliInstallation> {
+    cli_install::install_cli(&paths)
+        .await
+        .map_err(IpcError::unknown)
+}
+
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.logs_dir:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
@@ -394,7 +408,7 @@ pub fn open_logs_dir(paths: State<'_, PathResolver>) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.web_url:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_web_url(url: String) -> Result<()> {
@@ -402,7 +416,7 @@ pub fn open_web_url(url: String) -> Result<()> {
     Ok(())
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "core.version:view")]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_version(
@@ -412,7 +426,7 @@ pub async fn get_core_version(
     Ok(client.get_core_version(core_type).await?)
 }
 
-#[nyanpasu_macro::rpc(capabilities(dialog))]
+#[nyanpasu_macro::rpc(capabilities(dialog), permission = "system.logs:collect")]
 #[tauri::command]
 #[specta::specta]
 pub async fn collect_logs(
@@ -444,14 +458,17 @@ pub async fn collect_logs(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(optional_capabilities(elevation, presentation))]
+#[nyanpasu_macro::rpc(
+    optional_capabilities(elevation, presentation),
+    permission = "system.core:update"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn update_core(client: State<'_, NyanpasuClient>, core_type: ClashCore) -> Result<usize> {
     Ok(client.download_core_update(core_type).await?)
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.issue:report")]
 #[tauri::command]
 #[specta::specta]
 pub fn report_issue(
@@ -463,7 +480,7 @@ pub fn report_issue(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(opener))]
+#[nyanpasu_macro::rpc(capabilities(opener), permission = "system.path:open")]
 #[tauri::command]
 #[specta::specta]
 pub fn open_that(path: String) -> Result {
@@ -472,7 +489,7 @@ pub fn open_that(path: String) -> Result {
 }
 
 #[cfg(windows)]
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "app.custom_dir:reveal")]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -484,7 +501,7 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(not(windows))]
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "app.custom_dir:reveal")]
 #[tauri::command]
 #[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
@@ -492,7 +509,10 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 }
 
 #[cfg(windows)]
-#[nyanpasu_macro::rpc(capabilities(dialog, lifecycle, elevation))]
+#[nyanpasu_macro::rpc(
+    capabilities(dialog, lifecycle, elevation),
+    permission = "system.custom_app_dir:set"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
@@ -533,7 +553,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(lifecycle))]
+#[nyanpasu_macro::rpc(capabilities(lifecycle), permission = "system.application:restart")]
 #[tauri::command]
 #[specta::specta]
 pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
@@ -542,7 +562,7 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
 }
 
 #[cfg(not(windows))]
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(permission = "system.custom_app_dir:set")]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_custom_app_dir(_path: String) -> Result {
@@ -554,7 +574,7 @@ pub mod uwp {
     use super::{NyanpasuClient, Result, State};
     use crate::core::win_uwp;
 
-    #[nyanpasu_macro::rpc(capabilities(elevation))]
+    #[nyanpasu_macro::rpc(capabilities(elevation), permission = "system.uwp_tool:invoke")]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool(
@@ -569,7 +589,7 @@ pub mod uwp {
     }
 }
 
-#[nyanpasu_macro::rpc(capabilities(presentation))]
+#[nyanpasu_macro::rpc(capabilities(presentation), permission = "system.tray_icon:set")]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_tray_icon(
@@ -592,7 +612,7 @@ pub async fn set_tray_icon(
 
 /// Sets the statistic widget's own icon for `mode` from a file, or resets it
 /// to the bundled one when `path` is `None`.
-#[nyanpasu_macro::rpc(capabilities(presentation))]
+#[nyanpasu_macro::rpc(capabilities(presentation), permission = "system.widget_icon:set")]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_widget_icon(
@@ -610,7 +630,11 @@ pub mod service {
     use super::{NyanpasuClient, Result};
     use tauri::State;
 
-    #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
+    #[nyanpasu_macro::rpc(
+        capabilities(elevation),
+        optional_capabilities(presentation),
+        permission = "system.service:install"
+    )]
     #[tauri::command]
     #[specta::specta]
     pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -618,7 +642,11 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
+    #[nyanpasu_macro::rpc(
+        capabilities(elevation),
+        optional_capabilities(presentation),
+        permission = "system.service:uninstall"
+    )]
     #[tauri::command]
     #[specta::specta]
     pub async fn uninstall_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -626,7 +654,11 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
+    #[nyanpasu_macro::rpc(
+        capabilities(elevation),
+        optional_capabilities(presentation),
+        permission = "system.service:start"
+    )]
     #[tauri::command]
     #[specta::specta]
     pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -634,7 +666,11 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
+    #[nyanpasu_macro::rpc(
+        capabilities(elevation),
+        optional_capabilities(presentation),
+        permission = "system.service:stop"
+    )]
     #[tauri::command]
     #[specta::specta]
     pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -642,7 +678,11 @@ pub mod service {
         Ok(())
     }
 
-    #[nyanpasu_macro::rpc(capabilities(elevation), optional_capabilities(presentation))]
+    #[nyanpasu_macro::rpc(
+        capabilities(elevation),
+        optional_capabilities(presentation),
+        permission = "system.service:restart"
+    )]
     #[tauri::command]
     #[specta::specta]
     pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
@@ -655,7 +695,7 @@ pub mod service {
 pub mod uwp {
     use super::*;
 
-    #[nyanpasu_macro::rpc]
+    #[nyanpasu_macro::rpc(permission = "system.uwp_tool:invoke")]
     #[tauri::command]
     #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
@@ -665,7 +705,11 @@ pub mod uwp {
 
 // Subscription control uses UnifiedRpc; only frame delivery is a native Channel.
 // HTTP consumers use the dedicated SSE adapter instead of a webview channel.
-#[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
+#[nyanpasu_macro::rpc(
+    owner,
+    capabilities(caller_webview),
+    permission = "clash_connection.details:follow"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn subscribe_clash_connection_details(
@@ -687,7 +731,11 @@ pub async fn subscribe_clash_connection_details(
     Ok(id)
 }
 
-#[nyanpasu_macro::rpc(owner, capabilities(caller_webview))]
+#[nyanpasu_macro::rpc(
+    owner,
+    capabilities(caller_webview),
+    permission = "clash_connection.details:follow"
+)]
 #[tauri::command]
 #[specta::specta]
 pub fn unsubscribe_clash_connection_details(
@@ -712,7 +760,7 @@ pub struct ReleaseChannelInfo {
     installed: ReleaseChannel,
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "app.release_channel:view")]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<ReleaseChannelInfo> {
@@ -722,17 +770,21 @@ pub async fn get_release_channel(client: State<'_, NyanpasuClient>) -> Result<Re
     })
 }
 
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(privacy, permission = "settings.release_channel:set")]
 #[tauri::command]
 #[specta::specta]
 pub async fn set_release_channel(
     client: State<'_, NyanpasuClient>,
     channel: ReleaseChannel,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-    Ok(client.set_release_channel(channel).await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome> {
+    Ok(client.set_release_channel(channel).await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    capabilities(app_update),
+    query,
+    permission = "app_update.state:reveal"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_state(
@@ -741,7 +793,24 @@ pub async fn get_app_update_state(
     Ok(client.get_app_update_state().await?)
 }
 
-#[nyanpasu_macro::rpc]
+/// Safe application update phase, progress, and release metadata without raw error diagnostics.
+/// The full snapshot is [`get_app_update_state`].
+#[nyanpasu_macro::rpc(
+    capabilities(app_update),
+    query,
+    permission = "app_update.summary:view"
+)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_app_update_summary(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSummary> {
+    Ok(nyanpasu_runtime_values::app_update::AppUpdateSummary::from(
+        &client.get_app_update_state().await?,
+    ))
+}
+
+#[nyanpasu_macro::rpc(query, permission = "app_update.changelog:view")]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_app_update_changelog(
@@ -752,52 +821,72 @@ pub async fn get_app_update_changelog(
     Ok(client.get_app_update_changelog(&from, &to).await?)
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(app_update),
+    permission = "system.app_update:check"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn check_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.check_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.check_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(app_update),
+    permission = "system.app_update:download"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn download_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.download_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.download_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(app_update),
+    permission = "system.app_update_download:cancel"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn cancel_app_update_download(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.cancel_app_update_download().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.cancel_app_update_download().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(app_update),
+    permission = "system.app_update:install"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn install_app_update(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.install_app_update().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.install_app_update().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(app_update))]
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(app_update),
+    permission = "system.app_update_package:discard"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn discard_app_update_package(
     client: State<'_, NyanpasuClient>,
-) -> Result<nyanpasu_runtime_values::app_update::AppUpdateSnapshot> {
-    Ok(client.discard_app_update_package().await?)
+) -> Result<nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome> {
+    Ok(client.discard_app_update_package().await?.into())
 }
 
-#[nyanpasu_macro::rpc(capabilities(window))]
+#[nyanpasu_macro::rpc(capabilities(window), permission = "system.window_size_state:save")]
 #[tauri::command]
 #[specta::specta]
 pub async fn save_window_size_state(
@@ -808,7 +897,7 @@ pub async fn save_window_size_state(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(window))]
+#[nyanpasu_macro::rpc(capabilities(window), permission = "system.main_window:create")]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()> {
@@ -816,7 +905,10 @@ pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()>
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(window))]
+#[nyanpasu_macro::rpc(
+    capabilities(window),
+    permission = "system.debug_tray_menu_window:create"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
@@ -826,7 +918,7 @@ pub async fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> 
 
 /// Panics on purpose, so the crash reporter can be tested. The panic hook
 /// exits differently when the main thread panics, hence the choice.
-#[nyanpasu_macro::rpc(capabilities(lifecycle))]
+#[nyanpasu_macro::rpc(capabilities(lifecycle), permission = "system.crash:simulate")]
 #[tauri::command]
 #[specta::specta]
 pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<()> {
@@ -840,7 +932,7 @@ pub async fn simulate_crash(app_handle: AppHandle, main_thread: bool) -> Result<
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(capabilities(clipboard))]
+#[nyanpasu_macro::rpc(capabilities(clipboard), permission = "system.clash_env:copy")]
 #[tauri::command]
 #[specta::specta]
 pub fn copy_clash_env(
@@ -851,14 +943,14 @@ pub fn copy_clash_env(
     proxy_env::copy_clash_env(&app_handle, client.clash_info().port, &env_type);
 }
 
-#[nyanpasu_macro::rpc(capabilities(lifecycle))]
+#[nyanpasu_macro::rpc(capabilities(lifecycle), permission = "system.application:quit")]
 #[tauri::command]
 #[specta::specta]
 pub fn quit_application(app_handle: AppHandle) {
     crate::utils::help::quit_application(&app_handle);
 }
 
-#[nyanpasu_macro::rpc(capabilities(window))]
+#[nyanpasu_macro::rpc(capabilities(window), permission = "system.editor_window:create")]
 #[tauri::command]
 #[specta::specta]
 pub async fn create_editor_window(
@@ -873,7 +965,10 @@ pub async fn create_editor_window(
 
 /// The calling window has rendered. Its label comes from the invoking webview,
 /// so a window can only report itself.
-#[nyanpasu_macro::rpc(capabilities(caller_webview))]
+#[nyanpasu_macro::rpc(
+    capabilities(caller_webview),
+    permission = "system.window_ready:report"
+)]
 #[tauri::command]
 #[specta::specta]
 pub async fn report_window_ready(
@@ -889,13 +984,21 @@ pub struct ConfigurationStatusChanged(
     pub nyanpasu_runtime_values::configuration::ConfigurationStatus,
 );
 
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+#[tauri_specta(event_name = "configuration-status-summary-changed")]
+pub struct ConfigurationStatusSummaryChanged(
+    pub nyanpasu_runtime_values::observation::ConfigurationStatusSummary,
+);
+
 #[cfg(test)]
 mod tests {
     use super::{IpcError, PendingDeepLinks};
     use nyanpasu_config::profile::{ManagedProfilePath, ProfileId};
     use nyanpasu_contracts::system_dns::SystemDnsError;
     use nyanpasu_core::{
-        client::{ClientError, debug_http::DebugHttpControlError},
+        client::{
+            ClientError, http_server::HttpServerControlError, local_socket::LocalSocketControlError,
+        },
         state::config_error::ConfigError,
     };
     use nyanpasu_runtime_values::profiles::ProfilesError;
@@ -909,7 +1012,7 @@ mod tests {
     };
     use nyanpasu_runtime_values::{
         effects::EffectsError,
-        mutation::{CommitAborted, RuntimeAftermath, WriteConfigSnafu},
+        mutation::{CommitAborted, WriteConfigSnafu},
         runtime_error::RuntimeError,
     };
 
@@ -961,8 +1064,11 @@ mod tests {
             })
         );
         assert_eq!(
-            serde_json::to_value(IpcError::from(RuntimeError::Isolated)).unwrap()["kind"],
-            json!({ "domain": "runtime", "error": { "kind": "isolated" } })
+            serde_json::to_value(IpcError::from(RuntimeError::ConfigurationNotInEffect {
+                reason: "waiting for a stable runtime".into()
+            }))
+            .unwrap()["kind"],
+            json!({ "domain": "runtime", "error": { "kind": "configuration_not_in_effect", "reason": "waiting for a stable runtime" } })
         );
     }
 
@@ -1026,17 +1132,32 @@ mod tests {
         );
         for (error, kind) in [
             (
-                DebugHttpControlError::ReadStatusUnsupported,
+                HttpServerControlError::ReadStatusUnsupported,
                 "read_status_unsupported",
             ),
             (
-                DebugHttpControlError::ChangeEnabledUnsupported,
-                "change_enabled_unsupported",
+                HttpServerControlError::ChangeUnsupported,
+                "change_unsupported",
             ),
         ] {
             assert_eq!(
                 serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
-                json!({ "domain": "debug_http", "error": { "kind": kind } })
+                json!({ "domain": "http_server", "error": { "kind": kind } })
+            );
+        }
+        for (error, kind) in [
+            (
+                LocalSocketControlError::ReadStatusUnsupported,
+                "read_status_unsupported",
+            ),
+            (
+                LocalSocketControlError::ChangeUnsupported,
+                "change_unsupported",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(IpcError::from(error)).unwrap()["kind"],
+                json!({ "domain": "local_socket", "error": { "kind": kind } })
             );
         }
         assert_eq!(
@@ -1051,27 +1172,29 @@ mod tests {
 
     #[test]
     fn nested_domain_errors_are_serialized_and_library_sources_are_not() {
-        for (error, kind) in [
-            (
-                DebugHttpControlError::ReadStatus {
-                    source: anyhow::anyhow!("read cause"),
-                },
-                "read_status",
-            ),
-            (
-                DebugHttpControlError::ChangeEnabled {
-                    source: anyhow::anyhow!("change cause"),
-                },
-                "change_enabled",
-            ),
-        ] {
-            let wire = serde_json::to_value(IpcError::from(error)).unwrap();
-            assert_eq!(
-                wire["kind"],
-                json!({ "domain": "debug_http", "error": { "kind": kind } })
-            );
-            assert!(wire["detail"].as_str().unwrap().contains("cause"));
-        }
+        let error = HttpServerControlError::ReadStatus {
+            source: anyhow::anyhow!("read cause"),
+        };
+        let http_server = serde_json::to_value(IpcError::from(error)).unwrap();
+        assert_eq!(
+            http_server["kind"],
+            json!({ "domain": "http_server", "error": { "kind": "read_status" } })
+        );
+        assert!(http_server["detail"].as_str().unwrap().contains("cause"));
+        let local_error = LocalSocketControlError::ReadStatus {
+            source: anyhow::anyhow!("socket read cause"),
+        };
+        let local_socket = serde_json::to_value(IpcError::from(local_error)).unwrap();
+        assert_eq!(
+            local_socket["kind"],
+            json!({ "domain": "local_socket", "error": { "kind": "read_status" } })
+        );
+        assert!(
+            local_socket["detail"]
+                .as_str()
+                .unwrap()
+                .contains("socket read cause")
+        );
         let fetch = wire(ProfilesError::FetchSubscription {
             url: "https://sub.example/x".parse().unwrap(),
             source: SubscriptionFetchError::SubscriptionHttpStatus { status: 404 },
@@ -1106,16 +1229,10 @@ mod tests {
     }
 
     #[test]
-    fn an_aborted_commit_names_what_became_of_the_runtime() {
+    fn an_aborted_commit_names_the_write_failure() {
         let cause = ReplaceIfVersionError::WriteConfig(anyhow::anyhow!("disk full"));
-        let aborted = WriteConfigSnafu {
-            runtime: RuntimeAftermath::RollbackFailed {
-                detail: std::sync::Arc::new(RuntimeError::OwnerUnresponsive {
-                    operation_id: "op1".into(),
-                }),
-            },
-        }
-        .into_error(Box::new(cause) as nyanpasu_contracts::BoxedCause);
+        let aborted =
+            WriteConfigSnafu.into_error(Box::new(cause) as nyanpasu_contracts::BoxedCause);
         assert!(matches!(aborted, CommitAborted::WriteConfig { .. }));
 
         let wire = wire(ProfilesError::Commit {
@@ -1132,10 +1249,6 @@ mod tests {
                 "path": "r1.yaml",
                 "source": {
                     "kind": "write_config",
-                    "runtime": {
-                        "kind": "rollback_failed",
-                        "detail": { "kind": "owner_unresponsive", "operation_id": "op1" },
-                    },
                 },
             })
         );
@@ -1299,7 +1412,7 @@ mod tests {
             unavailable.store(true, Ordering::SeqCst);
 
             let mut patch = NyanpasuAppConfig::new_empty_patch();
-            patch.core = Some(core);
+            patch.enable_service_mode = Some(true);
             let config_error = client.patch_app_config(patch).await.unwrap_err();
             let profile_error = client
                 .activate_profile(Some(uid.clone()))
@@ -1320,7 +1433,7 @@ mod tests {
                 }
                 let commit = &source_error["source"];
                 assert_eq!(commit["kind"], "runtime_refused");
-                assert_eq!(commit["runtime"], serde_json::json!({"kind": "untouched"}));
+                assert!(commit.get("runtime").is_none());
                 assert_eq!(
                     commit["errors"],
                     serde_json::json!([{
@@ -1358,21 +1471,26 @@ mod tests {
     }
 }
 
-#[nyanpasu_macro::rpc(capabilities(debug_http))]
-#[tauri::command]
-#[specta::specta]
-pub async fn set_debug_http_enabled(
-    client: State<'_, NyanpasuClient>,
-    enabled: bool,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.set_debug_http_enabled(enabled).await?)
-}
-
-#[nyanpasu_macro::rpc]
+#[nyanpasu_macro::rpc(query, permission = "transparent_proxy.status:reveal")]
 #[tauri::command]
 #[specta::specta]
 pub async fn get_transparent_proxy_status(
     client: State<'_, NyanpasuClient>,
 ) -> Result<nyanpasu_ipc::api::network::transparent_proxy::NetworkTransparentProxyStatus> {
     Ok(client.get_transparent_proxy_status().await?)
+}
+
+/// Safe transparent proxy capture status without raw host error diagnostics. The full status is
+/// [`get_transparent_proxy_status`].
+#[nyanpasu_macro::rpc(query, permission = "transparent_proxy.status_summary:view")]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transparent_proxy_status_summary(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::observation::TransparentProxyStatusSummary> {
+    Ok(
+        nyanpasu_runtime_values::observation::TransparentProxyStatusSummary::from(
+            &client.get_transparent_proxy_status().await?,
+        ),
+    )
 }

@@ -4,14 +4,19 @@ import {
   degradationReasonMessage,
   effectFailureMessage,
   ipcErrorMessage,
+  publicDegradationReasonMessage,
 } from '@/utils/ipc-error'
 import type {
+  ClashReadError,
   ConfigError,
-  DebugHttpControlError,
+  CoreLogReadError,
   EffectsError,
+  HttpServerControlError,
   IpcError,
   OsProxyError,
   ProfilesError,
+  ProfileSyncReadError,
+  RemoteAccessError,
   RuntimeError,
   ScriptOperation,
   ScriptRuntime,
@@ -180,48 +185,43 @@ test('a storage failure tells an unsafe path from an unreadable file', () => {
   ).toBe(m.error_profiles_read_external_profile({ path: '/home/u/a.yaml' }))
 })
 
-test('an aborted commit says what became of the core', () => {
+test('an aborted commit localizes the write or validation failure', () => {
   const commit = (
     source: Extract<ProfilesError, { kind: 'commit' }>['source'],
   ) =>
     ipcErrorMessage(profiles({ kind: 'commit', uid: null, path: null, source }))
 
-  expect(commit({ kind: 'write_config', runtime: { kind: 'untouched' } })).toBe(
-    m.error_commit_write_config(),
-  )
-  expect(
-    commit({ kind: 'write_config', runtime: { kind: 'rolled_back' } }),
-  ).toBe(
-    `${m.error_commit_write_config()} (${m.error_commit_runtime_rolled_back()})`,
+  expect(commit({ kind: 'write_config' })).toBe(m.error_commit_write_config())
+  expect(commit({ kind: 'recover_after_write_failure' })).toBe(
+    m.error_commit_recover_after_write_failure(),
   )
   expect(
     commit({
       kind: 'runtime_refused',
       errors: [
-        { kind: 'unsettled_baseline', gap: 'core_transitioning' },
-        { kind: 'isolated' },
+        { kind: 'core_rejected_config', core_kind: null, message: 'invalid' },
       ],
-      runtime: { kind: 'untouched' },
     }),
   ).toBe(
-    m.error_commit_runtime_refused({
-      reason: `${m.error_runtime_unsettled_baseline_core_transitioning()}\n\n${m.error_runtime_isolated()}`,
-    }),
+    `The core rejected this configuration, so the change was not saved: ${m.error_runtime_core_rejected_config()}`,
   )
   expect(
     commit({
       kind: 'runtime_failed',
-      errors: [],
-      runtime: {
-        kind: 'unknown',
-        detail: { kind: 'owner_unresponsive', operation_id: 'op1' },
-      },
+      errors: [
+        {
+          kind: 'check_unavailable',
+          reason: {
+            cause: 'backend',
+            kind: null,
+            message: 'offline',
+            retryable: true,
+          },
+        },
+      ],
     }),
   ).toBe(
-    `${m.error_commit_runtime_failed({ reason: '' })} (${m.error_commit_runtime_unknown()})`,
-  )
-  expect(commit({ kind: 'validate_state' })).toBe(
-    m.error_commit_validate_state(),
+    `The change could not be checked against the core, so it was not saved: ${m.error_runtime_check_unavailable()}`,
   )
 })
 
@@ -349,21 +349,21 @@ test('unavailable native storage is explained for operations and refused mutatio
   ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
 })
 
-test('a refused admission is told apart from a failed operation', () => {
-  expect(ipcErrorMessage(runtime({ kind: 'isolated' }))).toBe(
-    m.error_runtime_isolated(),
-  )
+test('a committed configuration waiting for runtime has its own message', () => {
+  expect(
+    ipcErrorMessage(
+      runtime({
+        kind: 'configuration_not_in_effect',
+        reason: 'waiting for a stable runtime',
+      }),
+    ),
+  ).toBe('The core is not ready to apply the configuration yet.')
   expect(ipcErrorMessage(runtime({ kind: 'shutting_down' }))).toBe(
     m.error_runtime_shutting_down(),
   )
 })
 
 test('a refused mutation says what the runtime lacked or rejected', () => {
-  expect(
-    ipcErrorMessage(
-      runtime({ kind: 'unsettled_baseline', gap: 'no_restorable_baseline' }),
-    ),
-  ).toBe(m.error_runtime_unsettled_baseline_no_restorable_baseline())
   expect(
     ipcErrorMessage(
       runtime({
@@ -486,20 +486,14 @@ test('a degradation localizes its reason, and a runtime cause through the runtim
   expect(
     degradationReasonMessage({
       code: 'runtime_deferred',
-      cause: { kind: 'isolated' },
+      cause: {
+        kind: 'configuration_not_in_effect',
+        reason: 'waiting for a stable runtime',
+      },
     }),
   ).toBe(
-    m.mutation_degradation_reason_runtime_deferred({
-      reason: m.error_runtime_isolated(),
-    }),
+    'The change was saved but is not in effect: The core is not ready to apply the configuration yet.',
   )
-  expect(
-    degradationReasonMessage({
-      code: 'runtime_recovery_required',
-      operation_id: 'op1',
-      cause: null,
-    }),
-  ).toBe(m.mutation_degradation_reason_runtime_recovery_required())
   expect(
     degradationReasonMessage({
       code: 'proxy_interruption_failed',
@@ -546,18 +540,16 @@ test('a rejected hotkey list names the shortcut that was wrong', () => {
   )
 })
 
-test('a configuration change that was not committed says what became of the core', () => {
+test('a configuration change that was not committed names its failure', () => {
   expect(
     ipcErrorMessage(
       config({
         kind: 'commit',
         domain: 'clash',
-        source: { kind: 'write_config', runtime: { kind: 'rolled_back' } },
+        source: { kind: 'write_config' },
       }),
     ),
-  ).toBe(
-    `${m.error_commit_write_config()} (${m.error_commit_runtime_rolled_back()})`,
-  )
+  ).toBe(m.error_commit_write_config())
   expect(
     ipcErrorMessage(
       config({
@@ -650,18 +642,80 @@ test('hotkey_capability_error_uses_its_message', () => {
 })
 
 test.each([
-  ['read_status_unsupported', m.error_debug_http_read_status_unsupported],
-  ['change_enabled_unsupported', m.error_debug_http_change_enabled_unsupported],
-  ['read_status', m.error_debug_http_read_status],
-  ['change_enabled', m.error_debug_http_change_enabled],
-] satisfies [DebugHttpControlError['kind'], () => string][])(
-  'debug_http_errors_use_their_messages: %s',
+  ['read_status_unsupported', m.error_http_server_read_status_unsupported],
+  ['change_unsupported', m.error_http_server_change_unsupported],
+  ['read_status', m.error_http_server_read_status],
+] satisfies [HttpServerControlError['kind'], () => string][])(
+  'http_server_errors_use_their_messages: %s',
   (kind, message) => {
     expect(
       ipcErrorMessage({
-        kind: { domain: 'debug_http', error: { kind } },
+        kind: { domain: 'http_server', error: { kind } },
         message: 'the backend text',
         detail: 'the backend text: caused by',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['settings_unavailable', m.error_clash_read_settings_unavailable],
+  ['proxies_unavailable', m.error_clash_read_proxies_unavailable],
+  ['unknown_group', m.error_clash_read_unknown_group],
+  ['delay_test_failed', m.error_clash_read_delay_test_failed],
+  ['version_unavailable', m.error_clash_read_version_unavailable],
+  ['rules_unavailable', m.error_clash_read_rules_unavailable],
+  ['rule_providers_unavailable', m.error_clash_read_rule_providers_unavailable],
+  [
+    'proxy_providers_unavailable',
+    m.error_clash_read_proxy_providers_unavailable,
+  ],
+  ['streams_unavailable', m.error_clash_read_streams_unavailable],
+] satisfies [ClashReadError['kind'], () => string][])(
+  'clash_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'clash_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'SettingsUnavailable',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['invalid_request', m.error_core_log_read_invalid_request],
+  ['cursor_expired', m.error_core_log_read_cursor_expired],
+  ['record_gone', m.error_core_log_read_record_gone],
+  ['too_large', m.error_core_log_read_too_large],
+  ['unavailable', m.error_core_log_read_unavailable],
+] satisfies [CoreLogReadError['kind'], () => string][])(
+  'core_log_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'core_log_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'Unavailable',
+      }),
+    ).toBe(message())
+  },
+)
+
+test.each([
+  ['unknown_profile', m.error_profile_sync_read_unknown_profile],
+  ['not_remote', m.error_profile_sync_read_not_remote],
+  ['invalid_cursor', m.error_profile_sync_read_invalid_cursor],
+  ['unavailable', m.error_profile_sync_read_unavailable],
+] satisfies [ProfileSyncReadError['kind'], () => string][])(
+  'profile_sync_read_errors_use_their_messages: %s',
+  (kind, message) => {
+    expect(
+      ipcErrorMessage({
+        kind: { domain: 'profile_sync_read', error: { kind } },
+        message: 'the backend text',
+        detail: 'Unavailable',
       }),
     ).toBe(message())
   },
@@ -753,7 +807,6 @@ test.each(
     const source = {
       kind: 'runtime_refused' as const,
       errors: [error],
-      runtime: { kind: 'untouched' as const },
     }
     const expected = m.error_commit_runtime_refused({ reason: message })
     expect(
@@ -768,3 +821,255 @@ test.each(
     ).toBe(expected)
   },
 )
+
+test.each([
+  [{ kind: 'port_zero' }, m.error_config_remote_access_port_zero()],
+  [
+    { kind: 'local_open_scopes_empty' },
+    m.error_config_remote_access_local_open_scopes_empty(),
+  ],
+  [
+    { kind: 'local_open_scope_forbidden', scope: 'sensitive_read' },
+    m.error_config_remote_access_local_open_scope_forbidden_scope({
+      scope: 'sensitive_read',
+    }),
+  ],
+  [
+    { kind: 'use_dedicated_command' },
+    m.error_config_remote_access_use_dedicated_command(),
+  ],
+] satisfies [RemoteAccessError, string][])(
+  'remote_access_config_errors_use_their_messages: %o',
+  (reason, expected) => {
+    expect(
+      ipcErrorMessage({
+        kind: {
+          domain: 'config',
+          error: { kind: 'invalid_remote_access', reason },
+        },
+        message: 'the backend text',
+        detail: 'the backend text: caused by',
+      }),
+    ).toBe(expected)
+  },
+)
+
+test('a listener that cannot follow the settings has its own degradation message', () => {
+  expect(degradationReasonMessage({ code: 'http_server_unavailable' })).toBe(
+    m.mutation_degradation_reason_http_server_unavailable(),
+  )
+})
+
+test('public failure envelopes localize without detail and keep the commit cause', () => {
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'profiles',
+          error: {
+            kind: 'fetch_subscription',
+            reason: { kind: 'subscription_http_status', status: 503 },
+          },
+        },
+      },
+      message: 'subscription request failed',
+    }),
+  ).toBe(m.error_public_profiles_fetch_subscription_status({ status: 503 }))
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'profiles',
+          error: {
+            kind: 'commit',
+            source: {
+              kind: 'runtime_refused',
+              runtime_causes: [
+                {
+                  kind: 'core_rejected_config',
+                  core_kind: 'invalid_config',
+                },
+              ],
+            },
+          },
+        },
+      },
+      message: 'profile update failed',
+    }),
+  ).toBe(
+    m.error_commit_runtime_refused({
+      reason: `${m.error_runtime_core_rejected_config()} (${m.error_runtime_core_reason_invalid_config()})`,
+    }),
+  )
+
+  // A refused network policy names its rules and networks, so the public form carries no reason.
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'config',
+          error: { kind: 'invalid_network_automation' },
+        },
+      },
+      message: 'invalid configuration',
+    }),
+  ).toBe(m.error_public_config_invalid_network_automation())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'runtime',
+          error: {
+            kind: 'build_runtime',
+            source: {
+              kind: 'run_pipeline',
+              stage: 'execute_script',
+            },
+          },
+        },
+      },
+      message: 'runtime operation failed',
+      detail: null,
+    }),
+  ).toBe(m.error_public_runtime_build_script_failed())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'config',
+          error: {
+            kind: 'validate_hotkeys',
+            reason: 'duplicate_accelerator',
+          },
+        },
+      },
+      message: 'configuration operation failed',
+    }),
+  ).toBe(m.error_public_config_hotkey_duplicate_accelerator())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'core_log_read',
+          error: { kind: 'unavailable' },
+        },
+      },
+      message: 'core log storage is unavailable',
+    }),
+  ).toBe(m.error_core_log_read_unavailable())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'system_dns',
+          error: { kind: 'flush_rejected', exit_code: 1 },
+        },
+      },
+      message: 'system DNS operation failed',
+    }),
+  ).toBe(m.error_public_system_dns_flush_rejected_code({ code: 1 }))
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'system_proxy',
+          error: { kind: 'write_os_proxy', enable: true, port: 7890 },
+        },
+      },
+      message: 'system proxy operation failed',
+    }),
+  ).toBe(m.error_public_system_proxy_write_os_proxy())
+
+  expect(
+    ipcErrorMessage({
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'core',
+          error: { kind: 'binary_not_found' },
+        },
+      },
+      message: 'core operation failed',
+    }),
+  ).toBe(m.error_runtime_core_reason_binary_not_found())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'internal error',
+    }),
+  ).toBe(m.error_public_internal_error())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'internal error',
+      detail: null,
+    }),
+  ).toBe(m.error_public_internal_error())
+
+  expect(
+    ipcErrorMessage({
+      kind: { domain: 'unknown' },
+      message: 'explicit host diagnostic',
+      detail: 'full cause',
+    }),
+  ).toBe('explicit host diagnostic')
+})
+
+test('public degradation reasons localize safely without raw host diagnostics', () => {
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'configuration_not_in_effect' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: m.error_runtime_configuration_not_in_effect(),
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'runtime_deferred',
+      cause: { kind: 'apply_runtime', core_kind: 'binary_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_runtime_deferred({
+      reason: `${m.error_runtime_apply_runtime()} (${m.error_runtime_core_reason_binary_not_found()})`,
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({
+      code: 'profile_auto_activation_failed',
+      cause: { kind: 'profile_not_found' },
+    }),
+  ).toBe(
+    m.mutation_degradation_reason_profile_auto_activation_failed({
+      reason: m.error_profiles_profile_not_found(),
+    }),
+  )
+
+  expect(
+    publicDegradationReasonMessage({ code: 'http_server_unavailable' }),
+  ).toBe(m.mutation_degradation_reason_http_server_unavailable())
+
+  expect(
+    publicDegradationReasonMessage({ code: 'local_socket_unavailable' }),
+  ).toBe(m.mutation_degradation_reason_local_socket_unavailable())
+})

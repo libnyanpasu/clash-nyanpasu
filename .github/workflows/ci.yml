@@ -178,7 +178,7 @@ jobs:
 
       - name: Prepare sidecar and resources
         if: env.BACKEND == 'true'
-        run: pnpm run prepare:check
+        run: pnpm run prepare:check --cli-profile dev
 
       - name: Lint formatting
         if: startsWith(matrix.targets.os, 'ubuntu-')
@@ -385,7 +385,7 @@ jobs:
 
       - name: Prepare sidecar and resources
         if: env.BACKEND == 'true'
-        run: pnpm run prepare:check
+        run: pnpm run prepare:check --cli-profile dev
 
       - name: Prepare frontend
         if: env.RUN == 'true' && (env.FRONTEND == 'true' || env.BACKEND == 'true')

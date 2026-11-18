@@ -41,6 +41,11 @@ pub enum BackupError {
     Storage(#[source] BoxedCause),
     #[error("failed to encode the backup manifest")]
     Manifest(#[source] serde_json::Error),
+    #[error(
+        "config directory cannot be located at or inside the remote-access secrets directory: {}",
+        path.display()
+    )]
+    InvalidConfigSource { path: PathBuf },
 }
 
 pub enum BackupKind<'a> {
@@ -111,6 +116,7 @@ struct ManifestSymlink {
 /// Creates a full backup. A failure leaves neither a backup directory nor a
 /// `.partial` behind.
 pub fn create_backup(req: &BackupRequest<'_>) -> Result<BackupInfo, BackupError> {
+    validate_config_source(req.paths)?;
     let backups_dir = req.paths.backups_dir().into_std_path_buf();
     fs::create_dir_all(&backups_dir).map_err(io_error(&backups_dir))?;
     remove_partials(&backups_dir)?;
@@ -220,14 +226,90 @@ fn reserve_partial(backups_dir: &Path, base: &str) -> Result<(String, PathBuf), 
     unreachable!("the attempt counter does not run out")
 }
 
+struct CopyExclusions {
+    skipped: Vec<PathBuf>,
+    secret_dir: PathBuf,
+}
+
+fn canonicalize_if_exists(path: &Path) -> Result<Option<PathBuf>, BackupError> {
+    match fs::canonicalize(path) {
+        Ok(canon) => Ok(Some(canon)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(io_error(path)(error)),
+    }
+}
+
+fn validate_config_source(paths: &PathResolver) -> Result<(), BackupError> {
+    let config_dir = paths.app_config_dir().as_std_path();
+    let Some(canon_secret) = canonicalize_if_exists(paths.remote_access_dir().as_std_path())?
+    else {
+        return Ok(());
+    };
+    let inside_secret = if let Some(canon_config) = canonicalize_if_exists(config_dir)? {
+        is_same_or_descendant(&canon_config, &canon_secret)
+    } else {
+        let mut matched = false;
+        for anc in config_dir.ancestors() {
+            if let Some(canon_anc) = canonicalize_if_exists(anc)? {
+                matched = is_same_or_descendant(&canon_anc, &canon_secret);
+                break;
+            }
+        }
+        matched
+    };
+    if inside_secret {
+        return Err(BackupError::InvalidConfigSource {
+            path: config_dir.to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// Computes canonical exclusion paths after `backups_dir` (and thus `app_data_dir`) exists.
+/// Reserves `remote-access` (and other known `app_data_dir` children) even when absent on disk so
+/// a concurrent first secret write cannot race the directory walk.
+fn compute_copy_exclusions(paths: &PathResolver) -> Result<CopyExclusions, BackupError> {
+    let raw_data_dir = paths.app_data_dir().as_std_path();
+    let canon_data_dir = fs::canonicalize(raw_data_dir).map_err(io_error(raw_data_dir))?;
+    let raw_secret_buf = paths.remote_access_dir();
+    let raw_secret_dir = raw_secret_buf.as_std_path();
+    let secret_rel = raw_secret_dir
+        .strip_prefix(raw_data_dir)
+        .unwrap_or_else(|_| Path::new("remote-access"));
+    let secret_dir =
+        canonicalize_if_exists(raw_secret_dir)?.unwrap_or_else(|| canon_data_dir.join(secret_rel));
+
+    let mut skipped = Vec::new();
+    for path in skipped_paths(paths) {
+        if let Ok(rel) = path.strip_prefix(raw_data_dir) {
+            let derived = canon_data_dir.join(rel);
+            if !skipped.contains(&derived) {
+                skipped.push(derived);
+            }
+        }
+        if let Some(canon) = canonicalize_if_exists(&path)?
+            && !skipped.contains(&canon)
+        {
+            skipped.push(canon);
+        }
+    }
+    Ok(CopyExclusions {
+        skipped,
+        secret_dir,
+    })
+}
+
 fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupError> {
-    let skipped = skipped_paths(req.paths);
+    let config_dir = req.paths.app_config_dir().as_std_path();
+    let canon_config = fs::canonicalize(config_dir).map_err(io_error(config_dir))?;
+    let exclusions = compute_copy_exclusions(req.paths)?;
     let mut symlinks = Vec::new();
     copy_dir(
-        req.paths.app_config_dir().as_std_path(),
+        &canon_config,
         &partial.join(CONFIG_DIR),
         Path::new(CONFIG_DIR),
-        &skipped,
+        &exclusions.skipped,
+        &exclusions.secret_dir,
         &mut symlinks,
     )?;
 
@@ -239,6 +321,10 @@ fn write_backup(req: &BackupRequest<'_>, partial: &Path) -> Result<(), BackupErr
     fs::write(&manifest_path, manifest).map_err(io_error(&manifest_path))
 }
 
+fn is_same_or_descendant(candidate: &Path, root: &Path) -> bool {
+    candidate == root || candidate.starts_with(root)
+}
+
 /// Data-dir paths that sit inside the config dir when both are the same tree.
 /// None of them is config: the backups themselves, the stores redb keeps
 /// locked, and runtime data the backup does not cover.
@@ -247,10 +333,12 @@ fn skipped_paths(paths: &PathResolver) -> Vec<PathBuf> {
         paths.backups_dir(),
         paths.storage_path(),
         paths.jobs_path(),
+        paths.app_data_dir().join("sync"),
         paths.app_logs_dir(),
         paths.cache_dir(),
         paths.scripts_dir(),
         paths.clash_pid_path(),
+        paths.remote_access_dir(),
     ]
     .into_iter()
     .map(Utf8PathBuf::into_std_path_buf)
@@ -266,26 +354,28 @@ fn copy_dir(
     dst: &Path,
     rel: &Path,
     skipped: &[PathBuf],
+    secret_dir: &Path,
     symlinks: &mut Vec<ManifestSymlink>,
 ) -> Result<(), BackupError> {
     fs::create_dir_all(dst).map_err(io_error(dst))?;
     for entry in fs::read_dir(src).map_err(io_error(src))? {
         let entry = entry.map_err(io_error(src))?;
         let path = entry.path();
-        if skipped.contains(&path) {
+        if skipped.contains(&path) || is_same_or_descendant(&path, secret_dir) {
             continue;
         }
+        let file_type = entry.file_type().map_err(io_error(&path))?;
+        let is_symlink = file_type.is_symlink();
 
         let dst = dst.join(entry.file_name());
         let rel = rel.join(entry.file_name());
-        let file_type = entry.file_type().map_err(io_error(&path))?;
-        if file_type.is_symlink() {
+        if is_symlink {
             symlinks.push(ManifestSymlink {
                 path: rel.to_string_lossy().replace('\\', "/"),
                 target: fs::read_link(&path).map_err(io_error(&path))?,
             });
         } else if file_type.is_dir() {
-            copy_dir(&path, &dst, &rel, skipped, symlinks)?;
+            copy_dir(&path, &dst, &rel, skipped, secret_dir, symlinks)?;
         } else if file_type.is_file() {
             fs::copy(&path, &dst).map_err(io_error(&path))?;
         }
@@ -396,6 +486,215 @@ mod tests {
             storage,
             kind: BackupKind::Manual,
             now: now(),
+        }
+    }
+
+    fn assert_backup_excludes_remote_access_secrets(config_dir: &Path, data_dir: &Path) {
+        let resolver = PathResolver::with_base_dirs(
+            config_dir.to_path_buf().try_into().unwrap(),
+            data_dir.to_path_buf().try_into().unwrap(),
+        );
+
+        let sentinel_plain = "PLAIN_REMOTE_AUTH_SECRET_SENTINEL";
+        let sentinel_encrypted = "ENCRYPTED_REMOTE_AUTH_SECRET_SENTINEL";
+        write(
+            resolver.remote_access_secrets_path().as_std_path(),
+            sentinel_plain,
+        );
+        write(
+            &resolver
+                .remote_access_dir()
+                .join("auth-secrets.json.tmp")
+                .into_std_path_buf(),
+            sentinel_encrypted,
+        );
+        write(&config_dir.join("clash-nyanpasu.yaml"), "port: 7890\n");
+
+        let storage_file = config_dir.join("_unused_storage");
+        let backup = create_backup(&manual(&resolver, StorageSource::File(&storage_file))).unwrap();
+        let backup_root = backup.path.as_path();
+
+        assert!(backup_root.join("config/clash-nyanpasu.yaml").is_file());
+        assert!(!backup_root.join("data/remote-access").exists());
+        assert!(!backup_root.join("config/remote-access").exists());
+
+        let scanned = walk_assert_no_sentinel(backup_root, &[sentinel_plain, sentinel_encrypted]);
+        assert!(
+            scanned >= 1,
+            "expected at least clash-nyanpasu.yaml in backup"
+        );
+    }
+
+    fn walk_assert_no_sentinel(dir: &Path, sentinels: &[&str]) -> usize {
+        if !dir.exists() {
+            return 0;
+        }
+        let mut scanned = 0usize;
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                assert_ne!(
+                    path.file_name().and_then(|n| n.to_str()),
+                    Some("remote-access")
+                );
+                scanned += walk_assert_no_sentinel(&path, sentinels);
+            } else if path.is_file() {
+                scanned += 1;
+                let bytes = fs::read(&path).unwrap();
+                let text = String::from_utf8_lossy(&bytes);
+                for s in sentinels {
+                    assert!(
+                        !text.contains(s),
+                        "backup file {} leaked remote-access secret",
+                        path.display()
+                    );
+                }
+            }
+        }
+        scanned
+    }
+
+    #[test]
+    fn remote_access_secrets_excluded_across_separate_same_nested_and_alias_dirs() {
+        let root = tempfile::tempdir().unwrap();
+
+        let sep = root.path().join("separate");
+        assert_backup_excludes_remote_access_secrets(&sep.join("config"), &sep.join("data"));
+
+        let shared = root.path().join("shared");
+        assert_backup_excludes_remote_access_secrets(&shared, &shared);
+
+        let data_in_config = root.path().join("data_in_config");
+        assert_backup_excludes_remote_access_secrets(&data_in_config, &data_in_config.join("data"));
+
+        let config_in_data = root.path().join("config_in_data");
+        assert_backup_excludes_remote_access_secrets(
+            &config_in_data.join("config"),
+            &config_in_data,
+        );
+
+        // `data_dir` containing existing or non-existing `some/../data` alias inside `config_dir`
+        // must still normalize and exclude `remote-access`.
+        let alias_existing = root.path().join("alias_existing");
+        fs::create_dir_all(alias_existing.join("some")).unwrap();
+        assert_backup_excludes_remote_access_secrets(
+            &alias_existing,
+            &alias_existing.join("some/../data"),
+        );
+
+        let alias_missing_hop = root.path().join("alias_missing");
+        fs::create_dir_all(&alias_missing_hop).unwrap();
+        assert_backup_excludes_remote_access_secrets(
+            &alias_missing_hop.join("sub/../config"),
+            &alias_missing_hop.join("config/missing_hop/../data"),
+        );
+    }
+
+    #[test]
+    fn backup_rejects_config_dir_at_or_inside_remote_access_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let data_dir = root.path().join("data");
+        let secret_dir = data_dir.join("remote-access");
+        write(&secret_dir.join("auth-secrets.json"), "SECRET_SENTINEL");
+        fs::create_dir_all(secret_dir.join("nested")).unwrap();
+
+        for bad_config in [
+            secret_dir.clone(),
+            secret_dir.join("nested"),
+            secret_dir.join("nested/missing"),
+        ] {
+            let resolver = PathResolver::with_base_dirs(
+                bad_config.clone().try_into().unwrap(),
+                data_dir.clone().try_into().unwrap(),
+            );
+            let storage = data_dir.join("_unused_storage");
+            let err = create_backup(&manual(&resolver, StorageSource::File(&storage))).unwrap_err();
+            assert!(
+                matches!(err, BackupError::InvalidConfigSource { .. }),
+                "expected InvalidConfigSource for {}, got {err:?}",
+                bad_config.display()
+            );
+            assert!(
+                !resolver.backups_dir().as_std_path().exists(),
+                "rejected backup must not leave partial/complete backup directories"
+            );
+        }
+    }
+
+    #[test]
+    fn backup_exclusion_captured_before_first_secret_creation_still_excludes_concurrent_secret() {
+        let root = tempfile::tempdir().unwrap();
+        let config_dir = root.path().join("shared");
+        let data_alias = config_dir.join("some/../.");
+        fs::create_dir_all(config_dir.join("some")).unwrap();
+
+        let resolver = PathResolver::with_base_dirs(
+            config_dir.clone().try_into().unwrap(),
+            data_alias.try_into().unwrap(),
+        );
+        write(&resolver.clash_config_path(), "port: 7890\n");
+        fs::create_dir_all(resolver.backups_dir()).unwrap();
+        assert!(
+            !resolver.remote_access_dir().as_std_path().exists(),
+            "remote-access dir must be absent when exclusions are computed"
+        );
+
+        let exclusions = compute_copy_exclusions(&resolver).unwrap();
+
+        // Simulate concurrent first secret creation after exclusions are captured, before walk.
+        let sentinel = "CONCURRENT_FIRST_SECRET_SENTINEL";
+        write(&resolver.remote_access_secrets_path(), sentinel);
+
+        let out_config = root.path().join("captured-backup/config");
+        let canon_config = fs::canonicalize(&config_dir).unwrap();
+        let mut symlinks = Vec::new();
+        copy_dir(
+            &canon_config,
+            &out_config,
+            Path::new(CONFIG_DIR),
+            &exclusions.skipped,
+            &exclusions.secret_dir,
+            &mut symlinks,
+        )
+        .unwrap();
+
+        let scanned = walk_assert_no_sentinel(&out_config, &[sentinel]);
+        assert!(
+            scanned >= 1,
+            "expected real config file clash-nyanpasu.yaml to be copied"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonicalize_if_exists_propagates_permission_denied_instead_of_treating_as_missing() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let locked = root.path().join("locked");
+        let child = locked.join("remote-access");
+        fs::create_dir_all(&child).unwrap();
+        let mut perms = fs::metadata(&locked).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&locked, perms).unwrap();
+
+        struct RestoreMode<'a>(&'a Path);
+        impl Drop for RestoreMode<'_> {
+            fn drop(&mut self) {
+                if let Ok(m) = fs::metadata(self.0) {
+                    let mut p = m.permissions();
+                    p.set_mode(0o700);
+                    let _ = fs::set_permissions(self.0, p);
+                }
+            }
+        }
+        let _restore = RestoreMode(&locked);
+
+        if let Err(err) = fs::canonicalize(&child)
+            && err.kind() == io::ErrorKind::PermissionDenied
+        {
+            let err = canonicalize_if_exists(&child).unwrap_err();
+            assert!(matches!(err, BackupError::Io { .. }));
         }
     }
 
@@ -520,6 +819,11 @@ mod tests {
         write(&paths.storage_path(), "db");
         write(&paths.app_logs_dir().join("app.log"), "log");
         write(&paths.jobs_path(), "jobs");
+        write(&paths.app_data_dir().join("sync/state.redb"), "sync state");
+        write(
+            &paths.app_data_dir().join("sync/credentials.json"),
+            "secret",
+        );
 
         let storage = paths.storage_path();
         let first =

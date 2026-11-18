@@ -79,7 +79,10 @@ describe('RPC client instances', () => {
   it('preserves structured error payloads through result helpers', async () => {
     const clientTransport = fakeTransport()
     const domainError = {
-      kind: 'profile_not_found',
+      kind: {
+        domain: 'profiles' as const,
+        error: { kind: 'profile_not_found' as const, uid: 'missing' },
+      },
       message: 'Profile missing',
       detail: 'uid=missing',
     }
@@ -91,6 +94,13 @@ describe('RPC client instances', () => {
       error: domainError,
     })
     expect(isIpcError(domainError)).toBe(true)
+    expect(
+      isIpcError({
+        kind: { domain: 'unknown' },
+        message: 'unexpected failure',
+        detail: 'cause chain',
+      }),
+    ).toBe(true)
     expect(() => unwrapResult({ status: 'error', error: domainError })).toThrow(
       expect.objectContaining({
         kind: domainError.kind,
@@ -98,5 +108,108 @@ describe('RPC client instances', () => {
       }),
     )
     expect(unwrapResult({ status: 'ok', data: 'ready' })).toBe('ready')
+  })
+
+  it('recognizes public IpcError without detail, rejects outer RpcError and malformed shapes, and supports union CoreLogCommandError', async () => {
+    const publicError = {
+      kind: {
+        domain: 'public' as const,
+        error: {
+          domain: 'core_log_read' as const,
+          error: { kind: 'unavailable' as const },
+        },
+      },
+      message: 'core log storage is unavailable',
+    }
+    const richCoreError = {
+      kind: 'unavailable' as const,
+      message: 'disk path /secret failed',
+    }
+    expect(isIpcError(publicError)).toBe(true)
+    expect(isIpcError({ ...publicError, detail: null })).toBe(true)
+    expect(
+      isIpcError({
+        kind: {
+          domain: 'public',
+          error: { domain: 'core', error: { kind: 'invalid_config' } },
+        },
+        message: 'core operation failed',
+      }),
+    ).toBe(true)
+    expect(
+      isIpcError({ kind: { domain: 'unknown' }, message: 'internal error' }),
+    ).toBe(true)
+
+    for (const outerKind of [
+      'unauthorized',
+      'forbidden',
+      'invalid_params',
+      'unknown_method',
+      'unsupported',
+    ]) {
+      expect(
+        isIpcError({
+          kind: outerKind,
+          message: 'rejected by policy',
+          domain_error: null,
+        }),
+      ).toBe(false)
+    }
+    for (const malformed of [
+      null,
+      undefined,
+      'error',
+      [],
+      { kind: null, message: 'bad' },
+      { kind: [], message: 'bad' },
+      { kind: {}, message: 'bad' },
+      { kind: { domain: 42 }, message: 'bad' },
+      { kind: { domain: 'profiles' }, message: 'missing nested error' },
+      { kind: { domain: 'profiles', error: null }, message: 'null error' },
+      { kind: { domain: 'unknown', error: {} }, message: 'unexpected error' },
+      { kind: { domain: 'made_up_domain', error: {} }, message: 'bad domain' },
+      {
+        kind: { domain: 'core', error: { kind: 'invalid_config' } },
+        message: 'core exists only inside public failure',
+      },
+      {
+        kind: { domain: 'public', error: {} },
+        message: 'malformed public error',
+      },
+      {
+        kind: { domain: 'public', error: { domain: 'made_up', error: {} } },
+        message: 'unknown public nested domain',
+      },
+      {
+        kind: { domain: 'public', error: { domain: 'unknown', error: {} } },
+        message: 'unknown is not a nested public failure domain',
+      },
+      {
+        kind: { domain: 'public', error: { domain: 'profiles', error: null } },
+        message: 'null public nested payload',
+      },
+      { ...publicError, detail: 123 },
+    ]) {
+      expect(isIpcError(malformed)).toBe(false)
+    }
+
+    expect(() => unwrapResult({ status: 'error', error: publicError })).toThrow(
+      expect.objectContaining({ message: publicError.message }),
+    )
+
+    const clientTransport = fakeTransport()
+    clientTransport.invoke
+      .mockRejectedValueOnce(publicError)
+      .mockRejectedValueOnce(richCoreError)
+    const client = createRpcClient(clientTransport.transport)
+
+    await expect(client.clearCoreLogs()).resolves.toEqual({
+      status: 'error',
+      error: publicError,
+    })
+    await expect(client.clearCoreLogs()).resolves.toEqual({
+      status: 'error',
+      error: richCoreError,
+    })
   })
 })

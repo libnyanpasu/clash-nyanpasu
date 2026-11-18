@@ -15,9 +15,16 @@ use std::{
 };
 
 mod error;
+pub mod layout;
+mod logical;
 #[cfg(windows)]
 pub use error::RegistryError;
 pub use error::{CreateDirError, DiscoverError, InstallDirError, Root};
+pub use layout::{
+    EnumerateError, ItemCodec, Membership, PathClass, PathEntry, Skipped, SyncDocumentKind,
+    SyncEnumeration, SyncItem, SyncRule,
+};
+pub use logical::{LogicalPath, LogicalPathError};
 #[cfg(windows)]
 #[path = "windows.rs"]
 mod platform;
@@ -153,6 +160,14 @@ impl PathResolver {
 
     pub fn scripts_dir(&self) -> Utf8PathBuf {
         self.0.data_dir.join("scripts")
+    }
+
+    pub fn remote_access_dir(&self) -> Utf8PathBuf {
+        self.0.data_dir.join("remote-access")
+    }
+
+    pub fn remote_access_secrets_path(&self) -> Utf8PathBuf {
+        self.remote_access_dir().join("auth-secrets.json")
     }
 
     /// What a core's release archive ships beside the core, such as an agent skill and the
@@ -368,6 +383,20 @@ mod tests {
         );
         std::fs::write(data.join(&name), "").unwrap();
         assert_eq!(resolver.data_or_sidecar_path("core").unwrap(), data);
+    }
+
+    #[test]
+    fn remote_access_secret_paths_reside_in_private_data_subdir() {
+        let root = tempfile::tempdir().unwrap();
+        let data = utf8(&root.path().join("data"));
+        let config = utf8(&root.path().join("config"));
+        let resolver = PathResolver::with_base_dirs(config, data.clone());
+
+        assert_eq!(resolver.remote_access_dir(), data.join("remote-access"));
+        assert_eq!(
+            resolver.remote_access_secrets_path(),
+            data.join("remote-access").join("auth-secrets.json")
+        );
     }
 
     #[test]

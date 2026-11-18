@@ -1,6 +1,8 @@
 import { editor } from 'monaco-editor'
 import { useCallback, useState } from 'react'
 import z from 'zod'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
@@ -34,11 +36,19 @@ const LANGUAGE_LABELS: Record<string, string> = {
 }
 
 export const Route = createFileRoute('/(editor)/editor/profile/')({
-  component: RouteComponent,
+  component: GuardedRouteComponent,
   validateSearch: z.object({
     uid: z.string(),
   }),
 })
+
+function GuardedRouteComponent() {
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      <RouteComponent />
+    </RequireCapability>
+  )
+}
 
 function RouteComponent() {
   const { clientOs } = usePlatform()

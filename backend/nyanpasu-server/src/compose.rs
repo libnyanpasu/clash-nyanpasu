@@ -140,6 +140,7 @@ impl Server {
                 events: events.clone(),
                 audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
             },
+            nyanpasu_rpc_protocol::ServerInfo::headless(env!("CARGO_PKG_VERSION")),
             &[],
         )
         .unwrap();
@@ -314,6 +315,15 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
         paths: paths.clone(),
         storage: Arc::new(storage.clone()),
         runtime_paths,
+        remote_auth: nyanpasu_core::client::RemoteAccessAuthPorts::new(
+            nyanpasu_os::remote_auth::OsAuthClock::new(),
+            nyanpasu_os::remote_auth::OsEntropySource,
+            nyanpasu_os::remote_auth::FsSecretStore::new(
+                paths.remote_access_secrets_path().into_std_path_buf(),
+                nyanpasu_core::client::MAX_SECRET_RECORD_BYTES,
+            ),
+            nyanpasu_os::remote_auth::RcgenCertificateGenerator,
+        ),
         ui_sink: Arc::new(nyanpasu_rpc::events::BusUiEventSink::new(events.clone())),
         app_update_backend_factory: None,
         app_update_event_sink: None,
@@ -334,6 +344,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
         window: None,
         accelerators: None,
         traffic_store,
+        sync_adapters: None,
         shutdown: owners.shutdown.clone(),
         tasks: owners.tasks.clone(),
     })
@@ -354,6 +365,7 @@ async fn assemble(args: ServerSetupArgs, owners: &mut Owners) -> anyhow::Result<
             events: events.clone(),
             audit: RpcAudit::new(Arc::new(nyanpasu_rpc::audit::TracingRpcAuditSink)),
         },
+        nyanpasu_rpc_protocol::ServerInfo::headless(env!("CARGO_PKG_VERSION")),
         &[nyanpasu_rpc_protocol::ShellCapability::OsIntegration],
     )
     .context("build RPC registry")?;
@@ -402,7 +414,8 @@ fn host_adapters(
     ClientHostAdapters {
         icon_fetcher: network.clone(),
         network_diagnostics: network,
-        debug_http: None,
+        http_server: None,
+        local_socket: None,
         network_environment: None,
         changelog_http: Arc::new(move |ports| {
             Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(

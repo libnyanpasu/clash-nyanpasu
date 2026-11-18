@@ -6,6 +6,7 @@ import { runCommand } from '../shared/command.ts'
 import { colorize, consola } from '../shared/logger.ts'
 import { WORKSPACE_ROOT } from '../shared/repo-paths.ts'
 import { createBinaryResolvers } from './binaries.ts'
+import { prepareCliSidecarAndCompletions, type CliBuildProfile } from './cli.ts'
 import { getEnableLoopbackInfo } from './enable-loopback.ts'
 import { normalizeArch, normalizePlatform } from './platform.ts'
 import {
@@ -28,6 +29,7 @@ interface CheckArgs {
   force?: boolean
   arch?: string
   'sidecar-host'?: string
+  'cli-profile'?: string
 }
 
 interface Task {
@@ -80,10 +82,7 @@ async function runTask(
   return runTask(queue, progress)
 }
 
-async function resolveSidecarHost(
-  hostOverride?: string,
-): Promise<string | undefined> {
-  if (hostOverride) return hostOverride
+async function resolveRustHost(): Promise<string | undefined> {
   const { stdout } = await runCommand('rustc', { args: ['-vV'] })
   const output = stdout.toString('utf8')
   return output.match(/host: (.+)/)?.[1]?.trim()
@@ -95,6 +94,7 @@ async function main(
       force: { type: 'boolean' },
       arch: { type: 'string' },
       'sidecar-host': { type: 'string' },
+      'cli-profile': { type: 'string' },
     },
     strict: false,
   }).values as CheckArgs,
@@ -107,11 +107,14 @@ async function main(
     if (debug) consola.debug(message)
   }
 
-  const sidecarHost = await resolveSidecarHost(args['sidecar-host'])
-  if (!sidecarHost) {
+  const rustHost = await resolveRustHost()
+  const sidecarHost = args['sidecar-host'] ?? rustHost
+  if (!sidecarHost || !rustHost) {
     consola.fatal(colorize`{red.bold SIDECAR_HOST} not found`)
     process.exit(1)
   }
+  const cliProfile: CliBuildProfile =
+    args['cli-profile'] === 'dev' ? 'dev' : 'release'
 
   debugLog(colorize`sidecar-host {yellow ${sidecarHost}}`)
   debugLog(colorize`platform {yellow ${platform}}`)
@@ -204,6 +207,26 @@ async function main(
           onProgress,
         }),
       retry: 5,
+    },
+    {
+      name: 'nyanpasu-cli',
+      func: () =>
+        prepareCliSidecarAndCompletions({
+          workspaceRoot: WORKSPACE_ROOT,
+          sidecarDir: resourceContext.sidecarDir,
+          completionsDir: path.join(
+            WORKSPACE_ROOT,
+            'backend/tauri/completions',
+          ),
+          sidecarHost,
+          rustHost,
+          profile: cliProfile,
+          prebuiltBinaryPath:
+            process.env['NYANPASU_PREPARE_CLI_BIN'] || undefined,
+          platform: process.platform,
+          debugLog,
+        }),
+      retry: 1,
     },
     {
       name: 'mmdb',

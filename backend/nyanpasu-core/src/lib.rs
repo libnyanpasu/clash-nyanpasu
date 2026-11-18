@@ -40,6 +40,7 @@ mod migration_integration_tests;
 mod profile_integration_tests;
 pub mod service;
 pub mod storage;
+pub mod sync;
 pub mod traffic;
 pub mod utils;
 

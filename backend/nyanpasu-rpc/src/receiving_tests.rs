@@ -18,7 +18,11 @@ use nyanpasu_contracts::{
     system_proxy::OsProxyError,
 };
 use nyanpasu_core::{
-    client::debug_http::DebugHttpControlError, state::config_error::ConfigError,
+    client::{
+        ClashReadError, CoreLogReadError, ProfileSyncReadError,
+        http_server::HttpServerControlError, local_socket::LocalSocketControlError,
+    },
+    state::config_error::ConfigError,
     storage::StorageOperationError,
 };
 use nyanpasu_logging::LogError;
@@ -30,12 +34,12 @@ use nyanpasu_runtime_values::{
     core_spec::CoreSpecError,
     effects::EffectsError,
     hotkey::{HotkeyAction, HotkeyParseError},
-    mutation::{CommitAborted, NotReady, RuntimeAftermath},
+    mutation::{CommitAborted, NotReady},
     ports::PortResolveError,
     profiles::{ProfileContentError, ProfilesError},
     publish::PublishRuntimeError,
     runtime::{Degradation, DegradationReason, InterruptFailure, MutationOutcome},
-    runtime_error::{CoreFailure, RestoreFailure, RuntimeError},
+    runtime_error::{CoreFailure, RuntimeError},
 };
 use nyanpasu_state_engine::error::UpsertError;
 use serde::{Serialize, de::DeserializeOwned};
@@ -89,12 +93,9 @@ cases!(
     received::RuntimeError,
     present;
     ShuttingDown,
-    Isolated,
     OwnerUnresponsive {
         operation_id: "field-5/路徑\\file.yaml".to_owned(),
     },
-    OwnerUnavailable,
-    SourceSettled,
     ApplyRuntime {
         failure: core_failure(present),
     },
@@ -130,11 +131,7 @@ cases!(
         failure: core_failure(present),
     },
     ServiceHostsCore,
-    CoreNotStarted {
-        reason: "field-6/路徑\\file.yaml".to_owned(),
-        retryable: present,
-    },
-    RecoveryUnresolved {
+    ConfigurationNotInEffect {
         reason: "field-7/路徑\\file.yaml".to_owned(),
     },
     BuildRuntime {
@@ -158,9 +155,6 @@ cases!(
     ReadCoreVersion {
         source: core_version_error_cases(present).remove(0),
     },
-    UnsettledBaseline {
-        gap: sample(json!("no_restorable_baseline")),
-    },
     CoreRejectedConfig {
         core_kind: if present {
             Some(sample(json!("backend_unavailable")))
@@ -170,7 +164,7 @@ cases!(
         message: "field-8/路徑\\file.yaml".to_owned(),
     },
     CheckUnavailable {
-        reason: sample(json!({"cause": "no_endpoint", "reason": "offline"})),
+        reason: check_unavailable_cases(present).remove(0),
     },
     CoreRolledBack {
         reason: if present {
@@ -182,18 +176,6 @@ cases!(
     SubmissionUnobserved {
         failure: core_failure(present),
     },
-    HandoffOwnerMismatch {
-        expected: sample(json!(if present { "service" } else { "local" })),
-    },
-    HandoffNotRestored {
-        failure: restore_failure_cases(present).remove(0),
-    },
-    RestoreFailed {
-        failure: restore_failure_cases(present).remove(0),
-    },
-    CommittedAfterRefusal {
-        operation_id: "field-10/路徑\\file.yaml".to_owned(),
-    },
     NoRuntimeConfig,
     SerializeRuntimeConfig {
         source: yaml_source(),
@@ -203,35 +185,6 @@ cases!(
     },
     RuntimeSnapshotChanged,
     RuntimeNodeNotFound { node_id: 7 },
-);
-
-cases!(
-    restore_failure_cases,
-    RestoreFailure,
-    RestoreFailure,
-    present;
-    MoveHostBack {
-        host: sample(json!(if present { "service" } else { "local" })),
-        failure: core_failure(present),
-    },
-    ReadStatus {
-        failure: core_failure(present),
-    },
-    Unobserved {
-        failure: if present {
-            Some(core_failure(present))
-        } else {
-            None
-        },
-    },
-    Unverified {
-        failure: if present {
-            Some(core_failure(present))
-        } else {
-            None
-        },
-    },
-    NotRecorded,
 );
 
 cases!(
@@ -404,18 +357,6 @@ cases!(
     DegradationReason,
     received::DegradationReason,
     present;
-    RuntimeRecoveryRequired {
-        operation_id: if present {
-            Some("field-14/路徑\\file.yaml".to_owned())
-        } else {
-            None
-        },
-        cause: if present {
-            Some(Arc::new(runtime_error_cases(present).remove(0)))
-        } else {
-            None
-        },
-    },
     RuntimeDeferred {
         cause: Arc::new(runtime_error_cases(present).remove(0)),
     },
@@ -443,6 +384,8 @@ cases!(
         profile: sample(json!("profile-1")),
         cause: Arc::new(profiles_error_cases(present).remove(0)),
     },
+    HttpServerUnavailable,
+    LocalSocketUnavailable,
 );
 
 cases!(
@@ -451,40 +394,18 @@ cases!(
     received::CommitAborted,
     present;
     WriteConfig {
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RecoverAfterWriteFailure {
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RuntimeRefused {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
     },
     RuntimeFailed {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
-        runtime: runtime_aftermath_cases(present).remove(0),
         source: Box::new(io_source()),
-    },
-    ValidateState {
-        source: Box::new(io_source()),
-    },
-);
-
-cases!(
-    runtime_aftermath_cases,
-    RuntimeAftermath,
-    received::RuntimeAftermath,
-    present;
-    Untouched,
-    RolledBack,
-    RollbackFailed {
-        detail: Arc::new(runtime_error_cases(present).remove(0)),
-    },
-    Unknown {
-        detail: Arc::new(runtime_error_cases(present).remove(0)),
     },
 );
 
@@ -926,6 +847,9 @@ cases!(
     InvalidLatencyTimeout {
         reason: "field-57/路徑\\file.yaml".to_owned(),
     },
+    InvalidRemoteAccess {
+        reason: nyanpasu_config::application::RemoteAccessError::PortZero,
+    },
     InvalidNetworkAutomation {
         reason: "field-58/路徑\\file.yaml".to_owned(),
     },
@@ -1068,18 +992,66 @@ cases!(
 );
 
 cases!(
-    debug_http_control_error_cases,
-    DebugHttpControlError,
-    received::DebugHttpControlError,
+    http_server_control_error_cases,
+    HttpServerControlError,
+    received::HttpServerControlError,
     present;
     ReadStatusUnsupported,
-    ChangeEnabledUnsupported,
+    ChangeUnsupported,
     ReadStatus {
         source: anyhow::Error::new(io_source()),
     },
-    ChangeEnabled {
+);
+
+cases!(
+    local_socket_control_error_cases,
+    LocalSocketControlError,
+    received::LocalSocketControlError,
+    present;
+    ReadStatusUnsupported,
+    ChangeUnsupported,
+    ReadStatus {
         source: anyhow::Error::new(io_source()),
     },
+);
+
+cases!(
+    clash_read_error_cases,
+    ClashReadError,
+    received::ClashReadError,
+    present;
+    SettingsUnavailable,
+    ProxiesUnavailable,
+    UnknownGroup,
+    DelayTestFailed,
+    VersionUnavailable,
+    RulesUnavailable,
+    RuleProvidersUnavailable,
+    ProxyProvidersUnavailable,
+    StreamsUnavailable,
+);
+
+cases!(
+    core_log_read_error_cases,
+    CoreLogReadError,
+    received::CoreLogReadError,
+    present;
+    InvalidRequest,
+    CursorExpired,
+    RecordGone,
+    TooLarge,
+    Unavailable,
+);
+
+cases!(
+    profile_sync_read_error_cases,
+    ProfileSyncReadError,
+    received::ProfileSyncReadError,
+    present;
+    UnknownProfile,
+    NotRemote,
+    InvalidCursor,
+    Unavailable
 );
 
 fn degradation(present: bool) -> Degradation {
@@ -1127,9 +1099,6 @@ cases!(
 
 cases!(
     check_unavailable_cases, RuntimeCheckUnavailable, RuntimeCheckUnavailable, present;
-    NoEndpoint { reason: "offline".into() },
-    HostUnsupported { host: sample(json!("local")), reason: "not supported".into() },
-    CandidateUnavailable { reason: "missing candidate".into() },
     Backend { kind: present.then(|| sample(json!("backend_unavailable"))), message: "unavailable".into(), retryable: present },
 );
 
@@ -1179,13 +1148,11 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         transform_failure_cases(present);
         profile_validation_error_cases(present);
         runtime_error_cases(present);
-        restore_failure_cases(present);
         profile_content_error_cases(present);
         profiles_error_cases(present);
         mutation_outcome_cases(present);
         degradation_reason_cases(present);
         commit_aborted_cases(present);
-        runtime_aftermath_cases(present);
         port_resolve_error_cases(present);
         core_spec_error_cases(present);
         publish_runtime_error_cases(present);
@@ -1206,7 +1173,10 @@ fn receiving_types_preserve_all_error_and_mutation_variants() {
         hotkey_action_cases(present);
         hotkey_parse_error_cases(present);
         effects_error_cases(present);
-        debug_http_control_error_cases(present);
+        http_server_control_error_cases(present);
+        clash_read_error_cases(present);
+        core_log_read_error_cases(present);
+        profile_sync_read_error_cases(present);
         ipc_domains_and_envelope(present);
         for error in log_error_cases(present) {
             let expected = serde_json::to_value(&error).unwrap();
@@ -1260,7 +1230,9 @@ fn ipc_domains_and_envelope(present: bool) {
             for kind in kinds {
                 // The same list builds fixtures and covers the application's domain enum.
                 match &kind {
-                    IpcErrorKind::Unknown $(| IpcErrorKind::$variant(_))* => {}
+                    IpcErrorKind::Unknown
+                    | IpcErrorKind::Public(_)
+                    $(| IpcErrorKind::$variant(_))* => {}
                 }
                 receive::<received::IpcErrorKind>(kind);
             }
@@ -1274,9 +1246,52 @@ fn ipc_domains_and_envelope(present: bool) {
         SystemDns => system_dns_error_cases,
         SystemProxy => os_proxy_error_cases,
         Effects => effects_error_cases,
-        DebugHttp => debug_http_control_error_cases,
+        HttpServer => http_server_control_error_cases,
+        LocalSocket => local_socket_control_error_cases,
+        ClashRead => clash_read_error_cases,
+        CoreLogRead => core_log_read_error_cases,
+        ProfileSyncRead => profile_sync_read_error_cases,
     );
     receive::<received::Degradation>(degradation(present));
+    // Verify receiving types decode both Full and Public `ReceivedMutationOutcome` and `RpcAppUpdateOutcome`.
+    let public_outcome = nyanpasu_rpc_protocol::types::RpcMutationOutcome::Public(
+        nyanpasu_rpc_protocol::types::PublicMutationOutcome::CommittedDegraded {
+            value: "profile-1".to_owned(),
+            commits: vec![],
+            notifications_pending: true,
+            degradations: vec![nyanpasu_rpc_protocol::types::PublicDegradation {
+                phase: nyanpasu_runtime_values::runtime::DegradationPhase::UiEffect,
+                reason:
+                    nyanpasu_rpc_protocol::types::PublicDegradationReason::ProxyCacheRefreshFailed,
+                retryable: present,
+            }],
+        },
+    );
+    let public_outcome_wire = serde_json::to_value(&public_outcome).unwrap();
+    let decoded_public: nyanpasu_rpc_protocol::types::ReceivedMutationOutcome<String> =
+        serde_json::from_value(public_outcome_wire.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(decoded_public).unwrap(),
+        public_outcome_wire
+    );
+    let update_public = nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome::Public(
+        nyanpasu_runtime_values::app_update::AppUpdateSummary {
+            revision: 4,
+            phase: nyanpasu_runtime_values::app_update::AppUpdatePhase::Failed,
+            release: None,
+            downloaded: 512,
+            total: Some(1024),
+            speed: 128.0,
+            source: present.then_some(nyanpasu_config::application::UpdateSource::Github),
+            has_error: present,
+            last_checked_at: Some("2026-11-14T00:00:00Z".to_owned()),
+            supported: true,
+        },
+    );
+    let update_wire = serde_json::to_value(&update_public).unwrap();
+    let decoded_update: nyanpasu_rpc_protocol::types::RpcAppUpdateOutcome =
+        serde_json::from_value(update_wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded_update).unwrap(), update_wire);
     receive::<received::RpcError>(nyanpasu_rpc_protocol::RpcError {
         kind: "application_error",
         message: "envelope".into(),

@@ -9,7 +9,12 @@ mod core_logs;
 mod i18n;
 mod logging;
 mod network_automation;
+mod preferences;
 mod public_ip_probe;
+mod remote_access;
+mod scope;
+mod settings_view;
+mod system_settings;
 mod traffic;
 mod update;
 mod widget;
@@ -19,7 +24,12 @@ pub use core_logs::*;
 pub use i18n::*;
 pub use logging::*;
 pub use network_automation::*;
+pub use preferences::*;
 pub use public_ip_probe::*;
+pub use remote_access::*;
+pub use scope::*;
+pub use settings_view::*;
+pub use system_settings::*;
 pub use traffic::*;
 pub use update::*;
 pub use widget::*;
@@ -217,6 +227,11 @@ pub struct NyanpasuAppConfig {
     #[serde(default)]
     pub traffic_retention: TrafficRetention,
 
+    /// Who may reach the application over HTTP. Written only by the dedicated
+    /// remote-access command; ordinary preference patches reject it.
+    #[serde(default)]
+    pub remote_access: RemoteAccessConfig,
+
     /// Allow public IP probes to locate LAN/local traffic sources.
     #[serde(default)]
     pub enable_local_ip_probe: bool,
@@ -256,14 +271,14 @@ pub struct NyanpasuAppConfig {
     /// When true, opens legacy window; when false, opens new main window
     pub use_legacy_ui: bool,
 
-    /// enable colored tray icons on macOS
-    /// When enabled, uses colored icons instead of template icons to show proxy status
-    /// When disabled, uses system template icons that adapt to light/dark mode
-    // Kept out of the TS bindings: a macOS-only field would make the generated
-    // bindings differ per platform, and CI checks their freshness on Linux.
-    #[cfg(target_os = "macos")]
-    #[specta(skip)]
-    #[patch(attribute(specta(skip)))]
+    /// Enable colored tray icons on macOS.
+    ///
+    /// When enabled, uses colored icons instead of template icons to show proxy
+    /// status; when disabled, uses system template icons that adapt to light and
+    /// dark mode. The field exists on every platform so one schema describes
+    /// every install and a portable projection round-trips unchanged; only the
+    /// macOS tray reads it.
+    #[serde(default)]
     pub enable_macos_colored_icons: bool,
 }
 
@@ -326,6 +341,7 @@ impl Default for NyanpasuAppConfig {
             network_statistic_widget: NetworkStatisticWidgetConfig::default(),
             network_statistic_widget_logo: NetworkStatisticWidgetLogo::default(),
             traffic_retention: TrafficRetention::default(),
+            remote_access: RemoteAccessConfig::default(),
             enable_local_ip_probe: false,
             stun_servers: default_stun_servers(),
             ip_lookup_providers: Vec::new(),
@@ -334,7 +350,6 @@ impl Default for NyanpasuAppConfig {
             enable_tray_text: false,
             enable_tray_traffic: false,
             use_legacy_ui: false,
-            #[cfg(target_os = "macos")]
             enable_macos_colored_icons: false,
         }
     }
@@ -344,6 +359,20 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    /// The macOS icon preference is part of every platform's schema, so a file
+    /// written before it existed still loads and a projection round-trips.
+    #[test]
+    fn the_macos_icon_preference_is_unconditional_and_defaults_when_missing() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        assert!(value.get("enable_macos_colored_icons").is_some());
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("enable_macos_colored_icons");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert!(!config.enable_macos_colored_icons);
+    }
 
     #[test]
     fn latency_timeout_defaults_when_missing_and_is_bounded() {

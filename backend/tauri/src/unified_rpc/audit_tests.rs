@@ -9,14 +9,20 @@ use serde_json::json;
 use tracing::instrument::WithSubscriber as _;
 use tracing_subscriber::layer::SubscriberExt as _;
 
-#[nyanpasu_macro::rpc(capabilities(presentation))]
+type NativeOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<String>;
+
+#[nyanpasu_macro::rpc(
+    privacy,
+    capabilities(presentation),
+    permission = "settings.storage_item:set"
+)]
 #[tauri::command]
 #[specta::specta]
 async fn audit_native_echo(
     calls: tauri::State<'_, AtomicUsize>,
     value: String,
     fail: bool,
-) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<String>, std::io::Error> {
+) -> Result<NativeOutcomeAlias, std::io::Error> {
     calls.fetch_add(1, Ordering::SeqCst);
     if fail {
         Err(std::io::Error::other(value))
@@ -26,9 +32,178 @@ async fn audit_native_echo(
                 value,
                 commits: Vec::new(),
                 notifications_pending: true,
-            },
+            }
+            .into(),
         )
     }
+}
+
+struct NativeFailingValue {
+    secret: &'static str,
+    fail_encoding: bool,
+}
+
+impl serde::Serialize for NativeFailingValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.fail_encoding {
+            Err(serde::ser::Error::custom(self.secret))
+        } else {
+            serializer.serialize_str("ok")
+        }
+    }
+}
+
+#[test]
+fn tauri_sensitive_commands_summaries_and_native_outcome_projection() {
+    use nyanpasu_config::application::UpdateSource;
+    use nyanpasu_rpc::privacy::RpcResponseProjection as _;
+    use nyanpasu_rpc_protocol::{
+        COMMAND_CATALOG, CommandEffect, ResponseVisibility, Scope,
+        types::{RpcAppUpdateOutcome, RpcMutationOutcome},
+    };
+    use nyanpasu_runtime_values::{
+        app_update::{AppUpdatePhase, AppUpdateRelease, AppUpdateSnapshot},
+        runtime::{
+            CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
+            RuntimeCommitStatus,
+        },
+    };
+
+    // Every newly protected Tauri sensitive getter requires SensitiveRead, while
+    // safe summary companions remain Query + Read and app-update mutations stay System.
+    let expected = [
+        (
+            "get_custom_app_dir",
+            CommandEffect::Query,
+            Scope::SensitiveRead,
+        ),
+        (
+            "get_app_update_state",
+            CommandEffect::Query,
+            Scope::SensitiveRead,
+        ),
+        (
+            "get_transparent_proxy_status",
+            CommandEffect::Query,
+            Scope::SensitiveRead,
+        ),
+        ("get_app_update_summary", CommandEffect::Query, Scope::Read),
+        (
+            "get_transparent_proxy_status_summary",
+            CommandEffect::Query,
+            Scope::Read,
+        ),
+        ("check_app_update", CommandEffect::Mutation, Scope::System),
+        (
+            "download_app_update",
+            CommandEffect::Mutation,
+            Scope::System,
+        ),
+        (
+            "cancel_app_update_download",
+            CommandEffect::Mutation,
+            Scope::System,
+        ),
+        ("install_app_update", CommandEffect::Mutation, Scope::System),
+        (
+            "discard_app_update_package",
+            CommandEffect::Mutation,
+            Scope::System,
+        ),
+        (
+            "set_release_channel",
+            CommandEffect::Mutation,
+            Scope::Settings,
+        ),
+    ];
+    for (name, effect, scope) in expected {
+        let meta = COMMAND_CATALOG
+            .iter()
+            .find(|cmd| cmd.name == name)
+            .unwrap_or_else(|| panic!("missing catalog entry for {name}"));
+        assert_eq!(meta.effect, effect, "{name} effect mismatch");
+        assert_eq!(meta.scope, scope, "{name} scope mismatch");
+    }
+
+    // Native aliased RpcMutationOutcome preserves audit completion even if encoding fails.
+    type NativeAliasWithFail = RpcMutationOutcome<NativeFailingValue>;
+    let outcome: NativeAliasWithFail = MutationOutcome::CommittedDegraded {
+        value: NativeFailingValue {
+            secret: SECRET,
+            fail_encoding: true,
+        },
+        commits: vec![CommitReceipt {
+            operation_id: Some("native-op-1".to_owned()),
+            domain: "settings".to_owned(),
+            source_version: 3,
+            runtime: RuntimeCommitStatus::Deferred,
+        }],
+        notifications_pending: true,
+        degradations: vec![Degradation {
+            phase: DegradationPhase::UiEffect,
+            reason: DegradationReason::ProxyCacheRefreshFailed,
+            message: SECRET.to_owned(),
+            retryable: true,
+        }],
+    }
+    .into();
+    assert_eq!(
+        outcome.summarize_completion(),
+        CompletionSummary::Mutation {
+            commits: vec![CommitReceipt {
+                operation_id: Some("native-op-1".to_owned()),
+                domain: "settings".to_owned(),
+                source_version: 3,
+                runtime: RuntimeCommitStatus::Deferred,
+            }],
+            notifications_pending: true,
+            degradation_count: 1,
+        }
+    );
+    let public_err = outcome
+        .encode_for_visibility(ResponseVisibility::Public)
+        .expect_err("failing serializer must return an encoding error");
+    assert!(!format!("{public_err:?}").contains(SECRET));
+
+    // Direct RpcResponseProjection contract for RpcAppUpdateOutcome drops raw error/endpoints/body
+    // in Public visibility and preserves full fields in Full visibility.
+    let secret_err = "installer stderr /private/path";
+    let secret_endpoint = "https://token:pw@update.invalid/app.tar.gz";
+    let secret_body = "internal release notes";
+    let snapshot = AppUpdateSnapshot {
+        revision: 4,
+        phase: AppUpdatePhase::Failed,
+        release: Some(AppUpdateRelease {
+            version: "1.9.0".to_owned(),
+            date: None,
+            body: Some(secret_body.to_owned()),
+        }),
+        downloaded: 10,
+        total: Some(100),
+        speed: 0.0,
+        source: Some(UpdateSource::Github),
+        error: Some(secret_err.to_owned()),
+        last_checked_at: None,
+        supported: true,
+        endpoints: vec![secret_endpoint.to_owned()],
+    };
+    let public_json = RpcAppUpdateOutcome::from(snapshot.clone())
+        .encode_for_visibility(ResponseVisibility::Public)
+        .unwrap();
+    let public_text = serde_json::to_string(&public_json).unwrap();
+    assert!(!public_text.contains(secret_err));
+    assert!(!public_text.contains(secret_endpoint));
+    assert!(!public_text.contains(secret_body));
+    assert_eq!(public_json["phase"], "failed");
+    assert_eq!(public_json["has_error"], true);
+    assert_eq!(public_json["source"], "github");
+
+    let full_json = RpcAppUpdateOutcome::from(snapshot)
+        .encode_for_visibility(ResponseVisibility::Full)
+        .unwrap();
+    assert_eq!(full_json["error"], secret_err);
+    assert_eq!(full_json["endpoints"], json!([secret_endpoint]));
+    assert_eq!(full_json["release"]["body"], secret_body);
 }
 
 #[test]

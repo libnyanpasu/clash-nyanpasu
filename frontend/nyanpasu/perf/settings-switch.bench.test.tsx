@@ -116,11 +116,13 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
     ...original,
     ...hooks,
     useSetting: (key: string) => settings[key] ?? generic,
+    useSystemSetting: (key: string) => settings[key] ?? generic,
     useProxyMode: () => ({
       ...generic,
       value: { rule: true, global: false, direct: false },
     }),
     useClashSetting: (key: string) => clashSettings[key] ?? generic,
+    useClashSystemSetting: (key: string) => clashSettings[key] ?? generic,
     // The outlet freezes the clash streams of a leaving page; none run here.
     ClashWSFreezeBoundary: ({ children }: { children: ReactNode }) => children,
     ClashConnectionDetailsFreezeBoundary: ({

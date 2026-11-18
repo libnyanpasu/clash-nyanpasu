@@ -63,6 +63,12 @@ impl Default for EventBus {
 }
 
 impl EventBus {
+    /// Current stream subscriber count, used in tests to confirm rejection before subscribe.
+    #[cfg(test)]
+    pub(crate) fn subscriber_count(&self) -> usize {
+        self.stream.receiver_count()
+    }
+
     /// Construct a headless bus without native delivery.
     pub fn new() -> Self {
         let (stream, _) = broadcast::channel(STREAM_CAPACITY);
@@ -164,6 +170,13 @@ impl AppUpdateEventSink for BusAppUpdateEventSink {
         {
             tracing::error!(target: "app", %error, "failed to publish application update");
         }
+        let summary = nyanpasu_runtime_values::app_update::AppUpdateSummary::from(&snapshot);
+        if let Err(error) = self
+            .0
+            .publish_serialized(EventName::AppUpdateSummaryChanged, &summary)
+        {
+            tracing::error!(target: "app", %error, "failed to publish application update summary");
+        }
     }
 }
 
@@ -190,10 +203,21 @@ mod tests {
             "supported": true, "endpoints": []
         });
         let snapshot: AppUpdateSnapshot = serde_json::from_value(payload.clone()).unwrap();
+        let expected_summary = serde_json::to_value(
+            nyanpasu_runtime_values::app_update::AppUpdateSummary::from(&snapshot),
+        )
+        .unwrap();
         BusAppUpdateEventSink::new(bus.clone()).publish(snapshot);
         assert_eq!(
             stream.try_recv().unwrap(),
             (EventName::AppUpdateStateChanged.as_str(), payload)
+        );
+        assert_eq!(
+            stream.try_recv().unwrap(),
+            (
+                EventName::AppUpdateSummaryChanged.as_str(),
+                expected_summary
+            )
         );
         assert!(matches!(
             stream.try_recv(),

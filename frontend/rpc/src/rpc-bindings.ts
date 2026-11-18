@@ -12,17 +12,55 @@ export function createRpcClient(
 ) {
   const __RPC_INVOKE = transport.commands.invoke.bind(transport.commands)
   const commands = {
-    getDebugHttpStatus: () =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('get_debug_http_status'),
+    /**
+     *  Returns protocol, server, transport, own principal/scopes, and per-target
+     *  command availability for the resolved caller.
+     *
+     *  Any resolved caller may invoke `rpc_describe` without holding `Scope::Read`
+     *  (enforced by [`crate::policy::admit_resolved_command`]); it returns own
+     *  discovery metadata only and never discloses another principal or grants
+     *  business data access.
+     */
+    rpcDescribe: () => __RPC_INVOKE<RpcDescribeResponse>('rpc_describe'),
+    getHttpServerStatus: () =>
+      typedError<HttpServerStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_http_server_status'),
+      ),
+    /**
+     *  The local socket's state. Its endpoint is a filesystem path, so only a remote administrator
+     *  reads it, and it is never offered over HTTP.
+     */
+    getLocalSocketStatus: () =>
+      typedError<LocalSocketStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_local_socket_status'),
       ),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
+    /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
+    getConfigurationStatusSummary: () =>
+      __RPC_INVOKE<ConfigurationStatusSummary>(
+        'get_configuration_status_summary',
+      ),
+    /**  The service daemon's version, install state and phase, without its server details. */
+    getServiceStatusSummary: () =>
+      __RPC_INVOKE<ServiceStatusSummary>('get_service_status_summary'),
+    /**  Which core is running and in what state, without controller endpoints or failure text. */
+    getCoreStatusSummary: () =>
+      typedError<CoreStatusSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_core_status_summary'),
+      ),
     readClipboardText: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('read_clipboard_text')),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('read_clipboard_text'),
+      ),
     queryCoreLogs: (query: CoreLogQuery) =>
       typedError<CoreLogPage, CoreLogError>(
         __RPC_INVOKE('query_core_logs', { query }),
+      ),
+    /**  Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text. */
+    queryCoreLogsSummary: (query: CoreLogSummaryQuery) =>
+      typedError<CoreLogPageSummary, IpcError_Serialize>(
+        __RPC_INVOKE('query_core_logs_summary', { query }),
       ),
     getCoreLog: (cursor: CoreLogCursor) =>
       typedError<CoreLogRecord, CoreLogError>(
@@ -31,6 +69,11 @@ export function createRpcClient(
     getCoreLogStatus: () =>
       typedError<CoreLogStatus, CoreLogError>(
         __RPC_INVOKE('get_core_log_status'),
+      ),
+    /**  Public core-log status summary without raw storage error messages. */
+    getCoreLogStatusSummary: () =>
+      typedError<CoreLogStatusSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_core_log_status_summary'),
       ),
     listLogFiles: (source: LogSource) =>
       typedError<LogFileInfo[], LogError>(
@@ -41,16 +84,22 @@ export function createRpcClient(
      *  server field is the combination of host and port
      */
     getSysProxy: () =>
-      typedError<GetSysProxyResponse, IpcError>(__RPC_INVOKE('get_sys_proxy')),
+      typedError<GetSysProxyResponse, IpcError_Serialize>(
+        __RPC_INVOKE('get_sys_proxy'),
+      ),
     getClashInfo: () =>
-      typedError<ClashInfo, IpcError>(__RPC_INVOKE('get_clash_info')),
+      typedError<ClashInfo, IpcError_Serialize>(__RPC_INVOKE('get_clash_info')),
     /**  get the runtime config */
     getRuntimeConfig: () =>
-      typedError<any | null, IpcError>(__RPC_INVOKE('get_runtime_config')),
+      typedError<any | null, IpcError_Serialize>(
+        __RPC_INVOKE('get_runtime_config'),
+      ),
     getRuntimeYaml: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_runtime_yaml')),
+      typedError<string, IpcError_Serialize>(__RPC_INVOKE('get_runtime_yaml')),
     getRuntimeExists: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('get_runtime_exists')),
+      typedError<string[], IpcError_Serialize>(
+        __RPC_INVOKE('get_runtime_exists'),
+      ),
     inspectRuntime: () =>
       typedError<
         {
@@ -68,7 +117,7 @@ export function createRpcClient(
           final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('inspect_runtime')),
     inspectAppliedRuntime: () =>
       typedError<
@@ -87,40 +136,54 @@ export function createRpcClient(
           final_id: number
           nodes: RuntimeInspectionNode[]
         } | null,
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('inspect_applied_runtime')),
     inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
-      typedError<RuntimeInspectionContent, IpcError>(
+      typedError<RuntimeInspectionContent, IpcError_Serialize>(
         __RPC_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
       ),
     getPostprocessingOutput: () =>
-      typedError<PostProcessingOutput, IpcError>(
+      typedError<PostProcessingOutput, IpcError_Serialize>(
         __RPC_INVOKE('get_postprocessing_output'),
       ),
     clashApiGetProxyDelay: (
       name: string,
       provider: string | null,
+      group: string | null,
       url: string | null,
       expected: string | null,
     ) =>
-      typedError<Delay, IpcError>(
+      typedError<Delay, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_proxy_delay', {
           name,
           provider,
+          group,
           url,
           expected,
         }),
       ),
+    /**
+     *  The live Clash configuration without the controller secret. The full one is
+     *  [`clash_api_get_configs`].
+     */
+    clashApiGetSettings: () =>
+      typedError<ClashApiSettings, IpcError_Serialize>(
+        __RPC_INVOKE('clash_api_get_settings'),
+      ),
     clashApiGetConfigs: () =>
-      typedError<ClashApiConfig, IpcError>(
+      typedError<ClashApiConfig, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_configs'),
       ),
     clashApiGetVersion: () =>
-      typedError<ClashVersion, IpcError>(__RPC_INVOKE('clash_api_get_version')),
+      typedError<ClashVersion, IpcError_Serialize>(
+        __RPC_INVOKE('clash_api_get_version'),
+      ),
     clashApiGetRules: () =>
-      typedError<RulesRes, IpcError>(__RPC_INVOKE('clash_api_get_rules')),
+      typedError<RulesRes, IpcError_Serialize>(
+        __RPC_INVOKE('clash_api_get_rules'),
+      ),
     clashApiGetProvidersRules: () =>
-      typedError<ProvidersRulesRes, IpcError>(
+      typedError<ProvidersRulesRes, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_providers_rules'),
       ),
     clashApiGetGroupDelay: (
@@ -128,43 +191,77 @@ export function createRpcClient(
       url: string | null,
       expected: string | null,
     ) =>
-      typedError<{ [key in ProxyName]: number }, IpcError>(
+      typedError<{ [key in ProxyName]: number }, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_get_group_delay', { group, url, expected }),
       ),
     clashApiGetProvidersProxies: () =>
       typedError<
         { [key in ProviderName]: ProxyProviderSummary_Serialize },
-        IpcError
+        IpcError_Serialize
       >(__RPC_INVOKE('clash_api_get_providers_proxies')),
     fetchLatestCoreVersions: () =>
-      typedError<ManifestVersionLatest, IpcError>(
+      typedError<ManifestVersionLatest, IpcError_Serialize>(
         __RPC_INVOKE('fetch_latest_core_versions'),
       ),
     inspectUpdater: (updaterId: number) =>
-      typedError<UpdaterSummary, IpcError>(
+      typedError<UpdaterSummary, IpcError_Serialize>(
         __RPC_INVOKE('inspect_updater', { updaterId }),
       ),
+    /**
+     *  Safe updater progress without raw failure diagnostics. The full summary is
+     *  [`inspect_updater`].
+     */
+    inspectUpdaterSummary: (updaterId: number) =>
+      typedError<UpdaterProgressSummary, IpcError_Serialize>(
+        __RPC_INVOKE('inspect_updater_summary', { updaterId }),
+      ),
     getCoreVersion: (coreType: ClashCore_Deserialize) =>
-      typedError<string, IpcError>(
+      typedError<string, IpcError_Serialize>(
         __RPC_INVOKE('get_core_version', { coreType }),
       ),
+    /**
+     *  The application settings without the URLs that can carry credentials. The full config is
+     *  [`get_app_config`].
+     */
+    getAppSettings: () =>
+      typedError<ApplicationSettings_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('get_app_settings'),
+      ),
     getAppConfig: () =>
-      typedError<NyanpasuAppConfig_Serialize, IpcError>(
+      typedError<NyanpasuAppConfig_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('get_app_config'),
       ),
+    /**
+     *  The persistent Clash settings without the controller secret and the web UI URL templates. The
+     *  full config is [`get_clash_config`].
+     */
+    getClashSettings: () =>
+      typedError<ClashSettings, IpcError_Serialize>(
+        __RPC_INVOKE('get_clash_settings'),
+      ),
     getClashConfig: () =>
-      typedError<ClashConfig, IpcError>(__RPC_INVOKE('get_clash_config')),
+      typedError<ClashConfig, IpcError_Serialize>(
+        __RPC_INVOKE('get_clash_config'),
+      ),
     getConfigFeatures: () =>
-      typedError<ConfigFeatures, IpcError>(__RPC_INVOKE('get_config_features')),
+      typedError<ConfigFeatures, IpcError_Serialize>(
+        __RPC_INVOKE('get_config_features'),
+      ),
     getIpLookupProviders: () =>
-      typedError<IpLookupProviderInfo[], IpcError>(
+      typedError<IpLookupProviderInfo[], IpcError_Serialize>(
         __RPC_INVOKE('get_ip_lookup_providers'),
       ),
     getHotkeyFunctions: () => __RPC_INVOKE<string[]>('get_hotkey_functions'),
     getProfiles: () =>
-      typedError<ProfileDocument_Serialize, IpcError>(
+      typedError<ProfileDocument_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('get_profiles'),
       ),
+    /**
+     *  The profile structure without subscription URLs, request headers, external paths or
+     *  descriptions. The full document is [`get_profiles`].
+     */
+    getProfilesListing: () =>
+      __RPC_INVOKE<ProfilesListing_Serialize>('get_profiles_listing'),
     /**
      *  Downloads a profile URL and suggests how to import it, for the user to
      *  confirm. Desktop-only: it sends a request to any URL the caller names.
@@ -178,11 +275,11 @@ export function createRpcClient(
         update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
-      typedError<ProfileUrlProbe, IpcError>(
+      typedError<ProfileUrlProbe, IpcError_Serialize>(
         __RPC_INVOKE('probe_profile_url', { url, option }),
       ),
     getProfileSyncStatus: (uid: ProfileId) =>
-      typedError<ProfileSyncStatus, IpcError>(
+      typedError<ProfileSyncStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_status', { uid }),
       ),
     getProfileSyncRuns: (
@@ -192,52 +289,95 @@ export function createRpcClient(
         id: string
       } | null,
     ) =>
-      typedError<RunPageDto, IpcError>(
+      typedError<RunPageDto, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_runs', { uid, after }),
       ),
+    /**
+     *  The sync schedule and active runs without the registration error text. The full status is
+     *  [`get_profile_sync_status`].
+     */
+    getProfileSyncStatusSummary: (uid: ProfileId) =>
+      typedError<ProfileSyncSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_profile_sync_status_summary', { uid }),
+      ),
+    /**
+     *  One page of sync runs with each outcome reduced to its kind. The full page is
+     *  [`get_profile_sync_runs`].
+     */
+    getProfileSyncRunsSummary: (
+      uid: ProfileId,
+      after: {
+        sequence: string
+        id: string
+      } | null,
+    ) =>
+      typedError<SyncRunPageSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_profile_sync_runs_summary', { uid, after }),
+      ),
     getProfileSyncLogs: (uid: ProfileId, run: string, after: string | null) =>
-      typedError<LogPageDto, IpcError>(
+      typedError<LogPageDto, IpcError_Serialize>(
         __RPC_INVOKE('get_profile_sync_logs', { uid, run, after }),
       ),
     readProfileFile: (uid: ProfileId) =>
-      typedError<string, IpcError>(__RPC_INVOKE('read_profile_file', { uid })),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('read_profile_file', { uid }),
+      ),
     getCustomAppDir: () =>
-      typedError<string | null, IpcError>(__RPC_INVOKE('get_custom_app_dir')),
+      typedError<string | null, IpcError_Serialize>(
+        __RPC_INVOKE('get_custom_app_dir'),
+      ),
     statusService: () =>
-      typedError<ServiceStatusInfo_Serialize, IpcError>(
+      typedError<ServiceStatusInfo_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('status_service'),
       ),
     isPortable: () =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_portable')),
+      typedError<boolean, IpcError_Serialize>(__RPC_INVOKE('is_portable')),
     getProxies: () =>
-      typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('get_proxies')),
+      typedError<Proxies_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('get_proxies'),
+      ),
+    /**
+     *  Each proxy group's icon, by group name. The icons are profile-provided URLs that may carry a
+     *  credential, so `get_proxies` only reports whether a group has one.
+     */
+    getProxyGroupIcons: () =>
+      typedError<{ [key in ProxyName]: string }, IpcError_Serialize>(
+        __RPC_INVOKE('get_proxy_group_icons'),
+      ),
     isTrayIconSet: (mode: TrayIcon) =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_tray_icon_set', { mode })),
+      typedError<boolean, IpcError_Serialize>(
+        __RPC_INVOKE('is_tray_icon_set', { mode }),
+      ),
     isWidgetIconSet: (mode: TrayIcon) =>
-      typedError<boolean, IpcError>(
+      typedError<boolean, IpcError_Serialize>(
         __RPC_INVOKE('is_widget_icon_set', { mode }),
       ),
     getCoreStatus: () =>
-      typedError<CoreStatusInfo, IpcError>(__RPC_INVOKE('get_core_status')),
+      typedError<CoreStatusInfo, IpcError_Serialize>(
+        __RPC_INVOKE('get_core_status'),
+      ),
     /**
      *  The network the host is on and what the network rules last did about it.
      *  Desktop-only: the status holds the live Wi-Fi name and gateway address.
      */
     getNetworkAutomationStatus: () =>
-      typedError<NetworkAutomationStatus, IpcError>(
+      typedError<NetworkAutomationStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_network_automation_status'),
       ),
     urlDelayTest: (url: string, expectedStatus: number) =>
-      typedError<number | null, IpcError>(
+      typedError<number | null, IpcError_Serialize>(
         __RPC_INVOKE('url_delay_test', { url, expectedStatus }),
       ),
-    getIpsbAsn: () => typedError<any, IpcError>(__RPC_INVOKE('get_ipsb_asn')),
+    getIpsbAsn: () =>
+      typedError<any, IpcError_Serialize>(__RPC_INVOKE('get_ipsb_asn')),
     isAppimage: () =>
-      typedError<boolean, IpcError>(__RPC_INVOKE('is_appimage')),
+      typedError<boolean, IpcError_Serialize>(__RPC_INVOKE('is_appimage')),
     getServiceInstallPrompt: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_service_install_prompt')),
+      typedError<string, IpcError_Serialize>(
+        __RPC_INVOKE('get_service_install_prompt'),
+      ),
     getStorageItem: (key: string) =>
-      typedError<StorageItem<string>, IpcError>(
+      typedError<StorageItem<string>, IpcError_Serialize>(
         __RPC_INVOKE('get_storage_item', { key }),
       ),
     /**
@@ -245,29 +385,39 @@ export function createRpcClient(
      *  Internal storage entries used by other subsystems are excluded.
      */
     getAllStorageItems: () =>
-      typedError<StorageEntry[], IpcError>(
+      typedError<StorageEntry[], IpcError_Serialize>(
         __RPC_INVOKE('get_all_storage_items'),
       ),
     getHotkeys: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('get_hotkeys')),
+      typedError<string[], IpcError_Serialize>(__RPC_INVOKE('get_hotkeys')),
     getCoreDir: () =>
-      typedError<string, IpcError>(__RPC_INVOKE('get_core_dir')),
+      typedError<string, IpcError_Serialize>(__RPC_INVOKE('get_core_dir')),
     /**
      *  The agent skills a core ships. Their folders are on the host that runs
      *  Nyanpasu, which is also where an agent driving the core has to run.
      */
     getCoreAgentSkills: (coreType: ClashCore_Deserialize) =>
-      typedError<CoreAgentSkill[], IpcError>(
+      typedError<CoreAgentSkill[], IpcError_Serialize>(
         __RPC_INVOKE('get_core_agent_skills', { coreType }),
       ),
+    /**
+     *  Safe agent skill names and descriptions without local filesystem directories.
+     *  The full skills (including `dir`) are returned by [`get_core_agent_skills`].
+     */
+    getCoreAgentSkillsSummary: (coreType: ClashCore_Deserialize) =>
+      typedError<CoreAgentSkillSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('get_core_agent_skills_summary', { coreType }),
+      ),
     getClashWsSnapshot: () =>
-      typedError<ClashWsSnapshot, IpcError>(
+      typedError<ClashWsSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_clash_ws_snapshot'),
       ),
     getTrafficSummary: () =>
-      typedError<TrafficSummary, IpcError>(__RPC_INVOKE('get_traffic_summary')),
+      typedError<TrafficSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_traffic_summary'),
+      ),
     queryTrafficReport: (request: ReportRequest) =>
-      typedError<TrafficReport, IpcError>(
+      typedError<TrafficReport, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_report', { request }),
       ),
     queryTrafficUsage: (
@@ -280,7 +430,7 @@ export function createRpcClient(
       } | null,
       limit: number,
     ) =>
-      typedError<UsagePage, IpcError>(
+      typedError<UsagePage, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_usage', {
           query,
           groupBy,
@@ -294,7 +444,7 @@ export function createRpcClient(
       groupBy: Dimension,
       keys: string[],
     ) =>
-      typedError<UsageGroup[], IpcError>(
+      typedError<UsageGroup[], IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_usage_by_keys', { query, groupBy, keys }),
       ),
     queryTrafficClosedConnections: (
@@ -307,7 +457,7 @@ export function createRpcClient(
       } | null,
       limit: number,
     ) =>
-      typedError<ClosedPage, IpcError>(
+      typedError<ClosedPage, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_closed_connections', {
           range,
           filters,
@@ -316,35 +466,82 @@ export function createRpcClient(
         }),
       ),
     queryTrafficActiveConnectionIds: (filters: TrafficFilter[]) =>
-      typedError<string[], IpcError>(
+      typedError<string[], IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_active_connection_ids', { filters }),
       ),
     getAppUpdateState: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<AppUpdateSnapshot, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_state'),
       ),
+    /**
+     *  Safe application update phase, progress, and release metadata without raw error diagnostics.
+     *  The full snapshot is [`get_app_update_state`].
+     */
+    getAppUpdateSummary: () =>
+      typedError<AppUpdateSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_app_update_summary'),
+      ),
     getAppUpdateChangelog: (from: string, to: string) =>
-      typedError<AppUpdateChangelog, IpcError>(
+      typedError<AppUpdateChangelog, IpcError_Serialize>(
         __RPC_INVOKE('get_app_update_changelog', { from, to }),
       ),
     getReleaseChannel: () =>
-      typedError<ReleaseChannelInfo, IpcError>(
+      typedError<ReleaseChannelInfo, IpcError_Serialize>(
         __RPC_INVOKE('get_release_channel'),
       ),
     getSystemAccentColor: () =>
-      typedError<string | null, IpcError>(
+      typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('get_system_accent_color'),
       ),
     getTransparentProxyStatus: () =>
-      typedError<NetworkTransparentProxyStatus, IpcError>(
+      typedError<NetworkTransparentProxyStatus, IpcError_Serialize>(
         __RPC_INVOKE('get_transparent_proxy_status'),
       ),
+    /**
+     *  Safe transparent proxy capture status without raw host error diagnostics. The full status is
+     *  [`get_transparent_proxy_status`].
+     */
+    getTransparentProxyStatusSummary: () =>
+      typedError<TransparentProxyStatusSummary, IpcError_Serialize>(
+        __RPC_INVOKE('get_transparent_proxy_status_summary'),
+      ),
+    listRemoteAccessTokens: () =>
+      typedError<AccessTokenSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('list_remote_access_tokens'),
+      ),
+    listRemoteBrowserSessions: () =>
+      typedError<BrowserSessionSummary[], IpcError_Serialize>(
+        __RPC_INVOKE('list_remote_browser_sessions'),
+      ),
+    /**  The sync status, without the credentials a provider may hold. */
+    getSyncStatus: () =>
+      typedError<SyncStatus, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_status'),
+      ),
+    /**  Settings, whether credentials exist, and the provider kinds this build has. */
+    getSyncSettings: () =>
+      typedError<SyncSettingsView, IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_settings'),
+      ),
+    /**  Provider kinds compiled into this build. */
+    getSyncProviderKinds: () =>
+      typedError<ProviderKind[], IpcError_Serialize>(
+        __RPC_INVOKE('get_sync_provider_kinds'),
+      ),
+    /**  Open conflicts with both values. */
+    listSyncConflicts: () =>
+      typedError<SyncConflict_Serialize[], IpcError_Serialize>(
+        __RPC_INVOKE('list_sync_conflicts'),
+      ),
+    /**  Pre-image snapshots this device took. */
+    listSyncSnapshots: () =>
+      __RPC_INVOKE<SnapshotSummary[]>('list_sync_snapshots'),
     writeClipboardText: (text: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('write_clipboard_text', { text }),
       ),
     showNativeNotification: (title: string, body: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('show_native_notification', { title, body }),
       ),
     showNativeMessageDialog: (
@@ -353,7 +550,7 @@ export function createRpcClient(
       kind: NativeDialogKind,
       buttons: NativeDialogButtons,
     ) =>
-      typedError<string, IpcError>(
+      typedError<string, IpcError_Serialize>(
         __RPC_INVOKE('show_native_message_dialog', {
           message,
           title,
@@ -366,64 +563,68 @@ export function createRpcClient(
       title: string | null,
       kind: NativeDialogKind,
     ) =>
-      typedError<boolean, IpcError>(
+      typedError<boolean, IpcError_Serialize>(
         __RPC_INVOKE('ask_native_dialog', { message, title, kind }),
       ),
     openNativeFileDialog: (title: string | null, filters: FileDialogFilter[]) =>
-      typedError<string | null, IpcError>(
+      typedError<string | null, IpcError_Serialize>(
         __RPC_INVOKE('open_native_file_dialog', { title, filters }),
       ),
-    setDebugHttpEnabled: (enabled: boolean) =>
-      typedError<DebugHttpStatus, IpcError>(
-        __RPC_INVOKE('set_debug_http_enabled', { enabled }),
-      ),
     retryConfigurationRuntime: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('retry_configuration_runtime')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('retry_configuration_runtime'),
+      ),
     retryConfigurationEffect: (kind: EffectKind) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('retry_configuration_effect', { kind }),
       ),
     setReleaseChannel: (channel: ReleaseChannel) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_release_channel', { channel }),
       ),
     checkAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(__RPC_INVOKE('check_app_update')),
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
+        __RPC_INVOKE('check_app_update'),
+      ),
     downloadAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('download_app_update'),
       ),
     cancelAppUpdateDownload: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('cancel_app_update_download'),
       ),
     installAppUpdate: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('install_app_update'),
       ),
     discardAppUpdatePackage: () =>
-      typedError<AppUpdateSnapshot, IpcError>(
+      typedError<RpcAppUpdateOutcome, IpcError_Serialize>(
         __RPC_INVOKE('discard_app_update_package'),
       ),
     subscribeClashConnectionDetails: (
       onFrame: Channel<ClashConnectionDetails_Deserialize>,
     ) =>
-      typedError<SubscriptionId, IpcError>(
+      typedError<SubscriptionId, IpcError_Serialize>(
         __RPC_INVOKE('subscribe_clash_connection_details', { onFrame }),
       ),
     unsubscribeClashConnectionDetails: (id: SubscriptionId) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('unsubscribe_clash_connection_details', { id }),
       ),
     probeDirectEgress: () =>
-      typedError<DirectEgress, IpcError>(__RPC_INVOKE('probe_direct_egress')),
+      typedError<DirectEgress, IpcError_Serialize>(
+        __RPC_INVOKE('probe_direct_egress'),
+      ),
     /**  Desktop-only: the host is whatever the caller types, like a URL probe. */
     testStunServer: (host: string, port: number) =>
-      typedError<StunServerTest, IpcError>(
+      typedError<StunServerTest, IpcError_Serialize>(
         __RPC_INVOKE('test_stun_server', { host, port }),
       ),
     clearCoreLogs: () =>
-      typedError<null, CoreLogError>(__RPC_INVOKE('clear_core_logs')),
+      typedError<null, CoreLogCommandError_Serialize>(
+        __RPC_INVOKE('clear_core_logs'),
+      ),
     openLogSession: (source: LogSource, request: OpenLogs) =>
       typedError<LogSession, LogError>(
         __RPC_INVOKE('open_log_session', { source, request }),
@@ -432,92 +633,141 @@ export function createRpcClient(
       typedError<LogPage, LogError>(
         __RPC_INVOKE('query_logs', { source, request }),
       ),
+    /**  Public app and service log page summary without message text, raw lines, target strings, or text filters. */
+    queryLogsSummary: (source: LogSource, request: QueryLogSummary) =>
+      typedError<LogPageSummary, LogError>(
+        __RPC_INVOKE('query_logs_summary', { source, request }),
+      ),
     closeLogSession: (source: LogSource, session: string) =>
       typedError<null, LogError>(
         __RPC_INVOKE('close_log_session', { source, session }),
       ),
     reportFrontendEvents: (batch: FrontendEventBatch) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('report_frontend_events', { batch }),
       ),
     flushSystemDnsCache: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('flush_system_dns_cache')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('flush_system_dns_cache'),
+      ),
     openAppConfigDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_app_config_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_app_config_dir')),
     openAppDataDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_app_data_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_app_data_dir')),
     openBackupsDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_backups_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_backups_dir')),
     createConfigBackup: () =>
-      typedError<ConfigBackupInfo, IpcError>(
+      typedError<ConfigBackupInfo, IpcError_Serialize>(
         __RPC_INVOKE('create_config_backup'),
       ),
     openLogsDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_logs_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_logs_dir')),
     openWebUrl: (url: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_web_url', { url })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('open_web_url', { url }),
+      ),
     openCoreDir: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_core_dir')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
+    /**  Links the bundled `nyanpasu-cli` onto the user's `PATH`, for the macOS app and the AppImage. */
+    installCli: () =>
+      typedError<CliInstallation, IpcError_Serialize>(
+        __RPC_INVOKE('install_cli'),
+      ),
     /**  restart the sidecar */
     restartSidecar: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_sidecar')),
-    patchAppConfig: (patch: NyanpasuAppConfigPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_sidecar')),
+    /**  Patch the ordinary application preferences. */
+    patchAppConfig: (patch: ApplicationPreferencesPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_app_config', { patch }),
       ),
-    patchClashConfig: (patch: ClashConfigPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+    /**
+     *  Patch the application settings that change how the host behaves: autostart, the system proxy
+     *  and its guard, the bypass list and the PAC URL.
+     */
+    patchSystemSettings: (patch: SystemSettingsPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('patch_system_settings', { patch }),
+      ),
+    /**  Patch the ordinary Clash settings: profile expansion and connection breaking. */
+    patchClashConfig: (patch: ClashSettingsPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_clash_config', { patch }),
+      ),
+    /**
+     *  Patch the Clash control plane: the controller, the listening ports, TUN, transparent capture,
+     *  the web UI templates and the field filter.
+     */
+    patchClashSystemConfig: (patch: ClashSystemPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('patch_clash_system_config', { patch }),
       ),
     /**
      *  Applies the network rules to the current network again, overwriting
      *  capture switches changed by hand since. Switching the capture mechanisms
-     *  reaches the same optional effects as a configuration patch.
+     *  reaches the same optional effects as a configuration patch. A caller without
+     *  `sensitive_read` gets the status without the network reading and the matched rule.
      */
     applyNetworkAutomation: () =>
-      typedError<NetworkAutomationStatus, IpcError>(
+      typedError<RpcNetworkAutomationStatus, IpcError_Serialize>(
         __RPC_INVOKE('apply_network_automation'),
       ),
     /**
      *  Reads the Wi-Fi name once, which the network rules do not until a rule
      *  matches on it. Where the platform gates the name behind location access,
      *  this asks the user for it. The status holds that reading, or why there is
-     *  none. Desktop-only: the status holds the live Wi-Fi name and gateway.
+     *  none, except that a caller without `sensitive_read` gets neither the name nor the gateway.
+     *  Desktop-only: the status holds the live Wi-Fi name and gateway.
      */
     requestWifiNameAccess: () =>
-      typedError<NetworkAutomationStatus, IpcError>(
+      typedError<RpcNetworkAutomationStatus, IpcError_Serialize>(
         __RPC_INVOKE('request_wifi_name_access'),
       ),
-    /**  patch the clash guard overrides (mode, log level, LAN, IPv6, secret...) */
-    patchRuntimeOverrides: (patch: ClashGuardOverridesPatch_Deserialize) =>
-      typedError<MutationOutcome<null>, IpcError>(
+    /**  Patch the ordinary clash overrides (log level, IPv6, unified delay, TCP concurrency). */
+    patchRuntimeOverrides: (patch: ClashOverridesSettingsPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_runtime_overrides', { patch }),
       ),
+    /**  Patch the controller exposure: LAN access and the controller secret. */
+    patchRuntimeAccess: (patch: ClashAccessPatch_Deserialize) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('patch_runtime_access', { patch }),
+      ),
+    /**  Switch the proxy mode (rule, global, direct). */
+    setProxyMode: (mode: Mode) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('set_proxy_mode', { mode }),
+      ),
     changeClashCore: (clashCore: ClashCore_Deserialize) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('change_clash_core', { clashCore }),
       ),
     clashApiDeleteConnections: (id: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_delete_connections', { id }),
       ),
     clashApiUpdateProvidersRules: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_update_providers_rules', { name }),
       ),
     invokeUwpTool: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('invoke_uwp_tool')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('invoke_uwp_tool')),
     updateCore: (coreType: ClashCore_Deserialize) =>
-      typedError<number, IpcError>(__RPC_INVOKE('update_core', { coreType })),
-    collectLogs: () => typedError<null, IpcError>(__RPC_INVOKE('collect_logs')),
+      typedError<number, IpcError_Serialize>(
+        __RPC_INVOKE('update_core', { coreType }),
+      ),
+    collectLogs: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('collect_logs')),
     reportIssue: (page: PageCapabilities) =>
-      typedError<null, IpcError>(__RPC_INVOKE('report_issue', { page })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('report_issue', { page }),
+      ),
     setTrayIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_tray_icon_from_bytes', { mode, bytesBase64 }),
       ),
     setWidgetIconFromBytes: (mode: TrayIcon, bytesBase64: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_widget_icon_from_bytes', { mode, bytesBase64 }),
       ),
     /**
@@ -525,7 +775,7 @@ export function createRpcClient(
      *  plain error — the committed/degraded model (spec §6.2) does not apply.
      */
     enhanceProfiles: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('enhance_profiles')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('enhance_profiles')),
     importProfile: (
       url: string,
       name: string | null,
@@ -539,7 +789,7 @@ export function createRpcClient(
         { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime } | null,
       folder: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError>(
+      typedError<RpcProfileMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('import_profile', {
           url,
           name,
@@ -554,33 +804,35 @@ export function createRpcClient(
      *  every such event.
      */
     takePendingDeepLinks: () =>
-      typedError<string[], IpcError>(__RPC_INVOKE('take_pending_deep_links')),
+      typedError<string[], IpcError_Serialize>(
+        __RPC_INVOKE('take_pending_deep_links'),
+      ),
     /**  create a new profile */
     createProfile: (
       request: NewProfileRequest_Deserialize,
       fileData: string | null,
     ) =>
-      typedError<MutationOutcome<ProfileId>, IpcError>(
+      typedError<RpcProfileMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_profile', { request, fileData }),
       ),
     reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profile', { activeId, overId }),
       ),
     reorderProfilesByList: (list: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('reorder_profiles_by_list', { list }),
       ),
     setProfileLayout: (layout: ProfileLayout) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_layout', { layout }),
       ),
     createProfileFolder: (name: string, members: ProfileId[]) =>
-      typedError<MutationOutcome<FolderId>, IpcError>(
+      typedError<RpcFolderMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_profile_folder', { name, members }),
       ),
     setProxyGroupLayout: (profile: ProfileId, layout: ProxyGroupLayout) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_proxy_group_layout', { profile, layout }),
       ),
     createProxyGroupFolder: (
@@ -588,7 +840,7 @@ export function createRpcClient(
       name: string,
       members: string[],
     ) =>
-      typedError<MutationOutcome<FolderId>, IpcError>(
+      typedError<RpcFolderMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('create_proxy_group_folder', { profile, name, members }),
       ),
     updateProfile: (
@@ -600,103 +852,149 @@ export function createRpcClient(
         update_interval_minutes: RemoteSyncInterval | null
       } | null,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('update_profile', { uid, option }),
       ),
     deleteProfile: (uid: ProfileId) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('delete_profile', { uid }),
       ),
     activateProfile: (uid: string | null) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('activate_profile', { uid }),
       ),
     setGlobalTransforms: (ids: ProfileId[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_global_transforms', { ids }),
       ),
     setProfileValidFields: (fields: string[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_profile_valid_fields', { fields }),
       ),
     patchProfileMetadata: (
       uid: ProfileId,
       patch: ProfileMetadataPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_profile_metadata', { uid, patch }),
       ),
     patchRemoteProfileOptions: (
       uid: ProfileId,
       patch: RemoteProfileOptionsPatch_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('patch_remote_profile_options', { uid, patch }),
       ),
     replaceProfileDefinition: (
       uid: ProfileId,
       definition: ProfileDefinition_Deserialize,
     ) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('replace_profile_definition', { uid, definition }),
       ),
     viewProfile: (uid: ProfileId) =>
-      typedError<null, IpcError>(__RPC_INVOKE('view_profile', { uid })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('view_profile', { uid }),
+      ),
     saveProfileFile: (uid: ProfileId, fileData: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('save_profile_file', { uid, fileData }),
       ),
     setCustomAppDir: (path: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('set_custom_app_dir', { path })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('set_custom_app_dir', { path }),
+      ),
     installService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('install_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('install_service')),
     uninstallService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('uninstall_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('uninstall_service')),
     startService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('start_service')),
-    stopService: () => typedError<null, IpcError>(__RPC_INVOKE('stop_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('start_service')),
+    stopService: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('stop_service')),
     restartService: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_service')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_service')),
     setServiceMode: (enabled: boolean) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_service_mode', { enabled }),
       ),
+    /**
+     *  Remote access widens who can reach the application, so it has its own command, reachable from
+     *  the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
+     *  section.
+     */
+    setRemoteAccess: (config: RemoteAccessConfig) =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('set_remote_access', { config }),
+      ),
+    /**
+     *  Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
+     *  the old fingerprint refuse the server until they pin the new one, so it is a remote
+     *  administration command, never reachable over HTTP.
+     */
+    resetRemoteAccessTls: () =>
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('reset_remote_access_tls'),
+      ),
+    /**
+     *  A URL that logs the caller into the running HTTP server. It is a credential, so it is a
+     *  desktop-only mutation: a query would keep it in a client cache, and no remote transport may
+     *  return it.
+     */
+    createHttpLaunchUrl: () =>
+      typedError<string | null, IpcError_Serialize>(
+        __RPC_INVOKE('create_http_launch_url'),
+      ),
+    createRemoteAccessToken: (request: CreateRemoteAccessTokenRequest) =>
+      typedError<CreatedRemoteAccessToken, IpcError_Serialize>(
+        __RPC_INVOKE('create_remote_access_token', { request }),
+      ),
+    revokeRemoteAccessToken: (id: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('revoke_remote_access_token', { id }),
+      ),
+    revokeRemoteBrowserSession: (id: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('revoke_remote_browser_session', { id }),
+      ),
     selectProxy: (group: string, name: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('select_proxy', { group, name }),
       ),
     clearProxyFixed: (group: string) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('clear_proxy_fixed', { group }),
       ),
     updateProxyProvider: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('update_proxy_provider', { name }),
       ),
     clashApiHealthcheckProxyProvider: (name: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clash_api_healthcheck_proxy_provider', { name }),
       ),
     restartApplication: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('restart_application')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('restart_application')),
     setTrayIcon: (mode: TrayIcon, path: string | null) =>
-      typedError<null, IpcError>(__RPC_INVOKE('set_tray_icon', { mode, path })),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('set_tray_icon', { mode, path }),
+      ),
     /**
      *  Sets the statistic widget's own icon for `mode` from a file, or resets it
      *  to the bundled one when `path` is `None`.
      */
     setWidgetIcon: (mode: TrayIcon, path: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('set_widget_icon', { mode, path }),
       ),
     openThat: (path: string) =>
-      typedError<null, IpcError>(__RPC_INVOKE('open_that', { path })),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_that', { path })),
     setStorageItem: (key: string, value: string) =>
-      typedError<StorageRevision, IpcError>(
+      typedError<StorageRevision, IpcError_Serialize>(
         __RPC_INVOKE('set_storage_item', { key, value }),
       ),
     removeStorageItem: (key: string) =>
-      typedError<StorageRevision, IpcError>(
+      typedError<StorageRevision, IpcError_Serialize>(
         __RPC_INVOKE('remove_storage_item', { key }),
       ),
     /**
@@ -704,39 +1002,43 @@ export function createRpcClient(
      *  Internal storage entries used by other subsystems are left intact.
      */
     clearStorage: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('clear_storage')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('clear_storage')),
     setHotkeys: (hotkeys: string[]) =>
-      typedError<MutationOutcome<null>, IpcError>(
+      typedError<RpcUnitMutationOutcome_Serialize, IpcError_Serialize>(
         __RPC_INVOKE('set_hotkeys', { hotkeys }),
       ),
     mutateProxies: () =>
-      typedError<Proxies_Serialize, IpcError>(__RPC_INVOKE('mutate_proxies')),
+      typedError<Proxies_Serialize, IpcError_Serialize>(
+        __RPC_INVOKE('mutate_proxies'),
+      ),
     setClashWsRecording: (kind: ClashWsKind, enabled: boolean) =>
-      typedError<ClashWsRecording, IpcError>(
+      typedError<ClashWsRecording, IpcError_Serialize>(
         __RPC_INVOKE('set_clash_ws_recording', { kind, enabled }),
       ),
     clearClashWsHistory: (kind: ClashWsKind) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('clear_clash_ws_history', { kind }),
       ),
     saveWindowSizeState: (label: string) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('save_window_size_state', { label }),
       ),
     createMainWindow: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('create_main_window')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('create_main_window')),
     createDebugTrayMenuWindow: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('create_debug_tray_menu_window')),
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('create_debug_tray_menu_window'),
+      ),
     /**
      *  Panics on purpose, so the crash reporter can be tested. The panic hook
      *  exits differently when the main thread panics, hence the choice.
      */
     simulateCrash: (mainThread: boolean) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('simulate_crash', { mainThread }),
       ),
     createEditorWindow: (windowType: EditorWindowType, uid: string | null) =>
-      typedError<null, IpcError>(
+      typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('create_editor_window', { windowType, uid }),
       ),
     /**
@@ -744,10 +1046,51 @@ export function createRpcClient(
      *  so a window can only report itself.
      */
     reportWindowReady: () =>
-      typedError<null, IpcError>(__RPC_INVOKE('report_window_ready')),
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('report_window_ready')),
     copyClashEnv: (envType: CopyEnvOption) =>
       __RPC_INVOKE<void>('copy_clash_env', { envType }),
     quitApplication: () => __RPC_INVOKE<void>('quit_application'),
+    /**  Saves the provider, its secrets and the sync options. */
+    configureSync: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('configure_sync', { settings, secrets }),
+      ),
+    /**  Checks reachability and credentials without saving anything. */
+    testSyncConnection: (
+      settings: SyncSettings,
+      secrets: {
+        password?: string | null
+        secret_access_key?: string | null
+      } | null,
+    ) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('test_sync_connection', { settings, secrets }),
+      ),
+    /**  Runs the first cycle and keeps syncing. */
+    enableSync: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('enable_sync')),
+    /**  Stops syncing; local data and the remote vault stay. */
+    disableSync: () =>
+      typedError<null, IpcError_Serialize>(__RPC_INVOKE('disable_sync')),
+    /**  Runs one cycle now. */
+    syncNow: () =>
+      typedError<SyncRunView, IpcError_Serialize>(__RPC_INVOKE('sync_now')),
+    /**  Records a conflict resolution and runs a cycle. */
+    resolveSyncConflict: (conflictId: string, choice: ConflictChoice) =>
+      typedError<SyncRunView, IpcError_Serialize>(
+        __RPC_INVOKE('resolve_sync_conflict', { conflictId, choice }),
+      ),
+    /**  Re-applies a snapshot's pre-images; the next cycle pushes them. */
+    restoreSyncSnapshot: (snapshotId: string) =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('restore_sync_snapshot', { snapshotId }),
+      ),
   }
 
   const events = {
@@ -755,18 +1098,35 @@ export function createRpcClient(
       transport.events,
       'app-update-state-changed',
     ),
+    appUpdateSummaryChanged: makeEvent<AppUpdateSummaryChanged>(
+      transport.events,
+      'app-update-summary-changed',
+    ),
     clashWsEvent: makeEvent<ClashWsEvent>(transport.events, 'clash-ws-event'),
     configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
       transport.events,
       'configuration-status-changed',
     ),
+    configurationStatusSummaryChanged:
+      makeEvent<ConfigurationStatusSummaryChanged>(
+        transport.events,
+        'configuration-status-summary-changed',
+      ),
     coreLogsChanged: makeEvent<CoreLogsChanged>(
       transport.events,
       'core-logs-changed',
     ),
+    coreLogsSummaryChanged: makeEvent<CoreLogsSummaryChanged>(
+      transport.events,
+      'core-logs-summary-changed',
+    ),
     coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
       transport.events,
       'core-status-changed-event',
+    ),
+    coreStatusSummaryChangedEvent: makeEvent<CoreStatusSummaryChangedEvent>(
+      transport.events,
+      'core-status-summary-changed-event',
     ),
     schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
       transport.events,
@@ -776,6 +1136,11 @@ export function createRpcClient(
       transport.events,
       'service-status-changed-event',
     ),
+    serviceStatusSummaryChangedEvent:
+      makeEvent<ServiceStatusSummaryChangedEvent>(
+        transport.events,
+        'service-status-summary-changed-event',
+      ),
     stateChangedEvent: makeEvent<StateChangedEvent>(
       transport.events,
       'state-changed-event',
@@ -787,6 +1152,10 @@ export function createRpcClient(
     storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
       transport.events,
       'storage-value-changed-event',
+    ),
+    syncStatusChangedEvent: makeEvent<SyncStatusChanged>(
+      transport.events,
+      'sync-status-changed-event',
     ),
     windowMessageEvent: makeEvent<WindowMessageEvent>(
       transport.events,
@@ -806,6 +1175,35 @@ export function createRpcClient(
 export type RpcClient = ReturnType<typeof createRpcClient>
 
 /* Types */
+/**  Lifecycle state reported for a named access token (non-secret). */
+export type AccessTokenStatus =
+  /**  Token may authenticate and issue sessions until optional expiry. */
+  | 'active'
+  /**  Token has passed its `expires_at_ms` timestamp. */
+  | 'expired'
+
+/**
+ *  Non-secret metadata for a persisted access token.
+ *
+ *  Never contains the raw bearer token or its SHA-256 hash.
+ */
+export type AccessTokenSummary = {
+  /**  Public non-secret token identifier. */
+  id: string
+  /**  User-assigned display label. */
+  name: string
+  /**  Independent permissions granted to this token. */
+  scopes: ScopeSet
+  /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
+  created_at_ms: number
+  /**  Optional wall-clock expiration timestamp in Unix epoch milliseconds. */
+  expires_at_ms: number | null
+  /**  Wall-clock timestamp of last successful verification, if any. */
+  last_used_at_ms: number | null
+  /**  Current status at inspection time. */
+  status: AccessTokenStatus
+}
+
 export type AppUpdateChangelog = {
   /**  Newest first. */
   entries: AppUpdateChangelogEntry[]
@@ -841,6 +1239,12 @@ export type AppUpdateRelease = {
   body: string | null
 }
 
+/**  Safe release summary without release note bodies or source endpoints. */
+export type AppUpdateReleaseSummary = {
+  version: string
+  date: string | null
+}
+
 export type AppUpdateSnapshot = {
   revision: number
   phase: AppUpdatePhase
@@ -856,6 +1260,274 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**  Safe app-update state summary for callers without `Scope::SensitiveRead`. */
+export type AppUpdateSummary = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateReleaseSummary | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  has_error: boolean
+  last_checked_at: string | null
+  supported: boolean
+}
+
+export type AppUpdateSummaryChanged = AppUpdateSummary
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch =
+  | ApplicationPreferencesPatch_Serialize
+  | ApplicationPreferencesPatch_Deserialize
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Deserialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Deserialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Deserialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_silent_start?: boolean | null
+  theme_color?: string | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close?: WindowCloseSettingsPatch_Deserialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
+}
+
+/**
+ *  A patch of the ordinary preferences.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`: for an ordinary
+ *  preference `null` is a no-op, not a clear. Only `release_channel` treats an explicit `null`
+ *  as "clear the value" (a double option), and `window_close` is a nested patch that names only
+ *  the window kinds it changes.
+ *
+ *  It is decoded only through the full patch ([`TryFrom`]), so unrelated unknown keys are ignored
+ *  as before and a privileged field is refused instead of silently dropped.
+ */
+export type ApplicationPreferencesPatch_Serialize = {
+  app_singleton_port?: number | null
+  app_log_level?: LoggingLevel_Serialize | null
+  core_logs?: CoreLogSettings | null
+  language?: I18nLanguage_Serialize | null
+  theme_mode?: ThemeMode | null
+  traffic_graph?: boolean | null
+  enable_memory_usage?: boolean | null
+  lighten_animation_effects?: boolean | null
+  enable_silent_start?: boolean | null
+  theme_color?: string | null
+  default_latency_test?: string | null
+  default_latency_timeout_ms?: number | null
+  enable_builtin_enhanced?: boolean | null
+  proxy_layout_column?: number | null
+  max_log_files?: number | null
+  max_log_file_size?: number | null
+  enable_auto_check_update?: boolean | null
+  enable_auto_download_update?: boolean | null
+  release_channel?: ReleaseChannel | null
+  update_sources?: UpdateSource[] | null
+  tray_selector_mode?: ProxiesSelectorMode | null
+  always_on_top?: boolean | null
+  tray_menu_mode?: TrayMenuMode | null
+  window_close: WindowCloseSettingsPatch_Serialize
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
+  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
+  traffic_retention?: TrafficRetention | null
+  enable_local_ip_probe?: boolean | null
+  stun_servers?: StunServer[] | null
+  ip_lookup_providers?: IpLookupProvider[] | null
+  enable_tray_text?: boolean | null
+  enable_tray_traffic?: boolean | null
+  use_legacy_ui?: boolean | null
+  enable_macos_colored_icons?: boolean | null
+}
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings =
+  ApplicationSettings_Serialize | ApplicationSettings_Deserialize
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Deserialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Deserialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Deserialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Deserialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
+}
+
+/**
+ *  The secret-free view of [`NyanpasuAppConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a field added to the config does not
+ *  compile until it is classified here.
+ */
+export type ApplicationSettings_Serialize = {
+  app_singleton_port: number
+  app_log_level: LoggingLevel_Serialize
+  core_logs: CoreLogSettings
+  language: I18nLanguage_Serialize
+  theme_mode: ThemeMode
+  traffic_graph: boolean
+  enable_memory_usage: boolean
+  lighten_animation_effects: boolean
+  enable_service_mode: boolean
+  enable_auto_launch: boolean
+  enable_silent_start: boolean
+  enable_system_proxy: boolean
+  enable_proxy_guard: boolean
+  system_proxy_bypass: string
+  proxy_guard_interval: number
+  theme_color: string
+  core: ClashCore_Serialize
+  hotkeys: string[]
+  /**
+   *  Whether a default latency test URL is set. The URL itself is only in the full config; a
+   *  probe that omits its URL uses it on the backend.
+   */
+  latency_test_configured: boolean
+  default_latency_timeout_ms: number
+  enable_builtin_enhanced: boolean
+  proxy_layout_column: number
+  max_log_files: number
+  max_log_file_size: number
+  enable_auto_check_update: boolean
+  enable_auto_download_update: boolean
+  release_channel: ReleaseChannel | null
+  update_sources: UpdateSource[]
+  tray_selector_mode: ProxiesSelectorMode
+  always_on_top: boolean
+  tray_menu_mode: TrayMenuMode
+  window_close: WindowCloseSettings
+  network_statistic_widget: NetworkStatisticWidgetConfig
+  network_statistic_widget_logo: NetworkStatisticWidgetLogo
+  traffic_retention: TrafficRetention
+  remote_access: RemoteAccessConfig
+  enable_local_ip_probe: boolean
+  stun_servers: StunServer[]
+  ip_lookup_providers: IpLookupProvider[]
+  /**  Whether a PAC URL is set. The URL itself is only in the full config. */
+  pac_configured: boolean
+  /**
+   *  Whether the network rules are on. The rules and the default actions name the user's
+   *  networks by Wi-Fi name and gateway MAC address, so they are only in the full config.
+   */
+  network_automation_enabled: boolean
+  enable_tray_text: boolean
+  enable_tray_traffic: boolean
+  use_legacy_ui: boolean
+  enable_macos_colored_icons: boolean
+}
+
+export type BlockedItem = {
+  /**  The logical key, or the physical path when it has no valid key. */
+  item: string
+  reason: SyncBlockedReason
+}
 
 export type BrandVersion = {
   brand: string
@@ -887,6 +1559,22 @@ export type BreakConnectionStrategyPatch_Serialize = {
   on_mode_change?: boolean | null
 }
 
+/**  Non-secret metadata for an active browser/access session. */
+export type BrowserSessionSummary = {
+  /**  Public non-secret session identifier (never the cookie). */
+  id: string
+  /**  Backing token ID when the session was established via `login_with_token`. */
+  backing_token_id: string | null
+  /**  Independent scopes held by this session. */
+  scopes: ScopeSet
+  /**  Wall-clock creation timestamp in Unix epoch milliseconds. */
+  created_at_ms: number
+  /**  Wall-clock last-activity timestamp in Unix epoch milliseconds. */
+  last_active_at_ms: number
+  /**  Optional wall-clock hard expiration tied to a backing token, if any. */
+  token_expires_at_ms: number | null
+}
+
 /**  Built-in post-processing steps applied to the selected config. */
 export type BuiltinStepKind =
   /**  Drops the top-level keys the field filter does not allow. */
@@ -912,6 +1600,31 @@ export type Bytes = {
   download: number
 }
 
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch =
+  ClashAccessPatch_Serialize | ClashAccessPatch_Deserialize
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Deserialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
+/**
+ *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
+ *  secret that guards its controller.
+ */
+export type ClashAccessPatch_Serialize = {
+  'allow-lan'?: boolean | null
+  secret?: string | null
+}
+
 export type ClashApiConfig = {
   port: number | null
   mode: string | null
@@ -925,6 +1638,28 @@ export type ClashApiConfig = {
   'tproxy-port': number | null
   'external-controller': string | null
   secret: string | null
+}
+
+/**
+ *  The live core configuration without the controller secret, for callers that only hold `read`.
+ *
+ *  `external_controller` is a validated socket address, or absent. The core reports it as free
+ *  text, which can be shaped like a URL with credentials in its userinfo, path, query or host, so
+ *  text that is not exactly an `ip:port` is not forwarded. The conversion destructures
+ *  [`ClashConfig`] without `..`, so a new field must be classified.
+ */
+export type ClashApiSettings = {
+  port: number | null
+  mode: string | null
+  ipv6: boolean | null
+  'socket-port': number | null
+  'allow-lan': boolean | null
+  'log-level': string | null
+  'mixed-port': number | null
+  'redir-port': number | null
+  'socks-port': number | null
+  'tproxy-port': number | null
+  'external-controller': string | null
 }
 
 /**  Clash Related Config */
@@ -965,51 +1700,6 @@ export type ClashConfig = {
   tun_stack: TunStack
   /**  The options of the mips stack, kept while another stack is selected. */
   tun_mips?: MipsConfig
-}
-
-export type ClashConfigPatch =
-  ClashConfigPatch_Serialize | ClashConfigPatch_Deserialize
-
-export type ClashConfigPatch_Deserialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun?: TunOverridesPatch_Deserialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller?: ExternalControllerStrategyPatch_Deserialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port?: PortStrategyPatch_Deserialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy?: TransparentProxyConfigPatch
-  break_connection?: BreakConnectionStrategyPatch_Deserialize
-  tun_stack?: TunStack | null
-  tun_mips?: MipsConfigPatch_Deserialize
-}
-
-export type ClashConfigPatch_Serialize = {
-  overrides?: ClashGuardOverrides | null
-  enable_tun_mode?: boolean | null
-  tun: TunOverridesPatch_Serialize
-  web_ui_list?: string[] | null
-  enable_clash_fields?: boolean | null
-  expand_include_all?: boolean | null
-  external_controller: ExternalControllerStrategyPatch_Serialize
-  clash_control_channel?: ClashControlChannel | null
-  clash_ipc_disable_http_controller?: boolean | null
-  mixed_port: PortStrategyPatch_Serialize
-  socks_port?: PortStrategy | null
-  http_port?: PortStrategy | null
-  redir_port?: PortStrategy | null
-  tproxy_port?: PortStrategy | null
-  transparent_proxy: TransparentProxyConfigPatch
-  break_connection: BreakConnectionStrategyPatch_Serialize
-  tun_stack?: TunStack | null
-  tun_mips: MipsConfigPatch_Serialize
 }
 
 /**
@@ -1130,29 +1820,6 @@ export type ClashGuardOverrides = {
   ipv6: boolean
 }
 
-export type ClashGuardOverridesPatch =
-  ClashGuardOverridesPatch_Serialize | ClashGuardOverridesPatch_Deserialize
-
-export type ClashGuardOverridesPatch_Deserialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
-export type ClashGuardOverridesPatch_Serialize = {
-  'log-level'?: LogLevel | null
-  'allow-lan'?: boolean | null
-  mode?: Mode | null
-  secret?: string | null
-  'unified-delay'?: ManageableField<boolean> | null
-  'tcp-concurrent'?: ManageableField<boolean> | null
-  ipv6?: boolean | null
-}
-
 export type ClashInfo = {
   /**  clash core port */
   port: number
@@ -1162,10 +1829,185 @@ export type ClashInfo = {
   secret: string | null
 }
 
+/**
+ *  The overrides a `read` caller may see: everything except the controller secret.
+ *
+ *  The conversion destructures the overrides without `..`, so a new field must be classified.
+ */
+export type ClashOverridesSettings = {
+  'log-level': LogLevel
+  'allow-lan': boolean
+  mode: Mode
+  'unified-delay': ManageableField<boolean>
+  'tcp-concurrent': ManageableField<boolean>
+  ipv6: boolean
+}
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch =
+  | ClashOverridesSettingsPatch_Serialize
+  | ClashOverridesSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Deserialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
+/**
+ *  A patch of the ordinary overrides: how verbose the core is and how it behaves toward IPv6 and
+ *  connection handling. It cannot change the proxy mode, what the core listens on, or the secret.
+ */
+export type ClashOverridesSettingsPatch_Serialize = {
+  'log-level'?: LogLevel | null
+  ipv6?: boolean | null
+  'unified-delay'?: ManageableField<boolean> | null
+  'tcp-concurrent'?: ManageableField<boolean> | null
+}
+
+/**
+ *  Why a Clash read or probe a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the core's response, the request it failed on and
+ *  the private URLs behind a probe stay out of the error, and the raw diagnostics stay on the
+ *  protected full queries.
+ */
+export type ClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
+  | { kind: 'version_unavailable' }
+  | { kind: 'rules_unavailable' }
+  | { kind: 'rule_providers_unavailable' }
+  | { kind: 'proxy_providers_unavailable' }
+  | { kind: 'streams_unavailable' }
+
 export type ClashRule = {
   type: string
   payload: string
   proxy: string
+}
+
+/**
+ *  The secret-free view of [`ClashConfig`].
+ *
+ *  The conversion destructures the config without `..`, so a new field must be classified.
+ */
+export type ClashSettings = {
+  overrides: ClashOverridesSettings
+  enable_tun_mode: boolean
+  tun: TunOverrides
+  enable_clash_fields: boolean
+  expand_include_all: boolean
+  external_controller: ExternalControllerStrategy
+  clash_control_channel: ClashControlChannel
+  clash_ipc_disable_http_controller: boolean
+  mixed_port: PortStrategy
+  socks_port: PortStrategy | null
+  http_port: PortStrategy | null
+  redir_port: PortStrategy | null
+  tproxy_port: PortStrategy | null
+  transparent_proxy: TransparentProxyConfig
+  break_connection: BreakConnectionStrategy
+  tun_stack: TunStack
+  tun_mips: MipsConfig
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch =
+  ClashSettingsPatch_Serialize | ClashSettingsPatch_Deserialize
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Deserialize = {
+  expand_include_all?: boolean | null
+  break_connection?: BreakConnectionStrategyPatch_Deserialize
+}
+
+/**
+ *  A patch of the ordinary Clash settings: how the application treats the core's profiles and
+ *  connections. It cannot change anything the core listens on or exposes.
+ */
+export type ClashSettingsPatch_Serialize = {
+  expand_include_all?: boolean | null
+  break_connection: BreakConnectionStrategyPatch_Serialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch =
+  ClashSystemPatch_Serialize | ClashSystemPatch_Deserialize
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Deserialize = {
+  enable_tun_mode?: boolean | null
+  tun?: TunOverridesPatch_Deserialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller?: ExternalControllerStrategyPatch_Deserialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port?: PortStrategyPatch_Deserialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy?: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips?: MipsConfigPatch_Deserialize
+}
+
+/**
+ *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
+ *  capture, the web UI templates and the field filter.
+ *
+ *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
+ *  the ordinary overrides, which are other classes. Overrides are written through the per-class
+ *  override requests.
+ */
+export type ClashSystemPatch_Serialize = {
+  enable_tun_mode?: boolean | null
+  tun: TunOverridesPatch_Serialize
+  web_ui_list?: string[] | null
+  enable_clash_fields?: boolean | null
+  external_controller: ExternalControllerStrategyPatch_Serialize
+  clash_control_channel?: ClashControlChannel | null
+  clash_ipc_disable_http_controller?: boolean | null
+  mixed_port: PortStrategyPatch_Serialize
+  socks_port?: PortStrategy | null
+  http_port?: PortStrategy | null
+  redir_port?: PortStrategy | null
+  tproxy_port?: PortStrategy | null
+  transparent_proxy: TransparentProxyConfigPatch
+  tun_stack?: TunStack | null
+  tun_mips: MipsConfigPatch_Serialize
 }
 
 export type ClashVersion = {
@@ -1215,6 +2057,20 @@ export type ClashWsUpdate =
   | { kind: 'recording_changed'; data: ClashWsRecording }
   | { kind: 'history_cleared'; data: ClashWsKind }
 
+/**  What `nyanpasu-cli --json install` reports. The field names are the CLI's `Installed`. */
+export type CliInstallation = {
+  /**  The link on `PATH`. */
+  link: string
+  /**  The executable the link points at. */
+  target: string
+  /**  The link already pointed there, so nothing changed. */
+  already_linked: boolean
+  /**  Whether the link's directory is on the app's `PATH`. */
+  on_path: boolean
+  /**  A command that links the executable for every user, which needs elevation. */
+  system_command: string
+}
+
 export type ClosedConnection = {
   id: string
   started_at: number
@@ -1237,32 +2093,29 @@ export type ClosedPage = {
 }
 
 /**
- *  Why a source transaction did not commit, classified once from the
- *  persistence error and, when the Runtime took part, the receipt it settled
- *  (U7). A source wraps it in its own domain error.
+ *  What a command does, independent of how a transport dispatches it.
+ *
+ *  Queries observe application or network state; refreshing a read model or measuring latency
+ *  does not change application configuration. Mutations perform application operations, including
+ *  allocating caller-owned resources. Scope independently controls who may request either effect.
+ *  The declaration is the source of truth; the generated frontend's split is checked against it.
  */
+export type CommandEffect =
+  /**  Returns data and changes nothing. */
+  | 'query'
+  /**  Everything else. */
+  | 'mutation'
+
+/**  Why a source transaction did not commit. A source wraps this in its domain error. */
 export type CommitAborted =
   /**  The yaml write failed; nothing committed. */
-  | { kind: 'write_config'; runtime: RuntimeAftermath }
+  | { kind: 'write_config' }
   /**  The write failed and so did the recovery of what the transaction staged. */
-  | { kind: 'recover_after_write_failure'; runtime: RuntimeAftermath }
-  /**  A required participant refused the candidate. */
-  | {
-      kind: 'runtime_refused'
-      errors: RuntimeError[]
-      runtime: RuntimeAftermath
-    }
-  /**  A required participant could not decide. */
-  | {
-      kind: 'runtime_failed'
-      errors: RuntimeError[]
-      runtime: RuntimeAftermath
-    }
-  /**
-   *  The coordinator refused before persisting: builder validation, or a CAS
-   *  mismatch the caller did not classify as its own version conflict.
-   */
-  | { kind: 'validate_state' }
+  | { kind: 'recover_after_write_failure' }
+  /**  Candidate validation refused the change. */
+  | { kind: 'runtime_refused'; errors: RuntimeError[] }
+  /**  Candidate validation could not return a verdict. */
+  | { kind: 'runtime_failed'; errors: RuntimeError[] }
 
 /**  A source commit and its critical runtime result. Peripheral owners settle separately. */
 export type CommitReceipt = {
@@ -1372,6 +2225,7 @@ export type ConfigError =
     }
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
+  | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
   | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
   | { kind: 'validate_hotkey_capability' }
@@ -1445,6 +2299,30 @@ export type ConfigurationStatus = {
 }
 
 export type ConfigurationStatusChanged = ConfigurationStatus
+
+/**  The secret-free view of [`ConfigurationStatus`]. */
+export type ConfigurationStatusSummary = {
+  event_seq: number
+  /**  A maintenance operation is running. Its description is diagnostic text. */
+  maintenance_active: boolean
+  source_versions: SourceVersions
+  runtime: RuntimeConvergenceSummary
+  effects: EffectConvergenceSummary[]
+  /**  The latest background-source receipt per profile, without the profile's name. */
+  sources: SourceSummary[]
+  active: string | null
+  recent_operations: OperationSummary[]
+}
+
+export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
+/**  Which side of a conflict a resolution chooses. */
+export type ConflictChoice = 'local' | 'remote' | 'keep_both'
+
+/**  Which side wins a unit both sides changed. */
+export type ConflictPolicy =
+  /**  Each device keeps its value and the conflict stays open until resolved. */
+  'manual' | 'local_wins' | 'remote_wins'
 
 export type Connection = Connection_Serialize | Connection_Deserialize
 
@@ -1637,13 +2515,11 @@ export type Connection_Serialize = {
   _extra: { [key in string]: JsonValue | null }
 }
 
+/**  How the core's controller is reached. A socket path or URL is a location, not a status. */
+export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
+
 export type ConvergenceHealth =
-  | 'healthy'
-  | 'pending'
-  | 'retry_scheduled'
-  | 'waiting_dependency'
-  | 'blocked'
-  | 'recovery_required'
+  'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
@@ -1657,6 +2533,12 @@ export type CoreAgentSkill = {
   /**  The skill's folder, which agents link so that core updates refresh it in place. */
   dir: string
   /**  Whether a core update has installed the skill. */
+  installed: boolean
+}
+
+/**  Safe agent skill availability summary without host filesystem paths. */
+export type CoreAgentSkillSummary = {
+  name: string
   installed: boolean
 }
 
@@ -1793,6 +2675,26 @@ export type CoreInfos_Serialize = {
   detail?: CoreStateDetail | null
 }
 
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError =
+  CoreLogCommandError_Serialize | CoreLogCommandError_Deserialize
+
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError_Deserialize =
+  CoreLogError | IpcError_Deserialize
+
+/**
+ *  Error union emitted by `clear_core_logs`: rich `CoreLogError` for
+ *  `SensitiveRead` callers and projected public [`IpcError`] otherwise.
+ */
+export type CoreLogCommandError_Serialize = CoreLogError | IpcError_Serialize
+
 export type CoreLogCompression = 'none' | 'preset' | 'trained'
 
 export type CoreLogCursor = {
@@ -1809,6 +2711,9 @@ export type CoreLogError =
   | { kind: 'too_large' }
   | { kind: 'unavailable'; message: string }
 
+export type CoreLogLevel =
+  'trace' | 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'unknown'
+
 export type CoreLogPage = {
   rows: CoreLogRow[]
   /**
@@ -1820,6 +2725,14 @@ export type CoreLogPage = {
   status: CoreLogStatus
 }
 
+/**  Public core-log page summary without raw payloads, source labels, or storage error text. */
+export type CoreLogPageSummary = {
+  rows: CoreLogRowSummary[]
+  cursor: CoreLogCursor | null
+  more: boolean
+  status: CoreLogStatusSummary
+}
+
 export type CoreLogQuery = {
   direction: CoreLogDirection
   cursor: CoreLogCursor | null
@@ -1827,6 +2740,19 @@ export type CoreLogQuery = {
   keyword: string
   limit: number
 }
+
+/**
+ *  Why a core log query a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: backend store paths and storage errors stay out of
+ *  the error, and their diagnostics stay on the protected full queries.
+ */
+export type CoreLogReadError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable' }
 
 export type CoreLogRecord = {
   source: CoreLogSource
@@ -1839,6 +2765,15 @@ export type CoreLogRecord = {
 export type CoreLogRow = {
   id: CoreLogCursor
   record: CoreLogRecord
+  truncated: boolean
+}
+
+/**  Public core-log entry summary without payload text, raw time string, or source strings. */
+export type CoreLogRowSummary = {
+  id: CoreLogCursor
+  received_at: number
+  level: CoreLogLevel
+  has_payload: boolean
   truncated: boolean
 }
 
@@ -1868,8 +2803,31 @@ export type CoreLogStatus = {
   discarded: number
 }
 
+/**  Public core-log status without raw storage error messages. */
+export type CoreLogStatusSummary = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  has_error: boolean
+  discarded: number
+}
+
+/**  Public core-log page query without arbitrary keyword filtering over payload text. */
+export type CoreLogSummaryQuery = {
+  direction: CoreLogDirection
+  cursor: CoreLogCursor | null
+  level: CoreLogLevel | null
+  limit: number
+}
+
 export type CoreLogsChanged = {
   status: CoreLogStatus
+}
+
+export type CoreLogsSummaryChanged = {
+  status: CoreLogStatusSummary
 }
 
 /**  A failure of locating the binary a core is started from. */
@@ -1956,6 +2914,80 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+/**
+ *  [`CoreStateDetail`] without the stop reason's text or the process id. The encoding stays
+ *  externally tagged so a consumer that tests for the `Running` key keeps working.
+ */
+export type CoreStateSummary =
+  | ({
+      Stopped: {
+        has_reason: boolean
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
+
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
@@ -1969,6 +3001,21 @@ export type CoreStatusInfo = {
   healthy: boolean | null
 }
 
+/**  The secret-free view of [`CoreStatusInfo`]. */
+export type CoreStatusSummary = {
+  controller: ControllerKind | null
+  host: ExecutionHost
+  connectivity: EndpointConnectivitySummary
+  generation: number
+  state: CoreStateSummary | null
+  state_changed_at: number
+  revision: RevisionSummary | null
+  /**  `None` is unknown, never healthy. */
+  healthy: boolean | null
+}
+
+export type CoreStatusSummaryChangedEvent = CoreStatusSummary
+
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
 export type CoreVersionError =
@@ -1976,16 +3023,21 @@ export type CoreVersionError =
   | { kind: 'core_version_exit'; core: string }
   | { kind: 'core_version_not_reported'; core: string }
 
-/**  Why a debug HTTP query or setting change could not be performed. */
-export type DebugHttpControlError =
-  | { kind: 'read_status_unsupported' }
-  | { kind: 'change_enabled_unsupported' }
-  | { kind: 'read_status' }
-  | { kind: 'change_enabled' }
+/**  Request payload for minting a named remote-access bearer token. */
+export type CreateRemoteAccessTokenRequest = {
+  name: string
+  scopes: ScopeSet
+  expires_at_ms?: number | null
+}
 
-export type DebugHttpStatus = {
-  enabled: boolean
-  url: string | null
+/**
+ *  Newly minted access token returned once at creation time.
+ *
+ *  Subsequent `list_remote_access_tokens` calls return only non-secret metadata.
+ */
+export type CreatedRemoteAccessToken = {
+  summary: AccessTokenSummary
+  token: string
 }
 
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
@@ -2004,25 +3056,12 @@ export type Degradation = {
 export type DegradationPhase =
   | 'profile_materialization'
   | 'runtime_build'
-  | 'runtime_check'
-  | 'runtime_promote'
-  | 'runtime_publish'
   | 'runtime_apply'
-  | 'core_rollback'
   | 'system_effect'
   | 'ui_effect'
 
 /**  Why a committed mutation is degraded. The frontend localizes each variant. */
 export type DegradationReason =
-  /**
-   *  The runtime owner stopped before the mutation settled, or settled it as
-   *  needing recovery.
-   */
-  | {
-      code: 'runtime_recovery_required'
-      operation_id: string | null
-      cause: RuntimeError | null
-    }
   /**  The runtime will apply the committed mutation later. */
   | { code: 'runtime_deferred'; cause: RuntimeError }
   | { code: 'runtime_product_publish_failed'; cause: RuntimeError }
@@ -2040,6 +3079,10 @@ export type DegradationReason =
       profile: ProfileId
       cause: ProfilesError
     }
+  /**  The remote-access settings were saved but the HTTP listener could not follow them. */
+  | { code: 'http_server_unavailable' }
+  /**  The remote-access settings were saved but the local socket listener could not follow them. */
+  | { code: 'local_socket_unavailable' }
 
 export type Delay = {
   delay: number
@@ -2048,6 +3091,14 @@ export type Delay = {
 export type DelayHistory = {
   time: string
   delay: number
+}
+
+/**  One known command on the active transport and whether this caller may invoke it. */
+export type DescribedCommand = {
+  name: string
+  effect: CommandEffect
+  scope: Scope
+  allowed: boolean
 }
 
 /**  A way to slice usage: ranking, filtering and topology layers all name dimensions. */
@@ -2113,6 +3164,18 @@ export type Direction = 'latest' | 'before' | 'after'
 
 export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
 
+/**  Safe download state without raw HTTP/OS error diagnostics. */
+export type DownloadProgressState =
+  'idle' | 'downloading' | 'failed' | 'finished'
+
+/**  Safe download progress snapshot for callers without `Scope::SensitiveRead`. */
+export type DownloadProgressSummary = {
+  state: DownloadProgressState
+  downloaded: number
+  total: number
+  speed: number | null
+}
+
 /**  A snapshot of a download session's progress, polled by IPC. */
 export type DownloadStatus = {
   state: DownloaderState
@@ -2142,6 +3205,17 @@ export type EffectConvergence = {
   code: EffectFailureCode | null
   /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
+}
+
+export type EffectConvergenceSummary = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  code: EffectFailureCode | null
+  has_diagnostic: boolean
 }
 
 /**
@@ -2237,41 +3311,18 @@ export type EndpointConnectivity =
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
 
+export type EndpointConnectivitySummary =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**  Unreachable; the transport error stays with protected callers. */
+  | { kind: 'degraded'; desired: ExecutionHost }
+
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
  *  serializable when the path is not valid UTF-8.
  */
 export type ErrorPath = string
-
-/**
- *  Evidence a mutation needed and did not have, before anything was tried.
- *
- *  Not a Try outcome. Nothing was submitted, so there is no result to classify
- *  and this attempt made nothing less certain than it already was — which is
- *  why it is a plain refusal the caller may retry (v2 §2.4, first row) and
- *  never the isolated state §11.4 reserves for "结果可能已经执行".
- */
-export type EvidenceGap =
-  /**
-   *  The core is mid-transition — starting, restarting, switching or
-   *  stopping. That is an answer, but not one that says what a candidate
-   *  would be applied on top of.
-   */
-  | 'core_transitioning'
-  /**
-   *  The host published no runtime state, or the read failed, and no stop
-   *  this workflow recorded settles the question either.
-   */
-  | 'baseline_unconfirmed'
-  /**
-   *  A core is running that this session never applied to, so no receipt
-   *  describes what it is running. The Try could be submitted, but its Cancel
-   *  would have nothing to put back — and a mutation that cannot be undone
-   *  must not be attempted (R10). The gap is known before anything is
-   *  submitted, which is what keeps it a refusal rather than the isolated
-   *  state a post-submission unknown earns.
-   */
-  | 'no_restorable_baseline'
 
 /**
  *  Which controller owns the runtime. The app perceives the difference in
@@ -2461,6 +3512,101 @@ export type HotkeyParseError =
       second: HotkeyAction
     }
 
+/**  HTTP listener settings. */
+export type HttpAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+  /**  Kept while the switch is off, so turning it on restores the earlier choice. */
+  strategy?: HttpAccessStrategy
+  /**
+   *  `None` until the first start binds a free port and records it. Later starts
+   *  reuse the recorded port, so URLs stay valid across restarts.
+   */
+  port?: number | null
+  /**  Serve the bundled web UI. When false only the API is served. */
+  serve_webui?: boolean
+  /**
+   *  What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`]. Kept while
+   *  another strategy is selected.
+   */
+  local_open_scopes?: Scope[]
+  /**
+   *  The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
+   *  IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
+   */
+  lan_bind?: string | null
+  /**
+   *  [`HttpAccessStrategy::LanAuthenticated`] requires [`HttpTls::SelfSigned`]; the loopback
+   *  strategies may opt into it.
+   */
+  tls?: HttpTls
+}
+
+/**  How the HTTP listener decides who may call it. */
+export type HttpAccessStrategy =
+  /**  Loopback only; every request must carry a valid credential. */
+  | 'local_authenticated'
+  /**
+   *  Loopback only; a request without a credential is an anonymous caller holding
+   *  [`HttpAccessConfig::local_open_scopes`]. Every local process of every OS user can
+   *  reach it, because loopback TCP is not user-scoped.
+   */
+  | 'local_open'
+  /**
+   *  Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
+   *  one from a loopback peer: a reverse proxy makes every request look local.
+   */
+  | 'lan_authenticated'
+
+/**  Why an HTTP server query or setting change could not be performed. */
+export type HttpServerControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type HttpServerFault =
+  /**  The persisted port is taken. The server never moves to another port by itself. */
+  | 'port_in_use'
+  /**  The listener could not be bound for another reason. */
+  | 'bind_failed'
+  /**
+   *  HTTPS is configured but the certificate could not be made or read, so nothing listens
+   *  rather than serving credentials in the clear.
+   */
+  | 'tls_unavailable'
+
+/**
+ *  The listener's state. It never carries a credential: the credential-bearing launch URL
+ *  is a separate desktop-only query.
+ */
+export type HttpServerStatus = {
+  enabled: boolean
+  /**  The bound origin, for example `http://127.0.0.1:41234/` or `https://192.168.1.20:41234/`. */
+  url: string | null
+  /**  The bound port, which the facade records when the settings leave it open. */
+  port: number | null
+  /**
+   *  The certificate the listener presents, when it serves HTTPS. Its fingerprint is what a
+   *  client pins; it is public to every TLS client, so it is not a secret.
+   */
+  tls: TlsCertificateSummary | null
+  /**
+   *  The listener is bound to one address that its certificate does not cover, because the
+   *  certificate was made before that address was configured. A client that connects to it
+   *  fails the certificate's name check until the certificate is replaced.
+   */
+  bind_outside_certificate: boolean
+  fault: HttpServerFault | null
+}
+
+/**  Whether the listener speaks plain HTTP or HTTPS with the generated self-signed certificate. */
+export type HttpTls =
+  /**  Plain HTTP. Only the loopback strategies may use it. */
+  | 'http'
+  /**  HTTPS with the application's self-signed certificate, which clients pin by fingerprint. */
+  | 'self_signed'
+
 /**
  *  UI language of the application.
  *
@@ -2573,19 +3719,15 @@ export type IpLookupProviderInfo = {
 }
 
 /**  A failed command as the frontend receives it. */
-export type IpcError = {
-  /**  The domain failure; the frontend localizes it. */
-  kind: IpcErrorKind
-  /**  The error's own message, shown when `kind` cannot be localized. */
-  message: string
-  /**  The original error, copied by the user for diagnosis. */
-  detail: string
-}
+export type IpcError = IpcError_Serialize | IpcError_Deserialize
 
 /**  The domain a command failed in. A domain joins once its errors are typed. */
-export type IpcErrorKind =
+export type IpcErrorKind = IpcErrorKind_Serialize | IpcErrorKind_Deserialize
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind_Deserialize =
   /**  Not classified into a domain; only `message` describes it. */
-  | { domain: 'unknown' }
+  | ({ domain: 'unknown' } & { error?: never })
   | { domain: 'profiles'; error: ProfilesError }
   | { domain: 'runtime'; error: RuntimeError }
   | { domain: 'config'; error: ConfigError }
@@ -2593,7 +3735,52 @@ export type IpcErrorKind =
   | { domain: 'system_dns'; error: SystemDnsError }
   | { domain: 'system_proxy'; error: OsProxyError }
   | { domain: 'effects'; error: EffectsError }
-  | { domain: 'debug_http'; error: DebugHttpControlError }
+  | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
+  | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'core_log_read'; error: CoreLogReadError }
+  | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
+  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  | { domain: 'public'; error: PublicFailure_Deserialize }
+
+/**  The domain a command failed in. A domain joins once its errors are typed. */
+export type IpcErrorKind_Serialize =
+  /**  Not classified into a domain; only `message` describes it. */
+  | ({ domain: 'unknown' } & { error?: never })
+  | { domain: 'profiles'; error: ProfilesError }
+  | { domain: 'runtime'; error: RuntimeError }
+  | { domain: 'config'; error: ConfigError }
+  | { domain: 'storage'; error: StorageOperationError }
+  | { domain: 'system_dns'; error: SystemDnsError }
+  | { domain: 'system_proxy'; error: OsProxyError }
+  | { domain: 'effects'; error: EffectsError }
+  | { domain: 'http_server'; error: HttpServerControlError }
+  | { domain: 'local_socket'; error: LocalSocketControlError }
+  | { domain: 'clash_read'; error: ClashReadError }
+  | { domain: 'core_log_read'; error: CoreLogReadError }
+  | { domain: 'profile_sync_read'; error: ProfileSyncReadError }
+  /**  Exhaustive public classification for callers without `Scope::SensitiveRead`. */
+  | { domain: 'public'; error: PublicFailure_Serialize }
+
+/**  A failed command as the frontend receives it. */
+export type IpcError_Deserialize = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind_Deserialize
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis when permitted. */
+  detail?: string | null
+}
+
+/**  A failed command as the frontend receives it. */
+export type IpcError_Serialize = {
+  /**  The domain failure; the frontend localizes it. */
+  kind: IpcErrorKind_Serialize
+  /**  The error's own message, shown when `kind` cannot be localized. */
+  message: string
+  /**  The original error, copied by the user for diagnosis when permitted. */
+  detail?: string | null
+}
 
 export type JournalDto =
   { kind: 'durable' } | { kind: 'degraded'; code: string }
@@ -2645,6 +3832,31 @@ export type LocalBinding_Serialize =
       mode: ExternalMode
     }
 
+/**  Local socket listener settings. */
+export type LocalSocketAccessConfig = {
+  /**  Master switch. Off by default. */
+  enabled?: boolean
+}
+
+/**  Why a local-socket query or setting change could not be performed. */
+export type LocalSocketControlError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Why the listener is not running although the settings ask for it. */
+export type LocalSocketFault =
+  /**  The listener could not be bound. */
+  'bind_failed'
+
+/**  The local-socket listener's state. */
+export type LocalSocketStatus = {
+  enabled: boolean
+  /**  The bound endpoint path or pipe name when running. */
+  endpoint: string | null
+  fault: LocalSocketFault | null
+}
+
 export type LogCursor = {
   generation: string
   offset: string
@@ -2674,6 +3886,13 @@ export type LogFileInfo = {
   bytes: string
 }
 
+/**  Public filter for app/service log summaries without text or target substring search. */
+export type LogFilterSummary = {
+  levels: Level[]
+  from_ms: number | null
+  to_ms: number | null
+}
+
 export type LogLevel = 'silent' | 'error' | 'warning' | 'info' | 'debug'
 
 export type LogPage = {
@@ -2694,6 +3913,22 @@ export type LogPage = {
 export type LogPageDto = {
   items: LogDto[]
   next: string | null
+}
+
+/**  Public app/service log page without raw line text, log messages, or target names. */
+export type LogPageSummary = {
+  rows: LogRowSummary[]
+  cursor: LogCursor
+  head: LogCursor
+  start: string
+  file: string
+  building: boolean
+  more: boolean
+  partial: boolean
+  malformed: string
+  truncated: string
+  indexed_bytes: string
+  file_bytes: string
 }
 
 /**
@@ -2779,6 +4014,16 @@ export type LogRow = {
   truncated: boolean
 }
 
+/**  Public app/service log row without message text, raw line text, or target string. */
+export type LogRowSummary = {
+  id: string
+  timestamp: string | null
+  level: Level
+  has_target: boolean
+  unparsed: boolean
+  truncated: boolean
+}
+
 export type LogSession = {
   id: string
   lease_ms: number
@@ -2803,6 +4048,17 @@ export type LoggingLevel_Deserialize =
 
 export type LoggingLevel_Serialize =
   'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
+
+/**
+ *  A slash-separated relative key, identical on every platform.
+ *
+ *  One to four segments. A segment starts with an ASCII letter or digit,
+ *  continues with letters, digits, `.`, `_` or `-`, does not end with `.`, and
+ *  its stem is not a Windows device name. Keys are compared by bytes; use
+ *  [`LogicalPath::case_folded`] to find names a case-insensitive filesystem
+ *  cannot hold together.
+ */
+export type LogicalPath = string
 
 /**  A runtime config field that Nyanpasu may take over from the profiles. */
 export type ManageableField<T> =
@@ -2879,6 +4135,17 @@ export type MechanismOutcome =
   | { kind: 'disabled' }
   /**  The switch was not written; `message` is the refusal. */
   | { kind: 'failed'; message: string }
+
+/**  What applying one action did to its mechanism's switch, without the refusal text. */
+export type MechanismOutcomeKind =
+  'unchanged' | 'enabled' | 'disabled' | 'failed'
+
+/**  One outcome kind per capture mechanism. */
+export type MechanismOutcomeKinds = {
+  system_proxy: MechanismOutcomeKind
+  tun: MechanismOutcomeKind
+  transparent_proxy: MechanismOutcomeKind
+}
 
 /**  One outcome per capture mechanism. */
 export type MechanismOutcomes = {
@@ -2957,6 +4224,16 @@ export type NetworkAutomationApplication = {
   outcomes: MechanismOutcomes
 }
 
+/**  The last application without the rule's identity. */
+export type NetworkAutomationApplicationSummary = {
+  /**
+   *  Whether a rule decided, rather than the default actions. The rule's id is the user's
+   *  own label for a network, so it stays with `sensitive_read`.
+   */
+  matched_rule: boolean
+  outcomes: MechanismOutcomeKinds
+}
+
 /**  A full value: the receiver replaces what it held. */
 export type NetworkAutomationStatus = {
   /**  Whether this host can observe its network at all. */
@@ -2968,6 +4245,17 @@ export type NetworkAutomationStatus = {
   network: NetworkState | null
   /**  `None` until the enabled policy has applied once. */
   applied: NetworkAutomationApplication | null
+}
+
+/**
+ *  Safe network automation summary for callers without `Scope::SensitiveRead`.
+ *
+ *  The network reading holds the Wi-Fi name and the gateway's MAC address, and the matched rule
+ *  names one of the user's networks, so none of them is part of this view.
+ */
+export type NetworkAutomationSummary = {
+  supported: boolean
+  applied: NetworkAutomationApplicationSummary | null
 }
 
 /**
@@ -3070,114 +4358,6 @@ export type NewProfileRequest_Serialize = {
 export type NyanpasuAppConfig =
   NyanpasuAppConfig_Serialize | NyanpasuAppConfig_Deserialize
 
-export type NyanpasuAppConfigPatch =
-  NyanpasuAppConfigPatch_Serialize | NyanpasuAppConfigPatch_Deserialize
-
-export type NyanpasuAppConfigPatch_Deserialize =
-  | ({
-      app_singleton_port?: number | null
-      app_log_level?: LoggingLevel_Deserialize | null
-      core_logs?: CoreLogSettings | null
-      language?: I18nLanguage_Deserialize | null
-      theme_mode?: ThemeMode | null
-      traffic_graph?: boolean | null
-      enable_memory_usage?: boolean | null
-      lighten_animation_effects?: boolean | null
-      enable_service_mode?: boolean | null
-      enable_auto_launch?: boolean | null
-      enable_silent_start?: boolean | null
-      enable_system_proxy?: boolean | null
-      enable_proxy_guard?: boolean | null
-      system_proxy_bypass?: string | null
-      theme_color?: string
-      hotkeys?: string[] | null
-      default_latency_test?: string | null
-      default_latency_timeout_ms?: number | null
-      enable_builtin_enhanced?: boolean | null
-      proxy_layout_column?: number | null
-      max_log_files?: number | null
-      max_log_file_size?: number | null
-      enable_auto_check_update?: boolean | null
-      enable_auto_download_update?: boolean | null
-      release_channel?: ReleaseChannel | null
-      update_sources?: UpdateSource[] | null
-      always_on_top?: boolean | null
-      tray_menu_mode?: TrayMenuMode | null
-      window_close?: WindowCloseSettingsPatch_Deserialize
-      network_statistic_widget?: NetworkStatisticWidgetConfig | null
-      network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-      traffic_retention?: TrafficRetention | null
-      enable_local_ip_probe?: boolean | null
-      stun_servers?: StunServer[] | null
-      ip_lookup_providers?: IpLookupProvider[] | null
-      network_automation?: NetworkAutomation | null
-      pac_url?: string | null
-      enable_tray_text?: boolean | null
-      enable_tray_traffic?: boolean | null
-      use_legacy_ui?: boolean | null
-    } & {
-      proxy_guard_interval?: number | null
-    })
-  | ({
-      proxy_guard_duration?: number | null
-    } & {
-      core?: ClashCore_Deserialize | null
-    })
-  | ({
-      clash_core?: ClashCore_Deserialize | null
-    } & {
-      tray_selector_mode?: ProxiesSelectorMode | null
-    })
-  | {
-      clash_tray_selector?: ProxiesSelectorMode | null
-    }
-
-export type NyanpasuAppConfigPatch_Serialize = {
-  app_singleton_port?: number | null
-  app_log_level?: LoggingLevel_Serialize | null
-  core_logs?: CoreLogSettings | null
-  language?: I18nLanguage_Serialize | null
-  theme_mode?: ThemeMode | null
-  traffic_graph?: boolean | null
-  enable_memory_usage?: boolean | null
-  lighten_animation_effects?: boolean | null
-  enable_service_mode?: boolean | null
-  enable_auto_launch?: boolean | null
-  enable_silent_start?: boolean | null
-  enable_system_proxy?: boolean | null
-  enable_proxy_guard?: boolean | null
-  system_proxy_bypass?: string | null
-  proxy_guard_interval?: number | null
-  theme_color?: string
-  core?: ClashCore_Serialize | null
-  hotkeys?: string[] | null
-  default_latency_test?: string | null
-  default_latency_timeout_ms?: number | null
-  enable_builtin_enhanced?: boolean | null
-  proxy_layout_column?: number | null
-  max_log_files?: number | null
-  max_log_file_size?: number | null
-  enable_auto_check_update?: boolean | null
-  enable_auto_download_update?: boolean | null
-  release_channel?: ReleaseChannel | null
-  update_sources?: UpdateSource[] | null
-  tray_selector_mode?: ProxiesSelectorMode | null
-  always_on_top?: boolean | null
-  tray_menu_mode?: TrayMenuMode | null
-  window_close: WindowCloseSettingsPatch_Serialize
-  network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  network_statistic_widget_logo?: NetworkStatisticWidgetLogo | null
-  traffic_retention?: TrafficRetention | null
-  enable_local_ip_probe?: boolean | null
-  stun_servers?: StunServer[] | null
-  ip_lookup_providers?: IpLookupProvider[] | null
-  network_automation?: NetworkAutomation | null
-  pac_url?: string | null
-  enable_tray_text?: boolean | null
-  enable_tray_traffic?: boolean | null
-  use_legacy_ui?: boolean | null
-}
-
 /**  `application.yaml` schema. */
 export type NyanpasuAppConfig_Deserialize = {
   /**  app listening port for app singleton */
@@ -3265,6 +4445,11 @@ export type NyanpasuAppConfig_Deserialize = {
   network_statistic_widget_logo?: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention?: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access?: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe?: boolean
   /**
@@ -3303,6 +4488,16 @@ export type NyanpasuAppConfig_Deserialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons?: boolean
 }
 
 /**  `application.yaml` schema. */
@@ -3392,6 +4587,11 @@ export type NyanpasuAppConfig_Serialize = {
   network_statistic_widget_logo: NetworkStatisticWidgetLogo
   /**  How long recorded traffic is kept */
   traffic_retention: TrafficRetention
+  /**
+   *  Who may reach the application over HTTP. Written only by the dedicated
+   *  remote-access command; ordinary preference patches reject it.
+   */
+  remote_access: RemoteAccessConfig
   /**  Allow public IP probes to locate LAN/local traffic sources. */
   enable_local_ip_probe: boolean
   /**
@@ -3430,6 +4630,16 @@ export type NyanpasuAppConfig_Serialize = {
    *  When true, opens legacy window; when false, opens new main window
    */
   use_legacy_ui: boolean
+  /**
+   *  Enable colored tray icons on macOS.
+   *
+   *  When enabled, uses colored icons instead of template icons to show proxy
+   *  status; when disabled, uses system template icons that adapt to light and
+   *  dark mode. The field exists on every platform so one schema describes
+   *  every install and a portable projection round-trips unchanged; only the
+   *  macOS tray reads it.
+   */
+  enable_macos_colored_icons: boolean
 }
 
 export type OpenLogs = {
@@ -3441,8 +4651,15 @@ export type OperationStatus = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   message: string | null
+}
+
+/**  One settled mutation. `domain` and `outcome` name variants of closed enums. */
+export type OperationSummary = {
+  operation_id: string
+  domain: string
+  outcome: string
+  has_diagnostic: boolean
 }
 
 /**  The pipeline operator that produced a snapshot node. */
@@ -3598,6 +4815,43 @@ export type PostProcessingOutput = {
   advice: [LogSpan, string][]
 }
 
+/**
+ *  Public identity of the resolved caller attached at transport admission.
+ *
+ *  Contains only non-secret identity labels and identifiers suitable for audit
+ *  attribution and self-inspection. Never carries raw secrets, bearer tokens,
+ *  session cookies, or unhashed credentials.
+ */
+export type Principal =
+  /**  Native Tauri desktop shell webview window. */
+  | {
+      kind: 'desktop'
+      /**  Non-secret desktop window label. */
+      window: string
+    }
+  /**  Authenticated caller via the same-user local IPC socket or named pipe. */
+  | {
+      kind: 'local_socket'
+      /**  Opaque host user security identity (Unix UID decimal string or Windows SID). */
+      user: string
+    }
+  /**  Authenticated browser or bootstrap HTTP session. */
+  | {
+      kind: 'session'
+      /**  Public non-secret session correlation identifier (never a cookie or access token). */
+      id: string
+    }
+  /**  Scoped bearer token identified by its public ID and user-assigned label. */
+  | {
+      kind: 'token'
+      /**  Public non-secret token identifier. */
+      id: string
+      /**  User-assigned token label. */
+      name: string
+    }
+  /**  Unauthenticated remote caller allowed under an explicit anonymous policy. */
+  | { kind: 'anonymous' }
+
 /**  Downloaded or read content that is not a valid profile document. */
 export type ProfileContentError =
   | { kind: 'not_yaml_mapping' }
@@ -3749,6 +5003,149 @@ export type ProfileLayout = {
   ungrouped: ProfileId[]
 }
 
+export type ProfileListingBinding =
+  ProfileListingBinding_Serialize | ProfileListingBinding_Deserialize
+
+export type ProfileListingBinding_Deserialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingBinding_Serialize =
+  | ({ type: 'managed'; updated_at?: number | null } & { mode?: never })
+  /**  The target path is the user's file system layout: only its mode is listed. */
+  | { type: 'external'; updated_at?: number | null; mode: ExternalMode }
+
+export type ProfileListingConfig =
+  ProfileListingConfig_Serialize | ProfileListingConfig_Deserialize
+
+export type ProfileListingConfig_Deserialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Deserialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingConfig_Serialize =
+  | ({
+      type: 'file'
+      source: ProfileListingSource_Serialize
+      transforms: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
+  /**  Ids only: it holds no source. */
+  | ({
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
+
+export type ProfileListingDefinition =
+  ProfileListingDefinition_Serialize | ProfileListingDefinition_Deserialize
+
+export type ProfileListingDefinition_Deserialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Deserialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Deserialize } & {
+      config?: never
+    })
+
+export type ProfileListingDefinition_Serialize =
+  | ({ type: 'config'; config: ProfileListingConfig_Serialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: ProfileListingTransform_Serialize } & {
+      config?: never
+    })
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem =
+  ProfileListingItem_Serialize | ProfileListingItem_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Deserialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Deserialize
+
+/**  One profile without its source secrets. */
+export type ProfileListingItem_Serialize = {
+  uid: ProfileId
+} & ProfileListingMetadata &
+  ProfileListingDefinition_Serialize
+
+/**  The name stays; the description is free text a user may paste a link into, so it is a flag. */
+export type ProfileListingMetadata = {
+  name: string
+  custom_name: boolean
+  has_desc: boolean
+}
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource =
+  ProfileListingSource_Serialize | ProfileListingSource_Deserialize
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Deserialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Deserialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+/**  Where a profile's content comes from, without the URL, the file paths or the request headers. */
+export type ProfileListingSource_Serialize =
+  | ({ type: 'local'; binding: ProfileListingBinding_Serialize } & {
+      option?: never
+      subscription?: never
+      updated_at?: never
+    })
+  | ({
+      type: 'remote'
+      updated_at?: number | null
+      option: RemoteListingOptions
+      /**  Byte counts and an expiry: numbers cannot carry a credential. */
+      subscription?: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+export type ProfileListingTransform =
+  ProfileListingTransform_Serialize | ProfileListingTransform_Deserialize
+
+export type ProfileListingTransform_Deserialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Deserialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Deserialize
+      runtime: ScriptRuntime
+    }
+
+export type ProfileListingTransform_Serialize =
+  | ({ type: 'overlay'; source: ProfileListingSource_Serialize } & {
+      runtime?: never
+    })
+  | {
+      type: 'script'
+      source: ProfileListingSource_Serialize
+      runtime: ScriptRuntime
+    }
+
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
   ProfileMetadata_Serialize | ProfileMetadata_Deserialize
@@ -3872,12 +5269,37 @@ export type ProfileSubscriptionInfo = {
   expire?: number | null
 }
 
+/**
+ *  Why a profile's sync status or run history a caller without `sensitive_read` made has no result.
+ *
+ *  The messages are fixed and carry no source: the journal, the scheduler and the adapters stay
+ *  out of the error, and their diagnostics stay on the protected full queries.
+ */
+export type ProfileSyncReadError =
+  | { kind: 'unknown_profile' }
+  | { kind: 'not_remote' }
+  | { kind: 'invalid_cursor' }
+  | { kind: 'unavailable' }
+
 export type ProfileSyncStatus = {
   scheduled: boolean
   next_run_at: string | null
   active: RunDto[]
   journal_degraded: boolean
   registration_error: string | null
+  history_limit: number
+}
+
+/**
+ *  The secret-free view of [`ProfileSyncStatus`]. The registration error is owner text that can
+ *  carry the failing request's URL, so it is a flag.
+ */
+export type ProfileSyncSummary = {
+  scheduled: boolean
+  next_run_at: string | null
+  active: SyncRunSummary[]
+  journal_degraded: boolean
+  has_registration_error: boolean
   history_limit: number
 }
 
@@ -4775,6 +6197,60 @@ export type ProfilesError =
   | { kind: 'blocking_task_cancelled' }
   | { kind: 'shutting_down' }
 
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing =
+  ProfilesListing_Serialize | ProfilesListing_Deserialize
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Deserialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Deserialize[]
+}
+
+/**  The secret-free view of [`Profiles`]. */
+export type ProfilesListing_Serialize = {
+  current: ProfileId | null
+  global_transforms: ProfileId[]
+  folders: ProfileFolder[]
+  /**
+   *  The sidebar arrangement of each profile's proxy groups. The names are the groups
+   *  `get_proxies` already returns, and the folder names are the user's own labels.
+   */
+  proxy_group_layouts: { [key in ProfileId]: ProxyGroupLayout }
+  items: ProfileListingItem_Serialize[]
+}
+
+/**  Where a vault lives. Holds no secret: those travel as [`ProviderSecrets`]. */
+export type ProviderConfig =
+  | {
+      kind: 'webdav'
+      endpoint: string
+      /**  Directory on the server that contains the vault. */
+      root: string
+      username: string | null
+    }
+  | {
+      kind: 's3'
+      /**  `None` selects the AWS endpoint of `region`. */
+      endpoint: string | null
+      region: string
+      bucket: string
+      root: string
+      access_key_id: string
+      virtual_host_style: boolean
+    }
+  /**  A directory on this machine, such as a mounted share. */
+  | { kind: 'fs'; root: string }
+
+export type ProviderKind = 'webdav' | 's3' | 'fs'
+
 export type ProviderName = string
 
 export type ProviderType = 'Proxy' | 'Rule' | string
@@ -4835,12 +6311,21 @@ export type ProxyGroup = {
   now: ProxyName | null
   /**  The member a user pinned; `None` while the core selects on its own. */
   fixed: ProxyName | null
-  /**  The URL the core tests this group's members with; `None` when unset. */
-  testUrl: string | null
+  /**
+   *  Which of a node's delay records this group's members are shown with: [`DEFAULT_TEST_URL_KEY`]
+   *  when the group tests with the app's default URL, else the group's own name. A test URL is
+   *  configuration that may hold a credential, so the key names the source and never the URL;
+   *  the backend resolves the URL itself.
+   */
+  delayKey: string
   /**  The status codes a test must return, in the core's range syntax. */
   expectedStatus: string | null
   hidden: boolean
-  icon: string | null
+  /**
+   *  Whether the group has an icon. The icon is a profile-provided URL or path that may hold a
+   *  credential, so only `get_proxy_group_icons` (`sensitive_read`) returns it.
+   */
+  iconConfigured: boolean
   capabilities: ProxyGroupCapabilities
 }
 
@@ -4972,10 +6457,1208 @@ export type Proxy_Serialize = {
   provider: string | null
 }
 
+/**  Safe public Clash read error discriminant. */
+export type PublicClashReadError =
+  | { kind: 'settings_unavailable' }
+  | { kind: 'proxies_unavailable' }
+  | { kind: 'unknown_group' }
+  | { kind: 'delay_test_failed' }
+  | { kind: 'version_unavailable' }
+  | { kind: 'rules_unavailable' }
+  | { kind: 'rule_providers_unavailable' }
+  | { kind: 'proxy_providers_unavailable' }
+  | { kind: 'streams_unavailable' }
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted =
+  PublicCommitAborted_Serialize | PublicCommitAborted_Deserialize
+
+/**  Public commit abort phase discriminant. */
+export type PublicCommitAbortedKind =
+  | 'write_config'
+  | 'recover_after_write_failure'
+  | 'runtime_refused'
+  | 'runtime_failed'
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted_Deserialize = {
+  kind: PublicCommitAbortedKind
+  runtime_causes?: PublicRuntimeError_Deserialize[]
+}
+
+/**  Safe public commit-aborted decision metadata. */
+export type PublicCommitAborted_Serialize = {
+  kind: PublicCommitAbortedKind
+  runtime_causes?: PublicRuntimeError_Serialize[]
+}
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError =
+  PublicConfigError_Serialize | PublicConfigError_Deserialize
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError_Deserialize =
+  | ({ kind: 'leave_nightly_channel' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_update_sources' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_core_logs' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_public_ip_probe_sources' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  /**
+   *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
+   *  a caller without `SensitiveRead` learns only that the policy was invalid.
+   */
+  | ({ kind: 'invalid_network_automation' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkey_capability' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkeys'; reason: PublicHotkeyErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & { reason?: never; source?: never })
+  | ({ kind: 'shutting_down' } & { reason?: never; source?: never })
+  | ({ kind: 'owner_stopped' } & { reason?: never; source?: never })
+  | ({ kind: 'session_state_stopped' } & { reason?: never; source?: never })
+  | ({
+      kind: 'invalid_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    } & { source?: never })
+  | ({ kind: 'transparent_proxy_requires_service_mode' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & { reason?: never; source?: never })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Deserialize } & {
+      reason?: never
+    })
+  | ({ kind: 'persist_session_state' } & { reason?: never; source?: never })
+
+/**  Safe public configuration error for callers without `SensitiveRead`. */
+export type PublicConfigError_Serialize =
+  | ({ kind: 'leave_nightly_channel' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_update_sources' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_core_logs' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_public_ip_probe_sources' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'invalid_latency_timeout' } & { reason?: never; source?: never })
+  | ({ kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind } & {
+      source?: never
+    })
+  /**
+   *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
+   *  a caller without `SensitiveRead` learns only that the policy was invalid.
+   */
+  | ({ kind: 'invalid_network_automation' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkey_capability' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'validate_hotkeys'; reason: PublicHotkeyErrorKind } & {
+      source?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & { reason?: never; source?: never })
+  | ({ kind: 'shutting_down' } & { reason?: never; source?: never })
+  | ({ kind: 'owner_stopped' } & { reason?: never; source?: never })
+  | ({ kind: 'session_state_stopped' } & { reason?: never; source?: never })
+  | ({
+      kind: 'invalid_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    } & { source?: never })
+  | ({ kind: 'transparent_proxy_requires_service_mode' } & {
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & { reason?: never; source?: never })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Serialize } & {
+      reason?: never
+    })
+  | ({ kind: 'persist_session_state' } & { reason?: never; source?: never })
+
+/**  Safe public core log read/clear error discriminant. */
+export type PublicCoreLogReadError =
+  | { kind: 'invalid_request' }
+  | { kind: 'cursor_expired' }
+  | { kind: 'record_gone' }
+  | { kind: 'too_large' }
+  | { kind: 'unavailable' }
+
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation =
+  PublicDegradation_Serialize | PublicDegradation_Deserialize
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason =
+  PublicDegradationReason_Serialize | PublicDegradationReason_Deserialize
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason_Deserialize =
+  | { code: 'runtime_deferred'; cause: PublicRuntimeError_Deserialize }
+  | {
+      code: 'runtime_product_publish_failed'
+      cause: PublicRuntimeError_Deserialize
+    }
+  | { code: 'service_stop_failed'; cause: PublicRuntimeError_Deserialize }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | ({ code: 'proxy_cache_refresh_failed' } & { cause?: never })
+  | ({ code: 'journal_invalid' } & { cause?: never })
+  | ({ code: 'jobs_journal_unavailable' } & { cause?: never })
+  | ({ code: 'materialization_deferred' } & { cause?: never })
+  | ({ code: 'cleanup_deferred' } & { cause?: never })
+  | {
+      code: 'profile_auto_activation_failed'
+      cause: PublicProfilesError_Deserialize
+    }
+  | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
+
+/**  Safe public reason discriminant why a committed mutation degraded. */
+export type PublicDegradationReason_Serialize =
+  | { code: 'runtime_deferred'; cause: PublicRuntimeError_Serialize }
+  | {
+      code: 'runtime_product_publish_failed'
+      cause: PublicRuntimeError_Serialize
+    }
+  | { code: 'service_stop_failed'; cause: PublicRuntimeError_Serialize }
+  | { code: 'mode_interruption_failed'; cause: InterruptFailure }
+  | { code: 'profile_interruption_failed'; cause: InterruptFailure }
+  | { code: 'proxy_interruption_failed'; cause: InterruptFailure }
+  | ({ code: 'proxy_cache_refresh_failed' } & { cause?: never })
+  | ({ code: 'journal_invalid' } & { cause?: never })
+  | ({ code: 'jobs_journal_unavailable' } & { cause?: never })
+  | ({ code: 'materialization_deferred' } & { cause?: never })
+  | ({ code: 'cleanup_deferred' } & { cause?: never })
+  | {
+      code: 'profile_auto_activation_failed'
+      cause: PublicProfilesError_Serialize
+    }
+  | ({ code: 'http_server_unavailable' } & { cause?: never })
+  | ({ code: 'local_socket_unavailable' } & { cause?: never })
+
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation_Deserialize = {
+  phase: DegradationPhase
+  reason: PublicDegradationReason_Deserialize
+  retryable: boolean
+}
+
+/**  Safe public degradation detail without raw host diagnostics or internal profile identifiers. */
+export type PublicDegradation_Serialize = {
+  phase: DegradationPhase
+  reason: PublicDegradationReason_Serialize
+  retryable: boolean
+}
+
+/**  Safe public side-effects error discriminant. */
+export type PublicEffectsError = { kind: 'effects_stopped' }
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure = PublicFailure_Serialize | PublicFailure_Deserialize
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure_Deserialize =
+  | { domain: 'profiles'; error: PublicProfilesError_Deserialize }
+  | { domain: 'runtime'; error: PublicRuntimeError_Deserialize }
+  | { domain: 'config'; error: PublicConfigError_Deserialize }
+  | { domain: 'storage'; error: PublicStorageError }
+  | { domain: 'system_dns'; error: PublicSystemDnsError }
+  | { domain: 'system_proxy'; error: PublicOsProxyError }
+  | { domain: 'effects'; error: PublicEffectsError }
+  | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
+  | { domain: 'clash_read'; error: PublicClashReadError }
+  | { domain: 'core_log_read'; error: PublicCoreLogReadError }
+  | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
+  | {
+      domain: 'core'
+      error: {
+        kind: CoreErrorKind
+      }
+    }
+
+/**
+ *  Exhaustive public classification for a failed command when the caller lacks
+ *  `Scope::SensitiveRead`.
+ */
+export type PublicFailure_Serialize =
+  | { domain: 'profiles'; error: PublicProfilesError_Serialize }
+  | { domain: 'runtime'; error: PublicRuntimeError_Serialize }
+  | { domain: 'config'; error: PublicConfigError_Serialize }
+  | { domain: 'storage'; error: PublicStorageError }
+  | { domain: 'system_dns'; error: PublicSystemDnsError }
+  | { domain: 'system_proxy'; error: PublicOsProxyError }
+  | { domain: 'effects'; error: PublicEffectsError }
+  | { domain: 'http_server'; error: PublicHttpServerError }
+  | { domain: 'local_socket'; error: PublicLocalSocketError }
+  | { domain: 'clash_read'; error: PublicClashReadError }
+  | { domain: 'core_log_read'; error: PublicCoreLogReadError }
+  | { domain: 'profile_sync_read'; error: PublicProfileSyncReadError }
+  | {
+      domain: 'core'
+      error: {
+        kind: CoreErrorKind
+      }
+    }
+
+/**  Safe public hotkey parse rejection discriminant without binding strings. */
+export type PublicHotkeyErrorKind =
+  | 'malformed_entry'
+  | 'unknown_function'
+  | 'empty_key_segment'
+  | 'unsupported_accelerator'
+  | 'missing_super_key'
+  | 'duplicate_accelerator'
+
+/**  Safe public HTTP server control error discriminant. */
+export type PublicHttpServerError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind =
+  | PublicInstallCoreBinaryKind_Serialize
+  | PublicInstallCoreBinaryKind_Deserialize
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind_Deserialize =
+  | ({ kind: 'authorize_core_copy'; core: ClashCore_Deserialize } & {
+      exit_code?: never
+    })
+  | ({ kind: 'start_elevated_copy'; core: ClashCore_Deserialize } & {
+      exit_code?: never
+    })
+  | {
+      kind: 'elevated_copy_failed'
+      core: ClashCore_Deserialize
+      exit_code: number | null
+    }
+  | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public core binary installation discriminant without filesystem paths. */
+export type PublicInstallCoreBinaryKind_Serialize =
+  | ({ kind: 'authorize_core_copy'; core: ClashCore_Serialize } & {
+      exit_code?: never
+    })
+  | ({ kind: 'start_elevated_copy'; core: ClashCore_Serialize } & {
+      exit_code?: never
+    })
+  | {
+      kind: 'elevated_copy_failed'
+      core: ClashCore_Serialize
+      exit_code: number | null
+    }
+  | ({ kind: 'path_not_utf8' } & { core?: never; exit_code?: never })
+
+/**  Safe public local-socket control error discriminant. */
+export type PublicLocalSocketError =
+  | { kind: 'read_status_unsupported' }
+  | { kind: 'change_unsupported' }
+  | { kind: 'read_status' }
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome<T> =
+  PublicMutationOutcome_Serialize<T> | PublicMutationOutcome_Deserialize<T>
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome_Deserialize<T> =
+  | ({
+      status: 'committed'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+    } & { degradations?: never })
+  | {
+      status: 'committed_degraded'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+      degradations: PublicDegradation_Deserialize[]
+    }
+
+/**  Safe public outcome for committed mutations when the caller lacks `Scope::SensitiveRead`. */
+export type PublicMutationOutcome_Serialize<T> =
+  | ({
+      status: 'committed'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+    } & { degradations?: never })
+  | {
+      status: 'committed_degraded'
+      value: T
+      commits: CommitReceipt[]
+      notifications_pending: boolean
+      degradations: PublicDegradation_Serialize[]
+    }
+
+/**  Safe public OS proxy error discriminant without proxy host strings. */
+export type PublicOsProxyError =
+  | { kind: 'read_os_proxy' }
+  | { kind: 'write_os_proxy'; enable: boolean; port: number }
+
+/**  Safe public port resolution discriminant. */
+export type PublicPortResolveKind =
+  | { kind: 'port_not_available'; field: PortField; port: number }
+  | { kind: 'no_open_port'; field: PortField }
+  | { kind: 'port_conflict'; first: PortField; second: PortField; port: number }
+
+/**  Safe public profile content validation failure reason. */
+export type PublicProfileContentKind =
+  'not_yaml_mapping' | 'reserialize_yaml' | 'missing_proxies' | 'empty_script'
+
+/**  Safe public profile sync read error discriminant. */
+export type PublicProfileSyncReadError =
+  | { kind: 'unknown_profile' }
+  | { kind: 'not_remote' }
+  | { kind: 'invalid_cursor' }
+  | { kind: 'unavailable' }
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError =
+  PublicProfilesError_Serialize | PublicProfilesError_Deserialize
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError_Deserialize =
+  | ({ kind: 'profile_not_found' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_has_no_file' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'not_a_remote_profile' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_writable' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_in_use'; referrer_count: number } & {
+      reason?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_id_collision' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'validation_failed' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_size_mismatch' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_duplicate' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'revision_overflow' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'invalid_subscription_url' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'remote_profile_needs_import' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'refresh_in_progress' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fetch_subscription'; reason: PublicSubscriptionFetchKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_content_rejected'; reason: PublicProfileContentKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_yaml' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_deleted_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_changed_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fingerprint_definition' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_profile_file'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'profile_file_missing' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_external_profile'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'materialization'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Deserialize } & {
+      reason?: never
+      referrer_count?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'service_stopped' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'shutting_down' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+
+/**  Safe public profile error for callers without `SensitiveRead`. */
+export type PublicProfilesError_Serialize =
+  | ({ kind: 'profile_not_found' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_has_no_file' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'not_a_remote_profile' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_writable' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_in_use'; referrer_count: number } & {
+      reason?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_id_collision' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'validation_failed' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_size_mismatch' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'reorder_list_duplicate' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'revision_overflow' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'invalid_subscription_url' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'remote_profile_needs_import' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'refresh_in_progress' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fetch_subscription'; reason: PublicSubscriptionFetchKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_content_rejected'; reason: PublicProfileContentKind } & {
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_file_not_yaml' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_deleted_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'profile_changed_during_refresh' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'fingerprint_definition' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_profile_file'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'profile_file_missing' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'read_external_profile'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'materialization'; unsafe_path: boolean } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+    })
+  | ({ kind: 'version_conflict' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'commit'; source: PublicCommitAborted_Serialize } & {
+      reason?: never
+      referrer_count?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'workflow_not_ready' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'service_stopped' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+  | ({ kind: 'shutting_down' } & {
+      reason?: never
+      referrer_count?: never
+      source?: never
+      unsafe_path?: never
+    })
+
+/**  Safe public remote-access config rejection discriminant. */
+export type PublicRemoteAccessErrorKind =
+  | 'port_zero'
+  | 'local_open_scopes_empty'
+  | 'local_open_scope_forbidden'
+  | 'use_dedicated_command'
+  | 'lan_requires_tls'
+
+/**  Safe public runtime build failure discriminant without script output logs. */
+export type PublicRuntimeBuildKind =
+  | { kind: 'start_script_runner' }
+  | { kind: 'validate_profiles' }
+  | {
+      kind: 'validate_transparent_proxy'
+      reason: PublicTransparentProxyValidationKind
+    }
+  | { kind: 'transparent_proxy_requires_service_mode' }
+  | { kind: 'run_pipeline'; stage: PublicRuntimePipelineKind }
+  | { kind: 'transforms_failed' }
+  | { kind: 'serialize_final_config' }
+  | { kind: 'config_not_mapping' }
+  | { kind: 'unsupported_config_values' }
+
+/**  Safe public runtime check unavailability discriminant without raw messages. */
+export type PublicRuntimeCheckUnavailableKind = {
+  kind: 'backend'
+  core_kind: CoreErrorKind | null
+}
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError =
+  PublicRuntimeError_Serialize | PublicRuntimeError_Deserialize
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError_Deserialize =
+  | ({ kind: 'shutting_down' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unresponsive' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'move_host'
+      host: ExecutionHost
+      core_kind: CoreErrorKind | null
+    } & { core?: never; reason?: never; source?: never })
+  | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'service_hosts_core' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'configuration_not_in_effect' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'publish_runtime' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'resolve_core_binary'; core: ClashCore_Deserialize } & {
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'install_core_binary'
+      source: PublicInstallCoreBinaryKind_Deserialize
+    } & { core?: never; core_kind?: never; host?: never; reason?: never })
+  | ({ kind: 'prepare_service_install_prompt' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'read_core_version'; core: ClashCore_Deserialize } & {
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'check_unavailable'
+      reason: PublicRuntimeCheckUnavailableKind
+    } & { core?: never; core_kind?: never; host?: never; source?: never })
+  | ({ kind: 'core_rolled_back' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'no_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'serialize_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'convert_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_snapshot_changed' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_node_not_found' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+
+/**  Safe public runtime error for callers without `SensitiveRead`. */
+export type PublicRuntimeError_Serialize =
+  | ({ kind: 'shutting_down' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'owner_unresponsive' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'apply_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_core'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_runtime'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'recover_service_endpoint'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'refresh_status'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'install_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'start_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'stop_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'restart_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'uninstall_service'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'move_host'
+      host: ExecutionHost
+      core_kind: CoreErrorKind | null
+    } & { core?: never; reason?: never; source?: never })
+  | ({ kind: 'submission_unobserved'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'service_hosts_core' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'configuration_not_in_effect' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'build_runtime'; source: PublicRuntimeBuildKind } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'publish_runtime' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'resolve_port'; source: PublicPortResolveKind } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+    })
+  | ({ kind: 'resolve_core_binary'; core: ClashCore_Serialize } & {
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'install_core_binary'
+      source: PublicInstallCoreBinaryKind_Serialize
+    } & { core?: never; core_kind?: never; host?: never; reason?: never })
+  | ({ kind: 'prepare_service_install_prompt' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'read_core_version'; core: ClashCore_Serialize } & {
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'core_rejected_config'; core_kind: CoreErrorKind | null } & {
+      core?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({
+      kind: 'check_unavailable'
+      reason: PublicRuntimeCheckUnavailableKind
+    } & { core?: never; core_kind?: never; host?: never; source?: never })
+  | ({ kind: 'core_rolled_back' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'no_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'serialize_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'convert_runtime_config' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_snapshot_changed' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+  | ({ kind: 'runtime_node_not_found' } & {
+      core?: never
+      core_kind?: never
+      host?: never
+      reason?: never
+      source?: never
+    })
+
+/**  Safe public runtime pipeline failure stage without script/file diagnostics. */
+export type PublicRuntimePipelineKind =
+  | 'execute_script'
+  | 'selected_profile_not_found'
+  | 'selected_profile_not_config'
+  | 'composition_member_invalid'
+  | 'content_source'
+  | 'parse_profile'
+  | 'snapshot'
+  | 'internal'
+
+/**  Safe public storage operation discriminant without database paths or keys. */
+export type PublicStorageError =
+  | { kind: 'open_database' }
+  | { kind: 'inspect_database' }
+  | { kind: 'preserve_database' }
+  | { kind: 'begin_transaction' }
+  | { kind: 'open_table' }
+  | { kind: 'read_item' }
+  | { kind: 'write_item' }
+  | { kind: 'remove_item' }
+  | { kind: 'list_items' }
+  | { kind: 'commit_transaction' }
+  | { kind: 'decode_value' }
+  | { kind: 'encode_value' }
+
+/**  Safe public subscription fetch failure classification without request URLs. */
+export type PublicSubscriptionFetchKind =
+  | { kind: 'build_http_client' }
+  | { kind: 'request_subscription' }
+  | { kind: 'subscription_http_status'; status: number }
+  | { kind: 'read_subscription_body' }
+
+/**  Safe public system DNS flush discriminant without host command paths. */
+export type PublicSystemDnsError =
+  | { kind: 'authorize_dns_flush' }
+  | { kind: 'run_flush_command' }
+  | { kind: 'flush_rejected'; exit_code: number | null }
+  | { kind: 'unsupported' }
+
+/**  Safe public transparent proxy mode discriminant. */
+export type PublicTransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
+
+/**  Safe public transparent proxy validation discriminant without interface names. */
+export type PublicTransparentProxyValidationKind =
+  | { kind: 'unsupported_target' }
+  | { kind: 'tun_conflict' }
+  | { kind: 'missing_listener'; mode: PublicTransparentProxyMode }
+  | { kind: 'zero_port' }
+  | { kind: 'empty_target' }
+  | { kind: 'invalid_interface' }
+  | { kind: 'duplicate_interface' }
+  | { kind: 'too_many_interfaces' }
+
 /**  A failure of publishing the derived runtime config file. */
 export type PublishRuntimeError =
   | { kind: 'create_runtime_directory'; path: ErrorPath }
   | { kind: 'write_runtime_config'; path: ErrorPath }
+
+/**  Public query parameters for [`NyanpasuClient::query_logs_summary`]. */
+export type QueryLogSummary = {
+  session: string
+  filter: LogFilterSummary
+  direction: Direction
+  cursor: LogCursor | null
+  limit: number
+}
 
 export type QueryLogs = {
   session: string
@@ -5011,6 +7694,40 @@ export type ReleaseChannelInfo = {
   current: ReleaseChannel
   /**  The channel of the installed build; a nightly build cannot leave Nightly. */
   installed: ReleaseChannel
+}
+
+/**  The persisted `remote_access` section. */
+export type RemoteAccessConfig = {
+  http?: HttpAccessConfig
+  local_socket?: LocalSocketAccessConfig
+}
+
+/**  Why a remote-access value cannot be committed. */
+export type RemoteAccessError =
+  /**  Port 0 asks the OS for any port; the persisted port is always a concrete one. */
+  | { kind: 'port_zero' }
+  /**  An anonymous caller must hold at least one scope; `local_open` with none admits nothing. */
+  | { kind: 'local_open_scopes_empty' }
+  /**  An anonymous caller never holds secrets, system control or remote administration. */
+  | {
+      kind: 'local_open_scope_forbidden'
+      /**  The scope that anonymous callers can never hold. */
+      scope: Scope
+    }
+  /**
+   *  The section is changed only by the dedicated remote-access command, never by a
+   *  general application patch.
+   */
+  | { kind: 'use_dedicated_command' }
+  /**  Credentials would cross the LAN in the clear. */
+  | { kind: 'lan_requires_tls' }
+
+/**  The sync policy; the user agent is a request header value, so it is a flag. */
+export type RemoteListingOptions = {
+  has_user_agent: boolean
+  with_proxy: boolean
+  self_proxy: boolean
+  update_interval_minutes: RemoteSyncInterval
 }
 
 export type RemoteProfileOptionsPatch =
@@ -5049,19 +7766,6 @@ export type ReportRequest = {
   topology: TopologyRequest | null
 }
 
-/**  Why the runtime baseline could not be put back. */
-export type RestoreFailure =
-  | { kind: 'move_host_back'; host: ExecutionHost; failure: CoreFailure }
-  | { kind: 'read_status'; failure: CoreFailure }
-  /**
-   *  The runtime could not be read once the restore request had answered;
-   *  `failure` is that request's own failure, if it had one.
-   */
-  | { kind: 'unobserved'; failure: CoreFailure | null }
-  | { kind: 'unverified'; failure: CoreFailure | null }
-  /**  The configuration the core ran before was never recorded. */
-  | { kind: 'not_recorded' }
-
 /**
  *  The compare-and-swap identity of a config revision.
  *
@@ -5074,6 +7778,157 @@ export type RevisionIdInfo = {
   generation: number
   effective_hash: string
 }
+
+/**  The identity of the config revision the core adopted, without its content hash. */
+export type RevisionSummary = {
+  epoch: number
+  generation: number
+}
+
+/**
+ *  Canonical command reply union for app-update state-changing commands.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`AppUpdateSnapshot`]; all other
+ *  callers receive [`AppUpdateSummary`].
+ */
+export type RpcAppUpdateOutcome = AppUpdateSnapshot | AppUpdateSummary
+
+/**  Canonical caller-scoped discovery document returned by `rpc_describe`. */
+export type RpcDescribeResponse = {
+  protocol: number
+  server: ServerInfo
+  transport: RpcTarget
+  principal: Principal
+  scopes: ScopeSet
+  commands: DescribedCommand[]
+}
+
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome =
+  RpcFolderMutationOutcome_Serialize | RpcFolderMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<FolderId>
+
+/**
+ *  Concrete transparent boundary wrapper for folder-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcFolderMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<FolderId>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome<T> =
+  RpcMutationOutcome_Serialize<T> | RpcMutationOutcome_Deserialize<T>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome_Deserialize<T> =
+  MutationOutcome<T> | PublicMutationOutcome_Deserialize<T>
+
+/**
+ *  Canonical command reply union for committed mutations.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`MutationOutcome<T>`]; all other
+ *  callers receive [`PublicMutationOutcome<T>`].
+ */
+export type RpcMutationOutcome_Serialize<T> =
+  MutationOutcome<T> | PublicMutationOutcome_Serialize<T>
+
+/**
+ *  Canonical command reply union for the network automation commands.
+ *
+ *  Callers holding `Scope::SensitiveRead` receive [`NetworkAutomationStatus`], which holds the
+ *  live Wi-Fi name and gateway MAC address; all other callers receive
+ *  [`NetworkAutomationSummary`].
+ */
+export type RpcNetworkAutomationStatus =
+  NetworkAutomationStatus | NetworkAutomationSummary
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome =
+  RpcProfileMutationOutcome_Serialize | RpcProfileMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<ProfileId>
+
+/**
+ *  Concrete transparent boundary wrapper for profile-id committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcProfileMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<ProfileId>
+
+/**  A command's explicitly enabled transport. */
+export type RpcTarget =
+  /**  The complete desktop command surface. */
+  | 'desktop'
+  /**  Browser access, explicitly opted into by the declaration. */
+  | 'http'
+  /**  Local socket access, independently opted into by the declaration. */
+  | 'local'
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome =
+  RpcUnitMutationOutcome_Serialize | RpcUnitMutationOutcome_Deserialize
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome_Deserialize =
+  RpcMutationOutcome_Deserialize<null>
+
+/**
+ *  Concrete transparent boundary wrapper for unit committed mutation outcomes.
+ *
+ *  Separate concrete wrappers exist for the exported command value types because
+ *  pinned `specta`/`specta-serde` drops generic arguments when splitting phases.
+ */
+export type RpcUnitMutationOutcome_Serialize =
+  RpcMutationOutcome_Serialize<null>
 
 export type RuleKey = {
   kind: string
@@ -5125,21 +7980,6 @@ export type RunStateDto =
   | { kind: 'finalizing' }
   | { kind: 'finished'; completion: CompletionDto }
 
-/**
- *  What became of the runtime after an aborted commit, from the receipt's
- *  structured fields. `detail` is the receipt's operator diagnostics, never an
- *  input to a decision.
- */
-export type RuntimeAftermath =
-  /**  The runtime took no part, or the transaction withdrew before it did. */
-  | { kind: 'untouched' }
-  /**  The runtime went back to the previous configuration. */
-  | { kind: 'rolled_back' }
-  /**  Rolling the runtime back failed; recovery is required. */
-  | { kind: 'rollback_failed'; detail: RuntimeError }
-  /**  What the runtime is running is unknown and needs recovery. */
-  | { kind: 'unknown'; detail: RuntimeError }
-
 /**  A failure of building a runtime candidate from source config. */
 export type RuntimeBuildError =
   | { kind: 'start_script_runner' }
@@ -5165,48 +8005,38 @@ export type RuntimeBuildLog = {
   entries: StepLogEntry[]
 }
 
-/**
- *  Why no check ran. Every variant is a reason, never a verdict: an absent
- *  check must not be reported as a passing one (v2 §2.4).
- */
+/**  Why candidate validation could not return a verdict. */
 export type RuntimeCheckUnavailable =
-  /**  No host owns the runtime, so there is nothing to check against. */
-  | { cause: 'no_endpoint'; reason: string }
-  /**  The host owning the runtime exposes no check for this request. */
-  | { cause: 'host_unsupported'; host: ExecutionHost; reason: string }
-  /**  The host reads the candidate from disk and it could not be staged. */
-  | { cause: 'candidate_unavailable'; reason: string }
   /**  The host has the capability but could not serve it. */
-  | {
-      cause: 'backend'
-      kind: CoreErrorKind | null
-      message: string
-      retryable: boolean
-    }
+  {
+    cause: 'backend'
+    kind: CoreErrorKind | null
+    message: string
+    retryable: boolean
+  }
 
 export type RuntimeCommitStatus =
-  'applied' | 'deferred' | 'saved_inactive' | 'unchanged' | 'recovery_required'
+  'applied' | 'deferred' | 'saved_inactive' | 'unchanged'
 
 export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   message: string | null
+}
+
+export type RuntimeConvergenceSummary = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  /**  The owner reported diagnostic text, available to protected callers. */
+  has_diagnostic: boolean
 }
 
 /**  A failure of an operation on the running core or the runtime workflow. */
 export type RuntimeError =
   /**  Refused at admission: nothing ran. */
   | { kind: 'shutting_down' }
-  /**  Refused at admission: nothing ran. */
-  | { kind: 'isolated' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  /**  Refused at admission: the runtime owner is gone, so nothing ran. */
-  | { kind: 'owner_unavailable' }
-  /**  Refused at admission: the source transaction had already been decided. */
-  | { kind: 'source_settled' }
   | { kind: 'apply_runtime'; failure: CoreFailure }
   | { kind: 'stop_core'; failure: CoreFailure }
   | { kind: 'recover_runtime'; failure: CoreFailure }
@@ -5220,13 +8050,8 @@ export type RuntimeError =
   | { kind: 'move_host'; host: ExecutionHost; failure: CoreFailure }
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
-  /**
-   *  An explicit start that could not put the core on its host; `reason` is
-   *  the diagnostic text of the convergence that gave up.
-   */
-  | { kind: 'core_not_started'; reason: string; retryable: boolean }
-  /**  An explicit recovery that could not settle the runtime. */
-  | { kind: 'recovery_unresolved'; reason: string }
+  /**  The committed configuration is waiting or has not taken effect. */
+  | { kind: 'configuration_not_in_effect'; reason: string }
   | { kind: 'build_runtime'; source: RuntimeBuildError }
   | { kind: 'publish_runtime'; source: PublishRuntimeError }
   | { kind: 'resolve_port'; source: PortResolveError }
@@ -5234,11 +8059,6 @@ export type RuntimeError =
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError }
   | { kind: 'prepare_service_install_prompt'; source: ServiceCommandError }
   | { kind: 'read_core_version'; source: CoreVersionError }
-  /**
-   *  A candidate was refused before anything was submitted, for want of a
-   *  baseline to apply against.
-   */
-  | { kind: 'unsettled_baseline'; gap: EvidenceGap }
   | {
       kind: 'core_rejected_config'
       core_kind: CoreErrorKind | null
@@ -5249,19 +8069,6 @@ export type RuntimeError =
   | { kind: 'core_rolled_back'; reason: string | null }
   /**  The submission ended unobserved, so it may have taken effect. */
   | { kind: 'submission_unobserved'; failure: CoreFailure }
-  | { kind: 'handoff_owner_mismatch'; expected: ExecutionHost }
-  /**
-   *  A mutation that moved the runtime to the other host and failed there
-   *  could not put it back.
-   */
-  | { kind: 'handoff_not_restored'; failure: RestoreFailure }
-  /**  A cancelled mutation could not put the runtime back. */
-  | { kind: 'restore_failed'; failure: RestoreFailure }
-  /**
-   *  The store committed a mutation whose runtime target the workflow had
-   *  refused.
-   */
-  | { kind: 'committed_after_refusal'; operation_id: string }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }
@@ -5344,6 +8151,36 @@ export type RuntimePipelineError =
  */
 export type SchemeRequestReceivedEvent = null
 
+/**
+ *  What a command needs, and what a principal holds.
+ *
+ *  A command declares exactly one scope. Scopes are independent: holding `proxy` grants no `read`.
+ */
+export type Scope =
+  /**  Queries without secrets: status, listings, logs, traffic and connection views. */
+  | 'read'
+  /**
+   *  Queries that return secrets: the Clash secret, subscription URLs, profile and runtime
+   *  contents, and generic storage.
+   */
+  | 'sensitive_read'
+  /**  Select a proxy, latency tests, switch the proxy mode, close connections. */
+  | 'proxy'
+  /**  Profile and subscription changes, transforms, provider updates. */
+  | 'profile'
+  /**  Ordinary application and Clash preferences. */
+  | 'settings'
+  /**
+   *  Core lifecycle, system proxy, TUN, transparent proxy, service, the Clash control plane,
+   *  listening exposure and every shell or OS operation.
+   */
+  | 'system'
+  /**  Remote access settings, tokens and sessions. */
+  | 'remote_admin'
+
+/**  Canonical deduplicated set of independent permission scopes held by a caller. */
+export type ScopeSet = Scope[]
+
 /**  A missing engine rejects the entire build, even when transforms are lenient. */
 export type ScriptExecutionError = {
   kind: 'start_engine'
@@ -5368,6 +8205,19 @@ export type ScriptTransform_Serialize = {
   source: ProfileSource_Serialize
   runtime: ScriptRuntime
 }
+
+/**  Non-secret host metadata disclosed to resolved callers via `rpc_describe`. */
+export type ServerInfo = {
+  kind: ServerKind
+  version: string
+}
+
+/**  Which runtime hosts the RPC endpoint. */
+export type ServerKind =
+  /**  Native Tauri desktop application. */
+  | 'desktop'
+  /**  Headless service daemon (`nyanpasu-server`). */
+  | 'headless'
 
 /**  The elevated operations `nyanpasu-service` is asked to perform. */
 export type ServiceCommand =
@@ -5426,6 +8276,19 @@ export type ServiceCompat =
     }
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
+
+/**  [`ServiceCompat`] with the daemon's version only where it parsed as a version. */
+export type ServiceCompatSummary =
+  | { kind: 'unknown' }
+  | { kind: 'compatible'; server_version: string }
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      required_min: string
+    }
+  /**  The daemon reported text that is not a version, and the text is not repeated. */
+  | { kind: 'unparsable' }
 
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
@@ -5532,6 +8395,20 @@ export type ServiceStatusInfo_Serialize = {
   restart_attempts: number
 }
 
+/**  The secret-free view of [`ServiceHostStatus`]. */
+export type ServiceStatusSummary = {
+  name: string
+  version: string
+  status: ServiceStatus
+  /**  The daemon answered the probe. Its data directories and log locations stay protected. */
+  server_reported: boolean
+  phase: ServicePhase
+  compat: ServiceCompatSummary
+  restart_attempts: number
+}
+
+export type ServiceStatusSummaryChangedEvent = ServiceStatusSummary
+
 export type SnapshotDiffHunk = {
   old_start: number
   old_lines: number
@@ -5539,6 +8416,13 @@ export type SnapshotDiffHunk = {
   new_lines: number
   /**  Unified diff lines, including their space, plus, or minus prefix. */
   lines: string[]
+}
+
+/**  The manifest of one snapshot, for the UI. */
+export type SnapshotSummary = {
+  id: string
+  created_at: string
+  items: LogicalPath[]
 }
 
 export type SourceOrigin =
@@ -5555,11 +8439,33 @@ export type SourceOutcome =
    */
   | { kind: 'rejected'; code: string; message: string }
 
+export type SourceOutcomeSummary =
+  | { kind: 'committed'; operation_id: string | null }
+  | { kind: 'superseded' }
+  | { kind: 'failed' }
+  | { kind: 'rejected'; code: SourceRejection }
+
+/**  The refusal reason a source receipt names, from the closed set the source owner raises. */
+export type SourceRejection =
+  | 'subscription_rejected'
+  | 'external_source_rejected'
+  /**  A code this build does not classify; never read as success. */
+  | 'other'
+
 export type SourceStatus = {
   profile: ProfileId
   name: string
   origin: SourceOrigin
   outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
+export type SourceSummary = {
+  profile: ProfileId
+  origin: SourceOrigin
+  outcome: SourceOutcomeSummary
   health: ConvergenceHealth
   /**  Unix milliseconds. */
   at: number
@@ -5791,6 +8697,192 @@ export type SubscriptionInfo_Serialize = {
   Expire: number
 }
 
+/**  Whether this build and this device can sync. */
+export type SyncAvailability =
+  /**  The shell supplied no sync adapters. */
+  'unsupported' | 'disabled' | 'enabled'
+
+/**  Why an item is held back rather than synced or applied. */
+export type SyncBlockedReason =
+  | { kind: 'schema_too_new'; remote_revision: number; supported: number }
+  | { kind: 'not_utf8' }
+  | { kind: 'unportable_name' }
+  | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict = SyncConflict_Serialize | SyncConflict_Deserialize
+
+export type SyncConflictKind =
+  'modify_modify' | 'modify_delete' | 'delete_active'
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Deserialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  One unit both sides changed, with both values so the UI can show them. */
+export type SyncConflict_Serialize = {
+  /**  Stable across cycles, so a resolution addresses the same unit. */
+  id: string
+  /**  The logical item, such as `app/application` or `profiles/<file>`. */
+  item: string
+  /**  The unit within the item, such as `theme_mode` or `items/<uid>`. */
+  unit: string
+  kind: SyncConflictKind
+  /**  The local value as JSON text: a document field or a content hash. */
+  local: string | null
+  /**  The remote value as JSON text, in the same form as `local`. */
+  remote: string | null
+  /**  The user's recorded choice, consumed by the next cycle. */
+  resolution?: ConflictChoice | null
+}
+
+/**  A classified sync failure. The UI localizes by variant. */
+export type SyncError =
+  | { kind: 'unauthorized' }
+  | { kind: 'unreachable' }
+  | { kind: 'quota_exceeded' }
+  | { kind: 'vault_too_new'; found: number; supported: number }
+  | { kind: 'vault_mismatch' }
+  | { kind: 'provider_lacks_conditional_create' }
+  | { kind: 'storage'; reason: string }
+
+/**  The remote head, for the status card. */
+export type SyncHead = {
+  generation: number
+  device_name: string
+  created_at: string
+}
+
+/**  How sync reaches the provider. */
+export type SyncNetwork =
+  | 'direct'
+  | 'system'
+  /**  Through the running core's proxy. */
+  | 'through_core'
+
+export type SyncOutcome = 'synced' | 'up_to_date' | 'degraded' | 'failed'
+
+/**  A failed run is only `Failed`: its code and message are owner text. */
+export type SyncOutcomeKind =
+  'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'skipped'
+
+/**  The phase of the current or last cycle. */
+export type SyncPhase =
+  | 'idle'
+  | 'scanning'
+  | 'fetching'
+  | 'planning'
+  | 'downloading'
+  | 'snapshotting'
+  | 'applying'
+  | 'uploading'
+  | 'committing'
+  | 'confirming'
+  | 'finalizing'
+
+export type SyncProgress = {
+  done: number
+  total: number
+}
+
+export type SyncRunPageSummary = {
+  items: SyncRunSummary[]
+  next: RunCursorDto | null
+}
+
+export type SyncRunStateSummary =
+  | { kind: 'admitted' }
+  | { kind: 'running' }
+  | { kind: 'cancelling' }
+  | { kind: 'finalizing' }
+  | { kind: 'finished'; outcome: SyncOutcomeKind; journal_degraded: boolean }
+
+/**  One sync run without its job key, completion output, failure code and message. */
+export type SyncRunSummary = {
+  id: string
+  admission_sequence: string
+  trigger: string
+  scheduled_at: string | null
+  admitted_at: string
+  finished_at: string | null
+  state: SyncRunStateSummary
+}
+
+/**  One cycle's outcome, without conflict contents. */
+export type SyncRunView = {
+  outcome: SyncOutcome | null
+  pushed: number
+  pulled: number
+  merged: number
+  blocked: BlockedItem[]
+  conflicts: number
+}
+
+/**  Write-only credentials: accepted, never returned. */
+export type SyncSecrets = {
+  password?: string | null
+  secret_access_key?: string | null
+}
+
+/**  The sync settings of one device, stored without secrets. */
+export type SyncSettings = {
+  enabled: boolean
+  provider: ProviderConfig | null
+  device_name: string
+  conflict_policy: ConflictPolicy
+  /**  `0` means manual only, as for remote profile refresh. */
+  interval_minutes: number
+  sync_on_change: boolean
+  network: SyncNetwork
+}
+
+/**  The settings view: no secret value can appear in it. */
+export type SyncSettingsView = {
+  settings: SyncSettings
+  credentials_present: boolean
+  provider_kinds: ProviderKind[]
+}
+
+/**  The full sync status, published as `SyncStatusChanged`. */
+export type SyncStatus = {
+  /**  Increases with every change, so a delayed read cannot replace a newer value. */
+  revision: number
+  availability: SyncAvailability
+  phase: SyncPhase
+  progress: SyncProgress | null
+  last_success_at: number | null
+  last_result: SyncOutcome | null
+  last_error: SyncError | null
+  open_conflicts: number
+  blocked_items: BlockedItem[]
+  head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
+}
+
+/**  Full sync status, revisioned so a delayed read cannot replace a newer value. */
+export type SyncStatusChanged = SyncStatus
+
 /**
  *  Why the system DNS cache could not be flushed. No variant is compiled out
  *  per platform, so the generated bindings do not depend on the build host.
@@ -5809,7 +8901,74 @@ export type SystemDnsError =
   | { kind: 'flush_rejected'; command: string; code: number | null }
   | { kind: 'unsupported' }
 
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch =
+  SystemSettingsPatch_Serialize | SystemSettingsPatch_Deserialize
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Deserialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+  network_automation?: NetworkAutomation | null
+}
+
+/**
+ *  A patch of the system-affecting application settings.
+ *
+ *  `network_automation` is a system setting because a rule applies by writing the system proxy,
+ *  TUN and transparent proxy switches, which this request owns: a principal that may not change
+ *  those directly must not be able to change them through a rule.
+ *
+ *  An omitted field stays unchanged, and so does a field sent as `null`; only `pac_url` treats
+ *  an explicit `null` as "clear the value" (a double option). Unrelated unknown keys and old
+ *  aliases behave as before, and a field of another class refuses the whole patch instead of being
+ *  silently dropped.
+ */
+export type SystemSettingsPatch_Serialize = {
+  enable_auto_launch?: boolean | null
+  enable_system_proxy?: boolean | null
+  enable_proxy_guard?: boolean | null
+  system_proxy_bypass?: string | null
+  proxy_guard_interval?: number | null
+  pac_url?: string | null
+  network_automation?: NetworkAutomation | null
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+/**  What the settings page and the CLI may show of the certificate: nothing secret. */
+export type TlsCertificateSummary = {
+  /**  The value to compare in a browser warning or to pin in a CLI context. */
+  fingerprint: string
+  /**  When the certificate expires, in Unix epoch milliseconds. */
+  not_after_ms: number
+}
 
 export type Topology = {
   /**  By layer, heaviest first, the merged node last. */
@@ -5936,6 +9095,15 @@ export type TransparentProxyConfigPatch = {
 
 export type TransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
 
+/**  Safe view of transparent proxy status without raw host error messages or revision hashes. */
+export type TransparentProxyStatusSummary = {
+  supported: boolean
+  active: boolean
+  mode: NetworkTransparentProxyMode | null
+  revision: RevisionSummary | null
+  has_error: boolean
+}
+
 export type TransparentProxyValidationError =
   | { kind: 'unsupported_target' }
   | { kind: 'tun_conflict' }
@@ -6009,6 +9177,23 @@ export type UnsupportedConfigValue = {
 }
 
 export type UpdateSource = 'nyanpasu' | 'github' | 'ghfast' | 'sourceforge'
+
+/**  Safe core updater state without raw failure strings. */
+export type UpdaterProgressState =
+  | 'idle'
+  | 'downloading'
+  | 'decompressing'
+  | 'replacing'
+  | 'restarting'
+  | 'done'
+  | 'failed'
+
+/**  Safe core updater progress snapshot for callers without `Scope::SensitiveRead`. */
+export type UpdaterProgressSummary = {
+  id: number
+  state: UpdaterProgressState
+  downloader: DownloadProgressSummary
+}
 
 export type UpdaterState =
   | 'idle'

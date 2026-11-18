@@ -5,6 +5,8 @@ members = [
   'boa_utils',
   'nyanpasu-macro',
   'nyanpasu-rpc-protocol',
+  'nyanpasu-rpc-wire',
+  'nyanpasu-cli',
   'nyanpasu-rpc',
   'nyanpasu-server',
   'nyanpasu-core',
@@ -21,6 +23,7 @@ members = [
   'nyanpasu-persistence',
   'nyanpasu-profile-io',
   'nyanpasu-net',
+  'nyanpasu-sync-opendal',
   'nyanpasu-os',
   'nyanpasu-profile-transform',
   'nyanpasu-traffic',
@@ -106,6 +109,15 @@ reqwest = { version = '0.13', default-features = false, features = [
   'rustls',
 ] }
 tokio = { version = '1.54.1', features = ['full'] }
+# Configuration sync storage. Every default is off: `auto-register-services`
+# runs code before `main`, and the facade's own HTTP transport features install
+# a process-wide default. Only `nyanpasu-sync-opendal` may depend on these.
+opendal = { version = '0.59.5', default-features = false, features = [
+  'executors-tokio',
+  'layers-retry',
+  'layers-timeout',
+] }
+opendal-http-transport-reqwest = { version = '0.59.5', default-features = false }
 test-log = { version = '0.2.16', features = ['trace'] }
 fs4 = { version = '1.0.0', features = ['fs-err3-tokio', 'fs-err3'] }
 fs-err = { version = '3.1.2', features = ['tokio'] }

@@ -3,11 +3,14 @@
 //! the wire); they reach the user only through the copied detail.
 
 use nyanpasu_config::{
-    application::ReleaseChannel, clash::config::TransparentProxyValidationError,
+    application::{ReleaseChannel, RemoteAccessError},
+    clash::config::TransparentProxyValidationError,
 };
 use nyanpasu_runtime_values::{
     hotkey::HotkeyParseError,
-    mutation::{CommitAborted, ConfigDomain, NotReady},
+    mutation::{
+        CommitAborted, ConfigDomain, NotReady, RecoverAfterWriteFailureSnafu, WriteConfigSnafu,
+    },
 };
 use nyanpasu_state_engine::{
     ReplaceIfVersionError,
@@ -15,8 +18,6 @@ use nyanpasu_state_engine::{
 };
 use serde::Serialize;
 use snafu::{IntoError, Snafu};
-
-use crate::state::mutation::value::MutationReceipt;
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub(crate)))]
@@ -39,13 +40,15 @@ pub enum ConfigError {
     TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
+    #[snafu(display("the remote access settings are invalid: {reason}"))]
+    InvalidRemoteAccess { reason: RemoteAccessError },
     #[snafu(display("invalid network automation: {reason}"))]
     InvalidNetworkAutomation { reason: String },
     #[snafu(display("the hotkey list is invalid"))]
     ValidateHotkeys { source: HotkeyParseError },
     #[snafu(display("editing hotkeys is not supported"))]
     ValidateHotkeyCapability,
-    #[snafu(context(false), display("the application workflow is not ready"))]
+    #[snafu(context(false), display("the runtime reconciler is not ready"))]
     WorkflowNotReady {
         #[serde(skip)]
         source: NotReady,
@@ -76,27 +79,45 @@ pub enum ConfigError {
 }
 
 impl ConfigError {
-    /// The one place a persistence error of a config source becomes a config
-    /// error. A CAS mismatch reported by the coordinator is the same conflict
-    /// as the manager's own `Conflict` result.
-    pub(crate) fn commit_failure(
+    pub(crate) fn runtime_check_failure(
         domain: ConfigDomain,
-        error: ReplaceIfVersionError,
-        settlement: Option<&MutationReceipt>,
+        error: std::sync::Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
     ) -> Self {
-        match error {
+        use nyanpasu_runtime_values::runtime_error::RuntimeError;
+        let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
+        let errors = vec![error.clone()];
+
+        let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. }) {
+            CommitAborted::RuntimeFailed { errors, source }
+        } else {
+            CommitAborted::RuntimeRefused { errors, source }
+        };
+        Self::Commit { domain, source }
+    }
+
+    /// The one place a persistence error of a config source becomes a config
+    /// error. A CAS mismatch from the persistent manager's publication check
+    /// is the same conflict as its pre-write `Conflict` result.
+    pub(crate) fn commit_failure(domain: ConfigDomain, error: ReplaceIfVersionError) -> Self {
+        let source = match error {
             ReplaceIfVersionError::State(StateChangedError::StateCasMismatch {
                 expected,
                 actual,
-            }) => VersionConflictSnafu {
-                domain,
-                expected: *expected.as_ref(),
-                actual: *actual.as_ref(),
+            }) => {
+                return VersionConflictSnafu {
+                    domain,
+                    expected: *expected.as_ref(),
+                    actual: *actual.as_ref(),
+                }
+                .build();
             }
-            .build(),
-            error => CommitSnafu { domain }.into_error(
-                crate::state::mutation::classify_commit_aborted(error, settlement),
-            ),
-        }
+            error @ (ReplaceIfVersionError::WriteConfig(_)
+            | ReplaceIfVersionError::LocalWrite(_)) => {
+                WriteConfigSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            }
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu
+                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
+        };
+        CommitSnafu { domain }.into_error(source)
     }
 }

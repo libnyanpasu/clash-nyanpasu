@@ -14,12 +14,12 @@ import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
 import {
   MutationUnconfirmedError,
-  useProfile,
+  useProfileListing,
   useProfileMutations,
-  useProfileSyncRuns,
-  useProfileSyncStatus,
+  useProfileSyncRunsSummary,
+  useProfileSyncStatusSummary,
 } from '@nyanpasu/query'
-import type { RunDto } from '@nyanpasu/rpc/types'
+import type { SyncRunSummary } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -78,7 +78,7 @@ function SubscriptionSchedulePreview({ id }: { id: string }) {
 
 type ActionState = 'idle' | 'degraded' | 'unconfirmed' | 'failed'
 
-function runStateLabel(run: RunDto): string {
+function runStateLabel(run: SyncRunSummary): string {
   if (run.state.kind !== 'finished') {
     switch (run.state.kind) {
       case 'admitted':
@@ -92,7 +92,7 @@ function runStateLabel(run: RunDto): string {
     }
   }
 
-  switch (run.state.completion.outcome.kind) {
+  switch (run.state.outcome) {
     case 'succeeded':
       return m.dashboard_widget_subscription_schedule_succeeded()
     case 'failed':
@@ -119,8 +119,10 @@ function SubscriptionScheduleTarget({
   profileUid: string
   profileName: string
 }) {
-  const status = useProfileSyncStatus(profileUid)
-  const runs = useProfileSyncRuns(profileUid, { refetchInterval: 60_000 })
+  const status = useProfileSyncStatusSummary(profileUid)
+  const runs = useProfileSyncRunsSummary(profileUid, {
+    refetchInterval: 60_000,
+  })
   const { update } = useProfileMutations()
   const { ref: contentRef, height: contentHeight } =
     useWidgetHeight<HTMLDivElement>()
@@ -140,7 +142,7 @@ function SubscriptionScheduleTarget({
   const unavailable = status.isError && !status.data
   const hasCriticalState =
     unavailable ||
-    Boolean(status.data?.registration_error) ||
+    Boolean(status.data?.has_registration_error) ||
     status.data?.journal_degraded === true ||
     activeRun != null ||
     actionState !== 'idle' ||
@@ -155,10 +157,8 @@ function SubscriptionScheduleTarget({
           ? m.dashboard_widget_subscription_schedule_committed_degraded()
           : unavailable
             ? m.dashboard_widget_subscription_schedule_load_failed()
-            : status.data?.registration_error
-              ? m.dashboard_widget_subscription_schedule_registration_error({
-                  error: status.data.registration_error,
-                })
+            : status.data?.has_registration_error
+              ? m.dashboard_widget_subscription_schedule_registration_failed()
               : status.data?.journal_degraded
                 ? m.dashboard_widget_subscription_schedule_journal_degraded()
                 : status.isPending
@@ -168,7 +168,7 @@ function SubscriptionScheduleTarget({
     checkFailed ||
     actionState === 'failed' ||
     unavailable ||
-    Boolean(status.data?.registration_error)
+    Boolean(status.data?.has_registration_error)
   const recentRunLimit =
     contentHeight == null || hasCriticalState
       ? 0
@@ -201,9 +201,14 @@ function SubscriptionScheduleTarget({
       setActionState(
         outcome.status === 'committed_degraded' ? 'degraded' : 'idle',
       )
-      await queryClient.invalidateQueries({
-        queryKey: ['profile-sync-runs', profileUid],
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['profile-sync-runs-summary', profileUid],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['profile-sync-runs', profileUid],
+        }),
+      ])
     } catch (error) {
       setActionState(
         error instanceof MutationUnconfirmedError ? 'unconfirmed' : 'failed',
@@ -462,7 +467,7 @@ function SubscriptionScheduleTarget({
                         className={cn(
                           'truncate',
                           run.state.kind === 'finished' &&
-                            run.state.completion.outcome.kind === 'failed' &&
+                            run.state.outcome === 'failed' &&
                             'text-error',
                         )}
                       >
@@ -519,7 +524,7 @@ function SubscriptionScheduleLive({
   disabled: boolean
   config: Extract<WidgetConfig, { type: WidgetId.SubscriptionSchedule }>
 }) {
-  const { query } = useProfile()
+  const query = useProfileListing()
   const { setIsEditing } = useDashboardContext()
   const profiles = query.data?.items ?? []
   const resolution = query.data

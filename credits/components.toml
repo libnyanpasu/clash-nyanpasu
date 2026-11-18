@@ -55,6 +55,13 @@ license = 'GPL-3.0-only'
 bundles = ['sidecar/nyanpasu-service']
 
 [[component]]
+name = 'nyanpasu-cli'
+kind = 'sidecar'
+homepage = 'https://github.com/libnyanpasu/clash-nyanpasu'
+license = 'GPL-3.0-only'
+bundles = ['sidecar/nyanpasu-cli']
+
+[[component]]
 name = 'meta-rules-dat'
 kind = 'resource'
 homepage = 'https://github.com/MetaCubeX/meta-rules-dat'

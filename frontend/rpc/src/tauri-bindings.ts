@@ -18,13 +18,26 @@ export const events = {
   appUpdateStateChanged: makeEvent<AppUpdateStateChanged>(
     'app-update-state-changed',
   ),
+  appUpdateSummaryChanged: makeEvent<AppUpdateSummaryChanged>(
+    'app-update-summary-changed',
+  ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
   configurationStatusChanged: makeEvent<ConfigurationStatusChanged>(
     'configuration-status-changed',
   ),
+  configurationStatusSummaryChanged:
+    makeEvent<ConfigurationStatusSummaryChanged>(
+      'configuration-status-summary-changed',
+    ),
   coreLogsChanged: makeEvent<CoreLogsChanged>('core-logs-changed'),
+  coreLogsSummaryChanged: makeEvent<CoreLogsSummaryChanged>(
+    'core-logs-summary-changed',
+  ),
   coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
     'core-status-changed-event',
+  ),
+  coreStatusSummaryChangedEvent: makeEvent<CoreStatusSummaryChangedEvent>(
+    'core-status-summary-changed-event',
   ),
   schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
     'scheme-request-received-event',
@@ -32,10 +45,16 @@ export const events = {
   serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
     'service-status-changed-event',
   ),
+  serviceStatusSummaryChangedEvent: makeEvent<ServiceStatusSummaryChangedEvent>(
+    'service-status-summary-changed-event',
+  ),
   stateChangedEvent: makeEvent<StateChangedEvent>('state-changed-event'),
   storageResyncEvent: makeEvent<StorageResyncEvent>('storage-resync-event'),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
+  ),
+  syncStatusChangedEvent: makeEvent<SyncStatusChanged>(
+    'sync-status-changed-event',
   ),
   windowMessageEvent: makeEvent<WindowMessageEvent>('window-message-event'),
 }
@@ -60,6 +79,12 @@ export type AppUpdateRelease = {
   body: string | null
 }
 
+/**  Safe release summary without release note bodies or source endpoints. */
+export type AppUpdateReleaseSummary = {
+  version: string
+  date: string | null
+}
+
 export type AppUpdateSnapshot = {
   revision: number
   phase: AppUpdatePhase
@@ -75,6 +100,28 @@ export type AppUpdateSnapshot = {
 }
 
 export type AppUpdateStateChanged = AppUpdateSnapshot
+
+/**  Safe app-update state summary for callers without `Scope::SensitiveRead`. */
+export type AppUpdateSummary = {
+  revision: number
+  phase: AppUpdatePhase
+  release: AppUpdateReleaseSummary | null
+  downloaded: number
+  total: number | null
+  speed: number | null
+  source: UpdateSource | null
+  has_error: boolean
+  last_checked_at: string | null
+  supported: boolean
+}
+
+export type AppUpdateSummaryChanged = AppUpdateSummary
+
+export type BlockedItem = {
+  /**  The logical key, or the physical path when it has no valid key. */
+  item: string
+  reason: SyncBlockedReason
+}
 
 export type ClashConnectionsConnectorState =
   'disconnected' | 'connecting' | 'connected'
@@ -176,13 +223,27 @@ export type ConfigurationStatus = {
 
 export type ConfigurationStatusChanged = ConfigurationStatus
 
+/**  The secret-free view of [`ConfigurationStatus`]. */
+export type ConfigurationStatusSummary = {
+  event_seq: number
+  /**  A maintenance operation is running. Its description is diagnostic text. */
+  maintenance_active: boolean
+  source_versions: SourceVersions
+  runtime: RuntimeConvergenceSummary
+  effects: EffectConvergenceSummary[]
+  /**  The latest background-source receipt per profile, without the profile's name. */
+  sources: SourceSummary[]
+  active: string | null
+  recent_operations: OperationSummary[]
+}
+
+export type ConfigurationStatusSummaryChanged = ConfigurationStatusSummary
+
+/**  How the core's controller is reached. A socket path or URL is a location, not a status. */
+export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
+
 export type ConvergenceHealth =
-  | 'healthy'
-  | 'pending'
-  | 'retry_scheduled'
-  | 'waiting_dependency'
-  | 'blocked'
-  | 'recovery_required'
+  'healthy' | 'pending' | 'retry_scheduled' | 'waiting_dependency' | 'blocked'
 
 /**
  *  The core's control endpoint, as the manager resolved it.
@@ -266,8 +327,23 @@ export type CoreLogStatus = {
   discarded: number
 }
 
+/**  Public core-log status without raw storage error messages. */
+export type CoreLogStatusSummary = {
+  generation: string
+  version: number
+  first: CoreLogCursor | null
+  head: CoreLogCursor | null
+  bytes: number
+  has_error: boolean
+  discarded: number
+}
+
 export type CoreLogsChanged = {
   status: CoreLogStatus
+}
+
+export type CoreLogsSummaryChanged = {
+  status: CoreLogStatusSummary
 }
 
 export type CoreState = 'Running' | { Stopped: string | null }
@@ -351,6 +427,80 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+/**
+ *  [`CoreStateDetail`] without the stop reason's text or the process id. The encoding stays
+ *  externally tagged so a consumer that tests for the `Running` key keeps working.
+ */
+export type CoreStateSummary =
+  | ({
+      Stopped: {
+        has_reason: boolean
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Starting: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Running: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Restarting: {
+        epoch: number
+        attempt: number
+      }
+    } & {
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+      Switching?: never
+    })
+  | ({
+      Switching: {
+        from: number | null
+        to: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Stopping?: never
+    })
+  | ({
+      Stopping: {
+        epoch: number
+      }
+    } & {
+      Restarting?: never
+      Running?: never
+      Starting?: never
+      Stopped?: never
+      Switching?: never
+    })
+
 export type CoreStatusChangedEvent = CoreStatusInfo
 
 export type CoreStatusInfo = {
@@ -363,6 +513,21 @@ export type CoreStatusInfo = {
   revision: RevisionIdInfo | null
   healthy: boolean | null
 }
+
+/**  The secret-free view of [`CoreStatusInfo`]. */
+export type CoreStatusSummary = {
+  controller: ControllerKind | null
+  host: ExecutionHost
+  connectivity: EndpointConnectivitySummary
+  generation: number
+  state: CoreStateSummary | null
+  state_changed_at: number
+  revision: RevisionSummary | null
+  /**  `None` is unknown, never healthy. */
+  healthy: boolean | null
+}
+
+export type CoreStatusSummaryChangedEvent = CoreStatusSummary
 
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
@@ -377,6 +542,17 @@ export type EffectConvergence = {
   code: EffectFailureCode | null
   /**  The failure's diagnostic text, as the owner reported it. */
   message: string | null
+}
+
+export type EffectConvergenceSummary = {
+  kind: EffectKind
+  health: ConvergenceHealth
+  desired_revision: number
+  applied_revision: number
+  attempts: number
+  automatic_remaining: number
+  code: EffectFailureCode | null
+  has_diagnostic: boolean
 }
 
 /**
@@ -439,6 +615,13 @@ export type EndpointConnectivity =
    *  router never falls back on its own.
    */
   | { kind: 'degraded'; desired: ExecutionHost; reason: string }
+
+export type EndpointConnectivitySummary =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**  Unreachable; the transport error stays with protected callers. */
+  | { kind: 'degraded'; desired: ExecutionHost }
 
 /**
  *  Which controller owns the runtime. The app perceives the difference in
@@ -523,8 +706,15 @@ export type OperationStatus = {
   operation_id: string
   domain: string
   outcome: string
-  conclusion: string
   message: string | null
+}
+
+/**  One settled mutation. `domain` and `outcome` name variants of closed enums. */
+export type OperationSummary = {
+  operation_id: string
+  domain: string
+  outcome: string
+  has_diagnostic: boolean
 }
 
 /**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
@@ -541,6 +731,12 @@ export type RevisionIdInfo = {
   epoch: number
   generation: number
   effective_hash: string
+}
+
+/**  The identity of the config revision the core adopted, without its content hash. */
+export type RevisionSummary = {
+  epoch: number
+  generation: number
 }
 
 export type RpcError = {
@@ -561,9 +757,14 @@ export type RpcValue = any
 export type RuntimeConvergence = {
   health: ConvergenceHealth
   operation_id: string | null
-  attempts: number
-  automatic_remaining: number
   message: string | null
+}
+
+export type RuntimeConvergenceSummary = {
+  health: ConvergenceHealth
+  operation_id: string | null
+  /**  The owner reported diagnostic text, available to protected callers. */
+  has_diagnostic: boolean
 }
 
 export type RuntimeInfos = {
@@ -603,6 +804,19 @@ export type ServiceCompat =
     }
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
+
+/**  [`ServiceCompat`] with the daemon's version only where it parsed as a version. */
+export type ServiceCompatSummary =
+  | { kind: 'unknown' }
+  | { kind: 'compatible'; server_version: string }
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      required_min: string
+    }
+  /**  The daemon reported text that is not a version, and the text is not repeated. */
+  | { kind: 'unparsable' }
 
 /**
  *  The watch projection (UI settings page + facade). Daemon state, never a
@@ -671,6 +885,20 @@ export type ServiceStatusChangedEvent_Deserialize =
 
 export type ServiceStatusChangedEvent_Serialize = ServiceHostStatus_Serialize
 
+/**  The secret-free view of [`ServiceHostStatus`]. */
+export type ServiceStatusSummary = {
+  name: string
+  version: string
+  status: ServiceStatus
+  /**  The daemon answered the probe. Its data directories and log locations stay protected. */
+  server_reported: boolean
+  phase: ServicePhase
+  compat: ServiceCompatSummary
+  restart_attempts: number
+}
+
+export type ServiceStatusSummaryChangedEvent = ServiceStatusSummary
+
 export type SourceOrigin =
   'scheduled_refresh' | 'manual_refresh' | 'external_file'
 
@@ -685,11 +913,33 @@ export type SourceOutcome =
    */
   | { kind: 'rejected'; code: string; message: string }
 
+export type SourceOutcomeSummary =
+  | { kind: 'committed'; operation_id: string | null }
+  | { kind: 'superseded' }
+  | { kind: 'failed' }
+  | { kind: 'rejected'; code: SourceRejection }
+
+/**  The refusal reason a source receipt names, from the closed set the source owner raises. */
+export type SourceRejection =
+  | 'subscription_rejected'
+  | 'external_source_rejected'
+  /**  A code this build does not classify; never read as success. */
+  | 'other'
+
 export type SourceStatus = {
   profile: ProfileId
   name: string
   origin: SourceOrigin
   outcome: SourceOutcome
+  health: ConvergenceHealth
+  /**  Unix milliseconds. */
+  at: number
+}
+
+export type SourceSummary = {
+  profile: ProfileId
+  origin: SourceOrigin
+  outcome: SourceOutcomeSummary
   health: ConvergenceHealth
   /**  Unix milliseconds. */
   at: number
@@ -774,6 +1024,83 @@ export type StorageValueChangedEvent = {
   value: string | null
   revision: StorageRevision
 }
+
+/**  Whether this build and this device can sync. */
+export type SyncAvailability =
+  /**  The shell supplied no sync adapters. */
+  'unsupported' | 'disabled' | 'enabled'
+
+/**  Why an item is held back rather than synced or applied. */
+export type SyncBlockedReason =
+  | { kind: 'schema_too_new'; remote_revision: number; supported: number }
+  | { kind: 'not_utf8' }
+  | { kind: 'unportable_name' }
+  | { kind: 'case_collision' }
+  /**
+   *  The core refused this exact candidate. It is not retried until either
+   *  side's content changes or the user retries explicitly.
+   */
+  | { kind: 'runtime_refused'; reason: string }
+  /**  The candidate could not be checked; a later cycle retries it. */
+  | { kind: 'runtime_unavailable'; reason: string }
+
+/**  A classified sync failure. The UI localizes by variant. */
+export type SyncError =
+  | { kind: 'unauthorized' }
+  | { kind: 'unreachable' }
+  | { kind: 'quota_exceeded' }
+  | { kind: 'vault_too_new'; found: number; supported: number }
+  | { kind: 'vault_mismatch' }
+  | { kind: 'provider_lacks_conditional_create' }
+  | { kind: 'storage'; reason: string }
+
+/**  The remote head, for the status card. */
+export type SyncHead = {
+  generation: number
+  device_name: string
+  created_at: string
+}
+
+export type SyncOutcome = 'synced' | 'up_to_date' | 'degraded' | 'failed'
+
+/**  The phase of the current or last cycle. */
+export type SyncPhase =
+  | 'idle'
+  | 'scanning'
+  | 'fetching'
+  | 'planning'
+  | 'downloading'
+  | 'snapshotting'
+  | 'applying'
+  | 'uploading'
+  | 'committing'
+  | 'confirming'
+  | 'finalizing'
+
+export type SyncProgress = {
+  done: number
+  total: number
+}
+
+/**  The full sync status, published as `SyncStatusChanged`. */
+export type SyncStatus = {
+  /**  Increases with every change, so a delayed read cannot replace a newer value. */
+  revision: number
+  availability: SyncAvailability
+  phase: SyncPhase
+  progress: SyncProgress | null
+  last_success_at: number | null
+  last_result: SyncOutcome | null
+  last_error: SyncError | null
+  open_conflicts: number
+  blocked_items: BlockedItem[]
+  head: SyncHead | null
+  /**  The last cycle merged a diverged remote branch. */
+  diverged?: boolean
+}
+
+/**  Full sync status, revisioned so a delayed read cannot replace a newer value. */
+export type SyncStatusChanged = SyncStatus
 
 export type TrafficRate = {
   download: number

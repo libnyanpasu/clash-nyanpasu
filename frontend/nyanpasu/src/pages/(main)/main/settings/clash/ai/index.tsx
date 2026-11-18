@@ -1,4 +1,6 @@
 import { CircularProgress } from '@nyanpasu/ui/progress'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -12,8 +14,16 @@ import {
 import CoreAgentSkillCard from './_modules/core-agent-skill-card'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/ai/')({
-  component: RouteComponent,
+  component: GuardedRouteComponent,
 })
+
+function GuardedRouteComponent() {
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      <RouteComponent />
+    </RequireCapability>
+  )
+}
 
 function RouteComponent() {
   const { value: currentCore } = useSetting('core')

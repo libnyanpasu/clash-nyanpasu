@@ -2,6 +2,7 @@
 
 use nyanpasu_single_instance::endpoint::Namespace;
 
+pub mod control;
 pub mod server;
 mod subscriptions;
 

@@ -585,10 +585,10 @@ mod tests {
             all: all.iter().map(|&member| member.into()).collect(),
             now: Some(now.into()),
             fixed: None,
-            test_url: None,
+            delay_key: String::new(),
             expected_status: None,
             hidden: false,
-            icon: None,
+            icon_configured: false,
             capabilities: ProxyGroupCapabilities {
                 select: true,
                 clear_fixed: false,

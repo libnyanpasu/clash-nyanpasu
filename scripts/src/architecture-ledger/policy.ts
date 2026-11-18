@@ -84,6 +84,7 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-state-engine/src/',
   'backend/nyanpasu-runtime-values/src/',
   'backend/nyanpasu-rpc-protocol/src/',
+  'backend/nyanpasu-rpc-wire/src/',
   'backend/nyanpasu-rpc/src/',
   'backend/nyanpasu-server/src/',
   'backend/nyanpasu-migration/src/',
@@ -99,6 +100,8 @@ export const STATIC_GATE_PREFIXES: ReadonlyArray<string> = [
   'backend/nyanpasu-profile-io/src/',
   'backend/nyanpasu-net/src/',
   'backend/nyanpasu-single-instance/src/',
+  'backend/nyanpasu-cli/src/',
+  'backend/nyanpasu-sync-opendal/src/',
 ]
 
 /**

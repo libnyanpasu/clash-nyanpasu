@@ -56,7 +56,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
 }))
 vi.mock('@nyanpasu/query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@nyanpasu/query')>()),
-  useProfile: () => ({ query: { data: { items } } }),
+  useProfileListing: () => ({ data: { items } }),
 }))
 
 const domainError: IpcError = {
@@ -68,7 +68,6 @@ const domainError: IpcError = {
       path: 'p1.yaml',
       source: {
         kind: 'runtime_refused',
-        runtime: { kind: 'untouched' },
         errors: [
           {
             kind: 'build_runtime',
@@ -154,7 +153,7 @@ test('native error dialogs resolve names without losing the caller title or logs
   mockIPC((command, args) => {
     expect(command).toBe('call_rpc')
     const { method, params } = args as { method: string; params: unknown }
-    if (method === 'get_profiles') {
+    if (method === 'get_profiles_listing') {
       return { items, current: 'p1', global_transforms: [] }
     }
     expect(method).toBe('show_native_message_dialog')
@@ -175,7 +174,8 @@ test('a failed name lookup still shows the original failure and logs', async () 
   mockIPC((command, args) => {
     expect(command).toBe('call_rpc')
     const { method, params } = args as { method: string; params: unknown }
-    if (method === 'get_profiles') throw new Error('profiles unavailable')
+    if (method === 'get_profiles_listing')
+      throw new Error('profiles unavailable')
     expect(method).toBe('show_native_message_dialog')
     dialog((params as { message: string }).message)
     return 'Close'
@@ -246,7 +246,7 @@ test.for(['desktop', 'browser'])(
           method: string
           params: Record<string, unknown>
         }
-        if (method === 'get_profiles')
+        if (method === 'get_profiles_listing')
           return { items, current: 'p1', global_transforms: [] }
         if (method === 'show_native_message_dialog')
           return m.common_copy_error_details()
@@ -289,4 +289,45 @@ test('invalid params keeps its message instead of localizing the domain payload'
 
   expect(formatError(invalid)).toBe('Invalid profile parameter')
   expect(formatError(new Error('offline'))).toBe('offline')
+})
+
+test('public IpcError without detail skips copy-details prompt and keeps localized message', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', false)
+  const publicError: IpcError = {
+    kind: {
+      domain: 'public',
+      error: {
+        domain: 'system_proxy',
+        error: { kind: 'write_os_proxy', enable: true, port: 7890 },
+      },
+    },
+    message: 'system proxy operation failed',
+  }
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  onTestFinished(() => {
+    alert.mockRestore()
+    confirm.mockRestore()
+  })
+
+  await message(formatError(publicError), {
+    kind: 'error',
+    error: publicError,
+  })
+
+  expect(alert).toHaveBeenCalledTimes(1)
+  expect(alert).toHaveBeenCalledWith(
+    m.error_public_system_proxy_write_os_proxy(),
+  )
+  expect(confirm).not.toHaveBeenCalled()
+
+  await message(formatError({ ...publicError, detail: null }), {
+    kind: 'error',
+    error: { ...publicError, detail: null },
+  })
+
+  expect(alert).toHaveBeenCalledTimes(2)
+  expect(confirm).not.toHaveBeenCalled()
 })

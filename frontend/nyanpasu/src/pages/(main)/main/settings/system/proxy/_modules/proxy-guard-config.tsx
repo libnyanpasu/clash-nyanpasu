@@ -19,7 +19,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useSetting } from '@nyanpasu/query'
+import { useSystemSetting } from '@nyanpasu/query'
 import {
   ItemContainer,
   ItemLabel,
@@ -43,7 +43,7 @@ export default function ProxyGuardConfig() {
 function ProxyGuardConfigForm() {
   const { setOpen } = useModal()
   const errorId = useId()
-  const proxyGuardInterval = useSetting('proxy_guard_interval')
+  const proxyGuardInterval = useSystemSetting('proxy_guard_interval')
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

@@ -3,6 +3,7 @@ pub mod convergence;
 
 use crate::{client::clash_info::ClashInfo, state::mutation::MutationCoordinator};
 use nyanpasu_contracts::{
+    auth::Principal,
     bundle_metadata::BundleMetadata,
     net::{
         ChangelogHttp, DirectEgress, DirectEgressProbe, NetworkDiagnostics, ProbeSources,
@@ -25,14 +26,12 @@ pub mod agent_skills;
 mod app_lifecycle;
 pub mod app_update;
 pub mod application;
-pub mod application_workflow;
 pub mod artifact_snapshot;
 mod clash_api;
-mod clash_config;
+pub(crate) mod clash_config;
 mod clash_streams;
 pub mod configuration_status;
 pub mod core_lifecycle;
-pub mod debug_http;
 pub mod effects;
 mod error;
 mod event_sink;
@@ -42,13 +41,17 @@ mod geo_mode;
 mod headless_tests;
 pub mod host_adapters;
 pub mod hotkey;
+pub mod http_server;
 pub mod jobs;
+pub mod local_socket;
 pub mod logs;
 pub mod network_automation;
 #[cfg(test)]
 mod network_tests;
 pub(crate) mod ports;
 pub mod profiles;
+pub mod reconciler;
+mod remote_access;
 pub mod runtime;
 pub mod runtime_build;
 pub mod runtime_error;
@@ -57,6 +60,7 @@ pub mod runtime_recovery;
 mod session_state;
 #[cfg(test)]
 mod startup_recovery_tests;
+pub mod sync;
 pub mod system_proxy;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -64,11 +68,17 @@ mod traffic;
 pub(crate) mod traffic_frames;
 mod transparent_proxy;
 
+pub use self::remote_access::{
+    Error as RemoteAccessSpawnError, LaunchUrlError, MAX_SECRET_RECORD_BYTES,
+    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
+};
 use self::{
     application::ApplicationClient,
     clash_config::ClashConfigClient,
-    debug_http::{DebugHttpControl, DebugHttpControlError, DebugHttpStatus},
     host_adapters::ClientHostAdapters,
+    http_server::{HttpServerControlError, HttpServerStatus},
+    local_socket::{LocalSocketControlError, LocalSocketStatus},
+    remote_access::{RemoteAccessArgs, RemoteAccessClient},
     session_state::SessionStateClient,
 };
 use crate::{
@@ -84,11 +94,11 @@ use crate::{
 };
 use nyanpasu_config::{
     application::{
-        IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig, NyanpasuAppConfigPatch,
-        ReleaseChannel,
+        ApplicationSettings, IpLookupProvider, IpLookupProviderInfo, NyanpasuAppConfig,
+        NyanpasuAppConfigPatch, ReleaseChannel, RemoteAccessConfig,
     },
     clash::{
-        config::{ClashConfig, ClashConfigPatch},
+        config::{ClashConfig, ClashConfigPatch, ClashSettings},
         features::ConfigFeatures,
     },
     profile::{
@@ -115,7 +125,7 @@ use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-pub use error::{ClientError, Result};
+pub use error::{ClashReadError, ClientError, CoreLogReadError, ProfileSyncReadError, Result};
 pub use event_sink::{StateChanged, UiEventSink};
 use nyanpasu_contracts::system_dns::{SystemDnsCache, SystemDnsError};
 pub use ports::SessionPortResolver;
@@ -130,8 +140,11 @@ pub struct ClientSetupArgs {
     /// for the storage commands.
     pub storage: Arc<dyn StorageSnapshot>,
     pub runtime_paths: RuntimePaths,
+    /// The infrastructure of the remote-access authentication owner: time, randomness and the
+    /// owner-only secret file.
+    pub remote_auth: RemoteAccessAuthPorts,
     pub ui_sink: Arc<dyn UiEventSink>,
-    /// Built after the session proxy source and application workflow exist.
+    /// Built after the session proxy source and the runtime reconciler exist.
     pub updater_backend_factory: Arc<BackendFactory>,
     /// Built after the active proxy-port source exists in the composition root.
     pub app_update_backend_factory: Option<Arc<app_update::BackendFactory>>,
@@ -150,6 +163,8 @@ pub struct ClientSetupArgs {
     pub accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
     /// `None` disables traffic recording: the store could not be opened.
     pub traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+    /// `None` keeps every sync command registered and answering `unsupported`.
+    pub sync_adapters: Option<crate::client::sync::SyncAdapters>,
     /// The root shutdown token. The composition root owns it because some
     /// owners are spawned before the client; the client cancels it.
     pub shutdown: tokio_util::sync::CancellationToken,
@@ -170,7 +185,13 @@ pub enum SetupError {
     #[snafu(display("failed to cleanup candidates"))]
     CleanupCandidates { source: runtime::Error },
     #[snafu(display("failed to start http server"))]
-    StartHttpServer { source: debug_http::Error },
+    StartHttpServer { source: http_server::Error },
+    #[snafu(display("failed to start local socket"))]
+    StartLocalSocket { source: local_socket::Error },
+    #[snafu(display("failed to start the remote access owner"))]
+    StartRemoteAccess { source: RemoteAccessSpawnError },
+    #[snafu(display("failed to start the remote authentication owner"))]
+    StartRemoteAuth { source: RemoteAuthError },
     #[snafu(display("failed to start core logs"))]
     StartCoreLogs {
         source: nyanpasu_observers::logs::SpawnError,
@@ -182,7 +203,7 @@ pub enum SetupError {
     #[snafu(display("failed to start effects"))]
     StartEffects { source: effects::actor::Error },
     #[snafu(display("failed to start workflow"))]
-    StartWorkflow { source: application_workflow::Error },
+    StartWorkflow { source: reconciler::Error },
     #[snafu(display("failed to start updater"))]
     StartUpdater { source: nyanpasu_updater::Error },
     #[snafu(display("failed to start app updater"))]
@@ -195,6 +216,8 @@ pub enum SetupError {
     },
     #[snafu(display("failed to start network automation"))]
     StartNetworkAutomation { source: network_automation::Error },
+    #[snafu(display("failed to start configuration sync"))]
+    StartSync { source: crate::client::sync::Error },
     #[snafu(display("failed to locate executable"))]
     LocateExecutable { source: std::io::Error },
     #[snafu(display("executable has no parent directory"))]
@@ -206,10 +229,23 @@ pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
 }
 
+/// Weak handle to a [`NyanpasuClient`] that avoids keeping the application alive across
+/// transport adapters stored inside the client graph.
+#[derive(Clone)]
+pub struct WeakNyanpasuClient(std::sync::Weak<NyanpasuClientInner>);
+
+impl WeakNyanpasuClient {
+    /// Upgrades to a strong handle if the application client is still alive.
+    #[must_use]
+    pub fn upgrade(&self) -> Option<NyanpasuClient> {
+        self.0.upgrade().map(|inner| NyanpasuClient { inner })
+    }
+}
+
 struct MutationCoordinators {
-    application: MutationCoordinator<NyanpasuAppConfig>,
-    clash: MutationCoordinator<ClashConfig>,
-    profiles: MutationCoordinator<Profiles>,
+    application: MutationCoordinator,
+    clash: MutationCoordinator,
+    profiles: MutationCoordinator,
 }
 
 impl MutationCoordinators {
@@ -283,7 +319,8 @@ fn url_derived_name(url: &url::Url) -> String {
 }
 
 struct NyanpasuClientInner {
-    debug_http: Option<Arc<dyn DebugHttpControl>>,
+    remote_access: RemoteAccessClient,
+    remote_auth: RemoteAccessAuthClient,
     bundle_metadata: BundleMetadata,
     core_logs: CoreLogsClient,
     app_logs: nyanpasu_logging::LogsClient,
@@ -299,7 +336,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     paths: PathResolver,
     storage: Arc<dyn StorageSnapshot>,
-    application_workflow: application_workflow::ApplicationWorkflowClient,
+    reconciler: reconciler::RuntimeReconcilerClient,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
@@ -324,6 +361,8 @@ struct NyanpasuClientInner {
     /// The platform's accelerator rule, used to reject a hotkey list before it
     /// is committed rather than after the effect has torn the old grabs down.
     accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
+    sync: crate::sync::SyncClient,
+    sync_status: Arc<crate::client::sync::SyncStatusHub>,
     /// The root shutdown token; `request_shutdown` cancels it.
     shutdown: tokio_util::sync::CancellationToken,
     /// Every owner the shutdown waits for.
@@ -340,6 +379,7 @@ impl NyanpasuClient {
             paths,
             storage,
             runtime_paths,
+            remote_auth,
             ui_sink,
             updater_backend_factory,
             app_update_backend_factory,
@@ -356,6 +396,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            sync_adapters,
             shutdown,
             tasks,
         } = args;
@@ -380,8 +421,10 @@ impl NyanpasuClient {
         // active binding. The first reconcile resolves and confirms.
         let ports = Arc::new(SessionPortResolver::default());
         let file_ports = (host_adapters.profile_files)(ports.clone());
+        let content_lock = crate::state::mutation::ProfileContentLock::default();
         let profiles = profiles::ProfilesClient::new_with_jobs(
             mutations.profiles.clone(),
+            content_lock,
             paths.profiles_path(),
             jobs.clone(),
             file_ports.fs.clone(),
@@ -407,7 +450,7 @@ impl NyanpasuClient {
             instance_config_dir,
             paths,
             storage,
-            runtime_paths,
+            remote_auth,
             host_adapters,
             ui_sink,
             updater_backend_factory,
@@ -425,6 +468,7 @@ impl NyanpasuClient {
             window,
             accelerators,
             traffic_store,
+            sync_adapters,
             shutdown,
             tasks,
         )
@@ -447,7 +491,7 @@ impl NyanpasuClient {
         instance_config_dir: PathBuf,
         paths: PathResolver,
         storage: Arc<dyn StorageSnapshot>,
-        runtime_paths: RuntimePaths,
+        remote_auth: RemoteAccessAuthPorts,
         host_adapters: ClientHostAdapters,
         ui_sink: Arc<dyn UiEventSink>,
         updater_backend_factory: Arc<BackendFactory>,
@@ -465,26 +509,35 @@ impl NyanpasuClient {
         window: Option<Arc<dyn hotkey::ports::WindowControl>>,
         accelerators: Option<Arc<dyn hotkey::ports::AcceleratorValidator>>,
         traffic_store: Option<Arc<dyn TrafficOwnerFactory>>,
+        sync_adapters: Option<crate::client::sync::SyncAdapters>,
         shutdown: tokio_util::sync::CancellationToken,
         tasks: tokio_util::task::TaskTracker,
     ) -> std::result::Result<Self, SetupError> {
         let icons =
             crate::service::icon::IconService::new(paths.clone(), host_adapters.icon_fetcher);
-        let debug_http = if let Some(factory) = host_adapters.debug_http {
-            let http = factory().await.context(StartHttpServerSnafu)?;
-            tasks.spawn({
-                let (http, token) = (http.clone(), shutdown.child_token());
-                async move {
-                    token.cancelled().await;
-                    if let Err(error) = http.shutdown().await {
-                        tracing::warn!(%error, "debug HTTP server shutdown failed");
-                    }
-                }
-            });
-            Some(http)
-        } else {
-            None
+        let http_server = match host_adapters.http_server {
+            Some(factory) => Some(factory().await.context(StartHttpServerSnafu)?),
+            None => None,
         };
+        let local_socket = match host_adapters.local_socket {
+            Some(factory) => Some(factory().await.context(StartLocalSocketSnafu)?),
+            None => None,
+        };
+        let remote_access = RemoteAccessClient::spawn(
+            RemoteAccessArgs {
+                application: application.clone(),
+                http: http_server,
+                local_socket,
+                shutdown: shutdown.child_token(),
+            },
+            &tasks,
+        )
+        .await
+        .context(StartRemoteAccessSnafu)?;
+        let remote_auth =
+            RemoteAccessAuthClient::spawn(remote_auth, shutdown.child_token(), &tasks)
+                .await
+                .context(StartRemoteAuthSnafu)?;
         let core_logs = CoreLogsClient::spawn(
             logging.core,
             application.snapshot().state.core_logs,
@@ -537,40 +590,55 @@ impl NyanpasuClient {
         )
         .await
         .context(StartEffectsSnafu)?;
+        // A local commit marks sync dirty; the sync owner debounces it. The
+        // owners never call sync directly, and the hint carries no payload.
+        let sync_dirty = crate::sync::SyncDirty::default();
         let notifications: Arc<dyn effects::ports::CommitNotifications> =
-            Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink)));
-        let application_workflow = application_workflow::ApplicationWorkflowClient::spawn(
-            application_workflow::ApplicationWorkflowArgs {
+            Arc::new(crate::sync::DirtyCommitNotifications::new(
+                Arc::new((effects.clone(), event_sink::UiCommitNotifications(ui_sink))),
+                sync_dirty.clone(),
+            ));
+        let revisions = runtime::RuntimeRevisionAllocator::new();
+        let builder = host_adapters.runtime_build;
+        let validator: Arc<dyn reconciler::ports::RuntimeValidatorPort> =
+            Arc::new(reconciler::adapters::CoreCheckValidator::new(&core_v2));
+        let reconciler =
+            reconciler::RuntimeReconcilerClient::spawn(reconciler::RuntimeReconcilerArgs {
+                revisions: revisions.clone(),
                 notifications: notifications.clone(),
                 application: application.snapshot_handle(),
                 clash: clash_config.snapshot_handle(),
-                profiles: profiles.snapshot_handle(),
+                profile_content: profiles.content_reader(),
                 core: core_v2.clone(),
                 service,
-                builder: host_adapters.runtime_build,
-                validator: Arc::new(application_workflow::adapters::CoreCheckValidator::new(
-                    core_v2.clone(),
-                    runtime_paths,
-                )),
+                builder: builder.clone(),
                 ports: ports.clone(),
                 installer: binary_installer,
                 ownership: core_lifecycle::Ownership::Unproven,
                 instance_config_dir,
                 shutdown: shutdown.child_token(),
                 tasks: tasks.clone(),
-            },
-        )
-        .await
-        .context(StartWorkflowSnafu)?;
+            })
+            .await
+            .context(StartWorkflowSnafu)?;
         if let Some(mutations) = mutations {
-            let factory = Arc::new(application_workflow.clone());
+            let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
+                reconciler::check::CandidateCheck::new(reconciler::check::Args {
+                    application: application.snapshot_handle(),
+                    clash: clash_config.snapshot_handle(),
+                    profile_content: profiles.content_reader(),
+                    builder,
+                    ports: ports.clone(),
+                    revisions,
+                    validator,
+                    workflow: reconciler.clone(),
+                }),
+            );
             mutations
                 .application
-                .connect(factory.clone(), notifications.clone());
-            mutations
-                .clash
-                .connect(factory.clone(), notifications.clone());
-            mutations.profiles.connect(factory, notifications);
+                .connect(notifications.clone(), gate.clone());
+            mutations.clash.connect(notifications.clone(), gate.clone());
+            mutations.profiles.connect(notifications, gate);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -579,7 +647,7 @@ impl NyanpasuClient {
                 }
                 BackendFactoryError::LocateExecutableParent => SetupError::LocateExecutableParent,
             })?,
-            Arc::new(application_workflow.clone()),
+            Arc::new(reconciler.clone()),
             shutdown.child_token(),
             &tasks,
         )
@@ -699,6 +767,21 @@ impl NyanpasuClient {
             }
             None => None,
         };
+        let sync_status = Arc::new(crate::client::sync::SyncStatusHub::default());
+        let sync = crate::client::sync::SyncSetup {
+            paths: &paths,
+            jobs: jobs.clone(),
+            dirty: sync_dirty,
+            application: application.clone(),
+            clash: clash_config.clone(),
+            profiles: profiles.clone(),
+            adapters: sync_adapters,
+            hub: sync_status.clone(),
+            shutdown: shutdown.child_token(),
+        }
+        .spawn(&tasks)
+        .await
+        .context(StartSyncSnafu)?;
         let network_automation = match host_adapters.network_environment {
             Some(environment) => Some(
                 Self::spawn_network_automation(
@@ -715,7 +798,8 @@ impl NyanpasuClient {
         };
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
-                debug_http,
+                remote_access,
+                remote_auth,
                 bundle_metadata,
                 core_logs,
                 app_logs,
@@ -731,7 +815,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 paths,
                 storage,
-                application_workflow,
+                reconciler,
                 core_api: core_v2,
                 proxies,
                 streams,
@@ -749,12 +833,20 @@ impl NyanpasuClient {
                 os_proxy,
                 effects,
                 network_automation,
+                sync,
+                sync_status,
                 window,
                 accelerators,
                 shutdown,
                 tasks,
             }),
         })
+    }
+
+    /// Weak handle to this client that avoids prolonging application lifetime.
+    #[must_use]
+    pub fn downgrade(&self) -> WeakNyanpasuClient {
+        WeakNyanpasuClient(Arc::downgrade(&self.inner))
     }
 
     /// Starts the network automation owner and forwards each committed
@@ -807,36 +899,233 @@ impl NyanpasuClient {
         Ok(automation)
     }
 
-    pub async fn debug_http_status(
+    pub async fn http_server_status(
         &self,
-    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
-        let http = self
-            .inner
-            .debug_http
-            .as_ref()
-            .ok_or(DebugHttpControlError::ReadStatusUnsupported)?;
-        http.status()
-            .await
-            .map_err(|source| DebugHttpControlError::ReadStatus { source })
+    ) -> std::result::Result<HttpServerStatus, HttpServerControlError> {
+        self.inner.remote_access.status().await
     }
-    pub async fn set_debug_http_enabled(
+
+    pub async fn local_socket_status(
         &self,
-        enabled: bool,
-    ) -> std::result::Result<DebugHttpStatus, DebugHttpControlError> {
-        let http = self
-            .inner
-            .debug_http
-            .as_ref()
-            .ok_or(DebugHttpControlError::ChangeEnabledUnsupported)?;
-        http.set_enabled(enabled)
-            .await
-            .map_err(|source| DebugHttpControlError::ChangeEnabled { source })
+    ) -> std::result::Result<LocalSocketStatus, LocalSocketControlError> {
+        self.inner.remote_access.local_socket_status().await
     }
-    pub async fn shutdown_debug_http(&self) -> anyhow::Result<()> {
-        if let Some(http) = &self.inner.debug_http {
-            http.set_enabled(false).await?;
-        }
-        Ok(())
+
+    /// A URL that logs a browser into the running server, or `None` while it is off.
+    ///
+    /// The URL carries a single-use launch code that expires after 60 seconds, so it is a
+    /// credential: only a desktop-only command may return it, and nothing may log it.
+    pub async fn http_launch_url(&self) -> std::result::Result<Option<String>, LaunchUrlError> {
+        let Some(origin) = self.http_server_status().await?.url else {
+            return Ok(None);
+        };
+        Ok(Some(self.launch_url_for(&origin).await?))
+    }
+
+    /// A launch URL for the server listening at `origin`, for hosts that bind it themselves.
+    ///
+    /// The session it opens holds every scope except `remote_admin`, which no browser holds.
+    pub async fn launch_url_for(
+        &self,
+        origin: &str,
+    ) -> std::result::Result<String, RemoteAuthError> {
+        let scopes = nyanpasu_contracts::auth::ScopeSet::full()
+            .iter()
+            .filter(|scope| *scope != nyanpasu_config::application::Scope::RemoteAdmin)
+            .collect();
+        let issued = self.inner.remote_auth.issue_launch_code(scopes).await?;
+        Ok(format!(
+            "{}/?code={}",
+            origin.trim_end_matches('/'),
+            issued.code.expose_secret()
+        ))
+    }
+
+    /// Mints a named access token. The raw secret is in the result and is never stored.
+    pub async fn create_remote_access_token(
+        &self,
+        request: nyanpasu_contracts::auth::CreateAccessTokenRequest,
+    ) -> std::result::Result<nyanpasu_contracts::auth::IssuedAccessToken, RemoteAuthError> {
+        self.inner.remote_auth.create_access_token(request).await
+    }
+
+    /// Every access token's non-secret metadata.
+    pub async fn list_remote_access_tokens(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::AccessTokenSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.list_access_tokens().await
+    }
+
+    /// Revokes a token, closes the browser sessions it backs and ends their streams.
+    pub async fn revoke_remote_access_token(
+        &self,
+        id: nyanpasu_contracts::auth::TokenId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.revoke_access_token(id).await
+    }
+
+    /// Verifies a bearer token.
+    pub async fn authenticate_remote_token(
+        &self,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner.remote_auth.authenticate_token(token).await
+    }
+
+    /// Spends a single-use launch code for a browser session.
+    pub async fn exchange_launch_code(
+        &self,
+        code: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner.remote_auth.exchange_launch_code(code).await
+    }
+
+    /// Opens a browser session holding a token's scopes; it ends when the token does.
+    pub async fn login_with_remote_token(
+        &self,
+        token: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::EstablishedBrowserSession, RemoteAuthError>
+    {
+        self.inner.remote_auth.login_with_token(token).await
+    }
+
+    /// Verifies a session cookie and extends its idle deadline.
+    pub async fn resolve_browser_session(
+        &self,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<nyanpasu_contracts::auth::AuthenticatedCaller, RemoteAuthError> {
+        self.inner.remote_auth.resolve_browser_session(cookie).await
+    }
+
+    /// Every open browser session's non-secret metadata.
+    pub async fn list_remote_browser_sessions(
+        &self,
+    ) -> std::result::Result<Vec<nyanpasu_contracts::auth::BrowserSessionSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.list_browser_sessions().await
+    }
+
+    /// Closes a browser session by its public id and ends its streams.
+    pub async fn revoke_remote_browser_session(
+        &self,
+        id: nyanpasu_contracts::auth::SessionId,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.revoke_browser_session(id).await
+    }
+
+    /// Closes the session a cookie names.
+    pub async fn logout_browser_session(
+        &self,
+        cookie: nyanpasu_contracts::auth::SecretString,
+    ) -> std::result::Result<(), RemoteAuthError> {
+        self.inner.remote_auth.logout(cookie).await
+    }
+
+    /// Revocations and expiries of tokens and sessions, as they happen.
+    ///
+    /// A receiver that lags has lost events and must revalidate everything it serves.
+    #[must_use]
+    pub fn subscribe_auth_revocations(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<nyanpasu_contracts::auth::AuthRevocation> {
+        self.inner.remote_auth.subscribe_revocations()
+    }
+
+    /// Whether a remote token or browser-session principal is still valid.
+    ///
+    /// HTTP transports use this to reconcile a lagged revocation feed without ending streams
+    /// owned by unrelated principals.
+    pub async fn is_remote_principal_active(
+        &self,
+        principal: &Principal,
+    ) -> std::result::Result<bool, RemoteAuthError> {
+        self.inner.remote_auth.is_principal_active(principal).await
+    }
+
+    /// The committed remote-access settings.
+    pub fn remote_access_config(&self) -> RemoteAccessConfig {
+        self.inner.remote_access.config()
+    }
+
+    /// Commits `config`, then makes the listener follow it. See [`RemoteAccessClient::set`].
+    pub async fn set_remote_access(
+        &self,
+        config: RemoteAccessConfig,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner.remote_access.set(config).await
+    }
+
+    /// The certificate of the HTTPS listener, generated and saved on first use.
+    ///
+    /// The private key is in the result: only the HTTP transport's adapter may call this.
+    pub async fn remote_access_tls_identity(
+        &self,
+    ) -> std::result::Result<nyanpasu_contracts::auth::TlsIdentity, RemoteAuthError> {
+        self.inner
+            .remote_auth
+            .tls_identity(self.remote_access_lan_addresses())
+            .await
+    }
+
+    /// The fingerprint to pin and the expiry of the certificate, or `None` before the HTTPS
+    /// listener first needed one.
+    pub async fn remote_access_tls_summary(
+        &self,
+    ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsCertificateSummary>, RemoteAuthError>
+    {
+        self.inner.remote_auth.tls_summary().await
+    }
+
+    /// Replaces the certificate, then makes the listener present the new one.
+    ///
+    /// Clients that pinned the old fingerprint refuse the server until they pin the new one.
+    pub async fn reset_remote_access_tls(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner
+            .remote_auth
+            .reset_tls(self.remote_access_lan_addresses())
+            .await?;
+        self.inner.remote_access.reconcile().await
+    }
+
+    /// The configured LAN address, which a new certificate must cover.
+    fn remote_access_lan_addresses(&self) -> Vec<std::net::IpAddr> {
+        self.inner
+            .remote_access
+            .config()
+            .http
+            .lan_bind
+            .into_iter()
+            .collect()
+    }
+
+    /// Makes all configured listeners follow the committed settings, as at startup.
+    pub async fn reconcile_remote_access(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.inner.remote_access.reconcile().await
+    }
+
+    /// Makes the listener follow the committed settings, as at startup.
+    pub async fn reconcile_http_server(
+        &self,
+    ) -> std::result::Result<
+        nyanpasu_runtime_values::runtime::MutationOutcome<()>,
+        SetRemoteAccessError,
+    > {
+        self.reconcile_remote_access().await
     }
 
     pub async fn release_channel(&self) -> Result<ReleaseChannel> {
@@ -949,6 +1238,18 @@ impl NyanpasuClient {
         agent_skills::core_agent_skills(&self.inner.paths, core).await
     }
 
+    /// Safe agent skill availability summary without exposing host directories.
+    pub async fn core_agent_skills_summary(
+        &self,
+        core: nyanpasu_config::application::ClashCore,
+    ) -> Vec<agent_skills::CoreAgentSkillSummary> {
+        self.core_agent_skills(core)
+            .await
+            .iter()
+            .map(agent_skills::CoreAgentSkillSummary::from)
+            .collect()
+    }
+
     pub async fn url_delay_test(&self, url: &str, expected_status: u16) -> Option<u64> {
         self.inner
             .network_diagnostics
@@ -978,6 +1279,12 @@ impl NyanpasuClient {
         Ok(self.inner.application.snapshot().state)
     }
 
+    /// The committed application settings without PAC and latency URLs that may carry a
+    /// credential.
+    pub async fn get_app_settings(&self) -> Result<ApplicationSettings> {
+        Ok((&self.inner.application.snapshot().state).into())
+    }
+
     /// The committed application config, for boundary code that runs
     /// synchronously (window creation, window event handlers) and cannot await.
     pub fn app_config_snapshot(&self) -> NyanpasuAppConfig {
@@ -985,14 +1292,14 @@ impl NyanpasuClient {
     }
 
     pub async fn reconcile_core(&self) -> std::result::Result<ReconcileReport, RuntimeError> {
-        self.inner.application_workflow.reconcile().await
+        self.inner.reconciler.reconcile().await
     }
 
     // No UI entry issues an explicit stop yet; this is the facade entry to the
     // explicit stop intent the workflow honours (TCC V11, T10 S18 / §1.4).
     #[allow(dead_code)]
     pub async fn stop_core(&self) -> std::result::Result<StopReport, RuntimeError> {
-        self.inner.application_workflow.stop_core().await
+        self.inner.reconciler.stop_core().await
     }
 
     /// Select the core through the application source transaction.
@@ -1005,35 +1312,35 @@ impl NyanpasuClient {
         self.patch_app_config(patch).await
     }
     pub fn core_status(&self) -> CoreStatusProjection {
-        self.inner.application_workflow.core_status()
+        self.inner.reconciler.core_status()
     }
     pub fn subscribe_core_events(&self) -> tokio::sync::broadcast::Receiver<CoreStatusProjection> {
-        self.inner.application_workflow.core_events()
+        self.inner.reconciler.core_events()
     }
     pub fn service_status(&self) -> ServiceHostStatus {
-        self.inner.application_workflow.service_status()
+        self.inner.reconciler.service_status()
     }
     pub fn subscribe_service_events(&self) -> tokio::sync::watch::Receiver<ServiceHostStatus> {
-        self.inner.application_workflow.service_events()
+        self.inner.reconciler.service_events()
     }
     pub async fn install_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.install_service().await
+        self.inner.reconciler.install_service().await
     }
 
     pub async fn start_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.start_service().await
+        self.inner.reconciler.start_service().await
     }
 
     pub async fn stop_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.stop_service().await
+        self.inner.reconciler.stop_service().await
     }
 
     pub async fn restart_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.restart_service().await
+        self.inner.reconciler.restart_service().await
     }
 
     pub async fn uninstall_service(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.uninstall_service().await
+        self.inner.reconciler.uninstall_service().await
     }
 
     pub async fn get_core_version(
@@ -1131,6 +1438,12 @@ impl NyanpasuClient {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
             hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
         }
+        if patch.remote_access.is_some() {
+            return Err(ConfigError::InvalidRemoteAccess {
+                reason: nyanpasu_config::application::RemoteAccessError::UseDedicatedCommand,
+            }
+            .into());
+        }
         if self.inner.network_automation.is_none()
             && patch
                 .network_automation
@@ -1155,11 +1468,57 @@ impl NyanpasuClient {
             return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
         }
         let client = self.inner.application.clone();
-        Ok(client.patch(patch).await?.outcome())
+        let committed = client.patch(patch).await?;
+        let settled = if committed.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        committed.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        Ok(reconciler::status::outcome(
+            nyanpasu_runtime_values::runtime::CommitReceipt {
+                operation_id: committed.operation_id.map(|id| id.to_string()),
+                domain: "application".into(),
+                source_version: *committed.version.as_ref(),
+                runtime: nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Unchanged,
+            },
+            settled,
+        ))
+    }
+
+    /// Prepares the daemon before committing service preference; ownership changes after commit.
+    pub async fn set_service_mode(
+        &self,
+        enabled: bool,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        if enabled {
+            self.inner
+                .reconciler
+                .prepare_service()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Application,
+                        Arc::new(error),
+                    )
+                })?;
+        }
+        self.patch_app_config(NyanpasuAppConfigPatch {
+            enable_service_mode: Some(enabled),
+            ..Default::default()
+        })
+        .await
     }
 
     pub async fn retry_runtime_now(&self) -> std::result::Result<(), RuntimeError> {
-        self.inner.application_workflow.retry_runtime().await
+        self.inner.reconciler.retry_runtime().await
     }
 
     pub fn retry_effect_now(&self, kind: EffectKind) -> std::result::Result<(), EffectsError> {
@@ -1250,6 +1609,11 @@ impl NyanpasuClient {
         Ok(self.inner.clash_config.snapshot().state)
     }
 
+    /// The committed Clash settings without the controller secret and the web UI templates.
+    pub async fn get_clash_settings(&self) -> Result<ClashSettings> {
+        Ok((&self.inner.clash_config.snapshot().state).into())
+    }
+
     /// The config keys and values the selected core reads, for the settings
     /// that only some cores support.
     pub fn config_features(&self) -> ConfigFeatures {
@@ -1272,10 +1636,61 @@ impl NyanpasuClient {
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
-        let client = self.inner.clash_config.clone();
-        let outcome = client.patch_overrides(patch).await?.outcome();
+        let current = self.inner.clash_config.snapshot();
+        let nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+            mode,
+            log_level,
+            allow_lan,
+            secret,
+            unified_delay,
+            tcp_concurrent,
+            ipv6,
+        } = &patch;
+        let outcome = if mode.is_some_and(|mode| mode == current.state.overrides.mode())
+            && log_level.is_none()
+            && allow_lan.is_none()
+            && secret.is_none()
+            && unified_delay.is_none()
+            && tcp_concurrent.is_none()
+            && ipv6.is_none()
+        {
+            let failure = self
+                .inner
+                .reconciler
+                .interrupt_connections()
+                .await
+                .map_err(|error| {
+                    ConfigError::runtime_check_failure(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
+                        Arc::new(error),
+                    )
+                })?;
+            let degradations = failure.into_iter().map(|error| {
+                nyanpasu_runtime_values::runtime::Degradation {
+                    phase: nyanpasu_runtime_values::runtime::DegradationPhase::SystemEffect,
+                    reason: nyanpasu_runtime_values::runtime::DegradationReason::ModeInterruptionFailed {
+                        cause: (&error).into(),
+                    },
+                    message: error.to_string(),
+                    retryable: false,
+                }
+            }).collect();
+            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), degradations)
+        } else {
+            let committed = self.inner.clash_config.patch_overrides(patch).await?;
+            self.clash_outcome(committed).await
+        };
         self.request_proxy_refresh();
         Ok(outcome)
+    }
+
+    /// Switches the proxy mode and refreshes what shows it. Nothing else of the overrides is
+    /// written, so a caller holding only the proxy permission cannot reach another override.
+    pub async fn set_proxy_mode(
+        &self,
+        mode: nyanpasu_config::clash::config::overrides::Mode,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        self.patch_runtime_overrides(mode.into()).await
     }
 
     pub async fn patch_clash_config(
@@ -1284,13 +1699,20 @@ impl NyanpasuClient {
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let application = self.inner.application.snapshot().state;
         let client = self.inner.clash_config.clone();
-        Ok(client.patch_validated(&application, patch).await?.outcome())
+        let committed = client.patch_validated(&application, patch).await?;
+        Ok(self.clash_outcome(committed).await)
     }
 
     // ---- profiles domain (PR-3 T07) ----
 
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>> {
         Ok(self.inner.profiles.snapshot())
+    }
+
+    /// The profile structure without subscription URLs, request headers, external paths or
+    /// descriptions. The full document is [`Self::get_profiles`].
+    pub fn get_profiles_listing(&self) -> nyanpasu_config::profile::ProfilesListing {
+        (&*self.inner.profiles.snapshot()).into()
     }
 
     async fn collect_post_commit_degradations(
@@ -1310,7 +1732,7 @@ impl NyanpasuClient {
                     message = %degradation.message,
                     "profile commit completed with a degraded side effect",
                 );
-                application_workflow::profiles::map_profile_degradation(degradation)
+                reconciler::profiles::map_profile_degradation(degradation)
             })
             .collect();
         degradations.extend(report.runtime_degradations.clone());
@@ -1321,11 +1743,33 @@ impl NyanpasuClient {
         &self,
         report: &CommitReport,
     ) -> nyanpasu_runtime_values::runtime::MutationOutcome<()> {
+        self.profile_outcome((), report).await
+    }
+
+    async fn profile_outcome<T>(
+        &self,
+        value: T,
+        report: &CommitReport,
+    ) -> nyanpasu_runtime_values::runtime::MutationOutcome<T> {
+        let settled = if report.reaches_runtime {
+            Some(
+                self.inner
+                    .reconciler
+                    .settled(
+                        nyanpasu_runtime_values::mutation::ConfigDomain::Profiles,
+                        report.version,
+                    )
+                    .await,
+            )
+        } else {
+            None
+        };
+        let runtime = reconciler::status::outcome(report.receipt.clone(), settled);
         nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            (),
+            value,
             self.collect_post_commit_degradations(report).await,
         )
-        .with_commit(report.receipt.clone())
+        .append_commit_result(runtime)
     }
 
     /// Public wire for a post-commit auto-activation hard failure. Create/import
@@ -1401,13 +1845,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an add commits the uid it generated");
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                created,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(created, &report).await)
     }
 
     /// Create a profile from a fully-specified request and apply the design §9
@@ -1503,11 +1941,7 @@ impl NyanpasuClient {
             .created
             .clone()
             .expect("an import commits the uid it generated");
-        let outcome = nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-            created.clone(),
-            self.collect_post_commit_degradations(&report).await,
-        )
-        .with_commit(report.receipt.clone());
+        let outcome = self.profile_outcome(created.clone(), &report).await;
         if transform.is_some() {
             return Ok(outcome);
         }
@@ -1593,13 +2027,7 @@ impl NyanpasuClient {
             .create_proxy_group_folder(profile, name, members)
             .await?;
         self.inner.proxies.notify_rearranged();
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     /// Create a folder around `members`, which leave the folders they were in.
@@ -1609,13 +2037,7 @@ impl NyanpasuClient {
         members: Vec<ProfileId>,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<FolderId>> {
         let (report, folder) = self.inner.profiles.create_folder(name, members).await?;
-        Ok(
-            nyanpasu_runtime_values::runtime::MutationOutcome::from_parts(
-                folder,
-                self.collect_post_commit_degradations(&report).await,
-            )
-            .with_commit(report.receipt.clone()),
-        )
+        Ok(self.profile_outcome(folder, &report).await)
     }
 
     pub async fn refresh_profile(
@@ -1737,12 +2159,12 @@ impl NyanpasuClient {
     }
 
     pub async fn promoted_runtime(&self) -> Option<Arc<runtime::RuntimeSnapshot>> {
-        self.inner.application_workflow.runtime().promoted
+        self.inner.reconciler.runtime().promoted
     }
 }
 
 #[async_trait::async_trait]
-impl nyanpasu_updater::CoreUpdateInstaller for application_workflow::ApplicationWorkflowClient {
+impl nyanpasu_updater::CoreUpdateInstaller for reconciler::RuntimeReconcilerClient {
     async fn install(&self, artifact: PreparedCoreBinary) -> anyhow::Result<()> {
         Ok(self.replace_binary(artifact).await?)
     }
@@ -1862,14 +2284,14 @@ pub(crate) mod tests {
         std::fs::write(path, content).unwrap();
     }
 
-    /// The application workflow applies committed state; it is not a second
+    /// The runtime reconciler applies committed state; it is not a second
     /// commit point for a configuration domain (design D1/§3.1). Holding a
     /// domain client, the facade that owns all three, or an actor's raw message
     /// enum is what would make it one, so the production sources under the
     /// workflow must not name any of them. Its `tests/` directories are skipped:
     /// a fixture legitimately builds the real clients to seed a graph.
     #[test]
-    fn application_workflow_sources_hold_no_source_config_client() {
+    fn reconciler_sources_hold_no_source_config_client() {
         // A domain client is the direct way to write a source domain. The facade
         // reaches all three, and an actor's own message enum reaches one without
         // its typed client, so naming any of them is a way to commit.
@@ -1901,7 +2323,7 @@ pub(crate) mod tests {
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/client");
         let mut files = Vec::new();
-        collect(&root.join("application_workflow"), &mut files);
+        collect(&root.join("reconciler"), &mut files);
         collect(&root.join("core_lifecycle"), &mut files);
         assert!(!files.is_empty(), "the scan found no workflow sources");
 
@@ -1923,58 +2345,60 @@ pub(crate) mod tests {
         }
         assert!(
             offenders.is_empty(),
-            "the application workflow must read source config through StateSnapshot handles, \
+            "the runtime reconciler must read source config through StateSnapshot handles, \
              reach the actors through their typed clients, and let the facade commit:\n{}",
             offenders.join("\n")
         );
     }
 
-    /// Required subscriber that holds the transaction open inside `on_prepare`
-    /// until the test releases it, so the owning actor's mailbox is provably
-    /// blocked while the assertion runs.
-    struct ParkedPrepare {
+    /// Holds an independent check while committed reads bypass the source mailbox.
+    struct ParkedGate {
         entered: Arc<tokio::sync::Notify>,
         release: Arc<tokio::sync::Notify>,
     }
-
     #[async_trait::async_trait]
-    impl nyanpasu_state_engine::StateAckSubscriber<NyanpasuAppConfig> for ParkedPrepare {
-        fn name(&self) -> nyanpasu_state_engine::SubscriberName<'_> {
-            "test-parked-prepare".into()
-        }
-
-        async fn on_prepare(
+    impl crate::state::mutation::ports::RuntimeGate for ParkedGate {
+        async fn check(
             &self,
-            _change: nyanpasu_state_engine::StateChange<NyanpasuAppConfig>,
-        ) -> nyanpasu_state_engine::Ack {
+            _: crate::state::mutation::ports::RuntimeCandidate,
+        ) -> std::result::Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>
+        {
             self.entered.notify_one();
             self.release.notified().await;
-            nyanpasu_state_engine::Ack::Ok
+            Ok(())
+        }
+        fn committed(
+            &self,
+            _: nyanpasu_runtime_values::mutation::ConfigDomain,
+            _: nyanpasu_state_engine::Version,
+        ) {
         }
     }
 
     #[tokio::test]
-    async fn committed_config_reads_do_not_wait_for_a_parked_required_prepare() {
+    async fn committed_config_reads_do_not_wait_for_a_parked_check() {
         use futures_util::FutureExt;
 
         let dir = tempdir().expect("tempdir should be created");
         let entered = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        let mut manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
+        let manager = nyanpasu_state_engine::PersistentStateManagerSetup::<
             NyanpasuAppConfig,
             nyanpasu_migration::modules::application::ApplicationFormat,
         >::builder()
         .config_path(temp_config_path(&dir, "application.yaml"))
         .assemble()
-        .from_state(NyanpasuAppConfig::default())
-        .await
-        .expect("application manager should initialize");
-        manager.add_subscriber(Box::new(ParkedPrepare {
-            entered: entered.clone(),
-            release: release.clone(),
-        }));
+        .from_state(NyanpasuAppConfig::default());
+        let mutations = crate::state::mutation::MutationCoordinator::pending();
+        mutations.connect(
+            Arc::new(crate::client::effects::ports::NoopCommitNotifications),
+            Arc::new(ParkedGate {
+                entered: entered.clone(),
+                release: release.clone(),
+            }),
+        );
         let application = ApplicationClient::from_manager(
-            crate::state::mutation::MutationCoordinator::isolated(),
+            mutations,
             manager,
             ReleaseChannel::Stable,
             tokio_util::sync::CancellationToken::new(),
@@ -1998,11 +2422,13 @@ pub(crate) mod tests {
         )
         .await
         .expect("clash config client should be created");
+        let writer = application.clone();
         let client = test_client_from_typed_clients(
             &dir,
             application,
             session_state,
             clash_config,
+            None,
             Arc::new(NoopSystemDnsCache),
             Arc::new(MockDirectEgressProbe::new()),
             Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
@@ -2010,16 +2436,17 @@ pub(crate) mod tests {
         )
         .await;
 
-        assert!(!client.get_app_config().await.unwrap().enable_system_proxy);
+        let previous = client
+            .get_app_config()
+            .await
+            .unwrap()
+            .enable_builtin_enhanced;
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
-        patch.enable_system_proxy = Some(true);
-        let patching = {
-            let client = client.clone();
-            tokio::spawn(async move { client.patch_app_config(patch).await })
-        };
+        patch.enable_builtin_enhanced = Some(!previous);
+        let patching = { tokio::spawn(async move { writer.patch(patch).await }) };
 
-        // The transaction now owns the actor and is parked mid-prepare.
+        // The source owner is awaiting its independent check.
         entered.notified().await;
         let parked = client
             .get_app_config()
@@ -2027,7 +2454,7 @@ pub(crate) mod tests {
             .expect("a committed read must not await the parked actor")
             .expect("committed read should succeed");
         assert!(
-            !parked.enable_system_proxy,
+            parked.enable_builtin_enhanced == previous,
             "an unfinished transaction must not be visible as committed state"
         );
 
@@ -2036,7 +2463,14 @@ pub(crate) mod tests {
             .await
             .expect("patch task should join")
             .expect("patch should commit");
-        assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+        assert_eq!(
+            client
+                .get_app_config()
+                .await
+                .unwrap()
+                .enable_builtin_enhanced,
+            !previous
+        );
     }
 
     #[tokio::test]
@@ -2522,7 +2956,7 @@ pub(crate) mod tests {
             let report = client.startup_reconcile().await;
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
         }
@@ -2704,7 +3138,11 @@ pub(crate) mod tests {
         let dir = tempdir().expect("tempdir should be created");
 
         (async {
-            let (application, session_state, clash_config) = test_typed_config_clients(&dir).await;
+            let (application, session_state, clash_config) = test_typed_config_clients(
+                &dir,
+                crate::state::mutation::MutationCoordinator::isolated(),
+            )
+            .await;
             let mut patch = NyanpasuAppConfig::new_empty_patch();
             patch.theme_color = Some(yaml_serde::from_str("\"#123456\"").unwrap());
             application
@@ -2755,6 +3193,7 @@ pub(crate) mod tests {
             paths,
             storage: Arc::new(storage),
             runtime_paths,
+            remote_auth: crate::client::test_support::test_remote_auth_ports(),
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             updater_backend_factory: Arc::new(|_| {
                 Ok(Arc::new(nyanpasu_updater::test_support::ReadyBackend))
@@ -2777,6 +3216,7 @@ pub(crate) mod tests {
             // parse should fail here, exactly as the app would.
             accelerators: Some(Arc::new(crate::client::test_support::AnyAccelerator)),
             traffic_store: None,
+            sync_adapters: None,
             shutdown,
             tasks,
         })
@@ -2802,7 +3242,7 @@ pub(crate) mod tests {
         let dir = tempdir().unwrap();
         let client = test_client(&dir).await;
         let promoted = client.promoted_runtime().await;
-        let lifecycle = client.inner.application_workflow.runtime();
+        let lifecycle = client.inner.reconciler.runtime();
 
         assert!(promoted.is_none());
         assert!(lifecycle.promoted.is_none());
@@ -2968,7 +3408,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn activation_requires_runtime_success_before_committing_selection() {
+    async fn activation_commits_selection_when_apply_is_deferred() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -2992,10 +3432,11 @@ pub(crate) mod tests {
                 .unwrap()
                 .into_value();
             let version = client.get_profiles().await.unwrap().revision();
-            assert!(client.activate_profile(Some(uid)).await.is_err());
+            let outcome = client.activate_profile(Some(uid.clone())).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
             let after = client.get_profiles().await.unwrap();
-            assert!(after.current.is_none());
-            assert_eq!(after.revision(), version);
+            assert_eq!(after.current, Some(uid));
+            assert_eq!(after.revision(), version + 1);
         })
         .await;
     }
@@ -3014,7 +3455,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(client.core_status().host, ExecutionHost::Service);
@@ -3064,7 +3505,7 @@ pub(crate) mod tests {
 
             assert_eq!(
                 report.outcome,
-                application_workflow::startup::StartupOutcome::Ready,
+                reconciler::startup::StartupOutcome::Ready,
                 "{report:?}"
             );
             assert_eq!(
@@ -3072,6 +3513,7 @@ pub(crate) mod tests {
                 ExecutionHost::Local,
                 "an absent daemon must not be installed and started by startup"
             );
+            client.inner.reconciler.settle_core_changes().await;
             assert_eq!(endpoint.submissions(), 1, "the core starts locally instead");
             assert_eq!(
                 client.configuration_status().runtime.health,
@@ -3108,7 +3550,7 @@ pub(crate) mod tests {
             client.activate_profile(Some(uid)).await.unwrap();
             endpoint.set_effective_enabled(true);
             client.reconcile_core().await.unwrap();
-            let state = client.inner.application_workflow.runtime();
+            let state = client.inner.reconciler.runtime();
             assert!(state.pending.is_some());
             assert!(state.promoted.as_ref().unwrap().effective.is_none());
             let submitted = endpoint.submissions();
@@ -3123,14 +3565,7 @@ pub(crate) mod tests {
                 }
             )));
             assert_eq!(endpoint.submissions(), submitted);
-            assert!(
-                client
-                    .inner
-                    .application_workflow
-                    .runtime()
-                    .pending
-                    .is_none()
-            );
+            assert!(client.inner.reconciler.runtime().pending.is_none());
             assert!(client.inspect_applied_runtime().await.unwrap().applied);
         })
         .await;
@@ -3288,9 +3723,9 @@ pub(crate) mod tests {
                 .await
                 .expect("add")
                 .into_value();
-            // A rejected activation keeps the last accepted product.
-            assert!(client.activate_profile(Some(uid)).await.is_err());
-            let lifecycle = client.inner.application_workflow.runtime();
+            let outcome = client.activate_profile(Some(uid)).await.unwrap();
+            assert!(matches!(outcome, nyanpasu_runtime_values::runtime::MutationOutcome::CommittedDegraded { ref commits, .. } if commits[0].runtime == nyanpasu_runtime_values::runtime::RuntimeCommitStatus::Deferred));
+            let lifecycle = client.inner.reconciler.runtime();
             assert!(client.promoted_runtime().await.is_some());
             assert_eq!(lifecycle.promoted.unwrap().revision.get(), 1);
         })
@@ -3298,7 +3733,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn failed_reconcile_still_advances_the_promoted_read_model() {
+    async fn failed_reconcile_preserves_the_confirmed_product() {
         let dir = tempdir().unwrap();
         let endpoint = TestControlEndpoint::failing();
         let client = NyanpasuClient::try_new(
@@ -3319,7 +3754,7 @@ pub(crate) mod tests {
             let before = client.promoted_runtime().await.unwrap();
             let _ = client.reconcile_core().await.expect_err("reconcile fails");
             let after = client.promoted_runtime().await.unwrap();
-            assert!(after.revision > before.revision);
+            assert_eq!(after.revision, before.revision);
         })
         .await;
     }

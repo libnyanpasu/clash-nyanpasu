@@ -25,7 +25,7 @@ function snapshot(revision: number): AppUpdateSnapshot {
     downloaded: 0,
     total: null,
     speed: 0,
-    source: null,
+    source: 'github',
     error: null,
     last_checked_at: null,
     supported: true,

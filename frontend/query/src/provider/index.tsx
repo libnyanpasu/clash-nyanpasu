@@ -1,6 +1,6 @@
 import { useEffect, type PropsWithChildren } from 'react'
 import type { RpcClient } from '@nyanpasu/rpc'
-import type { Degradation } from '@nyanpasu/rpc/types'
+import type { Degradation, PublicDegradation } from '@nyanpasu/rpc/types'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import {
   ClashConnectionDetailsFreezeBoundary,
@@ -17,7 +17,10 @@ import {
   ConfigurationStatusProvider,
   useConfigurationStatus,
 } from './configuration-status-provider'
-import { KvStorageProvider } from './kv-storage-provider'
+import {
+  KvStorageProvider,
+  type KvStoragePersistence,
+} from './kv-storage-provider'
 import { MutationProvider } from './mutation-provider'
 import { RpcProvider } from './rpc-provider'
 
@@ -27,19 +30,33 @@ export {
   useQueryBindings,
   useRpc,
 } from './rpc-provider'
+export {
+  clearKvStorageLocalCache,
+  readKvStorageLocalCache,
+} from './kv-storage-provider'
+export type {
+  KvStoragePersistence,
+  KvStorageProviderProps,
+} from './kv-storage-provider'
 export { KvStorageProvider, MutationProvider }
 export { ConfigurationStatusProvider, useConfigurationStatus }
+
+export type AnyDegradation = Degradation | PublicDegradation
 
 export type NyanpasuQueryProviderProps = PropsWithChildren<{
   rpc: RpcClient
   queryClient: QueryClient
-  onDegraded?: (degradations: Degradation[]) => void
+  onDegraded?: (degradations: AnyDegradation[]) => void
+  kvPersistence?: KvStoragePersistence
+  clashWsEnabled?: boolean
 }>
 
 export const NyanpasuQueryProvider = ({
   rpc,
   queryClient,
   onDegraded,
+  kvPersistence = 'backend',
+  clashWsEnabled = true,
   children,
 }: NyanpasuQueryProviderProps) => {
   useEffect(() => {
@@ -55,7 +72,7 @@ export const NyanpasuQueryProvider = ({
       )
         return
       if ('degradations' in data && Array.isArray(data.degradations)) {
-        onDegraded(data.degradations as Degradation[])
+        onDegraded(data.degradations as AnyDegradation[])
       }
     })
   }, [onDegraded, queryClient])
@@ -64,8 +81,8 @@ export const NyanpasuQueryProvider = ({
     <RpcProvider rpc={rpc}>
       <QueryClientProvider client={queryClient}>
         <MutationProvider>
-          <KvStorageProvider>
-            <ClashWSProvider>
+          <KvStorageProvider persistence={kvPersistence}>
+            <ClashWSProvider enabled={clashWsEnabled}>
               <ConnectionDetailsBridge>{children}</ConnectionDetailsBridge>
             </ClashWSProvider>
           </KvStorageProvider>

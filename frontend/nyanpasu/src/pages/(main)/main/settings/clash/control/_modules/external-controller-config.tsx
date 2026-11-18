@@ -19,7 +19,7 @@ import { message } from '@/utils/notification'
 import {
   formatControllerAddress,
   useClashInfo,
-  useClashSetting,
+  useClashSystemSetting,
   useRuntimeProfile,
 } from '@nyanpasu/query'
 import {
@@ -46,7 +46,7 @@ function ExternalControllerConfigForm() {
 
   const { data, refetch } = useClashInfo()
 
-  const externalController = useClashSetting('external_controller')
+  const externalController = useClashSystemSetting('external_controller')
 
   // Edit the configured address, not the reported one: the reported server
   // turns an unspecified bind host into loopback and may carry a port the core

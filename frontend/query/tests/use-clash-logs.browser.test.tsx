@@ -341,3 +341,35 @@ test('invalid params does not trigger domain cursor recovery', async ({
   expect(mocked.queryCoreLogs).toHaveBeenCalledTimes(2)
   expect(hook.result.current.data.at(-1)?.id.sequence).toBe(3)
 })
+
+test('clear maps public IpcError from Settings-only callers into CoreLogError', async ({
+  onTestFinished,
+}) => {
+  const hook = await renderHook(() => useClashLogs())
+  onTestFinished(() => hook.unmount())
+  await expect.poll(() => hook.result.current.data.length).toBe(1)
+
+  mocked.clearCoreLogs.mockResolvedValueOnce({
+    status: 'error',
+    error: {
+      kind: {
+        domain: 'public',
+        error: {
+          domain: 'core_log_read',
+          error: { kind: 'record_gone' },
+        },
+      },
+      message: 'core log entry is gone',
+    },
+  })
+
+  await expect(hook.result.current.clean.mutateAsync()).rejects.toThrow(
+    'core log entry is gone',
+  )
+  await expect
+    .poll(() => hook.result.current.error)
+    .toEqual({
+      kind: 'record_gone',
+      message: 'core log entry is gone',
+    })
+})

@@ -2,13 +2,19 @@
 
 use std::sync::Arc;
 
-use nyanpasu_core::{clash::ws::ClashConnectionDetails, client::NyanpasuClient};
+use nyanpasu_core::{
+    clash::ws::{ClashConnectionDetails, ClashWsPacket, ClashWsUpdate},
+    client::NyanpasuClient,
+};
 use nyanpasu_rpc_protocol::{
     EventName, RpcError,
     frame::{Frame, LagReason, SubscriptionErrorCode, SubscriptionTarget},
-    types::CoreLogsChanged,
+    types::{CoreLogsChanged, CoreLogsSummaryChanged},
 };
-use nyanpasu_runtime_values::core_status::CoreStatusInfo;
+use nyanpasu_runtime_values::{
+    core_status::CoreStatusInfo,
+    observation::{ConfigurationStatusSummary, CoreStatusSummary, ServiceStatusSummary},
+};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
@@ -84,13 +90,25 @@ impl Output {
 /// The transport consumes snapshots and demand without calling public RPC queries.
 #[async_trait::async_trait]
 pub(super) trait SubscriptionSource: Send + Sync {
-    async fn snapshot(&self, event: EventName) -> Result<Value, RpcError>;
-    async fn details(&self) -> Result<Details, RpcError>;
+    async fn snapshot(
+        &self,
+        event: EventName,
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Value, RpcError>;
+
+    async fn details(
+        &self,
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Details, RpcError>;
 }
 
 #[async_trait::async_trait]
 impl SubscriptionSource for NyanpasuClient {
-    async fn snapshot(&self, event: EventName) -> Result<Value, RpcError> {
+    async fn snapshot(
+        &self,
+        event: EventName,
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Value, RpcError> {
         let value = match event {
             EventName::ConfigurationStatusChanged => {
                 serde_json::to_value(self.configuration_status())
@@ -102,23 +120,57 @@ impl SubscriptionSource for NyanpasuClient {
             EventName::AppUpdateStateChanged => serde_json::to_value(
                 self.get_app_update_state()
                     .await
-                    .map_err(error::application_error)?,
+                    .map_err(|error| error::application_error_for(visibility, error))?,
             ),
+            EventName::AppUpdateSummaryChanged => {
+                serde_json::to_value(nyanpasu_runtime_values::app_update::AppUpdateSummary::from(
+                    &self
+                        .get_app_update_state()
+                        .await
+                        .map_err(|error| error::application_error_for(visibility, error))?,
+                ))
+            }
             EventName::CoreLogsChanged => serde_json::to_value(CoreLogsChanged {
                 status: self
                     .get_core_log_status()
                     .await
-                    .map_err(error::application_error)?,
+                    .map_err(|error| error::application_error_for(visibility, error))?,
             }),
+            EventName::CoreLogsSummaryChanged => serde_json::to_value(CoreLogsSummaryChanged {
+                status: self.get_core_log_status_summary().await.map_err(|error| {
+                    error::application_error_for(visibility, error::IpcError::from(error))
+                })?,
+            }),
+            EventName::ConfigurationStatusSummaryChanged => serde_json::to_value(
+                ConfigurationStatusSummary::from(&self.configuration_status()),
+            ),
+            EventName::CoreStatusSummaryChanged => serde_json::to_value(CoreStatusSummary::from(
+                &CoreStatusInfo::from(self.core_status()),
+            )),
+            EventName::ServiceStatusSummaryChanged => {
+                serde_json::to_value(ServiceStatusSummary::from(&self.service_status()))
+            }
+            EventName::ClashWs => {
+                let snapshot = self.clash_ws_snapshot().await.map_err(|error| {
+                    error::application_error_for(visibility, error::IpcError::from(error))
+                })?;
+                serde_json::to_value(ClashWsPacket {
+                    sequence: snapshot.sequence,
+                    update: ClashWsUpdate::Reset(Box::new(snapshot)),
+                })
+            }
             _ => unreachable!("local subscription admission only permits full-value events"),
         };
-        value.map_err(error::application_error)
+        value.map_err(|error| error::application_error_for(visibility, error))
     }
 
-    async fn details(&self) -> Result<Details, RpcError> {
+    async fn details(
+        &self,
+        visibility: nyanpasu_rpc_protocol::ResponseVisibility,
+    ) -> Result<Details, RpcError> {
         self.subscribe_clash_connection_details()
             .await
-            .map_err(error::application_error)
+            .map_err(|error| error::application_error_for(visibility, error::IpcError::from(error)))
     }
 }
 
@@ -137,12 +189,13 @@ pub(super) async fn snapshot(
     source: &dyn SubscriptionSource,
     event: EventName,
     receiver: &mut Events,
+    visibility: nyanpasu_rpc_protocol::ResponseVisibility,
 ) -> Result<Value, SubscriptionErrorCode> {
     for _ in 0..SNAPSHOT_ATTEMPTS {
         // Queued observations may predate the facade's current snapshot.
         drain(receiver, event);
         let value = source
-            .snapshot(event)
+            .snapshot(event, visibility)
             .await
             .map_err(|_| SubscriptionErrorCode::SnapshotUnavailable)?;
         if !drain(receiver, event) {
@@ -169,6 +222,7 @@ pub(super) async fn forward(
     subscription: String,
     stream: Subscription,
     source: Arc<dyn SubscriptionSource>,
+    visibility: nyanpasu_rpc_protocol::ResponseVisibility,
     output: Output,
     stop: CancellationToken,
 ) {
@@ -214,20 +268,28 @@ pub(super) async fn forward(
                 }
                 loop {
                     match receiver.recv().await {
-                        Ok((name, _)) if name == event.as_str() => {
-                            // A source forwarder may publish an older queued observation
-                            // after a reset overtook it. Read the authoritative full value
-                            // on each notification instead of replaying that old payload.
-                            let value = match source.snapshot(event).await {
-                                Ok(value) => value,
-                                Err(_) => {
-                                    failed(
-                                        &output,
-                                        &subscription,
-                                        SubscriptionErrorCode::SnapshotUnavailable,
-                                    )
-                                    .await;
-                                    return;
+                        Ok((name, payload)) if name == event.as_str() => {
+                            // `ClashWs` publishes `ClashWsPacket` deltas (state, traffic,
+                            // connections, memory, recording, history) rather than whole-value
+                            // snapshots, so forward the published packet directly; lag still
+                            // resynchronizes from a full `ClashWsUpdate::Reset` snapshot.
+                            let value = if event == EventName::ClashWs {
+                                payload
+                            } else {
+                                // A source forwarder may publish an older queued observation
+                                // after a reset overtook it. Read the authoritative full value
+                                // on each notification instead of replaying that old payload.
+                                match source.snapshot(event, visibility).await {
+                                    Ok(value) => value,
+                                    Err(_) => {
+                                        failed(
+                                            &output,
+                                            &subscription,
+                                            SubscriptionErrorCode::SnapshotUnavailable,
+                                        )
+                                        .await;
+                                        return;
+                                    }
                                 }
                             };
                             if output
@@ -255,14 +317,16 @@ pub(super) async fn forward(
                             {
                                 return;
                             }
-                            let value = match snapshot(source.as_ref(), event, &mut receiver).await
-                            {
-                                Ok(value) => value,
-                                Err(code) => {
-                                    failed(&output, &subscription, code).await;
-                                    return;
-                                }
-                            };
+                            let value =
+                                match snapshot(source.as_ref(), event, &mut receiver, visibility)
+                                    .await
+                                {
+                                    Ok(value) => value,
+                                    Err(code) => {
+                                        failed(&output, &subscription, code).await;
+                                        return;
+                                    }
+                                };
                             if output
                                 .send(Frame::Reset {
                                     subscription: subscription.clone(),

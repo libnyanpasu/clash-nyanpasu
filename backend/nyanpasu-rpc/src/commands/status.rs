@@ -3,11 +3,12 @@
 use crate::error::Result;
 
 use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_runtime_values::observation::{ConfigurationStatusSummary, ServiceStatusSummary};
 
 use super::types::ServiceStatusInfo;
 use crate::registry::RpcState;
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, permission = "service.status:reveal")]
 #[specta::specta]
 pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
     let info = client.service_status();
@@ -22,7 +23,14 @@ pub async fn status_service(client: RpcState<'_, NyanpasuClient>) -> Result<Serv
     })
 }
 
-#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetConfigurationStatus)]
+/// The service daemon's version, install state and phase, without its server details.
+#[nyanpasu_macro::rpc(http, query, permission = "service.status_summary:view")]
+#[specta::specta]
+pub fn get_service_status_summary(client: RpcState<'_, NyanpasuClient>) -> ServiceStatusSummary {
+    ServiceStatusSummary::from(&client.service_status())
+}
+
+#[nyanpasu_macro::rpc(local, http, operation = nyanpasu_rpc_protocol::operations::GetConfigurationStatus, query, permission = "configuration.status:reveal")]
 #[specta::specta]
 pub fn get_configuration_status(
     client: RpcState<'_, NyanpasuClient>,
@@ -30,13 +38,30 @@ pub fn get_configuration_status(
     client.configuration_status()
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(elevation, os_integration, presentation))]
+/// Convergence health, retry state and operation and source IDs, without diagnostic text.
+#[nyanpasu_macro::rpc(local, http, query, permission = "configuration.status_summary:view")]
+#[specta::specta]
+pub fn get_configuration_status_summary(
+    client: RpcState<'_, NyanpasuClient>,
+) -> ConfigurationStatusSummary {
+    ConfigurationStatusSummary::from(&client.configuration_status())
+}
+
+#[nyanpasu_macro::rpc(
+    http,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "system.configuration_runtime:retry"
+)]
 #[specta::specta]
 pub async fn retry_configuration_runtime(client: RpcState<'_, NyanpasuClient>) -> Result<()> {
     Ok(client.retry_runtime_now().await?)
 }
 
-#[nyanpasu_macro::rpc(http, optional_capabilities(hotkey, os_integration, presentation))]
+#[nyanpasu_macro::rpc(
+    http,
+    optional_capabilities(hotkey, os_integration, presentation),
+    permission = "system.configuration_effect:retry"
+)]
 #[specta::specta]
 pub fn retry_configuration_effect(
     client: RpcState<'_, NyanpasuClient>,
@@ -45,10 +70,26 @@ pub fn retry_configuration_effect(
     Ok(client.retry_effect_now(kind)?)
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(debug_http))]
+#[nyanpasu_macro::rpc(
+    http,
+    local,
+    capabilities(http_server),
+    query,
+    permission = "http_server.status:view"
+)]
 #[specta::specta]
-pub async fn get_debug_http_status(
+pub async fn get_http_server_status(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<nyanpasu_core::client::debug_http::DebugHttpStatus> {
-    Ok(client.debug_http_status().await?)
+) -> Result<nyanpasu_core::client::http_server::HttpServerStatus> {
+    Ok(client.http_server_status().await?)
+}
+
+/// The local socket's state. Its endpoint is a filesystem path, so only a remote administrator
+/// reads it, and it is never offered over HTTP.
+#[nyanpasu_macro::rpc(local, query, permission = "remote_admin.local_socket:status")]
+#[specta::specta]
+pub async fn get_local_socket_status(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<nyanpasu_core::client::local_socket::LocalSocketStatus> {
+    Ok(client.local_socket_status().await?)
 }

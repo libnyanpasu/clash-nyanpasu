@@ -5,12 +5,14 @@ mod download;
 mod updater;
 
 pub use backend_factory::{BackendFactory, BackendFactoryError};
-pub use download::{DownloadStatus, DownloaderState};
+pub use download::{
+    DownloadProgressState, DownloadProgressSummary, DownloadStatus, DownloaderState,
+};
 #[cfg(any(test, feature = "test-support"))]
 pub use updater::test_support;
 pub use updater::{
     CoreTypeMeta, Error, HttpUpdaterBackend, ManifestVersion, ManifestVersionLatest, UpdaterClient,
-    UpdaterState, UpdaterSummary,
+    UpdaterProgressState, UpdaterProgressSummary, UpdaterState, UpdaterSummary,
     artifact::{BinaryInstallProgress, PreparedCoreBinary, PreparedCoreCompanion},
     ports::{CoreUpdateInstaller, UpdaterBackend, UpdaterProgress},
 };

@@ -167,13 +167,7 @@ test('server composition retains refusal, concrete effects and all server musl t
     new URL('backend/nyanpasu-server/src/compose/tests.rs', root),
     'utf8',
   )
-  for (const suffix of [
-    'config_on',
-    'config_off',
-    'retry',
-    'compensation',
-    'copy_fallback',
-  ]) {
+  for (const suffix of ['config_on', 'config_off', 'retry', 'copy_fallback']) {
     assert.ok(
       tests.includes(
         `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_${suffix}`,
@@ -223,7 +217,10 @@ test('protocol frame IO remains opt-in with foundation values', () => {
     'utf8',
   )
   assert.match(manifest, /default = \[\]/)
-  assert.match(manifest, /frame-io = \['dep:tokio'\]/)
+  assert.match(
+    manifest,
+    /frame-io = \['dep:tokio', 'nyanpasu-rpc-wire\/frame-io'\]/,
+  )
   assert.match(manifest, /tokio = \{[^\n]*optional = true/)
   assert.deepStrictEqual(
     dependencyViolations(
@@ -389,6 +386,68 @@ for (const dependency of [
     }
   })
 }
+
+const CLI_FORBIDDEN = [
+  'nyanpasu-core',
+  'nyanpasu-state-engine',
+  'nyanpasu-migration',
+  'nyanpasu-owner-support',
+  'nyanpasu-observers',
+  'nyanpasu-updater',
+  'nyanpasu-scripts',
+  'nyanpasu-profile-io',
+  'nyanpasu-net',
+  'nyanpasu-os',
+  'nyanpasu-rpc',
+  'nyanpasu-rpc-protocol',
+  'nyanpasu-server',
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+  'clash-api',
+  'boa_engine',
+  'mlua',
+  'tauri',
+  'tauri-runtime',
+  'nyanpasu-widget',
+]
+
+test('the CLI stands on the wire and transport layer only', () => {
+  assert.deepStrictEqual(
+    dependencyViolations(
+      'nyanpasu-cli',
+      'nyanpasu-cli v0.1.0\nnyanpasu-rpc-wire v0.1.0\nnyanpasu-config v0.1.0\nnyanpasu-contracts v0.1.0\nnyanpasu-paths v0.1.0\nnyanpasu-single-instance v0.1.0\nreqwest v0.13\nclap v4.6\nkeyring v4.2\ntokio v1.54\n',
+    ),
+    [],
+  )
+  for (const dependency of CLI_FORBIDDEN) {
+    for (const prefix of ['', 'neutral-adapter v0.1.0\n']) {
+      assert.deepStrictEqual(
+        dependencyViolations(
+          'nyanpasu-cli',
+          `nyanpasu-cli v0.1.0\n${prefix}${dependency} v0.1.0\n`,
+        ),
+        [`nyanpasu-cli must not depend on ${dependency}`],
+      )
+    }
+  }
+})
+
+test('no package depends on the CLI', () => {
+  for (const owner of [
+    'nyanpasu-server',
+    'nyanpasu-rpc',
+    'nyanpasu-rpc-protocol',
+    'nyanpasu-core',
+    'nyanpasu-config',
+    'nyanpasu-os',
+  ]) {
+    assert.deepStrictEqual(
+      dependencyViolations(owner, `${owner} v0.1.0\nnyanpasu-cli v0.1.0\n`),
+      [`${owner} must not depend on nyanpasu-cli`],
+      owner,
+    )
+  }
+})
 
 for (const owner of [
   'nyanpasu-config',

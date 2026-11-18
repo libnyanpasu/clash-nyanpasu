@@ -38,7 +38,7 @@ import { formatError } from '@/utils'
 import { formatBytes } from '@/utils/format-bytes'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import type { AppUpdatePhase } from '@nyanpasu/rpc/types'
+import type { AppUpdatePhase, UpdateSource } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { AppUpdateChangelog } from '../../../_modules/app-update-changelog'
 import { openExternal } from '../../../_modules/open-external'
@@ -54,11 +54,15 @@ function openReleases() {
   return openExternal(GITHUB_RELEASES_URL)
 }
 
-function sourceLabel(source: string | null | undefined) {
-  if (source === 'nyanpasu') return m.update_source_nyanpasu()
-  if (source === 'github') return m.update_source_github()
-  if (source === 'ghfast') return m.update_source_ghfast()
-  return null
+const SOURCE_LABELS: Record<UpdateSource, () => string> = {
+  nyanpasu: m.update_source_nyanpasu,
+  github: m.update_source_github,
+  ghfast: m.update_source_ghfast,
+  sourceforge: m.update_source_sourceforge,
+}
+
+function sourceLabel(source: UpdateSource | null | undefined) {
+  return source ? SOURCE_LABELS[source]() : null
 }
 
 // Springs carry their velocity into the next target, so sections that open and
@@ -266,6 +270,8 @@ export default function UpdateControls() {
     : null
 
   const canUpdate = isDesktop && snapshot?.supported !== false
+  const snapshotSource = sourceLabel(snapshot?.source)
+  const snapshotError = snapshot?.error ?? null
   const isTransitioning = SPINNING_PHASES.includes(phase)
   const showMore =
     canUpdate &&
@@ -371,9 +377,9 @@ export default function UpdateControls() {
                       <span className="text-xs opacity-80">{statusDetail}</span>
                     )}
 
-                    {snapshot?.error && (
+                    {snapshotError && (
                       <span className="text-sm break-words" role="alert">
-                        {snapshot.error}
+                        {snapshotError}
                       </span>
                     )}
                   </div>
@@ -499,10 +505,10 @@ export default function UpdateControls() {
                           indeterminate={progress === undefined}
                         />
 
-                        {sourceLabel(snapshot?.source) && (
+                        {snapshotSource && (
                           <p className="text-on-surface-variant text-xs">
                             {m.settings_about_update_current_source({
-                              source: sourceLabel(snapshot?.source) ?? '',
+                              source: snapshotSource,
                             })}
                           </p>
                         )}
@@ -548,9 +554,9 @@ export default function UpdateControls() {
           )}
         </AnimatePresence>
 
-        {!showStatus && snapshot?.error && (
+        {!showStatus && snapshotError && (
           <p className="text-error px-1 text-sm" role="alert">
-            {snapshot.error}
+            {snapshotError}
           </p>
         )}
 

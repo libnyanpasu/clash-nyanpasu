@@ -1,6 +1,8 @@
 import type { editor } from 'monaco-editor'
 import { useEffect, useState } from 'react'
 import z from 'zod'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
 import { registerCssDataSlotCompletion } from '@/utils/monaco-css'
@@ -40,11 +42,19 @@ const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
 `
 
 export const Route = createFileRoute('/(editor)/editor/css/')({
-  component: RouteComponent,
+  component: GuardedRouteComponent,
   validateSearch: z.object({
     uid: z.string(),
   }),
 })
+
+function GuardedRouteComponent() {
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      <RouteComponent />
+    </RequireCapability>
+  )
+}
 
 function RouteComponent() {
   const { uid } = Route.useSearch()

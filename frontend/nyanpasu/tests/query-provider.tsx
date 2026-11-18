@@ -1,20 +1,48 @@
 import { useState, type PropsWithChildren } from 'react'
+import { CapabilitiesProvider } from '@/components/auth/capabilities'
 import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient, type RpcClient } from '@nyanpasu/rpc'
+import type { RpcDescribeResponse, Scope } from '@nyanpasu/rpc/types'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+
+const ALL_SCOPES: Scope[] = [
+  'read',
+  'sensitive_read',
+  'proxy',
+  'profile',
+  'settings',
+  'system',
+  'remote_admin',
+]
+
+export const DEFAULT_TEST_CAPABILITIES: RpcDescribeResponse = {
+  protocol: 1,
+  server: { kind: 'desktop', version: '0.0.0-test' },
+  transport: 'desktop',
+  principal: { kind: 'desktop', window: 'main' },
+  scopes: ALL_SCOPES,
+  commands: [],
+}
 
 export function TestQueryProvider({
   client,
   rpc: injectedRpc,
+  capabilities = DEFAULT_TEST_CAPABILITIES,
   children,
-}: PropsWithChildren<{ client: QueryClient; rpc?: RpcClient }>) {
+}: PropsWithChildren<{
+  client: QueryClient
+  rpc?: RpcClient
+  capabilities?: RpcDescribeResponse
+}>) {
   const [rpc] = useState(() => injectedRpc ?? createRpcClient())
 
   return (
-    <RpcProvider rpc={rpc}>
-      <QueryClientProvider client={client}>
-        <KvStorageProvider>{children}</KvStorageProvider>
-      </QueryClientProvider>
-    </RpcProvider>
+    <CapabilitiesProvider snapshot={capabilities}>
+      <RpcProvider rpc={rpc}>
+        <QueryClientProvider client={client}>
+          <KvStorageProvider>{children}</KvStorageProvider>
+        </QueryClientProvider>
+      </RpcProvider>
+    </CapabilitiesProvider>
   )
 }

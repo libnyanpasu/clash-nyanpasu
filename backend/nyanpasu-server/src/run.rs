@@ -67,6 +67,10 @@ pub enum Error {
     Http {
         source: nyanpasu_rpc::http::listener::Error,
     },
+    #[snafu(display("failed to issue an HTTP launch URL"))]
+    LaunchUrl {
+        source: nyanpasu_core::client::RemoteAuthError,
+    },
 }
 
 /// Constructs exactly one application for all connections and transports.
@@ -135,24 +139,51 @@ async fn serve(
             .context(LocalSnafu)?;
         // Keep the bound local claim on the stack until all binds succeed.
         let http = if options.http {
+            let access = nyanpasu_config::application::HttpAccessConfig {
+                enabled: true,
+                ..Default::default()
+            };
+            let authenticator: Arc<dyn nyanpasu_rpc::http::auth::HttpAuthenticator> =
+                Arc::new(nyanpasu_rpc::http::auth::NyanpasuClientHttpAuthenticator::new(client));
             #[cfg(test)]
             let bound = if let Some(listener) = options.http_listener {
                 LoopbackListener::from_listener(
                     listener,
                     server.rpc().clone().router(),
                     options.frontend,
+                    access,
+                    authenticator,
                 )
             } else {
-                LoopbackListener::bind(server.rpc().clone().router(), options.frontend).await
+                LoopbackListener::bind(
+                    server.rpc().clone().router(),
+                    options.frontend,
+                    access,
+                    authenticator,
+                )
+                .await
             };
             #[cfg(not(test))]
-            let bound =
-                LoopbackListener::bind(server.rpc().clone().router(), options.frontend).await;
+            let bound = LoopbackListener::bind(
+                server.rpc().clone().router(),
+                options.frontend,
+                access,
+                authenticator,
+            )
+            .await;
             Some(bound.context(HttpSnafu)?)
         } else {
             None
         };
-        let http_url = http.as_ref().map(|listener| listener.url().to_owned());
+        let http_url = match http.as_ref() {
+            Some(listener) => Some(
+                client
+                    .launch_url_for(listener.origin())
+                    .await
+                    .context(LaunchUrlSnafu)?,
+            ),
+            None => None,
+        };
         if let Some(http) = http {
             let stop = transport_stop.child_token();
             listeners.spawn(async move { http.serve(stop).await.context(HttpSnafu) });

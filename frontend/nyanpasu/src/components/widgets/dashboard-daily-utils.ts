@@ -1,25 +1,32 @@
 import type {
   ProfileItem_Serialize,
+  ProfileListingItem_Serialize,
   ProfileSubscriptionInfo,
   RunDto,
+  SyncRunSummary,
 } from '@nyanpasu/rpc/types'
 import type { SubscriptionTarget } from './widget-config'
 
-export type ProfileTargetResolution =
-  | { kind: 'selected'; profile: ProfileItem_Serialize }
+export type ProfileSummaryItem =
+  ProfileItem_Serialize | ProfileListingItem_Serialize
+
+export type ProfileTargetResolution<
+  T extends ProfileSummaryItem = ProfileSummaryItem,
+> =
+  | { kind: 'selected'; profile: T }
   | { kind: 'needs_selection' }
   | { kind: 'missing' }
-  | { kind: 'unsupported'; profile?: ProfileItem_Serialize }
+  | { kind: 'unsupported'; profile?: T }
 
-export const isRemoteFileConfig = (item: ProfileItem_Serialize): boolean =>
+export const isRemoteFileConfig = (item: ProfileSummaryItem): boolean =>
   item.type === 'config' &&
   item.config.type === 'file' &&
   item.config.source.type === 'remote'
 
-export function getRemoteFileConfigs(
-  items: ProfileItem_Serialize[],
+export function getRemoteFileConfigs<T extends ProfileSummaryItem>(
+  items: T[],
   allowedUids?: string[],
-): ProfileItem_Serialize[] {
+): T[] {
   const allowed = allowedUids ? new Set(allowedUids) : undefined
   return items.filter(
     (item) => isRemoteFileConfig(item) && (!allowed || allowed.has(item.uid)),
@@ -27,11 +34,11 @@ export function getRemoteFileConfigs(
 }
 
 /** Resolve a stored target without silently substituting another profile. */
-export function resolveProfileTarget(
-  items: ProfileItem_Serialize[],
+export function resolveProfileTarget<T extends ProfileSummaryItem>(
+  items: T[],
   currentUid: string | null | undefined,
   target: SubscriptionTarget,
-): ProfileTargetResolution {
+): ProfileTargetResolution<T> {
   const uid = target.kind === 'current' ? currentUid : target.profileUid
   if (!uid) {
     return target.kind === 'current'
@@ -130,7 +137,10 @@ export function isQuotaWarning(
   return quota !== null && quota.remainingPercent <= warningPercent
 }
 
-export function latestFinishedRuns(runs: RunDto[], limit: number): RunDto[] {
+export function latestFinishedRuns<T extends RunDto | SyncRunSummary>(
+  runs: T[],
+  limit: number,
+): T[] {
   return runs
     .filter((run) => run.state.kind === 'finished')
     .sort((a, b) => {

@@ -54,8 +54,6 @@ const status: ConfigurationStatus = {
   runtime: {
     health: 'healthy',
     operation_id: null,
-    attempts: 0,
-    automatic_remaining: 0,
     message: null,
   },
   effects: [
@@ -82,7 +80,7 @@ async function setup(
   const invoke = vi.fn(
     async (method: string, params?: Record<string, unknown>) => {
       switch (method) {
-        case 'get_app_config':
+        case 'get_app_settings':
           return { enable_service_mode: enabled }
         case 'status_service':
           return {
@@ -94,13 +92,23 @@ async function setup(
             phase: 'ready',
             restart_attempts: 0,
           }
-        case 'get_core_status':
+        case 'get_service_status_summary':
+          return {
+            name: 'test-service',
+            version: '2.0.2',
+            status: 'running',
+            server_reported: false,
+            compat: { kind: 'compatible', server_version: '2.0.2' },
+            phase: 'ready',
+            restart_attempts: 0,
+          }
+        case 'get_core_status_summary':
           return {
             controller: null,
             host: 'local',
             connectivity: { kind: 'connected' },
             generation: 1,
-            state: { Running: { epoch: 1, pid: 7 } },
+            state: { Running: { epoch: 1 } },
             state_changed_at: 0,
             revision: null,
             healthy: true,

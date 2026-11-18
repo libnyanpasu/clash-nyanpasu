@@ -1,14 +1,14 @@
 import {
   useClashProxiesProvider,
   useClashRulesProvider,
-  useProfile,
+  useProfileListing,
 } from '@nyanpasu/query'
 import type { DashboardItem } from './consts'
 import { useDashboardContext } from './provider'
 import { getWidgetConfig, WidgetId } from './widget-config'
 
 function ProfileCalibration() {
-  useProfile({ refetchInterval: 60_000 })
+  useProfileListing({ refetchInterval: 60_000 })
   return null
 }
 

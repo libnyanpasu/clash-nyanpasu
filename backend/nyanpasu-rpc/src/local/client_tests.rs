@@ -4,7 +4,7 @@ use std::{
 };
 
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, EventName, RpcOwner, RpcTarget,
+    AuthContext, COMMAND_CATALOG, EventName, RpcOwner, RpcTarget,
     client::{LocalCallError, LocalClient, LocalSubscription, SubscriptionState},
     frame::{Reply, SubscriptionErrorCode},
     session::RECOVERABLE_EVENTS,
@@ -50,6 +50,7 @@ impl Peer {
         let stop = CancellationToken::new();
         let shutdown = stop.clone();
         let task = tokio::spawn(async move {
+            let auth = AuthContext::local_socket(listener.user());
             let stream = ControlledStream {
                 stream: listener.accept().await.unwrap(),
                 gate: writer,
@@ -57,6 +58,7 @@ impl Peer {
             serve_stream(
                 stream,
                 RpcOwner::local_connection(&server.instance, 1),
+                auth,
                 server.rpc,
                 server.source,
                 server.limits,
@@ -113,6 +115,7 @@ fn advance(event: EventName, fresh: &mut Value) {
         EventName::ServiceStatusChanged => &mut fresh["restart_attempts"],
         EventName::AppUpdateStateChanged => &mut fresh["revision"],
         EventName::CoreLogsChanged => &mut fresh["status"]["version"],
+        EventName::ClashWs => &mut fresh["sequence"],
         _ => unreachable!(),
     };
     *marker = json!(marker.as_u64().unwrap() + 1);
@@ -127,7 +130,7 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
             .rpc
             .dependencies
             .client
-            .snapshot(event)
+            .snapshot(event, nyanpasu_rpc_protocol::ResponseVisibility::Full)
             .await
             .unwrap();
         let peer = Peer::start(&fixture, source.clone()).await;
@@ -212,18 +215,52 @@ async fn local_overflow_reset_reconstructs_each_recoverable_stream() {
 async fn local_allowlist_matches_the_reviewed_existing_commands() {
     let mut expected = vec![
         "get_profiles",
+        "get_profiles_listing",
         "create_profile",
         "delete_profile",
+        "activate_profile",
+        "update_profile",
+        "import_profile",
         "read_profile_file",
         "get_configuration_status",
+        "get_configuration_status_summary",
         "get_core_status",
+        "get_core_status_summary",
+        "get_clash_settings",
+        "set_proxy_mode",
+        "patch_system_settings",
+        "patch_clash_system_config",
+        "get_app_settings",
+        "change_clash_core",
+        "restart_sidecar",
+        "get_sys_proxy",
+        "get_proxies",
+        "select_proxy",
+        "clash_api_get_proxy_delay",
+        "clash_api_get_group_delay",
+        "clash_api_delete_connections",
+        "clash_api_get_version",
+        "query_traffic_active_connection_ids",
+        "get_traffic_summary",
+        "query_core_logs",
         "get_storage_item",
         "set_storage_item",
         "remove_storage_item",
+        "reset_remote_access_tls",
         "list_log_files",
         "open_log_session",
         "query_logs",
         "close_log_session",
+        "rpc_describe",
+        "patch_app_config",
+        "get_http_server_status",
+        "get_local_socket_status",
+        "set_remote_access",
+        "list_remote_access_tokens",
+        "create_remote_access_token",
+        "revoke_remote_access_token",
+        "list_remote_browser_sessions",
+        "revoke_remote_browser_session",
     ];
     expected.sort_unstable();
     let mut actual: Vec<_> = COMMAND_CATALOG
@@ -245,6 +282,7 @@ async fn local_allowlist_matches_the_reviewed_existing_commands() {
         "get_all_storage_items",
         "subscribe_clash_connection_details",
         "quit_application",
+        "create_http_launch_url",
     ] {
         assert!(
             matches!(peer.client.call(name, Value::Null).await.unwrap(), Reply::Error(error) if error["kind"] == "unsupported"),

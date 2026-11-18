@@ -2,18 +2,23 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use nyanpasu_rpc_protocol::{RpcError, RpcOwner, RpcValue};
+use nyanpasu_rpc_protocol::{ResponseVisibility, RpcError, RpcValue};
 use serde_json::Value;
 use tauri::Manager as _;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use nyanpasu_rpc::{
     audit::RpcTransport,
-    registry::{RpcFuture, SetupError, UnifiedRpc},
+    registry::{RpcCaller, RpcFuture, SetupError, UnifiedRpc},
 };
 
-pub type TauriRpcHandler =
-    fn(tauri::AppHandle, tauri::Window, tauri::Webview, Value) -> Result<RpcFuture, RpcError>;
+pub type TauriRpcHandler = fn(
+    tauri::AppHandle,
+    tauri::Window,
+    tauri::Webview,
+    ResponseVisibility,
+    Value,
+) -> Result<RpcFuture, RpcError>;
 
 pub struct TauriCommandEntry {
     pub name: &'static str,
@@ -43,17 +48,26 @@ pub(super) fn register_native_commands(
     Ok(Arc::new(handlers))
 }
 
+/// Return the names of all native Tauri wrappers linked into this desktop binary.
+pub(crate) fn linked_command_names() -> impl Iterator<Item = &'static str> {
+    inventory::iter::<TauriCommandEntry>
+        .into_iter()
+        .map(|entry| entry.name)
+}
+
 impl DesktopRpc {
     pub fn new(
-        rpc: UnifiedRpc,
+        mut rpc: UnifiedRpc,
         tasks: TaskTracker,
         shutdown: CancellationToken,
     ) -> Result<Self, SetupError> {
+        let handlers = register_native_commands(inventory::iter::<TauriCommandEntry>)?;
+        rpc.mark_native_linked(handlers.keys().copied());
         Ok(Self {
             rpc,
             tasks,
             shutdown,
-            handlers: register_native_commands(inventory::iter::<TauriCommandEntry>)?,
+            handlers,
         })
     }
 
@@ -69,15 +83,18 @@ impl DesktopRpc {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        let owner = RpcOwner::desktop(window.label());
+        let caller = RpcCaller::desktop(window.label());
         if let Some(handler) = self.handlers.get(method) {
+            let visibility = ResponseVisibility::for_auth(Some(caller.auth()));
             return self
                 .rpc
-                .call_native(method, owner, || handler(app, window, webview, params))
+                .call_native(method, caller, || {
+                    handler(app, window, webview, visibility, params)
+                })
                 .await;
         }
         self.rpc
-            .call(RpcTransport::TauriIpc, method, owner, params)
+            .call(RpcTransport::TauriIpc, method, caller, params)
             .await
     }
 }

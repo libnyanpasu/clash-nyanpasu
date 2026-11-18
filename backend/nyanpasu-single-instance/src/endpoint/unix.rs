@@ -13,15 +13,18 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use interprocess::local_socket::{GenericFilePath, ListenerOptions, Name, ToFsName as _};
+use interprocess::local_socket::{
+    GenericFilePath, ListenerOptions, Name, ToFsName as _, tokio::Stream, traits::StreamCommon as _,
+};
 use snafu::{ResultExt as _, ensure};
 use socket2::{Domain, SockAddr, Socket, Type};
 
 use super::{
     AccessControlSnafu, AlreadyServingSnafu, BindSnafu, ClaimSnafu, EndpointError,
     EndpointListener, InsecurePathSnafu, InspectSnafu, InvalidLocationSnafu, Namespace,
-    ReclaimSnafu,
+    PeerRejection, ReclaimSnafu,
     directory_chain::{self, DirectoryMetadata, FileType},
+    verify_uid,
 };
 
 const MAX_SOCKET_PATH_LEN: usize = if cfg!(target_os = "linux") { 107 } else { 103 };
@@ -37,6 +40,11 @@ fn uid() -> libc::uid_t {
 
 pub(super) fn current_user() -> Result<String, EndpointError> {
     Ok(uid().to_string())
+}
+
+pub(super) fn verify_peer(stream: &Stream) -> Result<(), PeerRejection> {
+    let creds = stream.peer_creds().map_err(PeerRejection::Credentials)?;
+    verify_uid(creds.euid(), uid()).map_err(PeerRejection::Mismatch)
 }
 
 pub(super) fn default_path(
@@ -296,6 +304,7 @@ impl Drop for Claim {
 }
 
 pub(super) fn bind(_namespace: Namespace, path: &Path) -> Result<EndpointListener, EndpointError> {
+    let user = current_user()?;
     let mut claim = Claim::acquire(path)?;
     claim.reclaim_stale(probe)?;
     let listener = ListenerOptions::new()
@@ -311,6 +320,7 @@ pub(super) fn bind(_namespace: Namespace, path: &Path) -> Result<EndpointListene
     socket_metadata(path)?;
     Ok(EndpointListener {
         listener,
+        user,
         _claim: claim,
     })
 }

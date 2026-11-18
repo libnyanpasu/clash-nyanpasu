@@ -19,7 +19,7 @@ use nyanpasu_logging::{
     Direction, Filter, FsLogFiles, LogError, LogsClient, MonotonicClock, OpenLogs, QueryLogs,
 };
 use nyanpasu_rpc_protocol::{
-    RpcError, RpcOwner,
+    RpcError,
     frame::{Frame, Reply},
 };
 use parking_lot::Mutex;
@@ -216,7 +216,8 @@ async fn fixture(service: Option<Arc<IpcServiceLogs>>) -> Fixture {
 
 fn delayed_open(
     deps: Arc<RpcDependencies>,
-    owner: RpcOwner,
+    meta: crate::registry::RpcCallMeta,
+    caller: crate::registry::RpcCaller,
     params: Value,
 ) -> Result<RpcFuture, RpcError> {
     Ok(Box::pin(async move {
@@ -225,8 +226,9 @@ fn delayed_open(
             .find(|entry| entry.metadata.name == "open_log_session")
             .unwrap()
             .handler;
+        let owner_label = caller.owner().label().to_owned();
         let mut release = deps.events.subscribe();
-        let result = original(deps.clone(), owner.clone(), params.clone())
+        let result = original(deps.clone(), meta, caller, params.clone())
             .unwrap()
             .await;
         let value = result
@@ -235,7 +237,7 @@ fn delayed_open(
             .expect("real log open succeeds before completion barrier");
         deps.events.publish(
             "opened",
-            json!({"owner": owner.label(), "session": value["id"], "source": params["source"]}),
+            json!({"owner": owner_label, "session": value["id"], "source": params["source"]}),
         );
         while release.recv().await.unwrap().0 != "release" {}
         result
@@ -576,7 +578,8 @@ async fn local_owners_cannot_use_each_others_resources() {
 
 fn delayed_close(
     deps: Arc<RpcDependencies>,
-    owner: RpcOwner,
+    meta: crate::registry::RpcCallMeta,
+    caller: crate::registry::RpcCaller,
     params: Value,
 ) -> Result<RpcFuture, RpcError> {
     Ok(Box::pin(async move {
@@ -586,7 +589,7 @@ fn delayed_close(
             .unwrap()
             .handler;
         let mut release = deps.events.subscribe();
-        let result = original(deps.clone(), owner, params).unwrap().await;
+        let result = original(deps.clone(), meta, caller, params).unwrap().await;
         assert!(
             result.result.is_ok(),
             "explicit close succeeds before its completion barrier"

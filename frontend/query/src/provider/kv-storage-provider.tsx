@@ -23,7 +23,25 @@ import { useQueryApi } from './rpc-provider'
 
 type QueryApi = ReturnType<typeof useQueryApi>
 
-const LOCAL_CACHE_PREFIX = 'nyanpasu-kv-:'
+/** Where a provider keeps the values of its keys. */
+export type KvStoragePersistence = 'backend' | 'local'
+
+const LOCAL_CACHE_KEY_FAMILY = 'nyanpasu-kv-'
+const LOCAL_CACHE_PREFIX = `${LOCAL_CACHE_KEY_FAMILY}:`
+
+/** Removes every value this browser profile mirrored from KV storage. */
+export function clearKvStorageLocalCache() {
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, index) =>
+      localStorage.key(index),
+    )
+    for (const key of keys) {
+      if (key?.startsWith(LOCAL_CACHE_KEY_FAMILY)) localStorage.removeItem(key)
+    }
+  } catch {
+    // ignore security errors
+  }
+}
 
 /** The last value this browser profile showed for `key`, as JSON text. */
 export function readKvStorageLocalCache(key: string): string | null {
@@ -52,7 +70,12 @@ type KvStorageStore = ReturnType<typeof createKvStorageStore>
  * current by the backend's events, and written through one queue per key so
  * every hook of a key shows the same value.
  */
-function createKvStorageStore(api: QueryApi, queryClient: QueryClient) {
+function createKvStorageStore(
+  api: QueryApi,
+  queryClient: QueryClient,
+  persistence: KvStoragePersistence,
+) {
+  const isLocal = persistence === 'local'
   let markReady = () => {}
   // The first reads wait for the listeners, so nothing committed after a read
   // goes unheard.
@@ -80,6 +103,17 @@ function createKvStorageStore(api: QueryApi, queryClient: QueryClient) {
   // `isCurrent` turns false once a newer read of the key has started, which
   // then settles the key instead.
   const settleRead = async (key: string, isCurrent: () => boolean) => {
+    if (isLocal) {
+      // The browser's own copy is the only source, so nothing is requested.
+      update(key, (entry) => ({
+        ...mergeKvStorageSnapshot(entry, {
+          value: readKvStorageLocalCache(key),
+          revision: 0,
+        }),
+        read: { status: 'done', error: null },
+      }))
+      return
+    }
     await ready
     try {
       const result = await api.getStorageItem(key)
@@ -144,6 +178,15 @@ function createKvStorageStore(api: QueryApi, queryClient: QueryClient) {
      * shown until a newer value is committed.
      */
     write: (key: string, value: string): Promise<boolean> => {
+      if (isLocal) {
+        update(key, (entry) => ({
+          ...entry,
+          value,
+          revision: (entry.revision ?? 0) + 1,
+          draft: null,
+        }))
+        return Promise.resolve(true)
+      }
       draftSequence += 1
       const id = draftSequence
       update(key, (entry) => ({
@@ -185,6 +228,10 @@ function createKvStorageStore(api: QueryApi, queryClient: QueryClient) {
     },
 
     connect: () => {
+      if (isLocal) {
+        markReady()
+        return () => {}
+      }
       // A connection replaced by a newer one, as StrictMode does, neither
       // applies events nor lets the first reads start.
       let disposed = false
@@ -227,7 +274,19 @@ function createKvStorageStore(api: QueryApi, queryClient: QueryClient) {
 
 const KvStorageContext = createContext<KvStorageStore | null>(null)
 
-export const KvStorageProvider = ({ children }: PropsWithChildren) => {
+export type KvStorageProviderProps = PropsWithChildren<{
+  /**
+   * `'backend'` (default) stores values through the backend. `'local'` keeps
+   * them in this browser's `localStorage` only, for callers that may not read
+   * or write the backend's storage.
+   */
+  persistence?: KvStoragePersistence
+}>
+
+export const KvStorageProvider = ({
+  children,
+  persistence = 'backend',
+}: KvStorageProviderProps) => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
 
@@ -238,8 +297,8 @@ export const KvStorageProvider = ({ children }: PropsWithChildren) => {
       queryFn: skipToken,
       gcTime: Infinity,
     })
-    return createKvStorageStore(api, queryClient)
-  }, [api, queryClient])
+    return createKvStorageStore(api, queryClient, persistence)
+  }, [api, queryClient, persistence])
 
   useEffect(() => store.connect(), [store])
 

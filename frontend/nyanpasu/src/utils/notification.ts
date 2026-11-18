@@ -142,14 +142,16 @@ export const message = async (
           2,
         )
       : isIpcError(error)
-        ? error.detail
+        ? typeof error.detail === 'string'
+          ? error.detail
+          : undefined
         : undefined
 
   if (isIpcError(domain)) {
     const parts = profileMessageParts((label) => formatError(error, label))
     if (parts.some((part) => typeof part !== 'string')) {
       try {
-        const profiles = unwrapResult(await commands.getProfiles())
+        const profiles = await commands.getProfilesListing()
         const lookup = new Map(
           profiles.items.map((profile) => [profile.uid, profile]),
         )

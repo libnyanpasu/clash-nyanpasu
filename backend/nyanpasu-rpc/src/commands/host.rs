@@ -2,29 +2,29 @@
 
 use crate::error::Result;
 
-use nyanpasu_config::application::NyanpasuAppConfigPatch;
+use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
-use nyanpasu_runtime_values::runtime::MutationOutcome;
+use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
 
 use crate::{
     ports::{AccentColorQuery, CoreDirectoryResolver, HostEnvironment, ServiceInstallPrompt},
     registry::RpcState,
 };
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, permission = "core.dir:reveal")]
 #[specta::specta]
 pub fn get_core_dir(resolver: RpcState<'_, dyn CoreDirectoryResolver>) -> Result<String> {
     resolver.core_directory()
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, permission = "app.appimage:view")]
 #[specta::specta]
 pub fn is_appimage(environment: RpcState<'_, HostEnvironment>) -> Result<bool> {
     Ok(environment.is_appimage)
 }
 
-#[nyanpasu_macro::rpc(http)]
+#[nyanpasu_macro::rpc(http, query, permission = "service.install_prompt:reveal")]
 #[specta::specta]
 pub async fn get_service_install_prompt(
     prompt: RpcState<'_, dyn ServiceInstallPrompt>,
@@ -33,22 +33,59 @@ pub async fn get_service_install_prompt(
     prompt.service_install_prompt(paths).await
 }
 
-// See commands/runtime.rs::AppPreferencesPatch for the command-scope and domain-split rule.
-#[nyanpasu_macro::rpc(optional_capabilities(elevation, os_integration, presentation))]
+// See nyanpasu_config::application::ApplicationPreferencesPatch for the command-scope and domain-split rule.
+#[nyanpasu_macro::rpc(
+    privacy,
+    optional_capabilities(elevation, os_integration, presentation),
+    permission = "system.service_mode:set"
+)]
 #[specta::specta]
 pub async fn set_service_mode(
     client: RpcState<'_, NyanpasuClient>,
     enabled: bool,
-) -> Result<MutationOutcome<()>> {
-    Ok(client
-        .patch_app_config(NyanpasuAppConfigPatch {
-            enable_service_mode: Some(enabled),
-            ..Default::default()
-        })
-        .await?)
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_service_mode(enabled).await?.into())
 }
 
-#[nyanpasu_macro::rpc(http, capabilities(accent_color))]
+/// Remote access widens who can reach the application, so it has its own command, reachable from
+/// the desktop and the same-user local socket but never over HTTP; `patch_app_config` rejects the
+/// section.
+#[nyanpasu_macro::rpc(
+    local,
+    privacy,
+    capabilities(http_server),
+    permission = "remote_admin.settings:set"
+)]
+#[specta::specta]
+pub async fn set_remote_access(
+    client: RpcState<'_, NyanpasuClient>,
+    config: RemoteAccessConfig,
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.set_remote_access(config).await?.into())
+}
+
+/// Replaces the HTTPS certificate and makes the listener present the new one. Clients that pinned
+/// the old fingerprint refuse the server until they pin the new one, so it is a remote
+/// administration command, never reachable over HTTP.
+#[nyanpasu_macro::rpc(
+    local,
+    privacy,
+    capabilities(http_server),
+    permission = "remote_admin.tls:reset"
+)]
+#[specta::specta]
+pub async fn reset_remote_access_tls(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<RpcUnitMutationOutcome> {
+    Ok(client.reset_remote_access_tls().await?.into())
+}
+
+#[nyanpasu_macro::rpc(
+    http,
+    capabilities(accent_color),
+    query,
+    permission = "system.accent_color:view"
+)]
 #[specta::specta]
 pub fn get_system_accent_color(
     accent: RpcState<'_, dyn AccentColorQuery>,

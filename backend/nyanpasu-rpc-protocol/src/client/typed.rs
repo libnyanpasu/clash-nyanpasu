@@ -126,7 +126,7 @@ impl LocalClient {
             }),
         };
         decoded.map_err(|source| {
-            self.stop.send_replace(true);
+            self.raw.invalidate();
             TypedCallError::DecodeReply { source }
         })?
     }

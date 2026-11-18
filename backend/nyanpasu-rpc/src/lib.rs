@@ -12,12 +12,16 @@ pub mod http;
 pub mod icons;
 #[cfg(feature = "local-server")]
 pub mod local;
+pub mod policy;
 pub mod ports;
+pub mod privacy;
 pub mod registry;
 #[cfg(all(feature = "http", any(test, feature = "test-support")))]
 pub mod test_support;
 
 #[cfg(test)]
 mod connection_tests;
+#[cfg(all(test, feature = "http"))]
+mod privacy_tests;
 #[cfg(test)]
 mod receiving_tests;

@@ -46,9 +46,10 @@ use nyanpasu_contracts::system_proxy::OsProxyPort;
 use nyanpasu_core::{
     client::{
         ClientSetupArgs, NyanpasuClient, RuntimePaths, UiEventSink,
-        debug_http::DebugHttpControl,
         effects::executor::ApplicationEffectExecutor,
         host_adapters::{ClientHostAdapters, ProfileFilePorts},
+        http_server::HttpServerControl,
+        local_socket::LocalSocketControl,
         system_proxy::{SystemProxyArgs, SystemProxyClient},
     },
     storage::RedbHotkeyStoreOpener,
@@ -72,9 +73,6 @@ pub(crate) struct StartupOwners {
     shutdown: CancellationToken,
     tasks: TaskTracker,
     core: Option<nyanpasu_core::actor_v2::CoreClient>,
-    // StartupOwners clones share only the one-shot right to join the listener.
-    // The listener itself exclusively owns connections and resource state.
-    local_rpc: Arc<std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl StartupOwners {
@@ -85,14 +83,6 @@ impl StartupOwners {
 
     pub(crate) async fn wait_shutdown(&self) {
         self.tasks.wait().await;
-        let local_rpc = self
-            .local_rpc
-            .lock()
-            .expect("listener join ownership is never panicked under lock")
-            .take();
-        if let Some(task) = local_rpc {
-            nyanpasu_owner_support::blocking::join(task.await);
-        }
         if let Some(core) = &self.core {
             core.finish_shutdown().await;
         }
@@ -344,6 +334,12 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
     let traffic_store = open_traffic_store(&paths);
     let http_routes = Arc::new(nyanpasu_rpc::http::routes::RpcHttpRoutes::default());
     app.manage(http_routes.clone());
+    let local_routes = Arc::new(nyanpasu_rpc::local::control::RpcLocalRoutes::default());
+    app.manage(local_routes.clone());
+    let http_authenticator = Arc::new(nyanpasu_rpc::http::auth::RpcHttpAuthenticator::default());
+    app.manage(http_authenticator.clone());
+    let http_tls = Arc::new(nyanpasu_rpc::http::tls::RpcHttpTls::default());
+    app.manage(http_tls.clone());
     // Opened after the in-process migrations above, which open the same file.
     let storage = nyanpasu_core::storage::Storage::try_new(paths.storage_path().as_std_path())
         .context(OpenStorageSnafu)?;
@@ -386,14 +382,44 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             network_environment: Some(Arc::new(
                 nyanpasu_os::network_environment::NetdevNetworkEnvironment::new(),
             )),
-            debug_http: Some({
-                let frontend = Some(debug_http_frontend(&app_handle));
+            http_server: Some({
+                let frontend = Some(http_server_frontend(&app_handle));
                 Arc::new(move || {
-                    let (frontend, routes) = (frontend.clone(), http_routes.clone());
+                    let (frontend, routes, authenticator, tls) = (
+                        frontend.clone(),
+                        http_routes.clone(),
+                        http_authenticator.clone(),
+                        http_tls.clone(),
+                    );
                     Box::pin(async move {
-                        let server =
-                            nyanpasu_rpc::http::HttpServerClient::spawn(frontend, routes).await?;
-                        Ok(Arc::new(server) as Arc<dyn DebugHttpControl>)
+                        let server = nyanpasu_rpc::http::HttpServerClient::spawn_with_tls(
+                            frontend,
+                            routes,
+                            authenticator,
+                            Some(tls),
+                        )
+                        .await?;
+                        Ok(Arc::new(server) as Arc<dyn HttpServerControl>)
+                    })
+                })
+            }),
+            local_socket: Some({
+                let data_directory = paths.app_data_dir().as_std_path().to_owned();
+                let endpoint_override = local_rpc::endpoint_override_from_environment();
+                Arc::new(move || {
+                    let (data_directory, endpoint_override, routes) = (
+                        data_directory.clone(),
+                        endpoint_override.clone(),
+                        local_routes.clone(),
+                    );
+                    Box::pin(async move {
+                        let server = nyanpasu_rpc::local::control::LocalSocketClient::spawn(
+                            data_directory,
+                            endpoint_override,
+                            routes,
+                        )
+                        .await?;
+                        Ok(Arc::new(server) as Arc<dyn LocalSocketControl>)
                     })
                 })
             }),
@@ -494,6 +520,15 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         paths: paths.clone(),
         storage: Arc::new(storage.clone()),
         runtime_paths: runtime_paths.clone(),
+        remote_auth: nyanpasu_core::client::RemoteAccessAuthPorts::new(
+            nyanpasu_os::remote_auth::OsAuthClock::new(),
+            nyanpasu_os::remote_auth::OsEntropySource,
+            nyanpasu_os::remote_auth::FsSecretStore::new(
+                paths.remote_access_secrets_path().into_std_path_buf(),
+                nyanpasu_core::client::MAX_SECRET_RECORD_BYTES,
+            ),
+            nyanpasu_os::remote_auth::RcgenCertificateGenerator,
+        ),
         ui_sink: ui_sink.clone(),
         app_update_backend_factory: Some(Arc::new({
             let app_handle = app_handle.clone();
@@ -527,6 +562,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
         window: Some(Arc::new(TauriWindowControl::new(app_handle.clone()))),
         accelerators: Some(Arc::new(PlatformAcceleratorValidator)),
         traffic_store,
+        sync_adapters: Some(build_sync_adapters(&paths, bundle_metadata)),
         shutdown: shutdown.clone(),
         tasks: tasks.clone(),
     }))
@@ -612,16 +648,24 @@ async fn start_runtime_owners(
 
 #[derive(Debug, snafu::Snafu)]
 pub(crate) enum UnifiedRpcError {
-    #[snafu(display("failed to start desktop local RPC listener"))]
-    StartLocalRpc {
-        source: nyanpasu_single_instance::endpoint::EndpointError,
-    },
     #[snafu(display("failed to build unified RPC"))]
     BuildRpc {
         source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("failed to install HTTP routes"))]
     InstallHttpRoutes {
+        source: nyanpasu_rpc::registry::SetupError,
+    },
+    #[snafu(display("failed to install local RPC routes"))]
+    InstallLocalRoutes {
+        source: nyanpasu_rpc::registry::SetupError,
+    },
+    #[snafu(display("failed to install HTTP authenticator"))]
+    InstallHttpAuthenticator {
+        source: nyanpasu_rpc::registry::SetupError,
+    },
+    #[snafu(display("failed to install the HTTP TLS identity source"))]
+    InstallHttpTls {
         source: nyanpasu_rpc::registry::SetupError,
     },
     #[snafu(display("unified RPC state was already registered"))]
@@ -650,18 +694,41 @@ pub(crate) fn setup_unified_rpc<M: tauri::Manager<tauri::Wry>>(
         paths: (*app.state::<PathResolver>()).clone(),
         events: (*app.state::<nyanpasu_rpc::events::EventBus>()).clone(),
     };
-    let rpc = nyanpasu_rpc::registry::UnifiedRpc::new(dependencies, DESKTOP_RPC_CAPABILITIES)
-        .context(BuildRpcSnafu)?;
+    let mut rpc = nyanpasu_rpc::registry::UnifiedRpc::new(
+        dependencies,
+        nyanpasu_rpc_protocol::ServerInfo::desktop(env!("CARGO_PKG_VERSION")),
+        DESKTOP_RPC_CAPABILITIES,
+    )
+    .context(BuildRpcSnafu)?;
+    rpc.mark_native_linked(crate::unified_rpc::native::linked_command_names());
+    app.state::<Arc<nyanpasu_rpc::http::auth::RpcHttpAuthenticator>>()
+        .install(Arc::new(
+            nyanpasu_rpc::http::auth::NyanpasuClientHttpAuthenticator::new(
+                &rpc.dependencies().client,
+            ),
+        ))
+        .context(InstallHttpAuthenticatorSnafu)?;
+    app.state::<Arc<nyanpasu_rpc::http::tls::RpcHttpTls>>()
+        .install(Arc::new(
+            nyanpasu_rpc::http::tls::NyanpasuClientHttpTls::new(&rpc.dependencies().client),
+        ))
+        .context(InstallHttpTlsSnafu)?;
     app.state::<Arc<nyanpasu_rpc::http::routes::RpcHttpRoutes>>()
         .install(&rpc)
         .context(InstallHttpRoutesSnafu)?;
-    tauri::async_runtime::block_on(local_rpc::start(
-        local_rpc::LocalRpcConfig::from_environment(),
-        app.state::<PathResolver>().app_data_dir().as_std_path(),
-        rpc.clone(),
-        owners,
-    ))
-    .context(StartLocalRpcSnafu)?;
+    app.state::<Arc<nyanpasu_rpc::local::control::RpcLocalRoutes>>()
+        .install(&rpc)
+        .context(InstallLocalRoutesSnafu)?;
+    // The routes exist now, so both listeners can follow the persisted remote-access settings.
+    // A listener that cannot start degrades the feature, never the application's startup.
+    match tauri::async_runtime::block_on(app.state::<NyanpasuClient>().reconcile_remote_access()) {
+        Ok(outcome) => {
+            for degradation in outcome.degradations() {
+                tracing::warn!(message = %degradation.message, "remote-access listener startup degraded");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "remote-access listener startup failed"),
+    }
     let desktop = crate::unified_rpc::native::DesktopRpc::new(
         rpc,
         owners.tasks.clone(),
@@ -688,7 +755,7 @@ pub(crate) const DESKTOP_RPC_CAPABILITIES: &[ShellCapability] = &[
     ShellCapability::OsIntegration,
     ShellCapability::Elevation,
     ShellCapability::AccentColor,
-    ShellCapability::DebugHttp,
+    ShellCapability::HttpServer,
 ];
 
 #[derive(Debug, snafu::Snafu)]
@@ -715,6 +782,34 @@ enum TrafficStoreError {
 /// Recording is optional, so a store that cannot be opened disables it rather
 /// than failing the launch. The history holds browsing targets, hence the
 /// owner-only directory.
+/// Builds the OpenDAL storage factory and the owner-only credential file.
+///
+/// The HTTP client follows the same proxy policy as subscriptions, so sync
+/// does not introduce a second transport or TLS stack.
+fn build_sync_adapters(
+    paths: &PathResolver,
+    bundle_metadata: BundleMetadata,
+) -> nyanpasu_core::client::sync::SyncAdapters {
+    let http = nyanpasu_net::policy::get_reqwest_client(
+        0,
+        &bundle_metadata,
+        &nyanpasu_os::system_proxy_source::OsSystemProxySource,
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!("sync falls back to a default HTTP client: {error}");
+        reqwest::Client::new()
+    });
+    nyanpasu_core::client::sync::SyncAdapters {
+        remote: Arc::new(nyanpasu_sync_opendal::OpendalStoreFactory::new(http)),
+        secrets: Arc::new(nyanpasu_sync_opendal::FileSecretStore::new(
+            paths
+                .app_data_dir()
+                .join("sync/credentials.json")
+                .into_std_path_buf(),
+        )),
+    }
+}
+
 fn open_traffic_store(paths: &PathResolver) -> Option<Arc<dyn TrafficOwnerFactory>> {
     let dir = paths.app_data_dir().join("traffic").into_std_path_buf();
     let open = || -> Result<TrafficFileStorage, TrafficStoreError> {
@@ -834,7 +929,7 @@ fn build_application_effects(
     Ok((executor, widget))
 }
 
-fn debug_http_frontend(app: &tauri::AppHandle) -> nyanpasu_rpc::http::Frontend {
+fn http_server_frontend(app: &tauri::AppHandle) -> nyanpasu_rpc::http::Frontend {
     use nyanpasu_rpc::http::{Frontend, FrontendAssets};
     if !cfg!(feature = "custom-protocol") {
         if let Some(url) = &app.config().build.dev_url {

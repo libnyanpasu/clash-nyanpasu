@@ -168,7 +168,7 @@ export default function NetworkRuleDialog({
       try {
         const status = await requestWifiName.mutateAsync()
 
-        if (status.network?.state === 'online') {
+        if (status?.network?.state === 'online') {
           fillFromNetwork(status.network.network)
           return
         }

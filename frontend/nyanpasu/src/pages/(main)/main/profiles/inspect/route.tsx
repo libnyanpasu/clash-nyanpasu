@@ -10,6 +10,8 @@ import {
   DrawerTitle,
 } from '@nyanpasu/ui/drawer'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
+import { RequireCapability } from '@/components/auth/capabilities'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { ErrorMessage } from '@/components/error-message'
 import { useOpenProfile, useProfileLookup } from '@/components/profile-label'
 import { keepReturn } from '@/components/router/cross-navigation'
@@ -44,7 +46,7 @@ import StepGraph from './_modules/step-graph'
 import StepRail from './_modules/step-rail'
 
 export const Route = createFileRoute('/(main)/main/profiles/inspect')({
-  component: RouteComponent,
+  component: GuardedRouteComponent,
   validateSearch: z.object({ step: z.string().optional() }),
   staticData: { layout: 'fill' },
 })
@@ -56,6 +58,14 @@ function invalidateSnapshots(queryClient: QueryClient) {
   ]) {
     queryClient.invalidateQueries({ queryKey: query.queryKey })
   }
+}
+
+function GuardedRouteComponent() {
+  return (
+    <RequireCapability scope="sensitive_read" fallback={<RestrictedContent />}>
+      <RouteComponent />
+    </RequireCapability>
+  )
 }
 
 function RouteComponent() {

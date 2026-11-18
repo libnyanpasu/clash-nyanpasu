@@ -42,6 +42,53 @@ pub struct DownloadStatus {
     pub speed: f64,
 }
 
+/// Safe download state without raw HTTP/OS error diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadProgressState {
+    Idle,
+    Downloading,
+    Failed,
+    Finished,
+}
+
+impl From<&DownloaderState> for DownloadProgressState {
+    fn from(state: &DownloaderState) -> Self {
+        match state {
+            DownloaderState::Idle => Self::Idle,
+            DownloaderState::Downloading => Self::Downloading,
+            DownloaderState::Failed(_) => Self::Failed,
+            DownloaderState::Finished => Self::Finished,
+        }
+    }
+}
+
+/// Safe download progress snapshot for callers without `Scope::SensitiveRead`.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, specta::Type)]
+pub struct DownloadProgressSummary {
+    pub state: DownloadProgressState,
+    pub downloaded: u64,
+    pub total: u64,
+    pub speed: f64,
+}
+
+impl From<&DownloadStatus> for DownloadProgressSummary {
+    fn from(status: &DownloadStatus) -> Self {
+        let DownloadStatus {
+            state,
+            downloaded,
+            total,
+            speed,
+        } = status;
+        Self {
+            state: state.into(),
+            downloaded: *downloaded,
+            total: *total,
+            speed: *speed,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 struct ProgressSnapshot {
     downloaded: u64,

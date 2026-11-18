@@ -1,3 +1,6 @@
+import { RequireCapability } from '@/components/auth/capabilities'
+import { ReadOnlyScope } from '@/components/auth/read-only-scope'
+import { RestrictedContent } from '@/components/auth/restricted-content'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { Platform, PlatformWindows } from '@nyanpasu/platform/react'
@@ -86,15 +89,22 @@ function RouteComponent() {
         {m.settings_label_service()}
       </PageTitle>
 
-      <div className="space-y-4 px-4 pb-4">
-        <SystemService />
+      <RequireCapability
+        scope="sensitive_read"
+        fallback={<RestrictedContent />}
+      >
+        <ReadOnlyScope scopes={['system']}>
+          <div className="space-y-4 px-4 pb-4">
+            <SystemService />
 
-        <SystemLaunch />
+            <SystemLaunch />
 
-        <Platform when={['windows', 'macos']}>
-          <SystemTools />
-        </Platform>
-      </div>
+            <Platform when={['windows', 'macos']}>
+              <SystemTools />
+            </Platform>
+          </div>
+        </ReadOnlyScope>
+      </RequireCapability>
     </>
   )
 }

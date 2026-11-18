@@ -12,6 +12,7 @@ import type {
   ProfileItem_Serialize,
   ProfileSubscriptionInfo,
   RunDto,
+  SyncRunSummary,
 } from '@nyanpasu/rpc/types'
 
 const remoteConfig = (
@@ -202,5 +203,39 @@ test('recent sync results include only finished runs and sort newest first', () 
   expect(latestFinishedRuns(runs, 2).map((item) => item.id)).toEqual([
     'newest',
     'middle',
+  ])
+})
+
+test('recent sync summaries preserve newest-admission-first across identical timestamps and >2^53 sequences', () => {
+  const finished = {
+    kind: 'finished' as const,
+    outcome: 'succeeded' as const,
+    journal_degraded: false,
+  }
+  const summary = (id: string, admissionSequence: string): SyncRunSummary => ({
+    id,
+    admission_sequence: admissionSequence,
+    trigger: 'scheduled',
+    scheduled_at: null,
+    admitted_at: '2026-01-01T00:00:00.000Z',
+    finished_at: '2026-01-01T00:00:01.000Z',
+    state: finished,
+  })
+  const summaries: SyncRunSummary[] = [
+    summary('older-big', '9007199254740992'),
+    summary('running', '9007199254740995'),
+    summary('newest-big', '9007199254740994'),
+    summary('middle-big', '9007199254740993'),
+  ]
+  summaries[1] = {
+    ...summaries[1],
+    finished_at: null,
+    state: { kind: 'running' },
+  }
+
+  expect(latestFinishedRuns(summaries, 3).map((item) => item.id)).toEqual([
+    'newest-big',
+    'middle-big',
+    'older-big',
   ])
 })

@@ -11,7 +11,7 @@ const backend = vi.hoisted(() => ({
 
 vi.mock('@nyanpasu/query', async (importActual) => ({
   ...(await importActual<typeof import('@nyanpasu/query')>()),
-  useSetting: () => {
+  useSystemSetting: () => {
     const [value, setValue] = useState(backend.value)
 
     return {

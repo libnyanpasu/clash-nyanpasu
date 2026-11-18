@@ -54,19 +54,67 @@ const IMPLEMENTATION = [
   'nyanpasu-profile-io',
   'nyanpasu-net',
   'nyanpasu-os',
+  'nyanpasu-sync-opendal',
+]
+
+/** What neither the wire crate nor a client standing on it may pull in. */
+const WIRE_FORBIDDEN = [
+  'nyanpasu-profile-transform',
+  'nyanpasu-runtime-values',
+  'clash-api',
+  'boa_engine',
+  'boa_utils',
+  'mlua',
 ]
 
 const DEPENDENCY_RULES: readonly DependencyRule[] = [
-  { package: 'nyanpasu-server', forbids: GUI },
-  { package: 'nyanpasu-rpc', forbids: [...GUI, ...IMPLEMENTATION] },
+  { package: 'nyanpasu-server', forbids: [...GUI, 'nyanpasu-cli'] },
+  {
+    package: 'nyanpasu-rpc',
+    forbids: [...GUI, ...IMPLEMENTATION, 'nyanpasu-cli'],
+  },
+  // The CLI is a client of a running shell: wire and transport only. Its
+  // production and build closure carries no protocol (and so no profile
+  // transform, runtime values, Clash API or script engine), core family,
+  // implementation, RPC adapter, server or GUI package; the protocol is a
+  // dev-dependency of its tests alone, which this gate does not inspect.
+  {
+    package: 'nyanpasu-cli',
+    forbids: [
+      ...GUI,
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION,
+      ...WIRE_FORBIDDEN,
+      'nyanpasu-rpc',
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-server',
+    ],
+  },
+  // The wire crate is the dependency-light layer both the protocol and the CLI
+  // stand on. Beside the foundation values it carries, it takes only
+  // serialization, framing and the Tokio runtime.
+  {
+    package: 'nyanpasu-rpc-wire',
+    forbids: [
+      ...GUI,
+      ...CORE_FAMILY,
+      ...IMPLEMENTATION,
+      ...WIRE_FORBIDDEN,
+      'nyanpasu-rpc',
+      'nyanpasu-rpc-protocol',
+      'nyanpasu-server',
+      'nyanpasu-cli',
+    ],
+  },
   ...[
     ...FOUNDATION,
     ...CORE_FAMILY,
     ...IMPLEMENTATION,
     'nyanpasu-rpc-protocol',
+    'nyanpasu-rpc-wire',
   ].map((name) => ({
     package: name,
-    forbids: ['nyanpasu-rpc'],
+    forbids: ['nyanpasu-rpc', 'nyanpasu-cli'],
   })),
   {
     package: 'nyanpasu-rpc-protocol',

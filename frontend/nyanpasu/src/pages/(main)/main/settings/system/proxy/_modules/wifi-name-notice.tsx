@@ -39,7 +39,11 @@ export default function WifiNameNotice({
 
   const handleAllow = useLockFn(async () => {
     try {
-      onRequested?.(await requestWifiName.mutateAsync())
+      const status = await requestWifiName.mutateAsync()
+
+      if (status) {
+        onRequested?.(status)
+      }
     } catch (error) {
       message(formatError(error), { title: 'Error', kind: 'error', error })
     }

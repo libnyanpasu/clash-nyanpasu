@@ -9,20 +9,14 @@ authors.workspace = true
 [features]
 default = []
 nesting = ['nyanpasu-config/nesting']
-frame-io = ['dep:tokio']
-local-client = [
-  'frame-io',
-  'tokio/net',
-  'tokio/rt',
-  'tokio/sync',
-  'tokio/time',
-  'tokio/macros'
-]
+frame-io = ['dep:tokio', 'nyanpasu-rpc-wire/frame-io']
+local-client = ['frame-io', 'nyanpasu-rpc-wire/local-client']
 
 [dependencies]
 nyanpasu-logging = { path = '../nyanpasu-runtime/crates/nyanpasu-logging', default-features = false }
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false }
 nyanpasu-contracts = { path = '../nyanpasu-contracts', default-features = false }
+nyanpasu-rpc-wire = { path = '../nyanpasu-rpc-wire' }
 nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-features = false }
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-metadata' }

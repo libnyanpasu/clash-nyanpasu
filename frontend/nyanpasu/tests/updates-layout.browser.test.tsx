@@ -19,13 +19,14 @@ import {
 import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
 import UpdateStatusCard from '../src/pages/(main)/main/settings/nyanpasu/updates/_modules/update-status-card'
 import { Route } from '../src/pages/(main)/main/settings/nyanpasu/updates/index'
+import { AllScopes } from './all-scopes'
 
 const backend = vi.hoisted(() => ({
   phase: 'downloading',
   snapshot: {
     revision: 1,
     phase: 'downloading',
-    release: { version: '2.1.0', date: null, body: 'Release notes' },
+    release: { version: '2.1.0', date: null, body: null },
     downloaded: 32 * 1024 * 1024,
     total: 128 * 1024 * 1024,
     speed: 2 * 1024 * 1024,
@@ -33,7 +34,7 @@ const backend = vi.hoisted(() => ({
     error: null,
     last_checked_at: '2026-10-03T12:00:00Z',
     supported: true,
-    endpoints: ['https://updates.example.test/stable'],
+    endpoints: [],
   } as AppUpdateSnapshot,
   check: vi.fn(),
   download: vi.fn(),
@@ -135,6 +136,8 @@ test('Update cards remain legible at desktop and mobile widths', async ({
         <RouterProvider router={router} />
       </ScrollArea>
     </TooltipProvider>,
+
+    { wrapper: AllScopes },
   )
   onTestFinished(async () => {
     await view.unmount()
@@ -255,6 +258,8 @@ test('update actions fit every locale at mobile widths in light and dark themes'
     <TooltipProvider>
       <UpdateStatusCard />
     </TooltipProvider>,
+
+    { wrapper: AllScopes },
   )
   onTestFinished(async () => {
     await view.unmount()

@@ -1,3 +1,4 @@
+import { useCapabilities } from '@/components/auth/capabilities'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -7,13 +8,16 @@ import {
   unwrapQueryOptions,
   useClashSetting,
   useClashSettings,
+  useClashSystemSetting,
+  useClashSystemSettings,
   useQueryApi,
   useSetting,
+  useSystemSetting,
 } from '@nyanpasu/query'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 export const useSystemProxy = () => {
-  const systemProxy = useSetting('enable_system_proxy')
+  const systemProxy = useSystemSetting('enable_system_proxy')
 
   const blockTask = useBlockTask('system-proxy', async () => {
     await systemProxy.upsert(!systemProxy.value)
@@ -26,20 +30,29 @@ export const useSystemProxy = () => {
 }
 
 export const useTunMode = () => {
-  const tunMode = useClashSetting('enable_tun_mode')
+  const { hasScopes } = useCapabilities()
+  // The full config is where TUN is written, and it is secret-bearing: a
+  // caller without both scopes reads the state from the safe view.
+  const canControl = hasScopes(['system', 'sensitive_read'])
+  const tunSafe = useClashSetting('enable_tun_mode', { enabled: !canControl })
+  const tunMode = useClashSystemSetting('enable_tun_mode', {
+    enabled: canControl,
+  })
+  const tunValue = canControl ? tunMode.value : tunSafe.value
   const transparentProxy = useClashSetting('transparent_proxy')
   const disabled =
-    !tunMode.value &&
-    transparentProxy.value?.mode != null &&
-    transparentProxy.value.mode !== 'disabled'
+    !canControl ||
+    (!tunValue &&
+      transparentProxy.value?.mode != null &&
+      transparentProxy.value.mode !== 'disabled')
 
   const blockTask = useBlockTask('tun-mode', async () => {
-    await tunMode.upsert(!tunMode.value)
+    await tunMode.upsert(!tunValue)
   })
 
   return {
     ...blockTask,
-    isActive: Boolean(tunMode.value),
+    isActive: Boolean(tunValue),
     disabled,
   }
 }
@@ -51,15 +64,18 @@ export const useTransparentProxy = () => {
   })
   const core = useSetting('core')
   const serviceMode = useSetting('enable_service_mode')
-  const clash = useClashSettings()
+  const { hasScopes } = useCapabilities()
+  const canControl = hasScopes(['system', 'sensitive_read'])
+  const clash = useClashSystemSettings({ enabled: canControl })
+  const clashSafe = useClashSettings({ enabled: !canControl })
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
   const visible = supportedHost && supportedCore
-  const config = clash.query.data
+  const config = canControl ? clash.query.data : clashSafe.query.data
   const mode = config?.transparent_proxy?.mode ?? 'disabled'
   const isActive = mode !== 'disabled'
-  const statusOptions = api.queries.getTransparentProxyStatus()
+  const statusOptions = api.queries.getTransparentProxyStatusSummary()
   const status = useQuery({
     ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
     enabled: visible && Boolean(serviceMode.value),
@@ -76,6 +92,7 @@ export const useTransparentProxy = () => {
     await queryClient.invalidateQueries({ queryKey: statusOptions.queryKey })
   })
   const disabled =
+    !canControl ||
     !config ||
     (!isActive &&
       (!serviceMode.value ||

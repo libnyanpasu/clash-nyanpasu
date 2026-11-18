@@ -27,8 +27,8 @@ import {
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
 
-const THEME_PALETTE_KEY = 'theme-palette-v1' as const
-const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
+export const THEME_PALETTE_KEY = 'theme-palette-v1' as const
+export const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
 
 const readCachedTheme = () => {
   try {
@@ -122,11 +122,14 @@ export function useExperimentalThemeContext() {
   return context
 }
 
-export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
+export function ExperimentalThemeProvider({
+  enabled = true,
+  children,
+}: PropsWithChildren<{ enabled?: boolean }>) {
   const [appWindow] = useState(createWindowAdapter)
-  const themeMode = useSetting('theme_mode')
+  const themeMode = useSetting('theme_mode', { enabled })
 
-  const themeColor = useSetting('theme_color')
+  const themeColor = useSetting('theme_color', { enabled })
   const [resolvedThemeMode, setResolvedThemeMode] =
     useState<ResolvedThemeMode>(getSystemThemeMode())
 

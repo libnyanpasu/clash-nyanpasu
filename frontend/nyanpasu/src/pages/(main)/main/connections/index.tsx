@@ -3,6 +3,7 @@ import { useCallback, useDeferredValue, useMemo } from 'react'
 import { ContextMenuItem } from '@nyanpasu/ui/context-menu'
 import { Modal } from '@nyanpasu/ui/modal'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
+import { useCapabilities } from '@/components/auth/capabilities'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -122,6 +123,9 @@ function RouteComponent() {
   // The row a jump left from, highlighted when returning to it.
   const focusRowId = useTabFocus(scope, entryFocus)
 
+  // Closing connections changes the core: `proxy` scope.
+  const canProxy = useCapabilities().hasScope('proxy')
+
   const deleteConnections = useDeleteClashConnections()
 
   const handleCloseAllConnections = useLockFn(async () => {
@@ -198,13 +202,15 @@ function RouteComponent() {
             search={search}
             onSearchChange={setSearch}
             onCloseAll={
-              scope === 'closed' ? undefined : handleCloseAllConnections
+              scope === 'closed' || !canProxy
+                ? undefined
+                : handleCloseAllConnections
             }
           />
         }
       >
         <DataPageSurface>
-          {scope === 'closed' ? (
+          {scope === 'closed' || !canProxy ? (
             scrollArea
           ) : (
             <RegisterContextMenu>

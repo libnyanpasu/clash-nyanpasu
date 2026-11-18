@@ -1,10 +1,14 @@
 import AnimatedTabs, { AnimatedTabsItem } from '@nyanpasu/ui/animated-tabs'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { ProxyMode, useProxyMode } from '@nyanpasu/query'
 
 export default function ProxyModeSelector() {
   const { value, upsert } = useProxyMode()
+
+  // Switching the routing mode changes the core: `proxy` scope.
+  const canProxy = useCapabilities().hasScope('proxy')
 
   const proxyModeMessages = {
     global: m.settings_system_proxy_global_mode_label(),
@@ -26,7 +30,12 @@ export default function ProxyModeSelector() {
       variant="pill"
     >
       {Object.keys(value).map((mode) => (
-        <AnimatedTabsItem key={mode} className="font-semibold" value={mode}>
+        <AnimatedTabsItem
+          key={mode}
+          className="font-semibold"
+          value={mode}
+          disabled={!canProxy}
+        >
           {proxyModeMessages[mode as ProxyMode]}
         </AnimatedTabsItem>
       ))}

@@ -1,33 +1,41 @@
 //! Icon entry security checks through the listener's authentication middleware.
 
+use std::sync::Arc;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode},
-    middleware,
 };
+use nyanpasu_config::application::HttpAccessConfig;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 
-use super::{LocalSession, local_session};
+use super::{auth::PrincipalStreams, build_http_app, tests::MemoryAuthenticator};
 use crate::{
-    icons::{self, tests::fixture},
-    test_support::Fixture,
+    icons::{
+        self,
+        tests::{failing_fixture, fixture},
+    },
+    test_support::{Fixture, with_http_auth},
 };
 
 fn listener(fixture: &Fixture) -> Router {
-    fixture
-        .rpc
-        .clone()
-        .router()
-        .layer(middleware::from_fn_with_state(
-            LocalSession {
-                authority: "127.0.0.1:1234".into(),
-                access_token: "test-access".into(),
-                shutdown: CancellationToken::new(),
-            },
-            local_session,
-        ))
+    let auth = Arc::new(MemoryAuthenticator::new());
+    auth.register_cookie(TEST_SESSION_COOKIE, "sess_0000000000000001");
+    build_http_app(
+        fixture.rpc.clone().router(),
+        None,
+        super::HttpEndpoint::exact("127.0.0.1:1234".into(), false),
+        HttpAccessConfig {
+            enabled: true,
+            ..Default::default()
+        },
+        auth,
+        PrincipalStreams::default(),
+        CancellationToken::new(),
+    )
+    .unwrap()
 }
 
 async fn get(
@@ -49,8 +57,9 @@ async fn get(
         .unwrap()
 }
 
-const COOKIES: &str =
-    "nyanpasu_http_access=test-access; nyanpasu_http_session=00000000-0000-4000-8000-000000000001";
+const TEST_SESSION_COOKIE: &str =
+    "nps_sess_0000000000000001_0000000000000000000000000000000000000000000000000000000000000001";
+const COOKIES: &str = "nyanpasu_session=nps_sess_0000000000000001_0000000000000000000000000000000000000000000000000000000000000001";
 const CACHED: &str = "/bridge/icons/cached?url=https%3A%2F%2Ficons.example%2Ficon.svg";
 
 #[tokio::test]
@@ -80,16 +89,10 @@ async fn unauthenticated_icon_get_does_not_fetch_remote_content() {
     for (cookie, origin, host, status) in [
         ("", None, "127.0.0.1:1234", StatusCode::UNAUTHORIZED),
         (
-            "nyanpasu_http_session=00000000-0000-4000-8000-000000000001",
+            "nyanpasu_session=invalid_session_cookie",
             None,
             "127.0.0.1:1234",
             StatusCode::UNAUTHORIZED,
-        ),
-        (
-            "nyanpasu_http_access=test-access",
-            None,
-            "127.0.0.1:1234",
-            StatusCode::BAD_REQUEST,
         ),
         (
             COOKIES,
@@ -104,6 +107,19 @@ async fn unauthenticated_icon_get_does_not_fetch_remote_content() {
             status
         );
     }
+    let bad_nonce = app
+        .clone()
+        .oneshot(
+            Request::get(CACHED)
+                .header("host", "127.0.0.1:1234")
+                .header("cookie", COOKIES)
+                .header("x-nyanpasu-client-id", "bad:nonce")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bad_nonce.status(), StatusCode::BAD_REQUEST);
     fixture.shutdown().await;
 }
 
@@ -162,5 +178,69 @@ async fn icon_cache_policy_does_not_relax_other_routes() {
             "{path}"
         );
     }
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn http_icon_route_enforces_visibility_privacy_across_read_and_sensitive_scopes() {
+    use nyanpasu_rpc_protocol::{AuthContext, Principal, Scope};
+
+    let fixture = failing_fixture(2).await;
+    let router = fixture.rpc.clone().router();
+    let path = "/bridge/icons/cached?url=https%3A%2F%2Fuser%3Apass%40secret-icon-canary.invalid%2Ficon.png";
+
+    for (scopes, is_full) in [
+        (vec![Scope::Read], false),
+        (vec![Scope::Read, Scope::SensitiveRead], true),
+    ] {
+        let auth = AuthContext::new(
+            Principal::Token {
+                id: "tok_icon_01".to_owned(),
+                name: "icon-token".to_owned(),
+            },
+            scopes.into_iter().collect(),
+        );
+        let response = with_http_auth(router.clone(), auth)
+            .oneshot(
+                Request::get(path)
+                    .header("cookie", COOKIES)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        for (name, value) in icons::SECURITY_HEADERS {
+            assert_eq!(response.headers()[name], value);
+        }
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body_text = String::from_utf8_lossy(&body);
+        let wire: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(wire["kind"], "application_error");
+        if is_full {
+            assert!(
+                body_text.contains("secret-icon-canary"),
+                "SensitiveRead icon error must retain canary diagnostic: {body_text}"
+            );
+            assert!(
+                body_text.contains("user:pass"),
+                "SensitiveRead icon error must retain URL credentials in diagnostic: {body_text}"
+            );
+        } else {
+            assert!(
+                !body_text.contains("secret-icon-canary")
+                    && !body_text.contains("user:pass")
+                    && !body_text.contains("upstream connect error"),
+                "Read-only icon error must exclude secret URL and upstream text: {body_text}"
+            );
+            assert!(wire.pointer("/domain_error/detail").is_none());
+            assert_eq!(wire["message"], "internal error");
+            assert_eq!(wire["domain_error"]["kind"]["domain"], "unknown");
+        }
+    }
+
     fixture.shutdown().await;
 }

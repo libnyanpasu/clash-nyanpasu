@@ -4,57 +4,79 @@ import type {
   Proxy_Serialize,
 } from '@nyanpasu/rpc/types'
 
-/** Anything that names the URL its members are tested with. */
-export type TestUrlSource = { testUrl?: string | null }
+/** The delay source of a group that tests with the app's default URL. */
+export const DEFAULT_DELAY_KEY = ''
 
-/** The URL a group's members are tested with: its own, else the default. */
-export function groupTestUrl(
-  group: TestUrlSource | undefined,
-  defaultUrl: string,
+/** Anything that names the delay source its members are shown with. */
+export type DelayKeySource = { delayKey: string }
+
+/**
+ * A snapshot with its groups' delay keys. `delayKeys` is complete where
+ * `groups` is not: the proxies query drops hidden groups from `groups`, yet a
+ * hidden group can still sit between a member and its leaf.
+ */
+export type DelayKeyedProxies = Proxies_Serialize & {
+  delayKeys?: Readonly<Record<string, string>>
+}
+
+/** Every group's delay key by name. */
+export function collectDelayKeys(
+  proxies: Proxies_Serialize,
+): Record<string, string> {
+  return Object.fromEntries(
+    [...(proxies.global ? [proxies.global] : []), ...proxies.groups].map(
+      (group) => [group.name, group.delayKey],
+    ),
+  )
+}
+
+const delayKeysBySnapshot = new WeakMap<
+  Proxies_Serialize,
+  Readonly<Record<string, string>>
+>()
+
+/** The delay key of the group named `group`, else the default's. */
+export function groupDelayKey(
+  proxies: DelayKeyedProxies | undefined,
+  group: string | undefined,
 ): string {
-  return group?.testUrl || defaultUrl
-}
-
-/** `url` as the backend sends it (`Url::as_str`), which Mihomo keys `extra` by. */
-function normalizeUrl(url: string): string {
-  // `URL.canParse` is missing from WebKit before 17 (macOS 12/13 webviews).
-  try {
-    return new URL(url).href
-  } catch {
-    return url
+  if (!proxies || group === undefined) {
+    return DEFAULT_DELAY_KEY
   }
-}
 
-function lastSampleTime(entry: { history: DelayHistory[] }): number {
-  const time = Date.parse(entry.history.at(-1)?.time ?? '')
-  return Number.isNaN(time) ? -Infinity : time
+  let keys = proxies.delayKeys
+
+  if (!keys) {
+    keys = delayKeysBySnapshot.get(proxies)
+
+    if (!keys) {
+      keys = collectDelayKeys(proxies)
+      delayKeysBySnapshot.set(proxies, keys)
+    }
+  }
+
+  return Object.hasOwn(keys, group) ? keys[group] : DEFAULT_DELAY_KEY
 }
 
 /**
- * A node's samples for one URL. Mihomo keeps them per URL in `extra`, keyed by
- * the URL it was asked to test: the backend's normalized form, or the group's
- * raw `testUrl` for its own health checks. Both keys are read and the newer
- * samples win. Clash-rs (`extra: {}`) and Meow (no `extra`) only have `history`.
+ * A node's samples for one delay source. The backend sends them per source in
+ * `extra`, keyed by {@link DelayKeySource.delayKey} and never by a test URL,
+ * and already picks the newest of the raw and normalized records of a URL.
+ * Clash-rs (`extra: {}`) and Meow (no `extra`) only have `history`.
  */
 export function nodeDelayHistory(
   node: Proxy_Serialize,
-  url: string,
+  delayKey: string,
 ): DelayHistory[] {
-  const raw = node.extra?.[url]
-  const normalized = node.extra?.[normalizeUrl(url)]
-  const entry =
-    raw && normalized && lastSampleTime(normalized) > lastSampleTime(raw)
-      ? normalized
-      : (raw ?? normalized)
-  return entry?.history ?? node.history
+  return node.extra?.[delayKey]?.history ?? node.history
 }
 
 /** The latest sample's delay; `0` is a failed test, `undefined` untested. */
 export function latestDelay(
   node: Proxy_Serialize | undefined,
-  url: string,
+  delayKey: string,
 ): number | undefined {
-  return node ? nodeDelayHistory(node, url).at(-1)?.delay : undefined
+  return node ? nodeDelayHistory(node, delayKey).at(-1)?.delay : undefined
 }
 
 export type Chain = {
@@ -103,29 +125,23 @@ const NO_HISTORY: DelayHistory[] = []
 
 /**
  * A member as its group sees it: a nested group reports its leaf, tested
- * against the URL of the group that directly holds that leaf. The history keeps
+ * the way the group that directly holds that leaf tests. The history keeps
  * the identity of the snapshot's own arrays, so a memoized card can rely on it.
  */
 export function memberState(
   member: string,
-  group: TestUrlSource,
-  proxies: Proxies_Serialize,
-  defaultUrl: string,
+  group: DelayKeySource,
+  proxies: DelayKeyedProxies,
 ): MemberState {
   const node = proxies.nodes[member]
   if (!node?.all) {
-    const history = node
-      ? nodeDelayHistory(node, groupTestUrl(group, defaultUrl))
-      : NO_HISTORY
+    const history = node ? nodeDelayHistory(node, group.delayKey) : NO_HISTORY
     return { delay: history.at(-1)?.delay, history }
   }
 
   const chain = resolveChain(member, proxies)
   const history = chain.leaf
-    ? nodeDelayHistory(
-        chain.leaf,
-        groupTestUrl(proxies.nodes[chain.parent], defaultUrl),
-      )
+    ? nodeDelayHistory(chain.leaf, groupDelayKey(proxies, chain.parent))
     : NO_HISTORY
   return { delay: history.at(-1)?.delay, leaf: chain.leaf?.name, history }
 }
@@ -133,9 +149,8 @@ export function memberState(
 /** A member's delay as its group sees it; see {@link memberState}. */
 export function memberDelay(
   member: string,
-  group: TestUrlSource,
-  proxies: Proxies_Serialize,
-  defaultUrl: string,
+  group: DelayKeySource,
+  proxies: DelayKeyedProxies,
 ): number | undefined {
-  return memberState(member, group, proxies, defaultUrl).delay
+  return memberState(member, group, proxies).delay
 }

@@ -1,38 +1,40 @@
 //! Dedicated settings command scope through the production dispatch paths.
 
 use axum::http::StatusCode;
-use nyanpasu_rpc_protocol::RpcOwner;
 use serde_json::{Value, json};
 
-use crate::{audit::RpcTransport, test_support::Fixture};
+use crate::{audit::RpcTransport, registry::RpcCaller, test_support::Fixture};
 
 #[tokio::test]
 async fn current_failure_encoding_matches_the_contract_baseline() {
     let fixtures: Value = serde_json::from_str(include_str!(
-        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json"
+        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     let fixture = Fixture::new(false).await;
-    for command in nyanpasu_rpc_protocol::COMMAND_CATALOG
-        .iter()
-        .filter(|command| {
+    for command_name in fixtures.as_object().unwrap().keys() {
+        let command = nyanpasu_rpc_protocol::COMMAND_CATALOG
+            .iter()
+            .find(|command| command.name == command_name)
+            .unwrap_or_else(|| panic!("missing catalog entry for {command_name}"));
+        assert!(
             command
                 .targets
-                .contains(&nyanpasu_rpc_protocol::RpcTarget::Local)
-        })
-    {
+                .contains(&nyanpasu_rpc_protocol::RpcTarget::Local),
+            "{command_name} must be on Local"
+        );
         let error = fixture
             .rpc
             .call(
                 RpcTransport::Local,
                 command.name,
-                RpcOwner::desktop("fixtures"),
+                RpcCaller::desktop("fixtures"),
                 json!(false),
             )
             .await
             .unwrap_err();
         let mut errors = vec![serde_json::to_value(error).unwrap()];
-        if command.name != "get_configuration_status" {
+        if !matches!(command.name, "get_configuration_status" | "rpc_describe") {
             let error = if matches!(
                 command.name,
                 "list_log_files" | "open_log_session" | "query_logs" | "close_log_session"
@@ -61,7 +63,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
 
     let fixture = Fixture::new(false).await;
     let local_fixtures: Value = serde_json::from_str(include_str!(
-        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-12.json"
+        "../../../nyanpasu-rpc-protocol/tests/fixtures/contracts/2026-11-14.json"
     ))
     .unwrap();
     for metadata in COMMAND_CATALOG
@@ -105,7 +107,8 @@ async fn command_scope_is_identical_across_rpc_transports() {
                         .and_then(|handler| {
                             handler(
                                 fixture.rpc.dependencies.clone(),
-                                RpcOwner::desktop("scope"),
+                                fixture.rpc.call_meta(*target),
+                                RpcCaller::desktop("scope"),
                                 request.clone(),
                             )
                         })
@@ -150,7 +153,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
             .call(
                 transport,
                 "get_storage_item",
-                RpcOwner::desktop("scope"),
+                RpcCaller::desktop("scope"),
                 json!({"key": "scope-key"}),
             )
             .await
@@ -161,7 +164,7 @@ async fn command_scope_is_identical_across_rpc_transports() {
             .call(
                 transport,
                 "get_storage_item",
-                RpcOwner::desktop("scope"),
+                RpcCaller::desktop("scope"),
                 json!({"key": false}),
             )
             .await
@@ -182,9 +185,9 @@ async fn command_scope_is_identical_across_rpc_transports() {
         .rpc
         .call(
             RpcTransport::Local,
-            "patch_app_config",
-            RpcOwner::desktop("scope"),
-            json!({"patch": {"proxy_layout_column": 7}}),
+            "patch_clash_config",
+            RpcCaller::desktop("scope"),
+            json!({"patch": {}}),
         )
         .await
         .unwrap_err();
@@ -232,7 +235,7 @@ async fn mixed_app_patch_does_not_commit_any_field() {
         let error = fixture.rpc.call(
             transport,
             "patch_app_config",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"patch": {"proxy_layout_column": 97, "hotkeys": [], "enable_service_mode": false}}),
         ).await.unwrap_err();
         assert_eq!(error.kind, "invalid_params");
@@ -302,7 +305,7 @@ async fn invalid_patch_decode_maps_to_http_400_without_domain_error() {
         error,
         json!({
             "kind": "invalid_params",
-            "message": "patch_app_config cannot write [\"hotkeys\", \"enable_service_mode\"]; use set_hotkeys for hotkeys and set_service_mode for enable_service_mode",
+            "message": "preferences cannot write [\"hotkeys\", \"enable_service_mode\"]",
             "code": null, "retryable": null, "operation_id": null, "domain_error": null
         })
     );
@@ -330,7 +333,7 @@ async fn set_service_mode_uses_the_domain_facade() {
         .call(
             RpcTransport::TauriIpc,
             "set_service_mode",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"enabled": false}),
         )
         .await
@@ -360,7 +363,7 @@ async fn set_service_mode_uses_the_domain_facade() {
         .call(
             RpcTransport::TauriIpc,
             "set_service_mode",
-            RpcOwner::desktop("settings"),
+            RpcCaller::desktop("settings"),
             json!({"enabled": true}),
         )
         .await
@@ -404,6 +407,426 @@ async fn hotkeys_effect_retry_is_admitted_over_http() {
             .unwrap()
             .hotkeys,
         before
+    );
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn remote_access_is_not_writable_through_the_general_patch() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+    let version = client.configuration_status().source_versions.application;
+
+    // Any `Some` value counts: an enabled, a default and a same-value section are all refused,
+    // and the allowed field in the mixed patch is not applied either.
+    for section in [
+        json!({"http": {"enabled": true}}),
+        json!({}),
+        serde_json::to_value(&client.get_app_config().await.unwrap().remote_access).unwrap(),
+    ] {
+        let (status, error) = fixture
+            .call(
+                "patch_app_config",
+                json!({"patch": {"remote_access": section, "proxy_layout_column": 9}}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+        assert_eq!(error["kind"], "invalid_params");
+        assert!(error["domain_error"].is_null());
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("[\"remote_access\"]")
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        client.configuration_status().source_versions.application,
+        version
+    );
+
+    // An explicit null writes nothing, and a misspelled or unknown key is ignored rather than
+    // reaching the section.
+    let (status, result) = fixture
+        .call(
+            "patch_app_config",
+            json!({"patch": {
+                "remote_access": null, "remoteAccess": {"http": {"enabled": true}},
+                "proxy_layout_column": 5
+            }}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let after = client.get_app_config().await.unwrap();
+    assert!(!after.remote_access.http.enabled);
+    assert_eq!(after.proxy_layout_column, 5);
+
+    // The dedicated command is not an HTTP command.
+    let (status, error) = fixture
+        .call("set_remote_access", json!({"config": {}}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(error["kind"], "unsupported");
+    fixture.shutdown().await;
+}
+
+/// Each privileged-field command: (command, scope, a body of its own class, a field of another class).
+fn scope_boundary_cases() -> Vec<(&'static str, nyanpasu_rpc_protocol::Scope, Value, Value)> {
+    use nyanpasu_rpc_protocol::Scope;
+    vec![
+        (
+            "patch_app_config",
+            Scope::Settings,
+            json!({"patch": {"proxy_layout_column": 7}}),
+            json!({"enable_system_proxy": false}),
+        ),
+        (
+            "patch_system_settings",
+            Scope::System,
+            json!({"patch": {"proxy_guard_interval": 20}}),
+            json!({"proxy_layout_column": 7}),
+        ),
+        (
+            "patch_clash_config",
+            Scope::Settings,
+            json!({"patch": {"expand_include_all": false}}),
+            json!({"enable_tun_mode": false}),
+        ),
+        (
+            "patch_clash_system_config",
+            Scope::System,
+            json!({"patch": {"web_ui_list": ["https://example.test/ui"]}}),
+            json!({"expand_include_all": false}),
+        ),
+        (
+            "patch_runtime_overrides",
+            Scope::Settings,
+            json!({"patch": {"ipv6": true}}),
+            json!({"mode": "global"}),
+        ),
+        (
+            "patch_runtime_access",
+            Scope::System,
+            json!({"patch": {"secret": "a-new-secret"}}),
+            json!({"mode": "global"}),
+        ),
+    ]
+}
+
+/// The catalog scope of a command is the class of the fields its request type can hold.
+#[tokio::test]
+async fn each_request_command_declares_the_scope_of_its_fields() {
+    use nyanpasu_rpc_protocol::{COMMAND_CATALOG, CommandEffect, Scope};
+    let scope = |name: &str| {
+        let metadata = COMMAND_CATALOG
+            .iter()
+            .find(|command| command.name == name)
+            .unwrap();
+        assert_eq!(metadata.effect, CommandEffect::Mutation, "{name}");
+        metadata.scope
+    };
+    for (name, expected, _, _) in scope_boundary_cases() {
+        assert_eq!(scope(name), expected, "{name}");
+    }
+    assert_eq!(scope("set_proxy_mode"), Scope::Proxy);
+    // The retry re-applies persisted desired state and writes no field, so it stays `system`:
+    // a settings-only caller cannot retry, which fails closed.
+    assert_eq!(scope("retry_configuration_effect"), Scope::System);
+    assert_eq!(scope("retry_configuration_runtime"), Scope::System);
+}
+
+#[tokio::test]
+async fn a_field_of_another_class_is_refused_with_nothing_committed() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let app_path = fixture.rpc.dependencies.paths.application_config_path();
+    let clash_path = fixture.rpc.dependencies.paths.clash_config_path();
+    for (name, _, own, other) in scope_boundary_cases() {
+        let mut mixed = own["patch"].clone();
+        let other_field = other.as_object().unwrap().iter().next().unwrap();
+        let (field, value) = other_field;
+        mixed[field] = value.clone();
+        let app_before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+        let clash_before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+        let versions = client.configuration_status().source_versions;
+        let (app_bytes, clash_bytes) = (
+            std::fs::read(&app_path).ok(),
+            std::fs::read(&clash_path).ok(),
+        );
+        for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+            // The foreign field alone, and mixed with a field the command does accept.
+            for patch in [other.clone(), mixed.clone()] {
+                let error = fixture
+                    .rpc
+                    .call(
+                        transport,
+                        name,
+                        RpcCaller::desktop("settings"),
+                        json!({"patch": patch}),
+                    )
+                    .await
+                    .unwrap_err();
+                assert_eq!(error.kind, "invalid_params", "{name} {patch}");
+                let field = other.as_object().unwrap().keys().next().unwrap();
+                assert!(
+                    error.message.contains("cannot write")
+                        && error.message.contains(field.as_str()),
+                    "{name}: {}",
+                    error.message
+                );
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+            app_before,
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap(),
+            clash_before,
+            "{name}"
+        );
+        let after = client.configuration_status().source_versions;
+        assert_eq!(
+            (after.application, after.clash),
+            (versions.application, versions.clash)
+        );
+        assert!(
+            client.configuration_status().recent_operations.is_empty(),
+            "{name}"
+        );
+        assert_eq!(std::fs::read(&app_path).ok(), app_bytes, "{name}");
+        assert_eq!(std::fs::read(&clash_path).ok(), clash_bytes, "{name}");
+    }
+    fixture.shutdown().await;
+}
+
+/// The whole override record is in no Clash request: replacing it also writes the proxy mode and
+/// the ordinary overrides. Override refusals name the keys the wire uses.
+#[tokio::test]
+async fn the_whole_override_record_and_kebab_case_keys_are_refused_without_a_commit() {
+    let fixture = Fixture::new(false).await;
+    let client = &fixture.rpc.dependencies.client;
+    let record =
+        serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap()["overrides"]
+            .clone();
+    let before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    let versions = client.configuration_status().source_versions;
+    for name in ["patch_clash_config", "patch_clash_system_config"] {
+        for patch in [
+            json!({"overrides": record}),
+            json!({"overrides": record, "web_ui_list": []}),
+        ] {
+            let (status, error) = fixture.call(name, json!({"patch": patch})).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{name}: {error}");
+            assert!(
+                error["message"].as_str().unwrap().contains("\"overrides\""),
+                "{name}: {error}"
+            );
+        }
+    }
+    for (name, patch, key) in [
+        (
+            "patch_runtime_overrides",
+            json!({"allow-lan": false}),
+            "allow-lan",
+        ),
+        (
+            "patch_runtime_access",
+            json!({"log-level": "info"}),
+            "log-level",
+        ),
+        (
+            "patch_runtime_access",
+            json!({"ipv6": false, "secret": "x"}),
+            "ipv6",
+        ),
+    ] {
+        let (status, error) = fixture.call(name, json!({"patch": patch})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{name}: {error}");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("{key:?}")),
+            "{name}: {error}"
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap(),
+        before
+    );
+    assert_eq!(
+        client.configuration_status().source_versions.clash,
+        versions.clash
+    );
+    assert!(client.configuration_status().recent_operations.is_empty());
+    fixture.shutdown().await;
+}
+
+/// A fixture whose runtime baseline is confirmed, as after boot: a Clash config commit waits for
+/// the runtime to accept it.
+async fn booted_fixture() -> Fixture {
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = nyanpasu_core::client::test_support::TestControlEndpoint::succeeding();
+    let args =
+        crate::test_support::test_client_args_with_endpoint(&directory, endpoint.clone()).await;
+    let fixture =
+        Fixture::with_setup(false, crate::test_support::CAPABILITIES, directory, args).await;
+    endpoint.prime(&fixture.rpc.dependencies.client).await;
+    fixture
+}
+
+#[tokio::test]
+async fn each_request_command_commits_a_field_of_its_own_class() {
+    let fixture = booted_fixture().await;
+    for (name, _, own, _) in scope_boundary_cases() {
+        let (status, result) = fixture.call(name, own).await;
+        assert_eq!(status, StatusCode::OK, "{name}: {result}");
+        assert!(
+            matches!(
+                result["status"].as_str(),
+                Some("committed" | "committed_degraded")
+            ),
+            "{name}: {result}"
+        );
+    }
+    let client = &fixture.rpc.dependencies.client;
+    let app = client.get_app_config().await.unwrap();
+    assert_eq!((app.proxy_layout_column, app.proxy_guard_interval), (7, 20));
+    let clash = client.get_clash_config().await.unwrap();
+    assert!(!clash.expand_include_all);
+    assert_eq!(clash.web_ui_list, ["https://example.test/ui"]);
+    assert!(clash.overrides.secret() == "a-new-secret");
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn set_proxy_mode_writes_only_the_mode() {
+    let fixture = booted_fixture().await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    let (status, result) = fixture
+        .call("set_proxy_mode", json!({"mode": "global"}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let mut after = serde_json::to_value(client.get_clash_config().await.unwrap()).unwrap();
+    assert_eq!(after["overrides"]["mode"], "global");
+    after["overrides"]["mode"] = before["overrides"]["mode"].clone();
+    assert_eq!(after, before, "only the mode changed");
+    let (status, error) = fixture
+        .call("set_proxy_mode", json!({"mode": "bogus"}))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+    fixture.shutdown().await;
+}
+
+/// A policy that is saved but off: the test host cannot observe its network, and a policy that
+/// is on is refused there.
+fn network_rules_patch() -> Value {
+    json!({
+        "network_automation": {
+            "enabled": false,
+            "rules": [{
+                "id": "rule-id-sentinel",
+                "name": "rule-name-sentinel",
+                "conditions": {
+                    "wifi_ssid": "ssid-sentinel",
+                    "gateway_mac": "aa:bb:cc:dd:ee:ff",
+                },
+                "actions": {"tun": "disable"},
+            }],
+        }
+    })
+}
+
+/// The rules name the user's Wi-Fi networks and gateway MAC addresses: a `system` writer saves
+/// them, the full config returns them, and the settings a `read` caller gets carry only a flag.
+#[tokio::test]
+async fn network_rules_reach_a_read_caller_only_as_a_flag() {
+    let fixture = booted_fixture().await;
+    let (status, result) = fixture
+        .call(
+            "patch_system_settings",
+            json!({"patch": network_rules_patch()}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+
+    let (status, full) = fixture.call("get_app_config", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{full}");
+    assert_eq!(
+        full["network_automation"]["rules"][0]["conditions"]["wifi_ssid"], "ssid-sentinel",
+        "the editor still reads the saved rules: {full}"
+    );
+
+    let (status, settings) = fixture.call("get_app_settings", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{settings}");
+    let wire = settings.to_string();
+    for private in [
+        "sentinel",
+        "aa:bb:cc",
+        "wifi_ssid",
+        "gateway_mac",
+        "\"rules\"",
+    ] {
+        assert!(!wire.contains(private), "{private}: {wire}");
+    }
+    assert_eq!(settings["network_automation_enabled"], false);
+    assert!(settings.get("network_automation").is_none(), "{wire}");
+    fixture.shutdown().await;
+}
+
+/// The rules are written under `system` only: the general patch refuses them whole, and neither
+/// the refusal nor the commit leaves the rules in a message a settings caller can read.
+#[tokio::test]
+async fn network_rules_are_not_writable_through_the_general_patch() {
+    let fixture = booted_fixture().await;
+    let client = &fixture.rpc.dependencies.client;
+    let before = serde_json::to_value(client.get_app_config().await.unwrap()).unwrap();
+    let path = fixture.rpc.dependencies.paths.application_config_path();
+    let persisted = std::fs::read(&path).ok();
+    // Booting the fixture reconciles once, so the history is compared rather than expected empty.
+    let history = serde_json::to_value(client.configuration_status().recent_operations).unwrap();
+
+    for patch in [
+        network_rules_patch(),
+        json!({"network_automation": {}}),
+        json!({"network_automation": {"enabled": false}, "proxy_layout_column": 9}),
+    ] {
+        for transport in [RpcTransport::Http, RpcTransport::TauriIpc] {
+            let error = fixture
+                .rpc
+                .call(
+                    transport,
+                    "patch_app_config",
+                    RpcCaller::desktop("settings"),
+                    json!({"patch": patch}),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.kind, "invalid_params", "{patch}");
+            let wire = serde_json::to_string(&error).unwrap();
+            assert!(wire.contains("network_automation"), "{wire}");
+            for private in ["sentinel", "aa:bb:cc"] {
+                assert!(!wire.contains(private), "{private}: {wire}");
+            }
+            assert_eq!(
+                serde_json::to_value(client.get_app_config().await.unwrap()).unwrap(),
+                before,
+                "{patch}"
+            );
+            assert_eq!(std::fs::read(&path).ok(), persisted, "{patch}");
+        }
+    }
+    assert_eq!(
+        serde_json::to_value(client.configuration_status().recent_operations).unwrap(),
+        history
     );
     fixture.shutdown().await;
 }

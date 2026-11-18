@@ -1,5 +1,6 @@
 import AutoAwesomeRounded from '~icons/material-symbols/auto-awesome-rounded'
 import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
 import DesktopWindowsRounded from '~icons/material-symbols/desktop-windows-rounded'
@@ -10,6 +11,7 @@ import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import PowerSettingsNewRounded from '~icons/material-symbols/power-settings-new-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import ReceiptLongRounded from '~icons/material-symbols/receipt-long-rounded'
+import RouterRounded from '~icons/material-symbols/router-rounded'
 import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import SystemUpdateAltRounded from '~icons/material-symbols/system-update-alt-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
@@ -25,8 +27,12 @@ import {
   type NavigationListItemColor,
 } from '@nyanpasu/ui/navigation-list'
 import LogoSvg from '@/assets/image/logo.svg?react'
+import {
+  RequireCapability,
+  useCapabilities,
+} from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
-import { useCoreAgentSkills, useSetting } from '@nyanpasu/query'
+import { useCoreAgentSkillsSummary, useSetting } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { Link, useLinkProps } from '@tanstack/react-router'
@@ -89,11 +95,16 @@ function SettingsNavigationItem({
 }
 
 export default function SettingsNavigate() {
+  const { hasScope } = useCapabilities()
   const { value: currentCore } = useSetting('core')
-  const { data: agentSkills } = useCoreAgentSkills(currentCore)
+  const { data: agentSkills } = useCoreAgentSkillsSummary(currentCore)
 
   // The AI page hands agents the skills the current core ships.
   const hasAgentSkills = !!agentSkills?.length
+
+  // These pages edit the core's control plane, the service and the runtime
+  // from full documents; a caller that may not read secrets has no use for them.
+  const canSensitiveRead = hasScope('sensitive_read')
 
   return (
     <NavigationList aria-label={m.settings_navigation()}>
@@ -106,23 +117,27 @@ export default function SettingsNavigate() {
           description={m.settings_label_proxy_description()}
         />
 
-        <SettingsNavigationItem
-          to="/main/settings/system/service"
-          color="green"
-          icon={<PowerSettingsNewRounded />}
-          label={m.settings_label_service()}
-          description={m.settings_label_service_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/system/service"
+            color="green"
+            icon={<PowerSettingsNewRounded />}
+            label={m.settings_label_service()}
+            description={m.settings_label_service_description()}
+          />
+        )}
       </NavigationListGroup>
 
       <NavigationListGroup label={m.settings_group_clash()}>
-        <SettingsNavigationItem
-          to="/main/settings/clash/core-manager"
-          color="purple"
-          icon={<DeployedCodeRounded />}
-          label={m.settings_label_core_manager()}
-          description={m.settings_label_core_manager_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/core-manager"
+            color="purple"
+            icon={<DeployedCodeRounded />}
+            label={m.settings_label_core_manager()}
+            description={m.settings_label_core_manager_description()}
+          />
+        )}
 
         <SettingsNavigationItem
           to="/main/settings/clash/core"
@@ -132,31 +147,37 @@ export default function SettingsNavigate() {
           description={m.settings_label_core_settings_description()}
         />
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/network"
-          color="cyan"
-          icon={<LanRounded />}
-          label={m.settings_label_network()}
-          description={m.settings_label_network_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/network"
+            color="cyan"
+            icon={<LanRounded />}
+            label={m.settings_label_network()}
+            description={m.settings_label_network_description()}
+          />
+        )}
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/control"
-          color="blue"
-          icon={<SwapHorizRounded />}
-          label={m.settings_label_control()}
-          description={m.settings_label_control_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/control"
+            color="blue"
+            icon={<SwapHorizRounded />}
+            label={m.settings_label_control()}
+            description={m.settings_label_control_description()}
+          />
+        )}
 
-        <SettingsNavigationItem
-          to="/main/settings/clash/runtime"
-          color="yellow"
-          icon={<DataObjectRounded />}
-          label={m.settings_label_runtime()}
-          description={m.settings_label_runtime_description()}
-        />
+        {canSensitiveRead && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/runtime"
+            color="yellow"
+            icon={<DataObjectRounded />}
+            label={m.settings_label_runtime()}
+            description={m.settings_label_runtime_description()}
+          />
+        )}
 
-        {hasAgentSkills && (
+        {canSensitiveRead && hasAgentSkills && (
           <SettingsNavigationItem
             to="/main/settings/clash/ai"
             color="green"
@@ -223,6 +244,24 @@ export default function SettingsNavigate() {
           label={m.settings_label_updates()}
           description={m.settings_label_updates_description()}
         />
+
+        <SettingsNavigationItem
+          to="/main/settings/sync"
+          color="cyan"
+          icon={<CloudSyncRounded />}
+          label={m.settings_label_sync()}
+          description={m.settings_label_sync_description()}
+        />
+
+        <RequireCapability scope="remote_admin">
+          <SettingsNavigationItem
+            to="/main/settings/nyanpasu/remote-access"
+            color="green"
+            icon={<RouterRounded />}
+            label={m.settings_label_remote_access()}
+            description={m.settings_label_remote_access_description()}
+          />
+        </RequireCapability>
 
         <SettingsNavigationItem
           to="/main/settings/debug"

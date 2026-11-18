@@ -3,19 +3,31 @@
 use std::sync::Arc;
 
 use nyanpasu_core::client::effects::ports::LogRotation;
-use nyanpasu_rpc::registry::{CommandEntry, RpcDependencies, RpcFuture};
-use nyanpasu_rpc_protocol::{CommandKind, CommandMetadata, RpcError, RpcOwner, RpcTarget};
+use nyanpasu_rpc::registry::{CommandEntry, RpcCallMeta, RpcCaller, RpcDependencies, RpcFuture};
+use nyanpasu_rpc_protocol::{
+    CommandEffect, CommandKind, CommandMetadata, RpcError, RpcTarget, Scope,
+};
 use serde_json::Value;
 
 const PANIC_PAYLOAD: &str = "e4b-fatal-original-payload-53fd73";
 
-fn panic_handler(_: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+fn panic_handler(
+    _: Arc<RpcDependencies>,
+    _: RpcCallMeta,
+    _: RpcCaller,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
     Ok(Box::pin(nyanpasu_rpc::registry::unreported(async {
         panic!("{PANIC_PAYLOAD}")
     })))
 }
 
-fn owner_work(deps: Arc<RpcDependencies>, _: RpcOwner, _: Value) -> Result<RpcFuture, RpcError> {
+fn owner_work(
+    deps: Arc<RpcDependencies>,
+    _: RpcCallMeta,
+    _: RpcCaller,
+    _: Value,
+) -> Result<RpcFuture, RpcError> {
     use struct_patch::Patch as _;
     Ok(Box::pin(nyanpasu_rpc::registry::unreported(async move {
         let mut patch = nyanpasu_config::application::NyanpasuAppConfig::new_empty_patch();
@@ -40,6 +52,7 @@ pub(crate) fn logger_refresh(rotation: Option<&LogRotation>) {
 inventory::submit! {
     CommandEntry {
         metadata: CommandMetadata { name: "e4b_test_panic", kind: CommandKind::Shared,
+            effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Http, RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: panic_handler,
     }
@@ -48,6 +61,7 @@ inventory::submit! {
 inventory::submit! {
     CommandEntry {
         metadata: CommandMetadata { name: "e4b_test_owner_work", kind: CommandKind::Shared,
+            effect: CommandEffect::Mutation, scope: Scope::Settings,
             targets: &[RpcTarget::Local], capabilities: &[], optional_capabilities: &[] },
         handler: owner_work,
     }

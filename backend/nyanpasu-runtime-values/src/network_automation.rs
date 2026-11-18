@@ -58,3 +58,84 @@ impl NetworkAutomationStatus {
         }
     }
 }
+
+/// What applying one action did to its mechanism's switch, without the refusal text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MechanismOutcomeKind {
+    Unchanged,
+    Enabled,
+    Disabled,
+    Failed,
+}
+
+impl From<&MechanismOutcome> for MechanismOutcomeKind {
+    fn from(outcome: &MechanismOutcome) -> Self {
+        match outcome {
+            MechanismOutcome::Unchanged => Self::Unchanged,
+            MechanismOutcome::Enabled => Self::Enabled,
+            MechanismOutcome::Disabled => Self::Disabled,
+            MechanismOutcome::Failed { message: _ } => Self::Failed,
+        }
+    }
+}
+
+/// One outcome kind per capture mechanism.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct MechanismOutcomeKinds {
+    pub system_proxy: MechanismOutcomeKind,
+    pub tun: MechanismOutcomeKind,
+    pub transparent_proxy: MechanismOutcomeKind,
+}
+
+/// The last application without the rule's identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct NetworkAutomationApplicationSummary {
+    /// Whether a rule decided, rather than the default actions. The rule's id is the user's
+    /// own label for a network, so it stays with `sensitive_read`.
+    pub matched_rule: bool,
+    pub outcomes: MechanismOutcomeKinds,
+}
+
+impl From<&NetworkAutomationApplication> for NetworkAutomationApplicationSummary {
+    fn from(application: &NetworkAutomationApplication) -> Self {
+        let NetworkAutomationApplication { matched, outcomes } = application;
+        let MechanismOutcomes {
+            system_proxy,
+            tun,
+            transparent_proxy,
+        } = outcomes;
+        Self {
+            matched_rule: matches!(matched, NetworkMatch::Rule { id: _ }),
+            outcomes: MechanismOutcomeKinds {
+                system_proxy: system_proxy.into(),
+                tun: tun.into(),
+                transparent_proxy: transparent_proxy.into(),
+            },
+        }
+    }
+}
+
+/// Safe network automation summary for callers without `Scope::SensitiveRead`.
+///
+/// The network reading holds the Wi-Fi name and the gateway's MAC address, and the matched rule
+/// names one of the user's networks, so none of them is part of this view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct NetworkAutomationSummary {
+    pub supported: bool,
+    pub applied: Option<NetworkAutomationApplicationSummary>,
+}
+
+impl From<&NetworkAutomationStatus> for NetworkAutomationSummary {
+    fn from(status: &NetworkAutomationStatus) -> Self {
+        let NetworkAutomationStatus {
+            supported,
+            network: _,
+            applied,
+        } = status;
+        Self {
+            supported: *supported,
+            applied: applied.as_ref().map(Into::into),
+        }
+    }
+}

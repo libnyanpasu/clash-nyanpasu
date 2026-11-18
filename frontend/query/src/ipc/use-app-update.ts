@@ -6,14 +6,14 @@ import { useQueryApi } from '../provider/rpc-provider'
 
 export const APP_UPDATE_QUERY_KEY = ['getAppUpdateState'] as const
 
-export function acceptAppUpdateSnapshot(
-  previous: AppUpdateSnapshot | undefined,
-  next: AppUpdateSnapshot,
+export function acceptAppUpdateSnapshot<T extends { revision: number }>(
+  previous: T | undefined,
+  next: T,
 ) {
   return previous && previous.revision >= next.revision ? previous : next
 }
 
-/** Shares backend-owned update state and operations with application surfaces. */
+/** Shares the desktop update state and operations; browser surfaces disable updates. */
 export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const api = useQueryApi()
   const queryClient = useQueryClient()

@@ -1,7 +1,9 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { permits } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
+import { HTTP_COMMANDS } from '@nyanpasu/rpc'
 import type {
   AccessTokenSummary,
   BrowserSessionSummary,
@@ -15,6 +17,7 @@ import {
 import { Route } from '../src/pages/(main)/main/settings/nyanpasu/remote-access'
 import AccessTokens from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/access-tokens'
 import BrowserSessions from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/browser-sessions'
+import GrantReach from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/grant-reach'
 import ServerSettings from '../src/pages/(main)/main/settings/nyanpasu/remote-access/_modules/server-settings'
 import { AllPermissions, withPermissions } from './all-permissions'
 
@@ -774,6 +777,43 @@ test('a certificate that cannot be prepared is reported while the setting stays 
     .toHaveTextContent(m.settings_remote_access_fault_tls_unavailable())
 })
 
+test('a grant lists every HTTP command it can call with its permission', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <GrantReach held={{ proxy: 'read' }} />,
+  )
+  // Every caller also holds `meta:read`, so capability discovery is listed too.
+  const reached = HTTP_COMMANDS.filter((command) =>
+    permits(
+      { proxy: 'read' },
+      `${command.permission.resource}:${command.permission.access}`,
+    ),
+  )
+  expect(
+    reached.some((command) => command.permission.resource === 'meta'),
+  ).toBe(true)
+  const writer = HTTP_COMMANDS.find(
+    (command) => command.permission.access === 'write',
+  )!
+
+  await expect
+    .element(
+      view.getByText(
+        m.settings_remote_access_reach_title({
+          count: reached.length,
+          sensitive: reached.filter((command) => command.sensitive).length,
+        }),
+      ),
+    )
+    .toBeInTheDocument()
+  for (const command of reached) {
+    expect(view.getByText(command.name, { exact: true }).query()).not.toBeNull()
+  }
+  expect(view.getByText(writer.name, { exact: true }).query()).toBeNull()
+})
+
 const token = (over: Partial<AccessTokenSummary> = {}): AccessTokenSummary => ({
   id: 't1',
   name: 'laptop',
@@ -822,7 +862,8 @@ test('the token is shown once and the dialog stays until it is confirmed saved',
   await dialog
     .getByRole('textbox', { name: m.settings_remote_access_token_name() })
     .fill('phone')
-  // A role is chosen by default; a custom map offers every resource but remote.
+  // A role is chosen by default and explains itself; its grid shows what it grants and cannot
+  // be edited.
   await expect
     .element(
       dialog.getByRole('radio', {
@@ -830,6 +871,41 @@ test('the token is shown once and the dialog stays until it is confirmed saved',
       }),
     )
     .toBeChecked()
+  await expect
+    .element(
+      dialog.getByText(m.settings_remote_access_role_viewer_description()),
+    )
+    .toBeVisible()
+  await expect
+    .element(
+      dialog.getByLabelText(
+        `${m.settings_remote_access_resource_proxy()}: ${m.settings_remote_access_access_read()}`,
+      ),
+    )
+    .toBeVisible()
+  expect(
+    dialog
+      .getByRole('radiogroup', {
+        name: m.settings_remote_access_resource_proxy(),
+      })
+      .query(),
+  ).toBeNull()
+  await dialog
+    .getByRole('radio', { name: m.settings_remote_access_role_admin() })
+    .click()
+  await expect
+    .element(
+      dialog.getByText(m.settings_remote_access_role_admin_description()),
+    )
+    .toBeVisible()
+  await expect
+    .element(
+      dialog.getByLabelText(
+        `${m.settings_remote_access_resource_system()}: ${m.settings_remote_access_access_write()}`,
+      ),
+    )
+    .toBeVisible()
+  // A custom map offers every resource but remote.
   await dialog
     .getByRole('radio', { name: m.settings_remote_access_role_custom() })
     .click()

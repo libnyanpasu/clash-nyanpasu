@@ -25,10 +25,10 @@ import {
 } from '../../../../_modules/settings-card'
 import AccessAddresses from './access-addresses'
 import CertificateSettings from './certificate-settings'
+import GrantReach from './grant-reach'
 import LanAllowList, { defaultLanAllow } from './lan-allow-list'
 import PermissionGrid from './permission-grid'
 import PortSettings from './port-settings'
-import SensitiveReach from './sensitive-reach'
 
 const LISTEN_SCOPES = ['local', 'lan', 'any'] as const satisfies HttpListen[]
 
@@ -340,7 +340,7 @@ export default function ServerSettings() {
                     onChange={(next) => change({ anonymous_permissions: next })}
                   />
 
-                  <SensitiveReach held={anonymousPermissions} />
+                  <GrantReach held={anonymousPermissions} />
                 </div>
               </>
             )}

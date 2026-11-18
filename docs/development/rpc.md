@@ -406,8 +406,8 @@ that become the frontend bindings are checked against it.
   configuration text, paths or diagnostics (the Clash secret, profile or runtime contents,
   generic storage, the clipboard, sync logs that echo request URLs). It never takes part in
   admission: a sensitive read requires its domain's `read` like any other. `rpc_describe` reports
-  it, the token dialog and the anonymous settings list the sensitive commands of the desktop that
-  a grant reaches, and `nyanpasu-cli remote token create` lists, in its human-readable output, those
+  it, the token dialog and the anonymous settings list every HTTP command a grant reaches with its
+  permission and effect and mark the sensitive ones, and `nyanpasu-cli remote token create` lists, in its human-readable output, those
   its local connection describes, which omits HTTP-only commands. The reserved data sharing layer
   will gate their responses. A shell, OS or elevation facility needs
   `system:write`.
@@ -431,8 +431,9 @@ that become the frontend bindings are checked against it.
   `owner` (adds `remote:write`). Admission never sees a role, only the expanded permissions.
   The RPC bindings export the expansions as `ROLE_PERMISSIONS`, the anonymous limit as
   `ANONYMOUS_PERMISSIONS_LIMIT`, and what a token can be granted (`Grant::ASSIGNABLE_ROLES`,
-  `Grant::grantable_resources`) as `ASSIGNABLE_ROLES` and `GRANTABLE_RESOURCES`; the frontend
-  reads them from `@nyanpasu/rpc` rather than copying them.
+  `Grant::grantable_resources`) as `ASSIGNABLE_ROLES` and `GRANTABLE_RESOURCES`, and the commands
+  HTTP offers (name, namespace, permission, effect and `sensitive`, from the resource table) as
+  `HTTP_COMMANDS`; the frontend reads them from `@nyanpasu/rpc` rather than copying them.
 - The resource table tests pin the sensitive set, the HTTP-reachable `system:write` set and the
   `remote` set with its Local subset, so changing any of them is a reviewed change.
 

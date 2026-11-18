@@ -55,8 +55,8 @@ pub struct CommandMetadata {
     pub kind: CommandKind,
     /// Whether the command only reads.
     pub effect: CommandEffect,
-    /// The one scope a principal must hold to call the command, resolved from the declaration's
-    /// permission when it is expanded.
+    /// The one scope a principal must hold to call the command. Queries default to
+    /// [`Scope::Read`]; every mutation names its scope explicitly.
     pub scope: Scope,
     /// Explicit transport exposure.
     pub targets: &'static [RpcTarget],

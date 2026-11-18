@@ -9,11 +9,7 @@ use nyanpasu_rpc_protocol::values::TrayIcon;
 
 use crate::{ports::HostIconFiles, registry::RpcState};
 
-#[nyanpasu_macro::rpc(
-    http,
-    capabilities(presentation),
-    permission = "system.tray_icon_bytes:set"
-)]
+#[nyanpasu_macro::rpc(http, capabilities(presentation), scope = system)]
 #[specta::specta]
 pub async fn set_tray_icon_from_bytes(
     client: RpcState<'_, NyanpasuClient>,
@@ -28,7 +24,7 @@ pub async fn set_tray_icon_from_bytes(
     Ok(())
 }
 
-#[nyanpasu_macro::rpc(http, query, permission = "tray_icon.custom:view")]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn is_tray_icon_set(
     icons: RpcState<'_, dyn HostIconFiles>,
@@ -38,7 +34,7 @@ pub async fn is_tray_icon_set(
     Ok(icons.is_tray_icon_set(paths, mode).await)
 }
 
-#[nyanpasu_macro::rpc(http, query, permission = "widget_icon.custom:view")]
+#[nyanpasu_macro::rpc(http, query)]
 #[specta::specta]
 pub async fn is_widget_icon_set(
     icons: RpcState<'_, dyn HostIconFiles>,
@@ -48,11 +44,7 @@ pub async fn is_widget_icon_set(
     Ok(icons.is_widget_icon_set(paths, mode))
 }
 
-#[nyanpasu_macro::rpc(
-    http,
-    capabilities(presentation),
-    permission = "system.widget_icon_bytes:set"
-)]
+#[nyanpasu_macro::rpc(http, capabilities(presentation), scope = system)]
 #[specta::specta]
 pub async fn set_widget_icon_from_bytes(
     client: RpcState<'_, NyanpasuClient>,

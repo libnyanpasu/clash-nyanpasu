@@ -2,10 +2,10 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
 mod builder_update;
+#[cfg(test)]
 mod command_catalog;
 mod enum_wrapper_combined;
 mod owned_fields;
-mod permission;
 mod unified_command;
 mod verge_patch;
 
@@ -55,21 +55,5 @@ pub fn rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
     match unified_command::expand_with_options(item, options) {
         Ok(tokens) => TokenStream::from(tokens),
         Err(error) => TokenStream::from(error.to_compile_error()),
-    }
-}
-
-/// Regenerates the aggregate permission table of the production `rpc` declarations under
-/// `$OUT_DIR/rpc_permission_table.txt` whenever the invoking crate is compiled, and declares it as
-/// `RPC_PERMISSION_TABLE`. It reads the declaration roots of `command_catalog`, resolves every
-/// permission through the same table as `#[rpc]`, and writes nothing outside `OUT_DIR`.
-/// The invoking package must have a build script, which is what makes cargo provide `OUT_DIR`.
-#[proc_macro]
-pub fn rpc_permission_table(input: TokenStream) -> TokenStream {
-    if !input.is_empty() {
-        return quote::quote!(compile_error!("rpc_permission_table! takes no arguments");).into();
-    }
-    match command_catalog::expand_permission_table() {
-        Ok(tokens) => tokens.into(),
-        Err(message) => quote::quote!(compile_error!(#message);).into(),
     }
 }

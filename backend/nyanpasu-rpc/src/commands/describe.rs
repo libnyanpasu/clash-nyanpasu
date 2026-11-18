@@ -15,8 +15,7 @@ use crate::registry::RpcDescribeContext;
     local,
     http,
     query,
-    operation = nyanpasu_rpc_protocol::operations::RpcDescribe,
-    permission = "rpc.describe:view",
+    operation = nyanpasu_rpc_protocol::operations::RpcDescribe
 )]
 #[specta::specta]
 pub fn rpc_describe(context: RpcDescribeContext) -> RpcDescribeResponse {

@@ -4,8 +4,8 @@
 //! availability through these predicates inside the audited admission seam.
 
 use nyanpasu_rpc_protocol::{
-    AuthContext, CommandEffect, CommandKind, CommandMetadata, DescribedCommand, EventName,
-    RpcError, RpcTarget, Scope, ShellCapability,
+    AuthContext, CommandEffect, DescribedCommand, EventName, RpcError, RpcTarget, Scope,
+    ShellCapability, permission::ResourceMetadata,
 };
 
 use crate::registry::CommandHandlers;
@@ -16,7 +16,7 @@ pub(crate) const RPC_DESCRIBE_METHOD: &str = "rpc_describe";
 /// Return `true` when `command` is exposed on `target`, has all required shell
 /// capabilities in the running host, and has a linked executable handler.
 pub(crate) fn is_command_runnable(
-    metadata: &CommandMetadata,
+    metadata: &ResourceMetadata,
     capabilities_available: bool,
     has_neutral_handler: bool,
     native_linked: bool,
@@ -25,9 +25,10 @@ pub(crate) fn is_command_runnable(
     if !metadata.targets.contains(&target) || !capabilities_available {
         return false;
     }
-    match (target, metadata.kind) {
-        (RpcTarget::Desktop, CommandKind::Native) => native_linked,
-        _ => has_neutral_handler,
+    if target == RpcTarget::Desktop && metadata.is_native_command() {
+        native_linked
+    } else {
+        has_neutral_handler
     }
 }
 
@@ -38,7 +39,7 @@ pub(crate) fn is_command_runnable(
 /// handler linkage, and independent scope ownership (with the documented
 /// resolved-identity exception for `rpc_describe`).
 pub(crate) fn is_command_allowed(
-    metadata: &CommandMetadata,
+    metadata: &ResourceMetadata,
     capabilities_available: bool,
     has_neutral_handler: bool,
     native_linked: bool,
@@ -55,7 +56,7 @@ pub(crate) fn is_command_allowed(
 }
 
 /// Whether `auth` satisfies the authority requirement of `command`.
-pub(crate) fn has_command_scope(metadata: &CommandMetadata, auth: &AuthContext) -> bool {
+pub(crate) fn has_command_scope(metadata: &ResourceMetadata, auth: &AuthContext) -> bool {
     if metadata.name == RPC_DESCRIBE_METHOD {
         // Approved own-only self-inspection exception: any resolved principal
         // may call `rpc_describe` without holding `Scope::Read`.
@@ -68,7 +69,7 @@ pub(crate) fn has_command_scope(metadata: &CommandMetadata, auth: &AuthContext) 
 /// Admit a command invocation after the registry confirms `command` exists and is
 /// runnable on `target`.
 pub(crate) fn admit_resolved_command(
-    metadata: &CommandMetadata,
+    metadata: &ResourceMetadata,
     caller: Option<&AuthContext>,
 ) -> Result<(), RpcError> {
     let auth = caller.ok_or_else(|| RpcError::unauthorized("authentication required"))?;

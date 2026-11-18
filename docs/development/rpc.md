@@ -241,28 +241,46 @@ application and transport-parse error privacy across non-`SensitiveRead` scopes
 non-`SensitiveRead` scopes safe for scoped tokens and `local_open`.
 The allowlist is independent of HTTP; signature compatibility never grants exposure.
 
-The committed `nyanpasu-rpc-protocol/src/command_catalog.rs` is generated from
-the same declarations as handler metadata. Its development-only extractor in
-`nyanpasu-rpc-macro` follows the explicitly listed production roots (currently
-`tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`) through inline and ordinary
-external modules, inherits
-ancestor `cfg`/`cfg_attr` guards and excludes test fixtures. It does not resolve
-arbitrary Rust module systems or add a protocol build dependency on application
-code. When commands move, migrate the roots, schema and handler inventories
-together. Run from `backend/`:
+The committed resource table `nyanpasu-rpc-protocol/src/permission/generated.rs`
+(`RESOURCES`, rows of `ResourceMetadata`) is the only source of a command's authorization
+metadata: name, logical namespace, kind, effect, scope, source, targets and capabilities.
+`#[rpc]` registers only implementation facts (`CommandEntry`: name, kind, whether the neutral
+handler is transport-neutral, and the handler); the registry matches each linked entry to its
+row by name and refuses an entry without one (`SetupError::UndeclaredCommand`).
+
+The table's development-only generator in `nyanpasu-rpc-macro` follows the explicitly listed
+production roots (currently `tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`, treated
+as one module tree) through inline and ordinary external modules, records each declaration's
+module path below its root as the row's `namespace`, inherits ancestor `cfg`/`cfg_attr` guards
+and excludes test fixtures. It owns every rule about what a declaration may say: a mutation must
+name a scope, and only the desktop root may declare native commands. It reports every invalid
+declaration at once. It does not resolve arbitrary Rust module systems or add a protocol build
+dependency on application code. Every row is currently `PermissionSource::Legacy` (a
+`scope = ...` written on the declaration); `MAX_LEGACY` in the protocol tests equals their
+number and only goes down. When commands move, migrate the roots, schema and handler
+inventories together. Run from `backend/`:
 
 ```sh
-cargo test -p nyanpasu-rpc-macro --features syn/full export_rpc_command_catalog -- --ignored
-cargo test -p nyanpasu-rpc-macro --features syn/full rpc_command_catalog_is_fresh
+cargo test -p nyanpasu-rpc-macro --features syn/full export_rpc_resource_table -- --ignored
+cargo test -p nyanpasu-rpc-macro --features syn/full rpc_resource_table_is_fresh
 cargo test -p nyanpasu-rpc-macro --features syn/full export_capability_inventory -- --ignored
 ```
 
 The exporter writes explicitly; the freshness test only compares. Regenerate
-after changing names, targets, capabilities or declaration guards. The registry
-loads catalog metadata before associating linked handlers, so an unlinked native
-wrapper leaves a known command returning `unsupported`. Coverage tests distinguish
-native wrappers, shared handlers and unlinked catalog entries. Regenerate the
-three frontend bindings as well; this seam must leave them unchanged.
+after changing names, targets, capabilities, scopes, modules or declaration guards. The
+registry loads the table before associating linked handlers, so an unlinked native
+wrapper leaves a known command returning `unsupported`. The host coverage test
+(`assert_command_category_inventory`) checks that each row has exactly one linked declaration
+of its kind and that a row exposed beyond the desktop has a transport-neutral handler.
+Declarations that exist only in tests have hand-written rows in
+`nyanpasu-rpc/src/registry/test_resources.rs`, compiled under `test` or the dependency-free
+`test-resources` feature (implied by `test-support`). Regenerate the three frontend bindings
+as well; this seam must leave them unchanged.
+
+`nyanpasu-rpc/src/permission_baseline.rs` compares the authorization of every command, event,
+route and stream with the reviewed baseline in `nyanpasu-rpc/tests/fixtures/permission-baseline.txt`,
+on every transport for the unresolved caller and every subset of the scopes. A change that is
+not meant to alter authorization must leave that comparison empty.
 
 The capability inventory uses Linux's rows as one `[baseline]`, with per-platform
 differences: `+ row` adds or replaces a command and `- name` removes it. Its
@@ -281,16 +299,16 @@ service-install prompt formatting and accent queries use consumer-owned ports in
 ### Declare effect and scope
 
 Every `rpc` declaration states what the command does and which scope a principal must hold
-to call it. The declaration is the single source: it generates the `effect` and `scope`
-fields of the committed catalog (`command_catalog.rs`) and the capability inventory, and the
-Specta query/mutation groups that become the frontend bindings are checked against it.
+to call it. The declaration is the single source: the generator turns it into the `effect` and
+`scope` fields of the committed resource table and the capability inventory, and the Specta
+query/mutation groups that become the frontend bindings are checked against it.
 
 - `query` marks a command that only reads and changes nothing. It defaults to the `read`
   scope. Declare another scope when the operation needs it: secret-bearing reads use
   `sensitive_read`, latency measurements use `proxy`, and management queries can use
   `remote_admin`. Effect and authorization class are independent.
-- Everything else is a mutation and MUST declare `scope = ...`; a mutation without one does
-  not compile. A mutation may hold `read` when it only allocates a resource the caller owns
+- Everything else is a mutation and MUST declare `scope = ...`; the resource table
+  generator rejects a mutation without one. A mutation may hold `read` when it only allocates a resource the caller owns
   (a log session, a subscription). Operations that read but advance a cursor, allocate a
   session or otherwise change application state are mutations. Observational queries may
   refresh read models or measure network latency; their scope still limits who may request them.
@@ -314,7 +332,7 @@ Specta query/mutation groups that become the frontend bindings are checked again
   Local-reachable and never lifts a shell, OS or elevation restriction; target and
   capability admission still apply. `remote_admin` commands are never HTTP: only Desktop and
   the same-user local socket, whose principal holds every scope, may call them.
-- The catalog tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
+- The resource table tests pin the `sensitive_read` set, the HTTP-reachable `system` set and the
   `remote_admin` set with its Local subset, so changing any of them is a reviewed change.
 
 ### Declare capabilities and preserve transport semantics
@@ -808,7 +826,7 @@ To bind a local command after its exposure has been separately reviewed:
    declared success type.
 3. Keep unit requests compatible with both `null` and `{}`; nonempty objects and
    other JSON inputs are rejected. Add request/receiving fixtures, compile-fail
-   binding checks and a typed real-server round trip. Regenerate the catalog when
+   binding checks and a typed real-server round trip. Regenerate the resource table when
    metadata changes, and regenerate all three frontend bindings. A contract-only
    refactor must leave those files byte-identical.
 
@@ -830,7 +848,7 @@ Request/Response/name binding and real local round trips prove dispatch and
 owner behavior.
 
 `command_scope_is_identical_across_rpc_transports` exercises preparation for
-every catalog command with multiple targets, including dedicated-field patches
+every command in the resource table with multiple targets, including dedicated-field patches
 on Desktop/HTTP and Local requests on all three transports. Existing server
 composition tests
 `server_refuses_elevation_on_config_retry_compensation_and_copy_paths_*`

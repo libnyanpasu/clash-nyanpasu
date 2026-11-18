@@ -1,7 +1,7 @@
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
-use crate::{COMMAND_CATALOG, RpcTarget, operation::RpcOperation, operations};
+use crate::{RpcTarget, operation::RpcOperation, operations, permission::RESOURCES};
 
 #[test]
 fn operation_methods_match_the_local_catalog() {
@@ -21,7 +21,7 @@ fn operation_methods_match_the_local_catalog() {
         operations::CloseLogSession::NAME,
         operations::RpcDescribe::NAME,
     ];
-    let mut catalog: Vec<_> = COMMAND_CATALOG
+    let mut catalog: Vec<_> = RESOURCES
         .iter()
         .filter(|command| command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)

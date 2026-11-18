@@ -223,7 +223,7 @@ fn delayed_open(
     Ok(Box::pin(async move {
         let original = inventory::iter::<CommandEntry>
             .into_iter()
-            .find(|entry| entry.metadata.name == "open_log_session")
+            .find(|entry| entry.name == "open_log_session")
             .unwrap()
             .handler;
         let owner_label = caller.owner().label().to_owned();
@@ -585,7 +585,7 @@ fn delayed_close(
     Ok(Box::pin(async move {
         let original = inventory::iter::<CommandEntry>
             .into_iter()
-            .find(|entry| entry.metadata.name == "close_log_session")
+            .find(|entry| entry.name == "close_log_session")
             .unwrap()
             .handler;
         let mut release = deps.events.subscribe();

@@ -3,18 +3,23 @@ use quote::{format_ident, quote};
 use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 
 #[derive(Default)]
+/// The arguments of `#[rpc(...)]`.
+///
+/// Only the implementation reads `result`, `owner`, `privacy` and `operation`. The other options
+/// are authorization metadata, which the resource table generator reads from the declaration; the
+/// expansion uses `http` and `local` only to require a transport-neutral signature.
 pub struct Options {
-    http: bool,
-    local: bool,
-    capabilities: Vec<syn::Ident>,
-    optional_capabilities: Vec<syn::Ident>,
+    pub(crate) http: bool,
+    pub(crate) local: bool,
+    pub(crate) capabilities: Vec<syn::Ident>,
+    pub(crate) optional_capabilities: Vec<syn::Ident>,
     result: bool,
-    owner: bool,
+    pub(crate) owner: bool,
     privacy: bool,
     operation: Option<syn::Path>,
     /// A query only reads. Every other command is a mutation.
-    query: bool,
-    scope: Option<syn::Ident>,
+    pub(crate) query: bool,
+    pub(crate) scope: Option<syn::Ident>,
 }
 
 impl syn::parse::Parse for Options {
@@ -97,83 +102,6 @@ pub(super) fn is_native(item: &ItemFn) -> bool {
     })
 }
 
-pub(super) fn metadata(item: &ItemFn, options: &Options, protocol: TokenStream) -> TokenStream {
-    let name = item.sig.ident.to_string();
-    let kind = if is_native(item) {
-        quote!(Native)
-    } else {
-        quote!(Shared)
-    };
-    let mut targets = vec![quote!(#protocol::RpcTarget::Desktop)];
-    if options.http {
-        targets.push(quote!(#protocol::RpcTarget::Http));
-    }
-    if options.local {
-        targets.push(quote!(#protocol::RpcTarget::Local));
-    }
-    let capabilities = |values: &[syn::Ident]| {
-        values
-            .iter()
-            .map(|value| {
-                let name: String = value
-                    .to_string()
-                    .split('_')
-                    .map(|part| {
-                        let mut chars = part.chars();
-                        chars
-                            .next()
-                            .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
-                            .unwrap_or_default()
-                    })
-                    .collect();
-                let variant = format_ident!("{}", name, span = value.span());
-                quote!(#protocol::ShellCapability::#variant)
-            })
-            .collect::<Vec<_>>()
-    };
-    let required = capabilities(&options.capabilities);
-    let optional = capabilities(&options.optional_capabilities);
-    let effect = if options.query {
-        quote!(Query)
-    } else {
-        quote!(Mutation)
-    };
-    let scope = scope_variant(options);
-    quote! {
-        #protocol::CommandMetadata {
-            name: #name,
-            kind: #protocol::CommandKind::#kind,
-            effect: #protocol::CommandEffect::#effect,
-            scope: #protocol::Scope::#scope,
-            targets: &[#(#targets),*],
-            capabilities: &[#(#required),*],
-            optional_capabilities: &[#(#optional),*],
-        }
-    }
-}
-
-/// The scope variant a declaration resolves to. A query that names no scope reads without secrets.
-/// Mutations name theirs explicitly; `validate` rejects a mutation that does not.
-fn scope_variant(options: &Options) -> syn::Ident {
-    match &options.scope {
-        Some(scope) => {
-            let name: String = scope
-                .to_string()
-                .split('_')
-                .map(|part| {
-                    let mut chars = part.chars();
-                    chars
-                        .next()
-                        .map(|first| first.to_ascii_uppercase().to_string() + chars.as_str())
-                        .unwrap_or_default()
-                })
-                .collect();
-            format_ident!("{}", name, span = scope.span())
-        }
-        None => format_ident!("Read"),
-    }
-}
-
 pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
     let original = &item.sig;
     if !options.privacy
@@ -190,12 +118,6 @@ pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
         return Err(Error::new(
             original.output.span(),
             "commands returning `RpcMutationOutcome`, `RpcAppUpdateOutcome` or `RpcNetworkAutomationStatus` must specify `privacy` (and raw `MutationOutcome` must wrap via `RpcMutationOutcome` + `privacy`)",
-        ));
-    }
-    if options.scope.is_none() && !options.query {
-        return Err(Error::new(
-            item.sig.ident.span(),
-            "a mutation requires an explicit `scope = ...`; a read-only command declares `query`",
         ));
     }
     let native = is_native(item);
@@ -228,7 +150,6 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
     let neutral_handler = format_ident!("__unified_rpc_{}", name);
     let native = is_native(&item);
     let neutral_compatible = can_share_with_neutral(original, options.owner);
-    let metadata = metadata(&item, &options, quote!(::nyanpasu_rpc_protocol));
     let operation = options.operation.as_ref();
     let operation_trait = quote!(::nyanpasu_rpc_protocol::operation::RpcOperation);
     let name_check = operation.map(|operation| {
@@ -246,6 +167,11 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         }
     });
     let tauri_handler = format_ident!("__unified_tauri_{}", name);
+    let kind = if native {
+        quote!(Native)
+    } else {
+        quote!(Shared)
+    };
 
     let mut implementation = item.clone();
     implementation.attrs = item
@@ -560,7 +486,9 @@ pub fn expand_with_options(item: ItemFn, options: Options) -> syn::Result<TokenS
         #(#cfg_attrs)*
         ::inventory::submit! {
             ::nyanpasu_rpc::registry::CommandEntry {
-                metadata: #metadata,
+                name: stringify!(#name),
+                kind: ::nyanpasu_rpc_protocol::CommandKind::#kind,
+                transport_neutral: #neutral_enabled,
                 handler: #neutral_handler,
             }
         }
@@ -827,54 +755,48 @@ mod tests {
 
     use super::expand;
 
+    /// Scope, effect, targets and capabilities belong to the resource table; the registration
+    /// says only what was implemented.
     #[test]
-    fn scope_is_required_for_a_mutation() {
-        let error = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http)]
-            fn update() -> bool { true }
-        })
-        .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("a mutation requires an explicit")
-        );
-    }
-
-    #[test]
-    fn scope_defaults_to_read_for_a_query() {
-        let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, query)]
-            fn status() -> bool { true }
-        })
-        .unwrap()
-        .to_string();
-        assert!(expanded.contains("effect : :: nyanpasu_rpc_protocol :: CommandEffect :: Query"));
-        assert!(expanded.contains("scope : :: nyanpasu_rpc_protocol :: Scope :: Read"));
-    }
-
-    #[test]
-    fn scope_is_independent_of_query_effect() {
-        for scope in ["proxy", "remote_admin", "sensitive_read"] {
-            let item = syn::parse_str(&format!(
-                "#[nyanpasu_rpc::rpc(query, scope = {scope})] fn inspect() -> bool {{ true }}"
-            ))
-            .unwrap();
+    fn registration_carries_only_implementation_facts() {
+        for item in [
+            syn::parse_quote! {
+                #[nyanpasu_rpc::rpc(http, local, query, scope = sensitive_read, capabilities(clipboard), optional_capabilities(elevation))]
+                fn shared(value: String) -> String { value }
+            },
+            syn::parse_quote! {
+                #[nyanpasu_rpc::rpc(scope = system, capabilities(opener))]
+                #[tauri::command]
+                fn native(window: tauri::Window) -> bool { true }
+            },
+        ] {
+            let item: ItemFn = item;
+            let native = super::is_native(&item);
             let expanded = expand(item).unwrap().to_string();
-            assert!(expanded.contains("CommandEffect :: Query"), "{scope}");
+            for metadata in [
+                "Scope ::",
+                "CommandEffect ::",
+                "RpcTarget ::",
+                "ShellCapability ::",
+                "ResourceMetadata",
+            ] {
+                assert!(!expanded.contains(metadata), "{metadata} in {expanded}");
+            }
+            let kind = if native { "Native" } else { "Shared" };
+            assert!(expanded.contains(&format!(
+                "kind : :: nyanpasu_rpc_protocol :: CommandKind :: {kind}"
+            )));
+            assert!(expanded.contains(&format!("transport_neutral : {}", !native)));
         }
     }
 
     #[test]
-    fn scope_can_be_read_for_a_resource_mutation() {
-        let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, scope = read)]
-            fn open_resource() -> bool { true }
+    fn a_mutation_without_a_scope_still_expands() {
+        expand(syn::parse_quote! {
+            #[nyanpasu_rpc::rpc(http)]
+            fn update() -> bool { true }
         })
-        .unwrap()
-        .to_string();
-        assert!(expanded.contains("CommandEffect :: Mutation"));
-        assert!(expanded.contains("scope : :: nyanpasu_rpc_protocol :: Scope :: Read"));
+        .expect("the resource table generator rejects it instead");
     }
 
     #[test]
@@ -938,7 +860,7 @@ mod tests {
 
     #[test]
     fn production_privacy_projection_commands_are_fixed() {
-        let mut reported = crate::command_catalog::production_declarations()
+        let mut reported = crate::resource_table::production_functions()
             .into_iter()
             .filter(|item| {
                 expand(item.clone())
@@ -1008,7 +930,7 @@ mod tests {
         assert!(expanded.contains("owner . clone () , & dependencies . client , source , request"));
         assert!(expanded.contains(":: Response ="));
         assert!(expanded.contains(":: NAME . as_bytes ()"));
-        assert_eq!(expanded.matches("CommandEntry {").count(), 1);
+        assert_eq!(expanded.matches("registry :: CommandEntry {").count(), 1);
         assert_eq!(expanded.matches("inventory :: submit !").count(), 1);
         assert!(!expanded.contains("TauriCommandEntry"));
     }
@@ -1188,7 +1110,7 @@ mod tests {
 
     #[test]
     fn desktop_update_core_dispatch_remains_available() {
-        let commands = crate::command_catalog::production_declarations();
+        let commands = crate::resource_table::production_functions();
         let command = commands
             .into_iter()
             .find(|command| command.sig.ident == "update_core")
@@ -1224,7 +1146,7 @@ mod tests {
 
     #[test]
     fn dispatchers_cover_each_command_category() {
-        let mut commands = crate::command_catalog::production_declarations();
+        let mut commands = crate::resource_table::production_functions();
         for (name, targets) in [
             ("shared_desktop_fixture", quote::quote!()),
             ("shared_http_fixture", quote::quote!(http)),
@@ -1247,7 +1169,6 @@ mod tests {
                     super::host_port_slot(super::type_name(&ty).as_deref()).is_some()
                 })
             });
-            let options = super::options(&command).expect("command options must parse");
             let name = command.sig.ident.to_string();
             let expanded =
                 expand(command).unwrap_or_else(|error| panic!("failed to expand {name}: {error}"));
@@ -1261,16 +1182,7 @@ mod tests {
             );
             if !native {
                 assert!(!registration.contains(":: tauri"));
-                assert_eq!(
-                    registration.contains("RpcTarget :: Http"),
-                    options.http,
-                    "{name}"
-                );
-                assert_eq!(
-                    registration.contains("RpcTarget :: Local"),
-                    options.local,
-                    "{name}"
-                );
+                assert!(registration.contains("transport_neutral : true"), "{name}");
                 assert!(needs_host_port || !registration.contains("RpcError :: unsupported"));
             }
             assert!(
@@ -1316,7 +1228,7 @@ mod tests {
 
     #[test]
     fn every_ipc_tauri_command_uses_unified_rpc() {
-        let commands = crate::command_catalog::production_declarations();
+        let commands = crate::resource_table::production_functions();
         assert!(
             commands.iter().any(super::is_native),
             "expected native commands"
@@ -1446,30 +1358,17 @@ mod tests {
     }
 
     #[test]
-    fn target_and_capability_metadata_is_generated_once() {
+    fn native_commands_register_both_dispatchers() {
         assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
             #[nyanpasu_rpc::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), scope = settings)]
             #[tauri::command]
             fn copy(value: String) -> String { value }
         }).unwrap().to_string();
-        assert_eq!(expanded.matches("CommandMetadata {").count(), 1);
-        for value in ["Desktop", "Http", "Local"] {
-            assert_eq!(
-                expanded.matches(&format!("RpcTarget :: {value}")).count(),
-                1
-            );
-        }
-        for value in ["Clipboard", "Elevation"] {
-            assert_eq!(
-                expanded
-                    .matches(&format!("ShellCapability :: {value}"))
-                    .count(),
-                1
-            );
-        }
+        assert_eq!(expanded.matches("registry :: CommandEntry {").count(), 1);
         assert!(expanded.contains("TauriCommandEntry"));
         assert!(expanded.contains("CommandKind :: Native"));
+        assert!(expanded.contains("transport_neutral : true"));
     }
 
     fn production_capability_inventory(commands: &[ItemFn]) -> String {
@@ -1568,7 +1467,7 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR"),
                 "/tests/fixtures/capability-inventory.txt"
             ),
-            production_capability_inventory(&crate::command_catalog::production_declarations()),
+            production_capability_inventory(&crate::resource_table::production_functions()),
         )
         .expect("capability inventory must be writable");
     }
@@ -1616,7 +1515,7 @@ mod tests {
     }
 
     fn assert_production_capability_inventory() {
-        let commands = crate::command_catalog::production_declarations();
+        let commands = crate::resource_table::production_functions();
         assert_eq!(
             production_capability_inventory(&commands),
             include_str!("../tests/fixtures/capability-inventory.txt").replace("\r\n", "\n"),
@@ -1765,10 +1664,7 @@ mod tests {
         })
         .unwrap()
         .to_string();
-        assert!(expanded.contains("RpcTarget :: Local"));
-        assert!(expanded.contains(
-            "optional_capabilities : & [:: nyanpasu_rpc_protocol :: ShellCapability :: Elevation]"
-        ));
+        assert!(expanded.contains("transport_neutral : true"));
         assert!(expanded.contains("handler : __unified_rpc_profile_mutation"));
         assert!(!expanded.contains("RpcError :: unsupported"));
     }

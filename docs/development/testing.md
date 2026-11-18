@@ -117,6 +117,13 @@ profile/runtime fixtures. Shell tests enable `nyanpasu-rpc/test-support` through
 dev-dependency; the shell's `test-support` feature forwards it for downstream tests.
 The shared audit fixture retains the production `TracingRpcAuditSink`.
 
+A test that declares its own command with `#[nyanpasu_rpc::rpc]` or submits a `CommandEntry`
+by hand adds the command's row to `nyanpasu-rpc/src/registry/test_resources.rs`: the registry
+refuses a linked handler without a resource table row, and the generator reads only the
+production declaration roots. The rows are compiled under `test` and the dependency-free
+`test-resources` feature, which `test-support` implies and the server's `panic-injection`
+binary enables.
+
 | Existing audit test                                         | Owner after E2b                 |
 | ----------------------------------------------------------- | ------------------------------- |
 | `tauri_dispatch_records_one_audit_event`                    | Tauri                           |

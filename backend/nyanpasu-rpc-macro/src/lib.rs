@@ -1,11 +1,11 @@
 //! The `#[rpc]` attribute, re-exported as `nyanpasu_rpc::rpc`, and the development-only
-//! generator of the command catalog from the production declarations.
+//! generator of the resource table from the production declarations.
 
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 
 #[cfg(test)]
-mod command_catalog;
+mod resource_table;
 mod unified_command;
 
 #[proc_macro_attribute]

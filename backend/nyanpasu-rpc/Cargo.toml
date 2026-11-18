@@ -34,7 +34,10 @@ http = [
   'dep:percent-encoding',
   'dep:uuid'
 ]
+# Rows for test-only command declarations; no dependencies of its own.
+test-resources = []
 test-support = [
+  'test-resources',
   'http',
   'local-server',
   'dep:rcgen',

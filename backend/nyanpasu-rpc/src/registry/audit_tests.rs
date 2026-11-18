@@ -10,7 +10,7 @@ use nyanpasu_contracts::auth::AuthContext;
 use nyanpasu_core::{client::NyanpasuClient, storage::Storage};
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, CommandKind, RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability,
+    RpcError, RpcOwner, RpcTarget, RpcValue, ShellCapability, permission::RESOURCES,
 };
 use nyanpasu_runtime_values::runtime::{
     CommitReceipt, Degradation, DegradationPhase, DegradationReason, MutationOutcome,
@@ -680,11 +680,11 @@ async fn optional_effect_metadata_does_not_reject_unrelated_config_edits() {
 #[tokio::test]
 async fn headless_registry_knows_unlinked_native_commands() {
     let mut fixture = Fixture::with_capabilities(false, &[]).await;
-    fixture.rpc.commands = super::register_commands(COMMAND_CATALOG, [], &[]).unwrap();
-    assert_eq!(fixture.rpc.command_names().len(), COMMAND_CATALOG.len());
-    for metadata in COMMAND_CATALOG
+    fixture.rpc.commands = super::register_commands(RESOURCES, [], &[]).unwrap();
+    assert_eq!(fixture.rpc.command_names().len(), RESOURCES.len());
+    for metadata in RESOURCES
         .iter()
-        .filter(|metadata| metadata.kind == CommandKind::Native)
+        .filter(|metadata| metadata.is_native_command())
     {
         let command = &fixture.rpc.commands[metadata.name];
         assert_eq!(
@@ -711,7 +711,7 @@ async fn headless_registry_knows_unlinked_native_commands() {
         "get_system_accent_color"
     );
     let unlinked =
-        super::register_commands(COMMAND_CATALOG, [], crate::test_support::CAPABILITIES).unwrap();
+        super::register_commands(RESOURCES, [], crate::test_support::CAPABILITIES).unwrap();
     assert_eq!(
         unlinked["read_clipboard_text"]
             .neutral_handler(RpcTarget::Desktop)

@@ -54,7 +54,8 @@ fn tauri_sensitive_commands_summaries_and_native_outcome_projection() {
     use nyanpasu_config::application::UpdateSource;
     use nyanpasu_rpc::privacy::RpcResponseProjection as _;
     use nyanpasu_rpc_protocol::{
-        COMMAND_CATALOG, CommandEffect, ResponseVisibility, Scope,
+        CommandEffect, ResponseVisibility, Scope,
+        permission::RESOURCES,
         types::{RpcAppUpdateOutcome, RpcMutationOutcome},
     };
     use nyanpasu_runtime_values::{
@@ -113,7 +114,7 @@ fn tauri_sensitive_commands_summaries_and_native_outcome_projection() {
         ),
     ];
     for (name, effect, scope) in expected {
-        let meta = COMMAND_CATALOG
+        let meta = RESOURCES
             .iter()
             .find(|cmd| cmd.name == name)
             .unwrap_or_else(|| panic!("missing catalog entry for {name}"));
@@ -404,7 +405,7 @@ fn assert_tauri_dispatch_records_one_audit_event(command: &str) {
 fn duplicate_commands_fail_even_when_a_capability_is_missing() {
     let entry = inventory::iter::<CommandEntry>
         .into_iter()
-        .find(|entry| entry.metadata.name == "read_clipboard_text")
+        .find(|entry| entry.name == "read_clipboard_text")
         .unwrap();
     let native = inventory::iter::<super::native::TauriCommandEntry>
         .into_iter()

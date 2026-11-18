@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use nyanpasu_rpc_protocol::{
-    COMMAND_CATALOG, RpcTarget, operation::RpcOperation, operations, types::RpcError,
+    RpcTarget, operation::RpcOperation, operations, permission::RESOURCES, types::RpcError,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -121,7 +121,7 @@ fn current_contract_accepts_the_supported_previous_fixtures() {
         .keys()
         .map(String::as_str)
         .collect();
-    let catalog: BTreeSet<_> = COMMAND_CATALOG
+    let catalog: BTreeSet<_> = RESOURCES
         .iter()
         .filter(|command| command.targets.contains(&RpcTarget::Local))
         .map(|command| command.name)

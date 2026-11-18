@@ -49,6 +49,8 @@ type Table = BTreeMap<(Kind, String), Row>;
 /// A caller in the comparison: unresolved (no authentication), or resolved with these scopes.
 type Caller = Option<BTreeSet<Scope>>;
 
+mod mapping;
+
 fn snake(value: impl Debug) -> String {
     let mut name = String::new();
     for (index, character) in format!("{value:?}").chars().enumerate() {

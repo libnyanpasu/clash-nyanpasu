@@ -38,14 +38,6 @@ const SCOPES: [&str; 7] = [
 const SELF_INSPECTION: &str = "rpc_describe";
 /// Initial budget of command-level `access =` exceptions (design section 3.3).
 const MAX_OVERRIDES: usize = 9;
-/// The resources each P4 card registers as derived top-level modules, in order.
-const CARDS: [(&str, &[Resource]); 5] = [
-    ("P4-1", &[Resource::Meta, Resource::Remote]),
-    ("P4-2", &[Resource::Proxy]),
-    ("P4-3", &[Resource::Profile]),
-    ("P4-4", &[Resource::Settings, Resource::System]),
-    ("P4-5", &[Resource::Logs, Resource::Traffic]),
-];
 const ROLES: [Role; 5] = [
     Role::Anonymous,
     Role::Viewer,
@@ -359,11 +351,8 @@ fn the_resource_table_holds_the_mapping() {
         assert_eq!(row.sensitive, expected.sensitive, "{key:?}");
         assert_eq!(row.targets, expected.targets, "{key:?}");
     }
-    // A resource that moved into the namespace tree sits where the mapping placed it.
+    // Every resource sits in the namespace tree where the mapping placed it.
     for resource in nyanpasu_rpc_protocol::permission::RESOURCES {
-        if resource.source == nyanpasu_rpc_protocol::permission::PermissionSource::Legacy {
-            continue;
-        }
         let expected = mapped
             .iter()
             .find(|((_, name), _)| name == resource.name)
@@ -441,40 +430,6 @@ fn every_admission_difference_has_a_category() {
         "{}",
         comparison.unexplained.join("\n")
     );
-}
-
-/// The derived and legacy declarations are separated by position: when a card registers a
-/// top-level module, an existing source module of the same name may only hold resources that
-/// belong to a resource registered by then.
-#[test]
-fn registered_top_modules_hold_no_legacy_declarations() {
-    let mut registered = BTreeSet::new();
-    for (card, resources) in CARDS {
-        registered.extend(resources.iter().map(ToString::to_string));
-        for ((_, name), mapped) in mapping() {
-            let stem = Path::new(&mapped.origin)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap();
-            let owner = mapped.permission.resource.to_string();
-            if registered.contains(stem) {
-                assert!(
-                    registered.contains(&owner),
-                    "{card}: {name} in {} belongs to {owner}, which is not registered yet",
-                    mapped.origin,
-                );
-            }
-        }
-    }
-    // The owner writes every resource but meta.
-    let all: BTreeSet<_> = Role::Owner
-        .permissions()
-        .iter()
-        .map(|(resource, _)| resource)
-        .chain([Resource::Meta])
-        .map(|resource| resource.to_string())
-        .collect();
-    assert_eq!(registered, all);
 }
 
 #[test]

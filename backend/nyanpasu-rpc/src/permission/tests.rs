@@ -12,7 +12,7 @@ const PROXY_COMMAND: ResourceMetadata = ResourceMetadata {
     kind: ResourceKind::Command(CommandKind::Shared),
     effect: CommandEffect::Mutation,
     permission: Permission::new(Resource::Proxy, Access::Write),
-    source: PermissionSource::Legacy,
+    source: PermissionSource::Derived,
     sensitive: false,
     targets: &[RpcTarget::Desktop, RpcTarget::Http],
     capabilities: &[ShellCapability::Window],

@@ -6,10 +6,11 @@ use syn::{Error, FnArg, ItemFn, Pat, ReturnType, Type, spanned::Spanned};
 /// The arguments of `#[rpc(...)]`.
 ///
 /// Only the implementation reads `result`, `owner`, `privacy` and `operation`. The other options
-/// are authorization metadata, which the resource table generator reads from the declaration; the
-/// expansion uses the transports named by `http`, `local` or `expose` only to require a
-/// transport-neutral signature.
+/// are authorization metadata, which the resource table generator reads from the declaration
+/// together with its position in the namespace tree; the expansion uses the transports named by
+/// `expose` only to require a transport-neutral signature.
 pub struct Options {
+    /// The effective exposure the generator derives; never parsed from the attribute.
     pub(crate) http: bool,
     pub(crate) local: bool,
     pub(crate) capabilities: Vec<syn::Ident>,
@@ -20,7 +21,6 @@ pub struct Options {
     operation: Option<syn::Path>,
     /// A query only reads. Every other command is a mutation.
     pub(crate) query: bool,
-    pub(crate) permission: Option<PermissionOption>,
     /// Responses may disclose secrets; never part of admission.
     pub(crate) sensitive: bool,
     /// `access = read|write`: the level, when it differs from the one the effect derives.
@@ -30,12 +30,12 @@ pub struct Options {
 }
 
 impl Options {
-    /// Whether the declaration itself names HTTP, as `http` or within `expose`.
+    /// Whether HTTP is exposed: derived, or named within `expose`.
     pub(crate) fn names_http(&self) -> bool {
         self.http || self.exposes("http")
     }
 
-    /// Whether the declaration itself names the local socket, as `local` or within `expose`.
+    /// Whether the local socket is exposed: derived, or named within `expose`.
     pub(crate) fn names_local(&self) -> bool {
         self.local || self.exposes("local")
     }
@@ -47,49 +47,8 @@ impl Options {
     }
 }
 
-/// `permission = resource:access` on a legacy declaration, before the namespace tree derives it.
-pub struct PermissionOption {
-    pub(crate) resource: syn::Ident,
-    pub(crate) access: syn::Ident,
-}
-
-impl syn::parse::Parse for PermissionOption {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let resource = input.parse()?;
-        input.parse::<syn::Token![:]>()?;
-        let permission = Self {
-            resource,
-            access: input.parse()?,
-        };
-        permission
-            .check()
-            .map_err(|reason| Error::new(permission.resource.span(), reason))?;
-        Ok(permission)
-    }
-}
-
-impl PermissionOption {
-    /// The resources of the permission model, by their persisted names.
-    const RESOURCES: [&str; 8] = [
-        "meta", "proxy", "profile", "settings", "system", "logs", "traffic", "remote",
-    ];
-
-    /// Rejects a name the permission model does not have.
-    fn check(&self) -> Result<(), String> {
-        let resource = self.resource.to_string();
-        if !Self::RESOURCES.contains(&resource.as_str()) {
-            return Err(format!(
-                "`{resource}` is not a resource: {}",
-                Self::RESOURCES.join(", ")
-            ));
-        }
-        let access = self.access.to_string();
-        if !matches!(access.as_str(), "read" | "write") {
-            return Err(format!("`{access}` is not an access level: read, write"));
-        }
-        Ok(())
-    }
-}
+/// Why the attribute rejects the options a declaration used to name itself.
+pub(crate) const DERIVED_OPTION: &str = "the namespace tree derives the requirement and the exposure: remove `permission`, `http` and `local`, narrow the exposure with `expose = [...]` and change the level with `access = read|write`";
 
 impl syn::parse::Parse for Options {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -97,8 +56,9 @@ impl syn::parse::Parse for Options {
         while !input.is_empty() {
             let option: syn::Ident = input.parse()?;
             match option.to_string().as_str() {
-                "http" => options.http = true,
-                "local" => options.local = true,
+                "http" | "local" | "permission" => {
+                    return Err(Error::new(option.span(), DERIVED_OPTION));
+                }
                 "capabilities" | "optional_capabilities" => {
                     let list;
                     syn::parenthesized!(list in input);
@@ -114,13 +74,6 @@ impl syn::parse::Parse for Options {
                 "privacy" => options.privacy = true,
                 "query" => options.query = true,
                 "sensitive" => options.sensitive = true,
-                "permission" => {
-                    input.parse::<syn::Token![=]>()?;
-                    if options.permission.is_some() {
-                        return Err(Error::new(option.span(), "duplicate permission"));
-                    }
-                    options.permission = Some(input.parse()?);
-                }
                 "access" => {
                     input.parse::<syn::Token![=]>()?;
                     let access: syn::Ident = input.parse()?;
@@ -162,7 +115,7 @@ impl syn::parse::Parse for Options {
                 _ => {
                     return Err(Error::new(
                         option.span(),
-                        "expected http, local, result, owner, privacy, query, sensitive, permission = resource:access, access = read|write, expose = [...], operation = path, capabilities(...) or optional_capabilities(...)",
+                        "expected result, owner, privacy, query, sensitive, access = read|write, expose = [...], operation = path, capabilities(...) or optional_capabilities(...)",
                     ));
                 }
             }
@@ -231,13 +184,13 @@ pub(super) fn validate(item: &ItemFn, options: &Options) -> syn::Result<()> {
     if options.names_http() && !neutral_compatible {
         return Err(Error::new(
             original.span(),
-            "rpc(http) requires a transport-neutral signature",
+            "exposing a command over HTTP requires a transport-neutral signature",
         ));
     }
     if options.names_local() && !neutral_compatible {
         return Err(Error::new(
             original.span(),
-            "rpc(local) requires a transport-neutral signature",
+            "exposing a command over the local socket requires a transport-neutral signature",
         ));
     }
     Ok(())
@@ -859,11 +812,11 @@ mod tests {
     fn registration_carries_only_implementation_facts() {
         for item in [
             syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(http, local, query, permission = system:read, sensitive, capabilities(clipboard), optional_capabilities(elevation))]
+                #[nyanpasu_rpc::rpc(query, sensitive, capabilities(clipboard), optional_capabilities(elevation), expose = [http, local])]
                 fn shared(value: String) -> String { value }
             },
             syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(permission = system:write, capabilities(opener))]
+                #[nyanpasu_rpc::rpc(capabilities(opener))]
                 #[tauri::command]
                 fn native(window: tauri::Window) -> bool { true }
             },
@@ -926,7 +879,7 @@ mod tests {
     #[test]
     fn a_declaration_without_a_permission_still_expands() {
         expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http)]
+            #[nyanpasu_rpc::rpc(expose = [http])]
             fn update() -> bool { true }
         })
         .expect("the resource table generator rejects it instead");
@@ -941,7 +894,7 @@ mod tests {
             quote::quote!(WrappedOutcomeAlias),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(privacy, permission = settings:write)]
+                #[nyanpasu_rpc::rpc(privacy)]
                 #[tauri::command]
                 fn test() -> #output { todo!() }
             })
@@ -968,7 +921,7 @@ mod tests {
             quote::quote!(Result<MutationOutcome<()>>),
         ] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(permission = settings:write)]
+                #[nyanpasu_rpc::rpc]
                 fn missing_privacy() -> #output { todo!() }
             })
             .unwrap();
@@ -981,7 +934,7 @@ mod tests {
 
         for output in [quote::quote!(Result<()>), quote::quote!(CommitReceipt)] {
             let item = syn::parse2(quote::quote! {
-                #[nyanpasu_rpc::rpc(permission = settings:write)]
+                #[nyanpasu_rpc::rpc]
                 fn ordinary() -> #output { todo!() }
             })
             .unwrap();
@@ -1052,7 +1005,7 @@ mod tests {
     #[test]
     fn operation_bindings_use_the_existing_generator() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, http, owner, result, operation = contracts::OpenLogSession, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(owner, result, operation = contracts::OpenLogSession, expose = [http, local])]
             fn open_log_session(caller: RpcCaller, client: RpcState<'_, NyanpasuClient>, source: Source, request: OpenLogs) -> LogResult<LogSession> { todo!() }
         }).unwrap();
         syn::parse2::<syn::File>(expanded.clone()).unwrap();
@@ -1071,7 +1024,7 @@ mod tests {
     #[test]
     fn zero_argument_contracts_check_unit_without_changing_the_parser() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, operation = contracts::GetProfiles, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(operation = contracts::GetProfiles, expose = [local])]
             fn get_profiles(client: RpcState<'_, NyanpasuClient>) -> Result<Profiles> { todo!() }
         })
         .unwrap()
@@ -1085,7 +1038,7 @@ mod tests {
     #[test]
     fn explicit_result_alias_is_unwrapped_and_owner_is_injected() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, result, owner, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(result, owner, expose = [http])]
             #[tauri::command]
             pub async fn query_logs(window: tauri::Window, request: Query) -> LogResult<Page> { todo!() }
         };
@@ -1102,7 +1055,7 @@ mod tests {
 
     #[test]
     fn dependency_free_commands_can_use_http() {
-        let command = syn::parse_quote! { #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn functions() -> Vec<String> { vec![] } };
+        let command = syn::parse_quote! { #[nyanpasu_rpc::rpc(expose = [http])] pub fn functions() -> Vec<String> { vec![] } };
         assert!(
             !expand(command)
                 .unwrap()
@@ -1114,7 +1067,7 @@ mod tests {
     #[test]
     fn the_path_resolver_state_is_served_from_the_http_dependencies() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(expose = [http])]
             #[tauri::command]
             pub fn is_tray_icon_set(paths: State<'_, PathResolver>, mode: TrayIcon) -> Result<bool> { todo!() }
         };
@@ -1127,7 +1080,7 @@ mod tests {
     #[test]
     fn channel_parameters_are_rebuilt_for_desktop_but_unsupported_over_http() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(owner, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(owner)]
             #[tauri::command]
             pub fn stream(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>) -> Result<()> { todo!() }
         };
@@ -1143,7 +1096,7 @@ mod tests {
     #[test]
     fn channel_parameter_json_parser_uses_camel_case_fields() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(permission = settings:write)]
+            #[nyanpasu_rpc::rpc]
             #[tauri::command]
             pub fn stream(on_chunk: tauri::ipc::Channel<String>, page_size: usize) -> Result<()> {
                 todo!()
@@ -1161,35 +1114,35 @@ mod tests {
     fn http_requires_opt_in_and_accepts_only_lifetime_generics() {
         for (source, supported) in [
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(permission = system:write)] pub fn open_that(path: String) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc] pub fn open_that(path: String) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(expose = [http])] pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> { todo!() }",
                 true,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn generic<T>() -> Result<T> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(expose = [http])] pub fn generic<T>() -> Result<T> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(expose = [http])] pub fn generic<const N: usize>() -> Result<usize> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(expose = [http])] pub fn window(window: tauri::Window) -> Result<()> { todo!() }",
                 false,
             ),
             (
-                "#[tauri::command] #[nyanpasu_rpc::rpc(http, permission = settings:write)] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
+                "#[tauri::command] #[nyanpasu_rpc::rpc(expose = [http])] pub fn desktop(app: tauri::AppHandle) -> Result<()> { todo!() }",
                 false,
             ),
         ] {
             let command: ItemFn = syn::parse_str(source).unwrap();
-            if !supported && source.contains("rpc(http,") {
+            if !supported && source.contains("expose = [http]") {
                 assert_eq!(
                     expand(command).unwrap_err().to_string(),
-                    "rpc(http) requires a transport-neutral signature",
+                    "exposing a command over HTTP requires a transport-neutral signature",
                     "{source}"
                 );
                 continue;
@@ -1208,34 +1161,43 @@ mod tests {
         for (arguments, options) in [
             (
                 quote::quote!(on_chunk: tauri::ipc::Channel<String>),
-                quote::quote!(http),
+                quote::quote!(expose = [http]),
             ),
             (
                 quote::quote!(window: tauri::Window, on_chunk: tauri::ipc::Channel<String>),
-                quote::quote!(http, owner),
+                quote::quote!(owner, expose = [http]),
             ),
-            (quote::quote!(app: tauri::AppHandle), quote::quote!(http)),
-            (quote::quote!(window: tauri::Window), quote::quote!(http)),
-            (quote::quote!(webview: tauri::Webview), quote::quote!(http)),
+            (
+                quote::quote!(app: tauri::AppHandle),
+                quote::quote!(expose = [http]),
+            ),
+            (
+                quote::quote!(window: tauri::Window),
+                quote::quote!(expose = [http]),
+            ),
+            (
+                quote::quote!(webview: tauri::Webview),
+                quote::quote!(expose = [http]),
+            ),
             (
                 quote::quote!(window: tauri::WebviewWindow),
-                quote::quote!(http),
+                quote::quote!(expose = [http]),
             ),
             (
                 quote::quote!(state: tauri::State<'_, NativeState>),
-                quote::quote!(http),
+                quote::quote!(expose = [http]),
             ),
-            (quote::quote!(value: &str), quote::quote!(http)),
+            (quote::quote!(value: &str), quote::quote!(expose = [http])),
         ] {
             let command = syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(#options, permission = settings:write)]
+                #[nyanpasu_rpc::rpc(#options)]
                 #[tauri::command]
                 fn native(#arguments) -> Result<()> { todo!() }
             };
             let error = expand(command).unwrap_err();
             assert_eq!(
                 error.to_string(),
-                "rpc(http) requires a transport-neutral signature",
+                "exposing a command over HTTP requires a transport-neutral signature",
                 "{arguments}"
             );
         }
@@ -1282,13 +1244,13 @@ mod tests {
         let mut commands = crate::resource_table::production_functions();
         for (name, targets) in [
             ("shared_desktop_fixture", quote::quote!()),
-            ("shared_http_fixture", quote::quote!(http)),
-            ("shared_local_fixture", quote::quote!(local)),
-            ("shared_dual_fixture", quote::quote!(http, local)),
+            ("shared_http_fixture", quote::quote!(expose = [http])),
+            ("shared_local_fixture", quote::quote!(expose = [local])),
+            ("shared_dual_fixture", quote::quote!(expose = [http, local])),
         ] {
             let name = format_ident!("{name}");
             commands.push(syn::parse_quote! {
-                #[nyanpasu_rpc::rpc(permission = settings:write, owner, #targets)]
+                #[nyanpasu_rpc::rpc(owner, #targets)]
                 fn #name(client: RpcState<'_, NyanpasuClient>, owner: RpcCaller, value: String) -> String { value }
             });
         }
@@ -1383,7 +1345,7 @@ mod tests {
 
         assert!(
             plain_commands.is_empty(),
-            "Tauri application commands in ipc.rs must use #[nyanpasu_rpc::rpc(..., permission = settings:write)]: {}",
+            "Tauri application commands in ipc.rs must use #[nyanpasu_rpc::rpc(...)]: {}",
             plain_commands.join(", ")
         );
         let source = std::fs::read_to_string(concat!(
@@ -1453,7 +1415,7 @@ mod tests {
     #[test]
     fn neutral_expansion_contains_no_tauri_types() {
         let command = syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, local, owner, result, permission = settings:write)]
+            #[nyanpasu_rpc::rpc(owner, result, expose = [http, local])]
             #[specta::specta]
             pub async fn shared(
                 client: RpcState<'_, NyanpasuClient>, storage: RpcState<'_, Storage>, paths: RpcState<'_, PathResolver>,
@@ -1482,7 +1444,7 @@ mod tests {
         assert!(expanded.contains("application_error_for (visibility"));
         assert!(!expanded.contains("deny_unknown_fields"));
         let empty = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, permission = settings:write)] fn empty() -> bool { true }
+            #[nyanpasu_rpc::rpc(expose = [http])] fn empty() -> bool { true }
         })
         .unwrap()
         .to_string();
@@ -1494,7 +1456,7 @@ mod tests {
     fn native_commands_register_both_dispatchers() {
         assert_production_capability_inventory();
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(http, local, capabilities(clipboard), optional_capabilities(elevation), permission = settings:write)]
+            #[nyanpasu_rpc::rpc(capabilities(clipboard), optional_capabilities(elevation), expose = [http, local])]
             #[tauri::command]
             fn copy(value: String) -> String { value }
         }).unwrap().to_string();
@@ -1504,11 +1466,13 @@ mod tests {
         assert!(expanded.contains("transport_neutral : true"));
     }
 
-    fn production_capability_inventory(commands: &[ItemFn]) -> String {
+    fn production_capability_inventory(
+        commands: &[(ItemFn, crate::resource_table::DerivedCommand)],
+    ) -> String {
         let mut inventories = Vec::new();
         for platform in ["windows", "linux", "macos"] {
             let mut rows = BTreeMap::new();
-            for command in commands {
+            for (command, derived) in commands {
                 let enabled = command
                     .attrs
                     .iter()
@@ -1521,8 +1485,8 @@ mod tests {
                 if !enabled {
                     continue;
                 }
-                let options = super::options(command).unwrap();
-                super::validate(command, &options).expect("RPC declaration must be valid");
+                let options = &derived.options;
+                super::validate(command, options).expect("RPC declaration must be valid");
                 let mut targets = vec!["desktop"];
                 if options.http {
                     targets.push("http");
@@ -1548,10 +1512,7 @@ mod tests {
                     names(&options.capabilities),
                     names(&options.optional_capabilities),
                     if options.query { "query" } else { "mutation" },
-                    options.permission.as_ref().map_or_else(
-                        || "-".to_owned(),
-                        |permission| format!("{}:{}", permission.resource, permission.access)
-                    ),
+                    format!("{}:{}", derived.resource, derived.access),
                 );
                 assert!(
                     rows.insert(name, row).is_none(),
@@ -1600,7 +1561,7 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR"),
                 "/tests/fixtures/capability-inventory.txt"
             ),
-            production_capability_inventory(&crate::resource_table::production_functions()),
+            production_capability_inventory(&crate::resource_table::production_commands()),
         )
         .expect("capability inventory must be writable");
     }
@@ -1648,22 +1609,21 @@ mod tests {
     }
 
     fn assert_production_capability_inventory() {
-        let commands = crate::resource_table::production_functions();
+        let commands = crate::resource_table::production_commands();
         assert_eq!(
             production_capability_inventory(&commands),
             include_str!("../tests/fixtures/capability-inventory.txt").replace("\r\n", "\n"),
             "run export_capability_inventory explicitly after declaration changes"
         );
 
-        let metadata = |name: &str| {
-            super::options(
-                commands
-                    .iter()
-                    .find(|command| command.sig.ident == name)
-                    .unwrap(),
-            )
-            .unwrap()
+        let derived = |name: &str| {
+            &commands
+                .iter()
+                .find(|(command, _)| command.sig.ident == name)
+                .unwrap()
+                .1
         };
+        let metadata = |name: &str| &derived(name).options;
         // Profile commits and lifecycle completion refresh the desktop tray indirectly.
         for name in ["reorder_profile", "install_service", "select_proxy"] {
             let options = metadata(name);
@@ -1765,16 +1725,13 @@ mod tests {
                 !options.query,
                 "{name} allocates or refreshes a leased server log session"
             );
-            let permission = options.permission.as_ref().unwrap();
+            let derived = derived(name);
             assert_eq!(
-                (
-                    permission.resource.to_string(),
-                    permission.access.to_string()
-                ),
-                ("logs".to_owned(), "read".to_owned()),
+                (derived.resource.as_str(), derived.access.as_str()),
+                ("logs", "read"),
                 "{name}"
             );
-            assert_eq!(options.sensitive, name == "query_logs", "{name}");
+            assert_eq!(derived.sensitive, name == "query_logs", "{name}");
         }
         for name in [
             "is_tray_icon_set",
@@ -1795,7 +1752,7 @@ mod tests {
     #[test]
     fn local_optional_elevation_expands_and_registers() {
         let expanded = expand(syn::parse_quote! {
-            #[nyanpasu_rpc::rpc(local, optional_capabilities(elevation), permission = settings:write)]
+            #[nyanpasu_rpc::rpc(optional_capabilities(elevation), expose = [local])]
             fn profile_mutation(value: String) -> String { value }
         })
         .unwrap()

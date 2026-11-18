@@ -4,9 +4,9 @@ extern crate self as nyanpasu_rpc;
 
 pub use nyanpasu_rpc_macro::rpc;
 
-/// Declares an event, HTTP route or stream for the resource table:
-/// `resource!(event "name", targets = [desktop, http], permission = system:read, sensitive,
-/// capabilities(app_update))`.
+/// Declares an event, HTTP route or stream for the resource table, in the namespace module it
+/// belongs to: `resource!(event "name", targets = [desktop, http], sensitive,
+/// capabilities(app_update))`. It reads its namespace's resource.
 ///
 /// It expands to nothing. The resource table generator reads the declaration, checks it and
 /// writes its row; admission looks the row up by kind and name.

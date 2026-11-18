@@ -33,7 +33,7 @@ use crate::{
     test_support::{Capture, Fixture, SECRET, test_http_auth, with_http_auth},
 };
 
-#[nyanpasu_rpc::rpc(http, permission = settings:write)]
+#[nyanpasu_rpc::rpc(expose = [http])]
 async fn audit_panic() -> String {
     std::panic::panic_any(SECRET);
 }
@@ -62,7 +62,7 @@ fn receipt() -> CommitReceipt {
     }
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn audit_mutation(
     value: String,
     degraded: bool,
@@ -97,7 +97,7 @@ fn audit_mutation(
 
 type AuditOutcomeAlias = nyanpasu_rpc_protocol::types::RpcMutationOutcome<AuditValue>;
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn audit_mutation_alias(value: String, degraded: bool, fail_encoding: bool) -> AuditOutcomeAlias {
     let value = AuditValue {
         value,
@@ -465,7 +465,7 @@ async fn audit_drop_does_not_claim_transaction_cancellation() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_rpc::rpc(local, owner, optional_capabilities(elevation), permission = settings:write)]
+#[nyanpasu_rpc::rpc(owner, optional_capabilities(elevation), expose = [local])]
 #[specta::specta]
 fn local_optional_effect(
     _client: RpcState<'_, NyanpasuClient>,
@@ -544,7 +544,7 @@ async fn local_optional_elevation_expands_and_registers() {
     fixture.shutdown().await;
 }
 
-#[nyanpasu_rpc::rpc(http, capabilities(clipboard), permission = settings:write)]
+#[nyanpasu_rpc::rpc(capabilities(clipboard), expose = [http])]
 fn requires_clipboard(value: String) -> String {
     panic!("a command missing its required capability must not run: {value}");
 }

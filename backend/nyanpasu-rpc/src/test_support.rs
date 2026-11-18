@@ -40,7 +40,7 @@ impl RpcAuditSink for AuditSink {
 
 // These commands exercise generated parsing, execution and serialization without
 // adding capabilities to the production registry or touching application state.
-#[nyanpasu_rpc::rpc(http, permission = settings:write)]
+#[nyanpasu_rpc::rpc(expose = [http])]
 async fn audit_echo(value: String, fail: bool) -> Result<String, std::io::Error> {
     if fail {
         Err(std::io::Error::other(value))

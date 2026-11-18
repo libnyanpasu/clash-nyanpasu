@@ -639,7 +639,7 @@ fn canary_degraded_outcome(
     }
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = proxy:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_read_mutation(
     secret_path: String,
     secret_url: String,
@@ -648,7 +648,7 @@ fn privacy_canary_read_mutation(
     canary_degraded_outcome("read-committed-ok", &secret_path, &secret_url, &secret_diag).into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = proxy:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_proxy_mutation(
     secret_path: String,
     secret_url: String,
@@ -663,7 +663,7 @@ fn privacy_canary_proxy_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = profile:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_profile_mutation(
     secret_path: String,
     secret_url: String,
@@ -678,7 +678,7 @@ fn privacy_canary_profile_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = settings:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_settings_mutation(
     secret_path: String,
     secret_url: String,
@@ -693,7 +693,7 @@ fn privacy_canary_settings_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_system_mutation(
     secret_path: String,
     secret_url: String,
@@ -708,7 +708,7 @@ fn privacy_canary_system_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = remote:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_remote_admin_mutation(
     secret_path: String,
     secret_url: String,
@@ -723,7 +723,7 @@ fn privacy_canary_remote_admin_mutation(
     .into()
 }
 
-#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_app_update_mutation(
     secret_err: String,
     secret_endpoint: String,
@@ -756,7 +756,7 @@ fn privacy_canary_app_update_mutation(
 
 /// The live network reading of the host and the rule that matched it, with a refusal text that
 /// echoes both: everything `NetworkAutomationStatus` can hold that names the user's network.
-#[nyanpasu_rpc::rpc(http, privacy, permission = system:read)]
+#[nyanpasu_rpc::rpc(privacy, expose = [http])]
 fn privacy_canary_network_status(
     secret_ssid: String,
     secret_mac: String,

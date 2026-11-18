@@ -1,2 +1,1 @@
-#[cfg(windows)]
-mod shared;
+mod settings;

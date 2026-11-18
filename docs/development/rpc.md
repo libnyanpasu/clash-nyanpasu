@@ -12,10 +12,12 @@ Application commands use the neutral `nyanpasu-rpc` registry, with Tauri IPC, HT
 - never read or mutate config through globals;
 - never spawn core/service background tasks directly.
 
-Allowed shape:
+Allowed shape, in `nyanpasu-rpc/src/commands/settings/app.rs`, below the `settings` namespace;
+the mutation requires `settings:write` and is exposed where `settings` is (HTTP and the local
+socket), both derived from its position:
 
 ```rust
-#[nyanpasu_rpc::rpc(http, privacy, permission = settings:write)]
+#[nyanpasu_rpc::rpc(privacy)]
 pub async fn patch_app_config(
     client: nyanpasu_rpc::registry::RpcState<'_, NyanpasuClient>,
     patch: ApplicationPreferencesPatch,
@@ -183,14 +185,15 @@ None of these injected bindings are decoded from request JSON. Both paths
 preserve camelCase inputs, unknown-field compatibility, Result aliases and empty-object/null
 handling for zero inputs.
 
-`rpc(http)` and `rpc(local)` declare independent targets; desktop remains the
-complete surface. Both declarations require a transport-neutral signature and
-fail at compile time otherwise (`rpc(http) requires a transport-neutral signature`
-or the corresponding `rpc(local)` diagnostic). A valid declaration can still
+HTTP and the local socket are independent targets, derived from the namespace's `expose`;
+desktop remains the complete surface. A native command exposed beyond the desktop names its
+`expose` itself and needs a transport-neutral signature: the attribute fails at compile time
+otherwise (`exposing a command over HTTP requires a transport-neutral signature`, or the local
+socket diagnostic). A valid declaration can still
 return `unsupported` when its host lacks a required capability.
 `capabilities(...)` and `optional_capabilities(...)` record
 required facilities and reachable conditional effects. Optional elevation is
-valid with `rpc(local)`; it is not a blanket rejection or an execution policy.
+valid on the local socket; it is not a blanket rejection or an execution policy.
 Production declarations classify required facilities separately from conditional
 effects. Reachability includes indirect tray refreshes after profile commits,
 lifecycle completion and proxy-cache notifications, even for reads that refresh
@@ -266,10 +269,11 @@ capabilities.
 handler is transport-neutral, and the handler); the registry matches each linked entry to its
 row by name and refuses an entry without one (`SetupError::UndeclaredCommand`).
 
-Events, routes and streams are declared with `nyanpasu_rpc::resource!`, for example
-`resource!(event "core-logs-changed", targets = [desktop, http, local], permission = logs:read, sensitive)`;
-it expands to nothing and only the generator reads it. Their targets are explicit, because
-routes and streams are not offered to the desktop. `EventName` keeps only the wire identities;
+Events, routes and streams are declared with `nyanpasu_rpc::resource!` in the namespace module
+they belong to, for example `resource!(event "core-logs-changed", targets = [desktop, http,
+local], sensitive)` in `commands/logs/core.rs`; it expands to nothing and only the generator
+reads it. They read their namespace's resource. Their targets are explicit, because routes and
+streams are not offered to the desktop, and stay within the namespace's exposure. `EventName` keeps only the wire identities;
 `EventName::resource()` returns an event's row, and a protocol test requires every identity to
 have exactly one row. Transports admit a route or stream through its named row
 (`permission::declared(ICON_FETCH)`), never a permission literal.
@@ -288,27 +292,30 @@ The table's development-only generator in `nyanpasu-rpc-macro` follows the expli
 production roots (currently `tauri/src/ipc.rs` and `nyanpasu-rpc/src/commands/mod.rs`, treated
 as one module tree) through inline and ordinary external modules, records each declaration's
 module path below its root as the row's `namespace`, inherits ancestor `cfg`/`cfg_attr` guards
-and excludes test fixtures. It owns every rule about what a declaration may say: a legacy
-declaration must name `permission = resource:access`, only the desktop root may declare native
-commands, and a `resource!` names its kind (`event`, `route`, `stream`), a `read` permission and
-targets. The `rpc` attribute rejects a resource or level the permission model does not have. It reports every invalid
-declaration at once. It does not resolve arbitrary Rust module systems or add a protocol build
-dependency on application code.
+and excludes test fixtures. It owns every rule about where a declaration stands and what it may
+say, and reports every invalid declaration at once. It does not resolve arbitrary Rust module
+systems or add a protocol build dependency on application code.
 
-A top-level command module that declares `nyanpasu_rpc::namespace!(expose = [http, local])` is a
-resource, and every declaration below it derives its requirement from its position
+Every declaration stands in the namespace tree. A top-level module of either root that declares
+`nyanpasu_rpc::namespace!(expose = [http, local])` is a resource of the permission model, and
+every declaration below it derives its requirement from its position
 (`PermissionSource::Derived`): the resource is the top-level module, the level is the effect,
 and events, routes and streams read. A command whose level differs from its effect writes
 `access = read|write` (`PermissionSource::Override`, at most `MAX_OVERRIDES`). The exposure is
 inherited and only narrows: a module below may declare a smaller `expose`, and a command may
-write its own; a native command exposed beyond the desktop names its `expose` itself.
-`namespace!(sensitive)` marks a subtree and `sensitive` marks one command. Declarations there
-never name `permission`, `http` or `local`, `meta` holds only `rpc_describe`, and a namespace
-is unconditional. Elsewhere a declaration is legacy (`PermissionSource::Legacy`, a
-`permission = ...` written on it); `MAX_LEGACY` in the protocol tests equals their number and
-only goes down as the cards of the permission namespace spec move the commands. A moved
-command keeps its function and method name and sits at the namespace the reviewed mapping
-gives it. When commands move, migrate the roots, schema and handler inventories together.
+write its own. `namespace!(sensitive)` marks a subtree and `sensitive` marks one command. Both
+roots form one tree, so a native module (`tauri/src/ipc/system/os.rs`) inherits the settings
+of the shared one of the same path (`nyanpasu-rpc/src/commands/system`); native commands that
+stay on the desktop write `expose = []`. `meta` holds only `rpc_describe`, and a namespace is
+unconditional: `cfg` guards go on the declarations below it. A declaration outside a registered
+top-level module is an error, and the attribute rejects `permission`, `http` and `local` at
+compile time.
+
+To add a command, put the function in the module of its domain and write `#[rpc]` or
+`#[rpc(query)]`: it derives its requirement and exposure, and every role that holds the
+requirement reaches it. A new top-level module is a new `Resource`, which changes the
+permission model and the roles; that is a reviewed change of its own. When commands move,
+migrate the roots, schema and handler inventories together.
 Run from `backend/`:
 
 ```sh
@@ -361,12 +368,11 @@ committed resource table and the capability inventory, and the Specta query/muta
 that become the frontend bindings are checked against it.
 
 - The resources are `nyanpasu_config::application::Resource`: `meta` (only `rpc_describe`),
-  `proxy`, `profile`, `settings`, `system`, `logs`, `traffic` and `remote` (never HTTP). Every
-  declaration names one with its level, `permission = resource:access`, until the namespace tree
-  derives it (permission namespace spec, P4).
+  `proxy`, `profile`, `settings`, `system`, `logs`, `traffic` and `remote` (never HTTP), one per
+  top-level command module. A declaration's resource is the module it stands in.
 - `query` marks a command that only reads and changes nothing; it requires its resource's
-  `read`. Everything else is a mutation and requires `write`. The exceptions are reviewed and
-  budgeted: latency measurements are queries that require `proxy:write`, and the log session and
+  `read`. Everything else is a mutation and requires `write`. The exceptions are written as
+  `access = read|write`, reviewed and budgeted: latency measurements are queries that require `proxy:write`, and the log session and
   connection-detail subscriptions are mutations that require `read`, because they only allocate a
   resource the caller owns. Operations that read but advance a cursor, allocate a session or
   otherwise change application state are mutations.
@@ -487,7 +493,7 @@ rejections, static assets and envelopes rejected by Tauri before `call_rpc` are
 outside this boundary. E2b moved the kernel and its port with the registry; E3's
 local socket/CLI must enter this same kernel at INFO.
 
-- HTTP access is explicit opt-in via `rpc(http)`, not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
+- HTTP access is explicit opt-in through the namespace's `expose = [http]` (or a command's own `expose`), not inferred authorization from a compatible signature. Review the operation's effects before enabling it. Desktop OS operations, arbitrary outbound URL diagnostics, and desktop-only server controls stay desktop-only unless deliberately adapted and reviewed.
 - Never inject `AppHandle` into an HTTP-enabled RPC command or add it to `RpcDependencies`; doing so grants the handler every capability reachable from the app. Route shared side effects through `NyanpasuClient` and the existing typed client or actor message that owns them. Do not add a one-off managed Tauri closure when an existing actor path already performs the operation. `EventBus` and `rpc.events` carry notifications from backend to frontend; they are not an inbound command channel.
 - Shared operations receive explicit dependencies and call `NyanpasuClient`. Assemble `RpcDependencies`, routers, and server adapters in the composition root. The facade must not accept `axum::Router` or expose transport infrastructure; avoid strong reference cycles between the server/router and client.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.

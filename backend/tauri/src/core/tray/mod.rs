@@ -567,10 +567,14 @@ impl Tray {
             "copy_env_cmd" => copy_clash_env(app_handle, CopyEnvOption::Cmd),
             #[cfg(target_os = "windows")]
             "copy_env_ps" => copy_clash_env(app_handle, CopyEnvOption::Pwsh),
-            "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir(app_handle.state())),
-            "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir(app_handle.state())),
-            "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
-            "open_logs_dir" => crate::log_err!(ipc::open_logs_dir(app_handle.state())),
+            "open_app_config_dir" => {
+                crate::log_err!(ipc::system::os::open_app_config_dir(app_handle.state()))
+            }
+            "open_app_data_dir" => {
+                crate::log_err!(ipc::system::os::open_app_data_dir(app_handle.state()))
+            }
+            "open_core_dir" => crate::log_err!(ipc::system::core::open_core_dir()),
+            "open_logs_dir" => crate::log_err!(ipc::system::os::open_logs_dir(app_handle.state())),
             "restart_core" => restart_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {

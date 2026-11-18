@@ -1,5 +1,5 @@
-//! Development-only generator of the protocol's resource table from the explicitly listed
-//! production declaration roots.
+//! Development-only generator of the protocol's resource table and the permission model's
+//! `Resource` enum from the explicitly listed production declaration roots.
 //!
 //! The extractor walks both roots as one module tree, keeping each declaration's logical module
 //! path and the root it came from. Every rule about what a declaration may say lives here, not in
@@ -35,6 +35,8 @@ const DECLARATION_ROOTS: &[(Root, &str)] = &[
     (Root::Shared, "../nyanpasu-rpc/src/commands/mod.rs"),
 ];
 const TABLE: &str = "../nyanpasu-rpc-protocol/src/permission/generated.rs";
+/// The `Resource` enum, one variant per top-level `namespace!`.
+const RESOURCE_ENUM: &str = "../nyanpasu-config/src/application/permission/generated.rs";
 
 /// The crate a declaration root belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,11 +65,6 @@ pub(super) enum Declared {
     Namespace(NamespaceDeclaration),
 }
 
-/// The resources of the permission model; a registered top-level module must be one of them.
-const RESOURCES: [&str; 8] = [
-    "meta", "proxy", "profile", "settings", "system", "logs", "traffic", "remote",
-];
-
 /// The one resource `meta` holds: capability discovery, which every resolved caller may call.
 const META_COMMAND: &str = "rpc_describe";
 
@@ -83,6 +80,9 @@ pub(super) struct NamespaceDeclaration {
     /// The declaration or a module above it is `cfg`-guarded. Conditional settings are not
     /// supported: they would apply on every platform.
     guarded: bool,
+    /// The documentation attributes of the module it stands in; a top-level one documents its
+    /// resource.
+    docs: Vec<Attribute>,
 }
 
 impl Parse for NamespaceDeclaration {
@@ -91,6 +91,7 @@ impl Parse for NamespaceDeclaration {
             expose: None,
             sensitive: false,
             guarded: false,
+            docs: Vec::new(),
         };
         while !input.is_empty() {
             let option: Ident = input.parse()?;
@@ -144,15 +145,8 @@ impl NamespaceTree {
                 name: format!("namespace `{}`", path.join(".")),
                 reason,
             };
-            let Some(top) = path.first() else {
+            if path.is_empty() {
                 errors.push(invalid("a declaration root is not a namespace".to_owned()));
-                continue;
-            };
-            if path.len() == 1 && !RESOURCES.contains(&top.as_str()) {
-                errors.push(invalid(format!(
-                    "a top-level namespace is a resource: {}",
-                    RESOURCES.join(", ")
-                )));
                 continue;
             }
             if namespace.guarded {
@@ -442,8 +436,46 @@ fn collect_file(
         root,
         namespace,
         &attrs,
+        &doc_attrs(&file.attrs),
         declarations,
     );
+}
+
+fn doc_attrs(attrs: &[Attribute]) -> Vec<Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("doc"))
+        .cloned()
+        .collect()
+}
+
+/// The first paragraph of `//!` or `///` line documentation, without the space after the marker.
+/// Other forms are refused rather than guessed: a block comment keeps its decoration and a
+/// computed value is not known here.
+fn summary(docs: &[Attribute]) -> Result<Vec<String>, &'static str> {
+    let mut lines = Vec::new();
+    for attr in docs {
+        let Meta::NameValue(value) = &attr.meta else {
+            return Err("its documentation is not a string");
+        };
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(text),
+            ..
+        }) = &value.value
+        else {
+            return Err("document it with `//!` lines, not a computed `doc` value");
+        };
+        let text = text.value();
+        if text.contains('\n') {
+            return Err("document it with `//!` lines, not a block comment");
+        }
+        lines.push(text.strip_prefix(' ').unwrap_or(&text).to_owned());
+    }
+    Ok(lines
+        .into_iter()
+        .skip_while(|line| line.trim().is_empty())
+        .take_while(|line| !line.trim().is_empty())
+        .collect())
 }
 
 fn guards(attrs: &[Attribute]) -> impl Iterator<Item = Attribute> + '_ {
@@ -516,6 +548,7 @@ fn collect_items(
     root: Root,
     namespace: &[String],
     inherited: &[Attribute],
+    docs: &[Attribute],
     declarations: &mut Vec<Declaration>,
 ) {
     if inherited.iter().any(|attr| excludes_production(&attr.meta)) {
@@ -569,6 +602,7 @@ fn collect_items(
                     .unwrap_or_else(|error| panic!("malformed namespace declaration: {error}"));
                 namespace_declaration.guarded =
                     !inherited.is_empty() || guards(&invocation.attrs).next().is_some();
+                namespace_declaration.docs = docs.to_vec();
                 declarations.push(Declaration {
                     item: Declared::Namespace(namespace_declaration),
                     namespace: namespace.to_vec(),
@@ -611,6 +645,7 @@ fn collect_items(
                         root,
                         &namespace,
                         &attrs,
+                        &doc_attrs(&module.attrs),
                         declarations,
                     );
                 } else {
@@ -931,31 +966,145 @@ fn render(declarations: &[Declaration]) -> Result<String, Vec<Invalid>> {
     }
 }
 
-fn render_production() -> String {
-    render(&production_declarations()).unwrap_or_else(|errors| {
+/// The `Resource` enum: one variant per top-level `namespace!` across both roots, in name order,
+/// documented by the first paragraph of its module's documentation (the shared root's, when both
+/// roots declare it).
+fn render_resource_enum(declarations: &[Declaration]) -> Result<String, Vec<Invalid>> {
+    let mut resources: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    let mut errors = Vec::new();
+    for declaration in declarations {
+        let (Declared::Namespace(namespace), [name]) =
+            (&declaration.item, declaration.namespace.as_slice())
+        else {
+            continue;
+        };
+        let invalid = |reason: &str| Invalid {
+            name: format!("namespace `{name}`"),
+            reason: format!("a top-level namespace is a resource: {reason}"),
+        };
+        let summary = match summary(&namespace.docs) {
+            Ok(summary) => summary,
+            Err(reason) => {
+                errors.push(invalid(reason));
+                continue;
+            }
+        };
+        let docs = resources.entry(name).or_default();
+        if docs.is_empty() || (declaration.root == Root::Shared && !summary.is_empty()) {
+            *docs = summary;
+        }
+    }
+    errors.extend(
+        resources
+            .iter()
+            .filter(|(_, docs)| docs.is_empty())
+            .map(|(name, _)| Invalid {
+                name: format!("namespace `{name}`"),
+                reason:
+                    "a top-level namespace is a resource: document it in its module documentation"
+                        .to_owned(),
+            }),
+    );
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let mut output = String::from(
+        "// Generated by export_rpc_resource_table; do not edit.\n\n\
+         /// A domain resource: the part of the application a permission covers. One variant per\n\
+         /// top-level `namespace!`; the names are persisted, so renaming one is a migration.\n\
+         #[derive(\n    Debug,\n    Clone,\n    Copy,\n    PartialEq,\n    Eq,\n    Hash,\n    \
+         PartialOrd,\n    Ord,\n    serde::Serialize,\n    serde::Deserialize,\n    specta::Type,\n    \
+         strum::EnumCount,\n    strum::EnumIter,\n    strum::Display,\n)]\n\
+         #[serde(rename_all = \"snake_case\")]\n\
+         #[strum(serialize_all = \"snake_case\")]\n\
+         #[repr(u8)]\n\
+         pub enum Resource {\n",
+    );
+    for (name, docs) in &resources {
+        for line in docs {
+            output.push_str(&format!(
+                "    ///{}{line}\n",
+                if line.is_empty() { "" } else { " " }
+            ));
+        }
+        output.push_str(&format!(
+            "    {},\n",
+            pascal_case(&format_ident!("{}", name))
+        ));
+    }
+    output.push_str("}\n");
+    Ok(output)
+}
+
+fn valid(rendered: Result<String, Vec<Invalid>>) -> String {
+    rendered.unwrap_or_else(|errors| {
         let errors: Vec<_> = errors.iter().map(ToString::to_string).collect();
         panic!("invalid declarations:\n{}", errors.join("\n"))
     })
 }
 
+fn render_production() -> String {
+    valid(render(&production_declarations()))
+}
+
+/// The generated files and their contents.
+fn generated_files() -> [(&'static str, String); 2] {
+    let declarations = production_declarations();
+    [
+        (TABLE, valid(render(&declarations))),
+        (RESOURCE_ENUM, valid(render_resource_enum(&declarations))),
+    ]
+}
+
 #[test]
 #[ignore = "explicit generator; freshness checks never write"]
 fn export_rpc_resource_table() {
-    fs::write(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join(TABLE),
-        render_production(),
-    )
-    .expect("the resource table must be writable");
+    for (path, contents) in generated_files() {
+        fs::write(Path::new(env!("CARGO_MANIFEST_DIR")).join(path), contents)
+            .unwrap_or_else(|error| panic!("{path} must be writable: {error}"));
+    }
 }
 
 #[test]
 fn rpc_resource_table_is_fresh() {
-    let actual = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(TABLE)).unwrap();
-    assert_eq!(
-        actual.replace("\r\n", "\n"),
-        render_production(),
-        "run export_rpc_resource_table explicitly after declaration changes"
-    );
+    for (path, expected) in generated_files() {
+        let actual = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
+        assert_eq!(
+            actual.replace("\r\n", "\n"),
+            expected,
+            "run export_rpc_resource_table explicitly after declaration changes"
+        );
+    }
+}
+
+/// The generator must compile while the files it writes are stale or broken, so it depends on
+/// nothing that compiles them, not even in its tests.
+#[test]
+fn the_generator_depends_on_no_crate_it_generates_for() {
+    let manifest = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .unwrap()
+        .replace("\r\n", "\n");
+    let mut section = "";
+    let mut tables = Vec::new();
+    let mut dependencies = Vec::new();
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') {
+            section = line;
+            // Every other form (`[dev-dependencies]`, `[dependencies.name]`,
+            // `[target.'cfg(..)'.dependencies]`, `[build-dependencies]`) is refused outright.
+            if section.contains("dependencies") {
+                tables.push(section);
+            }
+        } else if section == "[dependencies]"
+            && let Some((name, _)) = line.split_once('=')
+        {
+            dependencies.push(name.trim().to_owned());
+        }
+    }
+    assert_eq!(tables, ["[dependencies]"]);
+    // Plain keys only: a renamed or dotted entry (`x = { package = .. }`, `x.path = ..`) fails.
+    assert_eq!(dependencies, ["syn", "quote", "proc-macro2"]);
+    assert!(!manifest.contains("package ="));
 }
 
 fn declarations_in(source: &str) -> Vec<Declaration> {
@@ -965,6 +1114,7 @@ fn declarations_in(source: &str) -> Vec<Declaration> {
         &source.items,
         Path::new("unused"),
         Root::Shared,
+        &[],
         &[],
         &[],
         &mut declarations,
@@ -1565,15 +1715,83 @@ fn a_registered_top_level_module_derives_resource_and_level() {
 
 #[test]
 fn a_top_level_namespace_is_a_resource_and_names_its_exposure() {
+    let declarations = declarations_in(
+        r#"
+        mod proxy {
+            //! The running routing state.
+            //!
+            //! Not part of the summary.
+            nyanpasu_rpc::namespace!(expose = [http]);
+        }
+        mod core_logs {
+            //! Logs of
+            //! the core.
+            nyanpasu_rpc::namespace!(expose = []);
+            mod nested { nyanpasu_rpc::namespace!(sensitive); }
+        }
+        "#,
+    );
+    let resources = render_resource_enum(&declarations).unwrap();
+    let variants = resources.split_once("pub enum Resource {\n").unwrap().1;
     assert_eq!(
-        derived_rejection(
-            r#"mod secrets { nyanpasu_rpc::namespace!(expose = [http]); #[nyanpasu_rpc::rpc(query)] fn read() -> bool { true } }"#
-        ),
+        variants,
+        "    /// Logs of\n    /// the core.\n    CoreLogs,\n    /// The running routing state.\n    Proxy,\n}\n"
+    );
+    assert_eq!(
+        render_resource_enum(&declarations_in(
+            r#"mod secrets { nyanpasu_rpc::namespace!(expose = [http]); }"#
+        ))
+        .unwrap_err()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>(),
         [
-            "namespace `secrets`: a top-level namespace is a resource: meta, proxy, profile, settings, system, logs, traffic, remote",
-            "read: its top-level module `secrets` declares no `namespace!`",
+            "namespace `secrets`: a top-level namespace is a resource: document it in its module documentation"
         ]
     );
+    let refused = |source: &str| {
+        render_resource_enum(&declarations_in(source))
+            .unwrap_err()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        refused(
+            "/** Summary.\n *\n * Details.\n */ mod proxy { nyanpasu_rpc::namespace!(expose = []); }"
+        ),
+        [
+            "namespace `proxy`: a top-level namespace is a resource: document it with `//!` lines, not a block comment"
+        ]
+    );
+    assert_eq!(
+        refused(
+            r#"#[doc = concat!("Summary", ".")] mod proxy { nyanpasu_rpc::namespace!(expose = []); }"#
+        ),
+        [
+            "namespace `proxy`: a top-level namespace is a resource: document it with `//!` lines, not a computed `doc` value"
+        ]
+    );
+    // The shared root's documentation wins whichever root is walked first.
+    for desktop_first in [true, false] {
+        let shared =
+            declarations_in("mod proxy {\n//! Shared.\nnyanpasu_rpc::namespace!(expose = []);\n}");
+        let mut desktop =
+            declarations_in("mod proxy {\n//! Desktop.\nnyanpasu_rpc::namespace!(expose = []);\n}");
+        for declaration in &mut desktop {
+            declaration.root = Root::Desktop;
+        }
+        let declarations: Vec<_> = if desktop_first {
+            desktop.into_iter().chain(shared).collect()
+        } else {
+            shared.into_iter().chain(desktop).collect()
+        };
+        assert!(
+            render_resource_enum(&declarations)
+                .unwrap()
+                .contains("    /// Shared.\n    Proxy,\n")
+        );
+    }
     assert_eq!(
         derived_rejection(r#"mod proxy { nyanpasu_rpc::namespace!(sensitive); }"#),
         ["namespace `proxy`: a top-level namespace declares its `expose = [...]`"]

@@ -85,7 +85,7 @@ fn names_are_the_persisted_snake_case_names() {
     assert_eq!(
         names,
         [
-            "meta", "proxy", "profile", "settings", "system", "logs", "traffic", "remote"
+            "logs", "meta", "profile", "proxy", "remote", "settings", "system", "traffic"
         ]
     );
     for resource in Resource::iter() {

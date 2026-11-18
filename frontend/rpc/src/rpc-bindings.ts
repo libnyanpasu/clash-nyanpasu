@@ -7783,27 +7783,36 @@ export type ReportRequest = {
   topology: TopologyRequest | null
 }
 
-/**  A domain resource: the part of the application a permission covers. */
+/**
+ *  A domain resource: the part of the application a permission covers. One variant per
+ *  top-level `namespace!`; the names are persisted, so renaming one is a migration.
+ */
 export type Resource =
-  /**  Capability discovery; every resolved caller holds `meta:read`. */
+  /**  Application and core logs. */
+  | 'logs'
+  /**  Capability discovery: `rpc_describe`, which every resolved caller may call. */
   | 'meta'
-  /**
-   *  The running routing state: proxy groups and nodes, selection, latency tests, the proxy
-   *  mode, closing connections.
-   */
-  | 'proxy'
   /**  Stored profile definitions, subscriptions, chains and the proxy group layout. */
   | 'profile'
-  /**  Ordinary application and Clash preferences and the frontend key-value storage. */
+  /**
+   *  The running routing state: proxy groups and nodes, selection, latency tests, the proxy
+   *  mode, providers, rules and closing connections.
+   */
+  | 'proxy'
+  /**
+   *  Remote-access administration: the HTTP and local socket settings, access tokens and browser
+   *  sessions.
+   */
+  | 'remote'
+  /**
+   *  Ordinary application and Clash preferences, configuration sync and the frontend key-value
+   *  storage.
+   */
   | 'settings'
   /**  The core lifecycle, system proxy, TUN, service mode and OS integration. */
   | 'system'
-  /**  Application and core logs. */
-  | 'logs'
   /**  Traffic, connection lists and their history. */
   | 'traffic'
-  /**  Remote access settings, tokens, sessions and certificates; never offered over HTTP. */
-  | 'remote'
 
 /**
  *  The compare-and-swap identity of a config revision.

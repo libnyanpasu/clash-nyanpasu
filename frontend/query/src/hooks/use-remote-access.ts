@@ -97,8 +97,8 @@ export function useRemoteAccess() {
 }
 
 /**
- * The saved HTTPS certificate's fields, readable while nothing listens, and the platform's
- * certificate viewer for it.
+ * The local root clients trust and the short-lived certificate it issued to the listener, both
+ * readable while nothing listens; the platform's viewer and a file export for the root.
  */
 export function useRemoteAccessCertificate() {
   const api = useQueryApi()
@@ -115,7 +115,14 @@ export function useRemoteAccessCertificate() {
     mutationFn: async () => unwrapResult(await invokeMutation(openCommand, [])),
   })
 
-  return { query, openInViewer }
+  const exportCommand = api.mutations.exportRemoteAccessAuthority
+  const exportAuthority = useMutation({
+    mutationKey: exportCommand.mutationKey,
+    mutationFn: async () =>
+      unwrapResult(await invokeMutation(exportCommand, [])),
+  })
+
+  return { query, openInViewer, exportAuthority }
 }
 
 /**

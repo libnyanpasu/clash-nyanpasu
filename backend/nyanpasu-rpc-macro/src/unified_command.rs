@@ -1519,7 +1519,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 208, "{platform} command inventory");
+            assert_eq!(rows.len(), 209, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

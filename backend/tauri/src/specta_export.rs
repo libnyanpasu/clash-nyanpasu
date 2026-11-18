@@ -178,6 +178,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::system::os::open_logs_dir,
             ipc::system::os::open_web_url,
             ipc::remote::open_remote_access_certificate,
+            ipc::remote::export_remote_access_authority,
             ipc::system::core::open_core_dir,
             ipc::system::os::install_cli,
             commands::system::core::restart_sidecar,

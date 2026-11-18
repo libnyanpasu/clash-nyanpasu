@@ -7443,6 +7443,7 @@ dependencies = [
  "reqwest 0.13.5",
  "runas",
  "rustls",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "sha2 0.11.1",

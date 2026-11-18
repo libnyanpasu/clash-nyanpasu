@@ -44,6 +44,16 @@ pub struct TlsCertificateDetails {
     pub sha1: String,
 }
 
+/// The local root clients trust, and the short-lived certificate it issued to the listener.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct RemoteAccessCertificates {
+    /// The root to compare, pin or import; it outlives every renewal.
+    pub authority: TlsCertificateDetails,
+    /// The certificate the listener presents now, or `None` before it first served HTTPS since
+    /// the application started.
+    pub leaf: Option<TlsCertificateDetails>,
+}
+
 /// The bytes are not a DER-encoded X.509 certificate.
 #[derive(Debug, Clone, PartialEq, Eq, Snafu)]
 #[snafu(display("the certificate cannot be read: {reason}"))]

@@ -570,8 +570,9 @@ pub struct ContextAdd {
     /// Take the token from `NYANPASU_TOKEN`.
     #[arg(long, requires = "url")]
     pub token_from_env: bool,
-    /// Pin the server certificate by its SHA-256 fingerprint, as the app's remote access
-    /// settings show it. Only an https URL can be pinned.
+    /// Pin the app's certificate authority by its SHA-256 fingerprint, as the app's remote
+    /// access settings show it; the certificates it renews stay trusted. Only an https URL can be
+    /// pinned.
     #[arg(
         long,
         requires = "url",

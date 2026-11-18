@@ -750,6 +750,12 @@ export function createQueryBindings(rpc: RpcClient) {
         input: Parameters<typeof commands.openRemoteAccessCertificate>,
       ) => commands.openRemoteAccessCertificate(...input),
     }),
+    exportRemoteAccessAuthority: mutationOptions({
+      mutationKey: ['exportRemoteAccessAuthority'],
+      mutationFn: (
+        input: Parameters<typeof commands.exportRemoteAccessAuthority>,
+      ) => commands.exportRemoteAccessAuthority(...input),
+    }),
     openCoreDir: mutationOptions({
       mutationKey: ['openCoreDir'],
       mutationFn: (input: Parameters<typeof commands.openCoreDir>) =>

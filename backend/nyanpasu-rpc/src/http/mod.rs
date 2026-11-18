@@ -92,15 +92,23 @@ pub enum Message {
     },
     Status(RpcReplyPort<HttpServerStatus>),
     Stopped(u64),
+    /// Asks the owner for the current certificate, which it renews for new addresses or before it
+    /// expires, and presents it from the next handshake on.
+    RefreshTls(u64),
 }
+
+/// How often a listener serving HTTPS asks for its current certificate.
+const TLS_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 struct Running {
     generation: u64,
     port: u16,
     /// The address the socket is bound to.
     bind: IpAddr,
-    /// The certificate it presents, when it serves HTTPS.
+    /// The root and expiry of the certificate it presents, when it serves HTTPS.
     tls: Option<TlsCertificateSummary>,
+    /// Replaces the presented certificate without restarting, when it serves HTTPS.
+    certificate: Option<Arc<tls::CertificateSlot>>,
     serve_webui: bool,
     auth: HttpAuthentication,
     listen: HttpListen,
@@ -189,9 +197,11 @@ impl HttpServerState {
         }
     }
 
-    /// Whether the running listener already satisfies `config` and presents `identity`.
+    /// Whether the running listener already satisfies `config` and presents a certificate of the
+    /// root of `identity`.
     ///
-    /// A replaced certificate has a new fingerprint, so a reset restarts the listener.
+    /// A renewal keeps the root and is presented in place; a reset replaces the root, so it
+    /// restarts the listener.
     fn follows(&self, config: &HttpAccessConfig, identity: Option<&TlsIdentity>) -> bool {
         self.running.as_ref().is_some_and(|running| {
             running.serve_webui == config.serve_webui
@@ -200,7 +210,8 @@ impl HttpServerState {
                 && running.lan_allow == config.lan_allow
                 && running.anonymous_permissions == config.anonymous_permissions
                 && running.bind == bind_address(config)
-                && running.tls == identity.map(TlsIdentity::summary)
+                && running.tls.as_ref().map(|tls| tls.fingerprint)
+                    == identity.map(TlsIdentity::authority_fingerprint)
                 && config.port.is_none_or(|port| port == running.port)
         })
     }
@@ -272,7 +283,7 @@ impl HttpServerState {
         listener: TcpListener,
         config: &HttpAccessConfig,
         identity: Option<TlsIdentity>,
-        acceptor: Option<TlsAcceptor>,
+        acceptor: Option<(TlsAcceptor, Arc<tls::CertificateSlot>)>,
     ) -> Result<Running> {
         let local = listener.local_addr()?;
         let endpoint = match (&identity, config.listen) {
@@ -311,6 +322,23 @@ impl HttpServerState {
             streams.watch(watcher_auth, watcher_stop).await;
         });
         let peers = PeerPolicy::of(config);
+        let (acceptor, certificate) = acceptor.unzip();
+        if certificate.is_some() {
+            let refresh = myself.clone();
+            let stop = cancellation.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        () = stop.cancelled() => break,
+                        () = tokio::time::sleep(TLS_REFRESH_INTERVAL) => {
+                            if refresh.cast(Message::RefreshTls(generation)).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
         let task = tokio::spawn(async move {
             // Dropping serve's connection tasks alone does not
             // stop upgraded sockets; frontend upgrades share this token.
@@ -334,6 +362,7 @@ impl HttpServerState {
             port: local.port(),
             bind: local.ip(),
             tls: identity.as_ref().map(TlsIdentity::summary),
+            certificate,
             serve_webui: config.serve_webui,
             auth: config.auth,
             listen: config.listen,
@@ -342,6 +371,25 @@ impl HttpServerState {
             cancellation,
             task,
         })
+    }
+
+    /// Presents `identity` on the running listener from the next handshake on. A certificate that
+    /// cannot be served leaves the current one, which the owner renews before it expires.
+    fn present(&mut self, identity: &TlsIdentity) {
+        let Some(running) = self.running.as_mut() else {
+            return;
+        };
+        let Some(certificate) = running.certificate.as_ref() else {
+            return;
+        };
+        match certificate.present(identity) {
+            Ok(()) => running.tls = Some(identity.summary()),
+            Err(error) => tracing::warn!(
+                target: "nyanpasu::remote_access",
+                %error,
+                "the renewed TLS certificate cannot be served"
+            ),
+        }
     }
 
     async fn stop(&mut self) {
@@ -404,6 +452,18 @@ impl Actor for HttpServerActor {
                     state.stop().await;
                 }
             }
+            Message::RefreshTls(generation) => {
+                if state
+                    .running
+                    .as_ref()
+                    .is_some_and(|running| running.generation == generation)
+                    && let Some(source) = state.tls.clone()
+                    // Without one, the certificate in use stays until the owner can renew it.
+                    && let Ok(identity) = source.identity().await
+                {
+                    state.present(&identity);
+                }
+            }
             Message::Configure { config, reply } => {
                 if !config.enabled {
                     state.stop().await;
@@ -412,6 +472,9 @@ impl Actor for HttpServerActor {
                     match state.identity(&config).await {
                         Ok(identity) if state.follows(&config, identity.as_ref()) => {
                             state.fault = None;
+                            if let Some(identity) = identity {
+                                state.present(&identity);
+                            }
                         }
                         Ok(identity) => {
                             // A changed port, scope, asset mode, authentication or certificate needs
@@ -2843,24 +2906,70 @@ pub(crate) mod tests {
 pub mod test_support {
     use super::*;
 
-    /// A real self-signed identity covering `localhost`, `names` and the loopback addresses,
-    /// valid for a day.
-    pub fn self_signed_identity(names: &[&str]) -> TlsIdentity {
-        let mut subject_alt_names: Vec<String> = vec!["localhost".to_owned()];
-        subject_alt_names.extend(names.iter().map(|name| (*name).to_owned()));
-        let mut params = rcgen::CertificateParams::new(subject_alt_names.clone()).unwrap();
-        params
-            .subject_alt_names
-            .push(rcgen::SanType::IpAddress(IpAddr::V4(Ipv4Addr::LOCALHOST)));
-        let key = rcgen::KeyPair::generate().unwrap();
-        let certificate = params.self_signed(&key).unwrap();
-        TlsIdentity::new(
-            certificate.der().to_vec(),
-            key.serialize_der(),
-            subject_alt_names,
-            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
-            i64::MAX,
-        )
+    /// A real root that issues certificates, like the remote-access owner's.
+    pub struct TestAuthority {
+        authority: nyanpasu_contracts::auth::TlsAuthority,
+    }
+
+    impl Default for TestAuthority {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl TestAuthority {
+        /// A fresh root, valid for a long time.
+        pub fn new() -> Self {
+            let mut params = rcgen::CertificateParams::default();
+            params
+                .distinguished_name
+                .push(rcgen::DnType::CommonName, "Test Local CA");
+            params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Constrained(0));
+            params.key_usages = vec![
+                rcgen::KeyUsagePurpose::KeyCertSign,
+                rcgen::KeyUsagePurpose::DigitalSignature,
+            ];
+            let key = rcgen::KeyPair::generate().unwrap();
+            let certificate = params.self_signed(&key).unwrap();
+            Self {
+                authority: nyanpasu_contracts::auth::TlsAuthority::new(
+                    certificate.der().to_vec(),
+                    key.serialize_der(),
+                    i64::MAX,
+                ),
+            }
+        }
+
+        /// A certificate this root signs for `localhost`, `names` and `127.0.0.1`.
+        pub fn issue(&self, names: &[&str]) -> TlsIdentity {
+            let mut dns_names: Vec<String> = vec!["localhost".to_owned()];
+            dns_names.extend(names.iter().map(|name| (*name).to_owned()));
+            let mut params = rcgen::CertificateParams::new(dns_names.clone()).unwrap();
+            params
+                .subject_alt_names
+                .push(rcgen::SanType::IpAddress(IpAddr::V4(Ipv4Addr::LOCALHOST)));
+            params.use_authority_key_identifier_extension = true;
+            let issuer = rcgen::Issuer::from_ca_cert_der(
+                &self.authority.certificate_der().to_vec().into(),
+                rcgen::KeyPair::try_from(self.authority.private_key_der()).unwrap(),
+            )
+            .unwrap();
+            let key = rcgen::KeyPair::generate().unwrap();
+            let certificate = params.signed_by(&key, &issuer).unwrap();
+            TlsIdentity::new(
+                certificate.der().to_vec(),
+                key.serialize_der(),
+                self.authority.certificate_der().to_vec(),
+                dns_names,
+                vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+                i64::MAX,
+            )
+        }
+    }
+
+    /// A certificate from a fresh root.
+    pub fn issued_identity(names: &[&str]) -> TlsIdentity {
+        TestAuthority::new().issue(names)
     }
 
     /// A certificate source a test can swap, like a reset of the real owner.

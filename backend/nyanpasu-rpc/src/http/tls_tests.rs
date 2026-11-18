@@ -13,7 +13,7 @@ use serde_json::json;
 
 use super::{
     HttpEndpoint, HttpServerClient, HttpServerFault, HttpServerStatus, PeerPolicy, auth, routes,
-    test_support::{StaticTlsIdentity, self_signed_identity},
+    test_support::{StaticTlsIdentity, TestAuthority, issued_identity},
     tls::HttpTlsIdentitySource,
 };
 use crate::test_support::Fixture;
@@ -32,7 +32,7 @@ impl Harness {
         let authenticator = Arc::new(auth::NyanpasuClientHttpAuthenticator::new(
             &fixture.rpc.dependencies.client,
         ));
-        let identity = Arc::new(StaticTlsIdentity::new(self_signed_identity(&[])));
+        let identity = Arc::new(StaticTlsIdentity::new(issued_identity(&[])));
         let server = HttpServerClient::spawn_with_tls(
             None,
             routes,
@@ -254,6 +254,7 @@ async fn a_certificate_that_cannot_be_served_is_unavailable_not_a_bind_failure()
     harness.identity.replace(TlsIdentity::new(
         b"not a certificate".to_vec(),
         b"not a key".to_vec(),
+        b"not a root".to_vec(),
         Vec::new(),
         Vec::new(),
         i64::MAX,
@@ -267,7 +268,7 @@ async fn a_certificate_that_cannot_be_served_is_unavailable_not_a_bind_failure()
     }
 
     // Replacing the certificate, as the settings offer, brings the listener back.
-    harness.identity.replace(self_signed_identity(&[]));
+    harness.identity.replace(issued_identity(&[]));
     let status = harness.configure(lan_config()).await;
     assert!(status.enabled);
     assert_eq!(status.fault, None);
@@ -315,7 +316,7 @@ async fn replacing_the_certificate_restarts_the_listener_on_the_same_port() {
         "the same certificate keeps the listener"
     );
 
-    let replacement = self_signed_identity(&[]);
+    let replacement = issued_identity(&[]);
     harness.identity.replace(replacement.clone());
     let second = harness.configure(config).await;
 
@@ -330,6 +331,55 @@ async fn replacing_the_certificate_restarts_the_listener_on_the_same_port() {
     assert_eq!(presented(&response), replacement.fingerprint());
 
     harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_renewal_from_the_same_root_is_presented_without_a_restart() {
+    let fixture = Fixture::new(false).await;
+    let routes = Arc::new(routes::RpcHttpRoutes::default());
+    routes.install(&fixture.rpc).unwrap();
+    let authenticator = Arc::new(auth::NyanpasuClientHttpAuthenticator::new(
+        &fixture.rpc.dependencies.client,
+    ));
+    let root = TestAuthority::new();
+    let first = root.issue(&[]);
+    let identity = Arc::new(StaticTlsIdentity::new(first.clone()));
+    let server = HttpServerClient::spawn_with_tls(
+        None,
+        routes,
+        authenticator,
+        Some(identity.clone() as Arc<dyn HttpTlsIdentitySource>),
+    )
+    .await
+    .unwrap();
+    let running = server.configure(&tls_config()).await.unwrap();
+    let response = insecure_client()
+        .get(format!("{}/login", url_of(&running)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(presented(&response), first.fingerprint());
+
+    // The owner renewed the certificate for new addresses; the root clients trust is the same.
+    let renewed = root.issue(&["nyan.local"]);
+    identity.replace(renewed.clone());
+    let status = server.configure(&tls_config()).await.unwrap();
+
+    assert_eq!(status.port, running.port);
+    assert_eq!(
+        status.tls.as_ref().map(|tls| tls.fingerprint),
+        Some(first.authority_fingerprint())
+    );
+    // A fresh client sees the new certificate on the same, still running, listener.
+    let response = insecure_client()
+        .get(format!("{}/login", url_of(&status)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(presented(&response), renewed.fingerprint());
+
+    server.shutdown().await.unwrap();
+    fixture.shutdown().await;
 }
 
 #[tokio::test]

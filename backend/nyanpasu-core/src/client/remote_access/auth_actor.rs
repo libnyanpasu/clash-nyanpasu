@@ -6,15 +6,15 @@
 //! Tokens are persisted through the injected [`SecretStore`]; launch codes and sessions are
 //! memory only and do not survive a restart.
 
-use std::{collections::BTreeMap, net::IpAddr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use nyanpasu_config::application::Role;
 use nyanpasu_contracts::auth::{
     AccessTokenStatus, AccessTokenSummary, AuthClock, AuthContext, AuthRevocation,
     AuthenticatedCaller, BrowserSessionSummary, CreateAccessTokenRequest, EntropySource,
     EstablishedBrowserSession, Grant, GrantError, IssuedAccessToken, IssuedLaunchCode, Principal,
-    RemoteAuthPolicy, SecretHash, SecretStore, SecretString, SessionId, TlsCertificateGenerator,
-    TlsCertificateRequest, TlsCertificateSummary, TlsIdentity, TokenId,
+    RemoteAuthPolicy, SecretHash, SecretStore, SecretString, SessionId, TlsAuthority,
+    TlsCertificateGenerator, TlsCertificateRequest, TlsCertificateSummary, TlsIdentity, TokenId,
     is_valid_launch_code_syntax, parse_access_token, parse_session_cookie,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef, MessagingErr, RpcReplyPort};
@@ -31,12 +31,17 @@ use super::{
 /// Pending launch codes kept at once. They live 60 seconds, so this only bounds a flood.
 const MAX_LAUNCH_CODES: usize = 32;
 const MAX_WAKE_DELAY_MS: u64 = 24 * 60 * 60 * 1000;
-/// How long a generated certificate stays valid: two years, which stays inside the 825-day
-/// limit some platforms apply to server certificates.
-const TLS_VALIDITY_MS: i64 = 730 * 24 * 60 * 60 * 1000;
+const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+/// How long the local root stays valid. Clients trust or pin it, so it outlives many renewals of
+/// the listener's certificate.
+const AUTHORITY_VALIDITY_MS: i64 = 10 * 365 * DAY_MS;
+/// How long a certificate the root issues for the listener stays valid.
+const LEAF_VALIDITY_MS: i64 = 7 * DAY_MS;
+/// A certificate with less than this left is replaced before it is presented again.
+const LEAF_RENEW_BEFORE_MS: i64 = 2 * DAY_MS;
 /// A certificate is valid from this long before it was made. A device on the network whose clock
 /// runs behind this computer's would otherwise reject a certificate that is not yet valid for it.
-const TLS_CLOCK_SKEW_MS: i64 = 24 * 60 * 60 * 1000;
+const TLS_CLOCK_SKEW_MS: i64 = DAY_MS;
 
 pub(super) type Reply<T> = RpcReplyPort<Result<T, RemoteAuthError>>;
 
@@ -87,22 +92,22 @@ pub(super) enum Message {
         principal: Principal,
         reply: Reply<bool>,
     },
-    /// The certificate of the HTTPS listener, generated on first use and when it has expired.
+    /// The listener's certificate, issued by the root for the host's current addresses. The root
+    /// is made on first use; the certificate is renewed when the addresses change or it nears
+    /// its expiry.
     TlsIdentity {
-        addresses: Vec<IpAddr>,
         reply: Reply<TlsIdentity>,
     },
-    /// The public view of the certificate, or `None` while none was generated yet.
-    TlsSummary {
-        reply: Reply<Option<TlsCertificateSummary>>,
+    /// The root, made and saved first when none exists yet.
+    EnsureTlsAuthority {
+        reply: Reply<()>,
     },
-    /// The DER encoding of the certificate, or `None` while none was generated yet.
-    TlsCertificate {
-        reply: Reply<Option<Vec<u8>>>,
+    /// The DER root and the listener's current certificate, either `None` while not made yet.
+    TlsCertificates {
+        reply: Reply<TlsCertificateDers>,
     },
-    /// Replaces the certificate, which changes its fingerprint.
+    /// Replaces the root, which changes the fingerprint clients trust.
     ResetTls {
-        addresses: Vec<IpAddr>,
         reply: Reply<TlsCertificateSummary>,
     },
     /// Sent by the expiry timer; pruning before every message does the work.
@@ -116,8 +121,15 @@ pub(super) struct Args {
     pub(super) tls_generator: Arc<dyn TlsCertificateGenerator>,
     pub(super) policy: RemoteAuthPolicy,
     pub(super) tokens: Vec<TokenRecord>,
-    pub(super) tls: Option<TlsIdentity>,
+    pub(super) authority: Option<TlsAuthority>,
     pub(super) revocations: broadcast::Sender<AuthRevocation>,
+}
+
+/// The DER encodings of the root and of the listener's current certificate.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TlsCertificateDers {
+    pub authority: Option<Vec<u8>>,
+    pub leaf: Option<Vec<u8>>,
 }
 
 struct LiveToken {
@@ -200,7 +212,9 @@ pub(super) struct State {
     tls_generator: Arc<dyn TlsCertificateGenerator>,
     revocations: broadcast::Sender<AuthRevocation>,
     tokens: BTreeMap<TokenId, LiveToken>,
-    tls: Option<TlsIdentity>,
+    authority: Option<TlsAuthority>,
+    /// The listener's current certificate; memory only, issued again after a restart.
+    leaf: Option<TlsIdentity>,
     launch_codes: Vec<LaunchCode>,
     sessions: BTreeMap<SessionId, Session>,
     wake: Option<JoinHandle<Result<(), MessagingErr<Message>>>>,
@@ -240,7 +254,8 @@ impl Actor for RemoteAccessAuthActor {
             tls_generator: args.tls_generator,
             revocations: args.revocations,
             tokens,
-            tls: args.tls,
+            authority: args.authority,
+            leaf: None,
             launch_codes: Vec::new(),
             sessions: BTreeMap::new(),
             wake: None,
@@ -272,20 +287,26 @@ impl Actor for RemoteAccessAuthActor {
         state.prune();
         match message {
             Message::ExpiryTick => {}
-            Message::TlsIdentity { addresses, reply } => {
-                let _ = reply.send(state.tls_identity(addresses).await);
+            Message::TlsIdentity { reply } => {
+                let _ = reply.send(state.tls_identity().await);
             }
-            Message::TlsSummary { reply } => {
-                let _ = reply.send(Ok(state.tls.as_ref().map(TlsIdentity::summary)));
+            Message::EnsureTlsAuthority { reply } => {
+                let _ = reply.send(state.ensure_authority().await.map(drop));
             }
-            Message::TlsCertificate { reply } => {
-                let _ = reply.send(Ok(state
-                    .tls
-                    .as_ref()
-                    .map(|identity| identity.certificate_der().to_vec())));
+            Message::TlsCertificates { reply } => {
+                let _ = reply.send(Ok(TlsCertificateDers {
+                    authority: state
+                        .authority
+                        .as_ref()
+                        .map(|authority| authority.certificate_der().to_vec()),
+                    leaf: state
+                        .leaf
+                        .as_ref()
+                        .map(|leaf| leaf.certificate_der().to_vec()),
+                }));
             }
-            Message::ResetTls { addresses, reply } => {
-                let _ = reply.send(state.reset_tls(addresses).await);
+            Message::ResetTls { reply } => {
+                let _ = reply.send(state.reset_tls().await);
             }
             Message::CreateAccessToken { request, reply } => {
                 let _ = reply.send(state.create_token(request).await);
@@ -491,58 +512,91 @@ impl State {
         save_record(
             self.store.as_ref(),
             self.tokens.values().map(|token| &token.record),
-            self.tls.as_ref(),
+            self.authority.as_ref(),
         )
         .await
     }
 
-    /// The certificate in use. A missing or expired one is generated and made durable first; one
-    /// that is still valid is kept even when the listener's addresses changed, because a new
-    /// fingerprint would break every pinned client. An explicit reset replaces it.
-    async fn tls_identity(
-        &mut self,
-        addresses: Vec<IpAddr>,
-    ) -> Result<TlsIdentity, RemoteAuthError> {
+    /// The root, made and made durable first when none exists or it nears its end. Replacing it
+    /// changes what clients trust, so a valid one is kept for its whole life.
+    async fn ensure_authority(&mut self) -> Result<TlsAuthority, RemoteAuthError> {
         let now = self.clock.now_unix_ms();
-        if let Some(identity) = self.tls.as_ref().filter(|tls| now < tls.not_after_ms()) {
-            return Ok(identity.clone());
+        if let Some(authority) = self
+            .authority
+            .as_ref()
+            .filter(|authority| now < authority.not_after_ms().saturating_sub(LEAF_VALIDITY_MS))
+        {
+            return Ok(authority.clone());
         }
-        self.replace_tls(addresses).await
+        self.replace_authority().await
     }
 
-    async fn reset_tls(
-        &mut self,
-        addresses: Vec<IpAddr>,
-    ) -> Result<TlsCertificateSummary, RemoteAuthError> {
-        self.replace_tls(addresses)
-            .await
-            .map(|identity| identity.summary())
-    }
-
-    /// Generates a certificate and keeps it only once it is durable, so a restart never serves a
-    /// certificate that was not saved.
-    async fn replace_tls(
-        &mut self,
-        addresses: Vec<IpAddr>,
-    ) -> Result<TlsIdentity, RemoteAuthError> {
+    /// The listener's certificate. A new one is issued when there is none, the root changed, the
+    /// host's addresses changed, or it has less than [`LEAF_RENEW_BEFORE_MS`] left; renewing never
+    /// changes the root clients trust.
+    async fn tls_identity(&mut self) -> Result<TlsIdentity, RemoteAuthError> {
+        let authority = self.ensure_authority().await?;
         let now = self.clock.now_unix_ms();
-        let identity = self
+        let generator = self.tls_generator.clone();
+        let mut addresses = nyanpasu_owner_support::blocking::join(
+            tokio::task::spawn_blocking(move || generator.addresses()).await,
+        );
+        addresses.sort_unstable();
+        if let Some(leaf) = self.leaf.as_ref() {
+            let mut covered = leaf.addresses().to_vec();
+            covered.sort_unstable();
+            if leaf.authority_der() == authority.certificate_der()
+                && now < leaf.not_after_ms().saturating_sub(LEAF_RENEW_BEFORE_MS)
+                && covered == addresses
+            {
+                return Ok(leaf.clone());
+            }
+        }
+        let leaf = self
             .tls_generator
-            .generate(TlsCertificateRequest {
-                addresses,
+            .issue(
+                &authority,
+                TlsCertificateRequest {
+                    not_before_ms: now.saturating_sub(TLS_CLOCK_SKEW_MS),
+                    not_after_ms: now
+                        .saturating_add(LEAF_VALIDITY_MS)
+                        .min(authority.not_after_ms()),
+                },
+            )
+            .await
+            .map_err(|error| RemoteAuthError::PersistenceFailed {
+                reason: error.to_string(),
+            })?;
+        self.leaf = Some(leaf.clone());
+        Ok(leaf)
+    }
+
+    async fn reset_tls(&mut self) -> Result<TlsCertificateSummary, RemoteAuthError> {
+        self.replace_authority().await?;
+        self.tls_identity().await.map(|identity| identity.summary())
+    }
+
+    /// Makes a root and keeps it only once it is durable, so a restart never serves certificates
+    /// from a root that was not saved. The certificate of the previous root goes with it.
+    async fn replace_authority(&mut self) -> Result<TlsAuthority, RemoteAuthError> {
+        let now = self.clock.now_unix_ms();
+        let authority = self
+            .tls_generator
+            .generate_authority(TlsCertificateRequest {
                 not_before_ms: now.saturating_sub(TLS_CLOCK_SKEW_MS),
-                not_after_ms: now.saturating_add(TLS_VALIDITY_MS),
+                not_after_ms: now.saturating_add(AUTHORITY_VALIDITY_MS),
             })
             .await
             .map_err(|error| RemoteAuthError::PersistenceFailed {
                 reason: error.to_string(),
             })?;
-        let previous = self.tls.replace(identity.clone());
+        let previous = self.authority.replace(authority.clone());
         if let Err(error) = self.persist().await {
-            self.tls = previous;
+            self.authority = previous;
             return Err(error);
         }
-        Ok(identity)
+        self.leaf = None;
+        Ok(authority)
     }
 
     /// Looks up the token a raw credential names, doing the same hashing work for every

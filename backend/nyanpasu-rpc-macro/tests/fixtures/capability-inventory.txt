@@ -42,6 +42,7 @@ discard_app_update_package | desktop | app_update | - | mutation | system:write
 download_app_update | desktop | app_update | - | mutation | system:write
 enable_sync | desktop | - | - | mutation | settings:write
 enhance_profiles | desktop,http | - | elevation,os_integration,presentation | mutation | profile:write
+export_remote_access_authority | desktop | dialog | - | mutation | remote:write
 fetch_latest_core_versions | desktop,http | - | - | query | system:read
 flush_system_dns_cache | desktop | elevation | - | mutation | system:write
 get_all_storage_items | desktop,http | - | - | query | settings:read

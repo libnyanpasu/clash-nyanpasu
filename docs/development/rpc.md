@@ -102,12 +102,15 @@ never carries a credential; `get_local_socket_status` returns the endpoint path,
 `remote:read` query on Desktop and Local only. `list_local_networks` returns the host's IPv4
 networks (interface name, address and CIDR network) that `lan_allow` may name; it is a Desktop-only
 `remote:read` query, so the reviewed Local allowlist is unchanged. `get_remote_access_certificate`
-(a Desktop-only `remote:read` query) reads the saved certificate without generating one and returns
-its viewer fields (`TlsCertificateDetails`: subject, issuer, serial, validity, SANs, algorithms and
-SHA-256/SHA-1 fingerprints), so the settings page shows it while nothing listens.
+(a Desktop-only `remote:read` query) reads the local root and the listener's current certificate
+without making either and returns their viewer fields (`RemoteAccessCertificates` of
+`TlsCertificateDetails`: subject, issuer, serial, validity, SANs, algorithms and SHA-256/SHA-1
+fingerprints), so the settings page shows them while nothing listens.
 `open_remote_access_certificate` (a Desktop-only native `remote:write` mutation, capability `opener`)
-shows it in the platform's read-only viewer: the Windows certificate dialog, Quick Look on macOS,
-or `gcr-viewer`, else `xdg-open`, on Linux; none of them imports it into a trust store. Access tokens and browser sessions are managed
+shows the root in the platform's read-only viewer: the Windows certificate dialog, Quick Look on
+macOS, or `gcr-viewer`, else `xdg-open`, on Linux; none of them imports it into a trust store.
+`export_remote_access_authority` (Desktop-only native, capability `dialog`) saves the root as a PEM
+`.crt` file the user chooses, for importing on other devices. Access tokens and browser sessions are managed
 through the `remote` commands in `nyanpasu-rpc/src/commands/remote/{tokens,sessions,settings}.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
@@ -121,17 +124,22 @@ revocation; capacity never turns into a global login denial.
 `create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
 launch codes are not kept in a client cache.
 
-`tls: self_signed` serves HTTPS with the application's own certificate. The remote-access
-authentication owner generates it on first use (an `HttpTlsIdentitySource` port, installed late
-like the authenticator; `nyanpasu-os` implements the generator) and keeps it with the token hashes
-in `auth-secrets.json`; it is replaced only on expiry or by `reset_remote_access_tls`
-(`remote:write`, Desktop and Local only), because a new certificate breaks every pinned client.
-A listener that must serve HTTPS and has no usable certificate, or one it cannot build a TLS
-configuration from, stops with the `tls_unavailable` fault; it never falls back to plain HTTP, and
-`reset_remote_access_tls` repairs it. A certificate is valid from one day before it was made, so a
-device whose clock runs behind does not reject it. The certificate keeps the addresses it covers,
-and the generator covers every interface address it finds. `get_http_server_status` carries the
-certificate's SHA-256 fingerprint and expiry, which are public to every TLS client. The settings
+`tls: self_signed` serves HTTPS with certificates from the application's own certificate
+authority. The remote-access authentication owner makes the root (ten years, path length zero, no
+name constraints) when HTTPS is turned on or first needed, and keeps it with the token hashes in
+`auth-secrets.json`; it is replaced only near its end or by `reset_remote_access_tls`
+(`remote:write`, Desktop and Local only), because a new root breaks every client that trusted or
+pinned it. The listener presents a seven-day certificate the root issues for `localhost`, the host
+name and every interface address (an `HttpTlsIdentitySource` port, installed late like the
+authenticator; `nyanpasu-os` implements the generator), followed by the root. It is memory only:
+the owner issues a new one when none exists, the host's addresses changed, or less than two days are
+left, and the listener asks for it every minute and presents a new one from the next handshake on
+without restarting; only a new root restarts the listener. A listener that must serve HTTPS and has
+no usable certificate, or one it cannot build a TLS configuration from, stops with the
+`tls_unavailable` fault; it never falls back to plain HTTP, and `reset_remote_access_tls` repairs
+it. Certificates are valid from one day before they were made, so a device whose clock runs behind
+does not reject them. `get_http_server_status` carries the root's SHA-256 fingerprint and the
+current certificate's expiry, which are public to every TLS client. The settings
 split who may reach the listener from how they authenticate: `listen: local` binds `127.0.0.1`;
 `listen: lan` and `listen: any` bind every IPv4 interface, always serve HTTPS and require a
 credential from every caller (`auth: required`), loopback peers included. `listen: lan` drops a
@@ -139,9 +147,10 @@ connection before the TLS handshake unless its peer is loopback or in a `lan_all
 certificate covers (`localhost`, the host name and `<host>.local`); a `Host` without a port names
 the scheme's default port (443 under TLS), as browsers send it; HTTP/2 carries the authority as
 `:authority` instead of `Host`, so the policy reads either and refuses a request in which they
-differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the fingerprint per context
-(`context add --fingerprint`, or an interactive trust on first use that prints it), sends nothing,
-not even the token, to a server with another certificate, and exits with status 4. `nyanpasu-server`
+differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the root's fingerprint per
+context (`context add --fingerprint`, or an interactive trust on first use that prints it), accepts
+a certificate that root signed and that is within its validity whatever name it was reached by,
+sends nothing, not even the token, to a server with another root, and exits with status 4. `nyanpasu-server`
 keeps its plain loopback listener.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared

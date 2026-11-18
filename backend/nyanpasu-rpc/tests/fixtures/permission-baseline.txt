@@ -40,6 +40,7 @@ command | discard_app_update_package | system:write |  | mutation | desktop | ap
 command | download_app_update | system:write |  | mutation | desktop | app_update |
 command | enable_sync | settings:write |  | mutation | desktop |  |
 command | enhance_profiles | profile:write |  | mutation | desktop,http |  | elevation,os_integration,presentation
+command | export_remote_access_authority | remote:write |  | mutation | desktop | dialog |
 command | fetch_latest_core_versions | system:read |  | query | desktop,http |  |
 command | flush_system_dns_cache | system:write |  | mutation | desktop | elevation |
 command | get_all_storage_items | settings:read | sensitive | query | desktop,http |  |

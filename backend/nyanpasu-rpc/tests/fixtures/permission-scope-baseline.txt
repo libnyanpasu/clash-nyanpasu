@@ -40,6 +40,7 @@ command | discard_app_update_package | system | mutation | desktop | app_update 
 command | download_app_update | system | mutation | desktop | app_update |
 command | enable_sync | settings | mutation | desktop |  |
 command | enhance_profiles | profile | mutation | desktop,http |  | elevation,os_integration,presentation
+command | export_remote_access_authority | remote_admin | mutation | desktop | dialog |
 command | fetch_latest_core_versions | read | query | desktop,http |  |
 command | flush_system_dns_cache | system | mutation | desktop | elevation |
 command | get_all_storage_items | sensitive_read | query | desktop,http |  |

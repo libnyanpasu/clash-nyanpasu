@@ -46,11 +46,11 @@ pub enum CliError {
     /// The credential was rejected, or the principal lacks the command's scope.
     #[snafu(display("not authenticated or scope denied: {message}"))]
     Unauthenticated { message: String },
-    /// The server presented a certificate other than the one the context pinned. The
-    /// connection was refused before anything, including the token, was sent.
+    /// The server presented a certificate that the authority the context pinned did not issue.
+    /// The connection was refused before anything, including the token, was sent.
     #[snafu(display(
-        "the certificate of {target} is {presented}, not the pinned {pinned}; compare it with \
-         the app's remote access settings, then pin it again with `context add`"
+        "the certificate authority of {target} is {presented}, not the pinned {pinned}; compare \
+         it with the app's remote access settings, then pin it again with `context add`"
     ))]
     CertificateMismatch {
         target: String,

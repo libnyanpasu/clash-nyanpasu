@@ -1,6 +1,7 @@
 import { expect, test, vi, type TestContext } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
+import { formatDate } from '@/utils/date'
 import type {
   AccessTokenSummary,
   BrowserSessionSummary,
@@ -79,6 +80,7 @@ async function mount(
     list_local_networks: () => networks,
     get_remote_access_certificate: () => null,
     open_remote_access_certificate: () => null,
+    export_remote_access_authority: () => true,
     ...handlers,
   })
   const client = new QueryClient({
@@ -570,39 +572,75 @@ test('no address is listed while the server does not listen', async ({
   ).toBeNull()
 })
 
-const certificate = {
-  subject: 'CN=Clash Nyanpasu',
-  issuer: 'CN=Clash Nyanpasu',
-  serial: '01:02:03',
+const authority = {
+  subject: 'CN=Clash Nyanpasu Local CA (nyan)',
+  issuer: 'CN=Clash Nyanpasu Local CA (nyan)',
+  serial: '0A:0B',
   not_before_ms: Date.UTC(2026, 10, 18),
-  not_after_ms: Date.UTC(2028, 0, 2),
-  dns_names: ['localhost', 'nyan.local'],
-  ip_addresses: ['127.0.0.1', '192.168.1.20'],
+  not_after_ms: Date.UTC(2036, 10, 16),
+  dns_names: [],
+  ip_addresses: [],
   signature_algorithm: 'ecdsa-with-SHA256',
   public_key_algorithm: 'id-ecPublicKey',
   sha256: fingerprint,
-  sha1: '11:22:33',
+  sha1: 'AA:BB',
 }
 
-test('the saved certificate is summarized, detailed, and opened in the system viewer', async ({
+const certificate = {
+  authority,
+  leaf: {
+    subject: 'CN=Clash Nyanpasu',
+    issuer: authority.subject,
+    serial: '01:02:03',
+    not_before_ms: Date.UTC(2026, 10, 18),
+    not_after_ms: Date.UTC(2026, 10, 25),
+    dns_names: ['localhost', 'nyan.local'],
+    ip_addresses: ['127.0.0.1', '192.168.1.20'],
+    signature_algorithm: 'ecdsa-with-SHA256',
+    public_key_algorithm: 'id-ecPublicKey',
+    sha256:
+      '01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01:01',
+    sha1: '11:22:33',
+  },
+}
+
+test('the authority is summarized with the current certificate, detailed, opened and exported', async ({
   onTestFinished,
 }) => {
   const { view, testRpc } = await mount(
     onTestFinished,
     <ServerSettings />,
-    // Nothing listens, yet the saved certificate is shown.
+    // Nothing listens, yet the saved authority is shown.
     { get_remote_access_certificate: () => certificate },
     lan,
   )
 
+  // The fingerprint to compare is the authority's, which outlives every renewal.
   await expect.element(view.getByText(fingerprint)).toBeVisible()
+  await expect
+    .element(view.getByText('CN=Clash Nyanpasu Local CA (nyan)'))
+    .toBeVisible()
   await expect
     .element(
       view.getByText(
-        `CN=Clash Nyanpasu (${m.settings_remote_access_certificate_self_signed()})`,
+        m.settings_remote_access_certificate_leaf_summary({
+          date: formatDate(certificate.leaf.not_after_ms),
+        }),
       ),
     )
     .toBeVisible()
+
+  await view
+    .getByRole('button', {
+      name: m.settings_remote_access_certificate_export(),
+    })
+    .click()
+  await vi.waitFor(() =>
+    expect(testRpc.invoke).toHaveBeenCalledWith(
+      'export_remote_access_authority',
+      undefined,
+    ),
+  )
 
   await view
     .getByRole('button', {
@@ -610,6 +648,14 @@ test('the saved certificate is summarized, detailed, and opened in the system vi
     })
     .click()
   const dialog = view.getByRole('dialog')
+  // The authority signs itself; the current certificate names the addresses it covers.
+  await expect
+    .element(
+      dialog.getByText(
+        `CN=Clash Nyanpasu Local CA (nyan) (${m.settings_remote_access_certificate_self_signed()})`,
+      ),
+    )
+    .toBeVisible()
   await expect.element(dialog.getByText('01:02:03')).toBeVisible()
   await expect.element(dialog.getByText('localhost, nyan.local')).toBeVisible()
   await expect.element(dialog.getByText('11:22:33')).toBeVisible()

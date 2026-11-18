@@ -630,15 +630,16 @@ async fn choose_pin<C: Connector>(
     let presented = services.connector.probe_certificate(url).await?;
     write!(
         io.stderr,
-        "{url} presents a certificate with the SHA-256 fingerprint\n  {presented}\n\
+        "{url} presents a certificate issued by the authority with the SHA-256 fingerprint\n  \
+         {presented}\n\
          Compare it with the fingerprint in the app's remote access settings.\n\
-         Pin this certificate? [y/N] "
+         Pin this certificate authority? [y/N] "
     )?;
     io.stderr.flush()?;
     if !confirmed(io.stdin)? {
         return Err(CliError::usage(
-            "the certificate was not pinned and nothing was saved; verify the fingerprint and \
-             pass it with --fingerprint",
+            "the certificate authority was not pinned and nothing was saved; verify the \
+             fingerprint and pass it with --fingerprint",
         ));
     }
     Ok(Some(presented))
@@ -1176,7 +1177,7 @@ mod tests {
             declined.stderr
         );
         assert!(
-            declined.stderr.contains("Pin this certificate?"),
+            declined.stderr.contains("Pin this certificate authority?"),
             "{}",
             declined.stderr
         );

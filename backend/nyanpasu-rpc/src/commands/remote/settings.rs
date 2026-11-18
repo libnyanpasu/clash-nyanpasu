@@ -1,7 +1,7 @@
 //! The remote-access settings, the HTTPS certificate and the local socket's state.
 
 use nyanpasu_config::application::{LocalNetwork, RemoteAccessConfig};
-use nyanpasu_contracts::auth::TlsCertificateDetails;
+use nyanpasu_contracts::auth::RemoteAccessCertificates;
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
 
@@ -30,15 +30,15 @@ pub async fn reset_remote_access_tls(
     Ok(client.reset_remote_access_tls().await?.into())
 }
 
-/// The fields of the saved HTTPS certificate, or `None` before the listener first needed one. It
-/// is read without generating one, so the settings page shows it while nothing listens. Every TLS
-/// client receives the certificate, but only the desktop settings page asks for it.
+/// The fields of the local root clients trust and of the certificate it issued to the listener,
+/// or `None` before HTTPS was first turned on. They are read without making either, so the
+/// settings page shows them while nothing listens. Only the desktop settings page asks for them.
 #[nyanpasu_rpc::rpc(query, expose = [])]
 #[specta::specta]
 pub async fn get_remote_access_certificate(
     client: RpcState<'_, NyanpasuClient>,
-) -> Result<Option<TlsCertificateDetails>> {
-    Ok(client.remote_access_certificate().await?)
+) -> Result<Option<RemoteAccessCertificates>> {
+    Ok(client.remote_access_certificates().await?)
 }
 
 /// The host's IPv4 networks the LAN listen scope may allow, for the settings page. Only the

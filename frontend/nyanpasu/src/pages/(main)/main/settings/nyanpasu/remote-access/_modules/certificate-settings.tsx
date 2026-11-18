@@ -20,7 +20,7 @@ import {
   ItemLabelText,
 } from '../../../../_modules/settings-card'
 
-/** One labelled field of the certificate. */
+/** One labelled field of a certificate. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col" data-slot="remote-access-certificate-field">
@@ -38,22 +38,85 @@ function issuerOf(certificate: TlsCertificateDetails) {
     : certificate.issuer
 }
 
-/** Every field a certificate viewer shows, and the platform's own viewer for it. */
-function CertificateDetailsModal({
+const listOf = (values: string[]) =>
+  values.length > 0 ? values.join(', ') : '—'
+
+/** Every field a certificate viewer shows of one certificate. */
+function CertificateFields({
   certificate,
 }: {
   certificate: TlsCertificateDetails
 }) {
+  return (
+    <dl className="flex flex-col gap-3">
+      <Field label={m.settings_remote_access_certificate_subject()}>
+        {certificate.subject}
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_issuer()}>
+        {issuerOf(certificate)}
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_serial()}>
+        <code>{certificate.serial}</code>
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_not_before()}>
+        {formatDate(certificate.not_before_ms)}
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_not_after()}>
+        {formatDate(certificate.not_after_ms)}
+      </Field>
+
+      {certificate.dns_names.length + certificate.ip_addresses.length > 0 && (
+        <>
+          <Field label={m.settings_remote_access_certificate_dns_names()}>
+            {listOf(certificate.dns_names)}
+          </Field>
+
+          <Field label={m.settings_remote_access_certificate_ip_addresses()}>
+            {listOf(certificate.ip_addresses)}
+          </Field>
+        </>
+      )}
+
+      <Field label={m.settings_remote_access_certificate_signature_algorithm()}>
+        {certificate.signature_algorithm}
+      </Field>
+
+      <Field
+        label={m.settings_remote_access_certificate_public_key_algorithm()}
+      >
+        {certificate.public_key_algorithm}
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_sha256()}>
+        <code>{certificate.sha256}</code>
+      </Field>
+
+      <Field label={m.settings_remote_access_certificate_sha1()}>
+        <code>{certificate.sha1}</code>
+      </Field>
+    </dl>
+  )
+}
+
+/** The root and the current certificate in full, and the platform's own viewer for the root. */
+function CertificateDetailsModal({
+  authority,
+  leaf,
+}: {
+  authority: TlsCertificateDetails
+  leaf: TlsCertificateDetails | null
+}) {
   const { openInViewer } = useRemoteAccessCertificate()
   const [error, setError] = useState<string | null>(null)
-
-  const list = (values: string[]) =>
-    values.length > 0 ? values.join(', ') : '—'
 
   return (
     <ModalContent onOpenAutoFocus={() => setError(null)}>
       <Card
-        className="w-[32rem] max-w-full"
+        className="max-h-[85vh] w-[32rem] max-w-full overflow-y-auto"
         data-slot="remote-access-certificate-dialog"
       >
         <CardHeader>
@@ -62,59 +125,31 @@ function CertificateDetailsModal({
           </ModalTitle>
         </CardHeader>
 
-        <CardContent>
-          <dl className="flex flex-col gap-3">
-            <Field label={m.settings_remote_access_certificate_subject()}>
-              {certificate.subject}
-            </Field>
+        <CardContent className="flex flex-col gap-4">
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">
+              {m.settings_remote_access_certificate_authority_section()}
+            </h3>
 
-            <Field label={m.settings_remote_access_certificate_issuer()}>
-              {issuerOf(certificate)}
-            </Field>
+            <CertificateFields certificate={authority} />
+          </section>
 
-            <Field label={m.settings_remote_access_certificate_serial()}>
-              <code>{certificate.serial}</code>
-            </Field>
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">
+              {m.settings_remote_access_certificate_leaf_section()}
+            </h3>
 
-            <Field label={m.settings_remote_access_certificate_not_before()}>
-              {formatDate(certificate.not_before_ms)}
-            </Field>
-
-            <Field label={m.settings_remote_access_certificate_not_after()}>
-              {formatDate(certificate.not_after_ms)}
-            </Field>
-
-            <Field label={m.settings_remote_access_certificate_dns_names()}>
-              {list(certificate.dns_names)}
-            </Field>
-
-            <Field label={m.settings_remote_access_certificate_ip_addresses()}>
-              {list(certificate.ip_addresses)}
-            </Field>
-
-            <Field
-              label={m.settings_remote_access_certificate_signature_algorithm()}
-            >
-              {certificate.signature_algorithm}
-            </Field>
-
-            <Field
-              label={m.settings_remote_access_certificate_public_key_algorithm()}
-            >
-              {certificate.public_key_algorithm}
-            </Field>
-
-            <Field label={m.settings_remote_access_certificate_sha256()}>
-              <code>{certificate.sha256}</code>
-            </Field>
-
-            <Field label={m.settings_remote_access_certificate_sha1()}>
-              <code>{certificate.sha1}</code>
-            </Field>
-          </dl>
+            {leaf ? (
+              <CertificateFields certificate={leaf} />
+            ) : (
+              <p className="text-on-surface-variant text-sm">
+                {m.settings_remote_access_certificate_leaf_none()}
+              </p>
+            )}
+          </section>
 
           {error && (
-            <p role="alert" className="text-error mt-3 text-sm">
+            <p role="alert" className="text-error text-sm">
               {error}
             </p>
           )}
@@ -142,17 +177,18 @@ function CertificateDetailsModal({
 }
 
 /**
- * The saved certificate the HTTPS listener presents: its fingerprint, issuer and validity, its
- * details and the platform's viewer, and its replacement. It is read from the saved settings, so
- * it shows while nothing listens; the replacement stays available when none was generated yet or
- * the listener cannot serve the saved one.
+ * The local root clients trust, which outlives every renewal: its fingerprint, name and validity,
+ * its export and replacement. Below it, the short-lived certificate it issued to the listener,
+ * which is renewed when the addresses change or before it expires. Both are read from the saved
+ * settings, so they show while nothing listens.
  */
 export default function CertificateSettings() {
   const { resetCertificate } = useRemoteAccess()
-  const { query } = useRemoteAccessCertificate()
+  const { query, exportAuthority } = useRemoteAccessCertificate()
   const [error, setError] = useState<string | null>(null)
 
-  const certificate = query.data ?? null
+  const authority = query.data?.authority ?? null
+  const leaf = query.data?.leaf ?? null
 
   const handleReset = async () => {
     setError(null)
@@ -184,23 +220,31 @@ export default function CertificateSettings() {
         </ItemLabelDescription>
       </ItemLabel>
 
-      {certificate ? (
+      {authority ? (
         <dl className="flex flex-col gap-2">
           <Field label={m.settings_remote_access_certificate_sha256()}>
             <code data-slot="remote-access-fingerprint">
-              {certificate.sha256}
+              {authority.sha256}
             </code>
           </Field>
 
-          <Field label={m.settings_remote_access_certificate_issuer()}>
-            {issuerOf(certificate)}
+          <Field label={m.settings_remote_access_certificate_subject()}>
+            {authority.subject}
           </Field>
 
           <Field label={m.settings_remote_access_certificate_validity()}>
             {m.settings_remote_access_certificate_validity_range({
-              from: formatDate(certificate.not_before_ms),
-              to: formatDate(certificate.not_after_ms),
+              from: formatDate(authority.not_before_ms),
+              to: formatDate(authority.not_after_ms),
             })}
+          </Field>
+
+          <Field label={m.settings_remote_access_certificate_leaf_section()}>
+            {leaf
+              ? m.settings_remote_access_certificate_leaf_summary({
+                  date: formatDate(leaf.not_after_ms),
+                })
+              : m.settings_remote_access_certificate_leaf_none()}
           </Field>
         </dl>
       ) : (
@@ -212,16 +256,31 @@ export default function CertificateSettings() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        {certificate && (
-          <Modal>
-            <ModalTrigger asChild>
-              <Button variant="stroked">
-                {m.settings_remote_access_certificate_details()}
-              </Button>
-            </ModalTrigger>
+        {authority && (
+          <>
+            <Modal>
+              <ModalTrigger asChild>
+                <Button variant="stroked">
+                  {m.settings_remote_access_certificate_details()}
+                </Button>
+              </ModalTrigger>
 
-            <CertificateDetailsModal certificate={certificate} />
-          </Modal>
+              <CertificateDetailsModal authority={authority} leaf={leaf} />
+            </Modal>
+
+            <Button
+              variant="stroked"
+              disabled={exportAuthority.isPending}
+              onClick={() => {
+                setError(null)
+                exportAuthority.mutate(undefined, {
+                  onError: (failure) => setError(formatError(failure)),
+                })
+              }}
+            >
+              {m.settings_remote_access_certificate_export()}
+            </Button>
+          </>
         )}
 
         <Button

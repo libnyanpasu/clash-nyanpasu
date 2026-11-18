@@ -40,6 +40,7 @@ command | discard_app_update_package | system:write | system.update |  |  | desk
 command | download_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
 command | enable_sync | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
 command | enhance_profiles | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | export_remote_access_authority | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | fetch_latest_core_versions | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
 command | flush_system_dns_cache | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | get_all_storage_items | settings:read | settings.storage | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/storage.rs

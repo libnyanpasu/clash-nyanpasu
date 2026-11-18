@@ -43,35 +43,20 @@ export function createRpcClient(
         __RPC_INVOKE('list_local_networks'),
       ),
     /**
-     *  The fields of the saved HTTPS certificate, or `None` before the listener first needed one. It
-     *  is read without generating one, so the settings page shows it while nothing listens. Every TLS
-     *  client receives the certificate, but only the desktop settings page asks for it.
+     *  The fields of the local root clients trust and of the certificate it issued to the listener,
+     *  or `None` before HTTPS was first turned on. They are read without making either, so the
+     *  settings page shows them while nothing listens. Only the desktop settings page asks for them.
      */
     getRemoteAccessCertificate: () =>
       typedError<
         {
-          /**  The distinguished name of the subject, `CN=Clash Nyanpasu`. */
-          subject: string
-          /**  The distinguished name of the issuer; the same as the subject for a self-signed one. */
-          issuer: string
-          /**  The serial number, upper-case hexadecimal pairs separated by `:`. */
-          serial: string
-          /**  Start of validity, in Unix epoch milliseconds. */
-          not_before_ms: number
-          /**  End of validity, in Unix epoch milliseconds. */
-          not_after_ms: number
-          /**  The DNS names of the subject alternative name extension. */
-          dns_names: string[]
-          /**  The IP addresses of the subject alternative name extension. */
-          ip_addresses: string[]
-          /**  The signature algorithm's short name, `ecdsa-with-SHA256`, or its dotted OID. */
-          signature_algorithm: string
-          /**  The public key algorithm's short name, `id-ecPublicKey`, or its dotted OID. */
-          public_key_algorithm: string
-          /**  SHA-256 of the DER encoding, the value clients pin. */
-          sha256: string
-          /**  SHA-1 of the DER encoding, the thumbprint some viewers show instead. */
-          sha1: string
+          /**  The root to compare, pin or import; it outlives every renewal. */
+          authority: TlsCertificateDetails
+          /**
+           *  The certificate the listener presents now, or `None` before it first served HTTPS since
+           *  the application started.
+           */
+          leaf: TlsCertificateDetails | null
         } | null,
         IpcError_Serialize
       >(__RPC_INVOKE('get_remote_access_certificate')),
@@ -708,12 +693,20 @@ export function createRpcClient(
         __RPC_INVOKE('open_web_url', { url }),
       ),
     /**
-     *  Shows the saved HTTPS certificate in the platform's read-only certificate viewer. It opens a
+     *  Shows the local root clients trust in the platform's read-only certificate viewer. It opens a
      *  window on this computer, so only the desktop offers it.
      */
     openRemoteAccessCertificate: () =>
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('open_remote_access_certificate'),
+      ),
+    /**
+     *  Saves the local root clients trust as a PEM `.crt` file the user chooses, to import on other
+     *  devices. Returns whether a file was written; `false` when the user cancelled.
+     */
+    exportRemoteAccessAuthority: () =>
+      typedError<boolean, IpcError_Serialize>(
+        __RPC_INVOKE('export_remote_access_authority'),
       ),
     openCoreDir: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
@@ -7840,6 +7833,17 @@ export type ReleaseChannelInfo = {
   installed: ReleaseChannel
 }
 
+/**  The local root clients trust, and the short-lived certificate it issued to the listener. */
+export type RemoteAccessCertificates = {
+  /**  The root to compare, pin or import; it outlives every renewal. */
+  authority: TlsCertificateDetails
+  /**
+   *  The certificate the listener presents now, or `None` before it first served HTTPS since
+   *  the application started.
+   */
+  leaf: TlsCertificateDetails | null
+}
+
 /**  The persisted `remote_access` section. */
 export type RemoteAccessConfig = {
   http?: HttpAccessConfig
@@ -9156,9 +9160,15 @@ export type TlsCertificateDetails = {
 
 /**  What the settings page and the CLI may show of the certificate: nothing secret. */
 export type TlsCertificateSummary = {
-  /**  The value to compare in a browser warning or to pin in a CLI context. */
+  /**
+   *  The fingerprint of the certificate authority, the value to compare in a browser warning or
+   *  to pin in a CLI context. Renewing the listener's certificate keeps it.
+   */
   fingerprint: string
-  /**  When the certificate expires, in Unix epoch milliseconds. */
+  /**
+   *  When the listener's current certificate expires, in Unix epoch milliseconds. It is renewed
+   *  before then.
+   */
   not_after_ms: number
 }
 

@@ -70,7 +70,8 @@ mod transparent_proxy;
 
 pub use self::remote_access::{
     Error as RemoteAccessSpawnError, LaunchUrlError, MAX_SECRET_RECORD_BYTES,
-    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAuthError, SetRemoteAccessError,
+    RemoteAccessAuthClient, RemoteAccessAuthPorts, RemoteAccessCertificateError, RemoteAuthError,
+    SetRemoteAccessError,
 };
 use self::{
     application::ApplicationClient,
@@ -1056,38 +1057,75 @@ impl NyanpasuClient {
         nyanpasu_runtime_values::runtime::MutationOutcome<()>,
         SetRemoteAccessError,
     > {
-        self.inner.remote_access.set(config).await
+        let https = config.http.tls == nyanpasu_config::application::HttpTls::SelfSigned;
+        let outcome = self.inner.remote_access.set(config).await?;
+        // Turning HTTPS on makes the root at once, so its fingerprint can be compared before
+        // anything listens. The settings are committed either way; a listener that starts makes
+        // the root as well, and reports when it cannot.
+        if https && let Err(error) = self.inner.remote_auth.ensure_tls_authority().await {
+            tracing::warn!(
+                target: "nyanpasu::remote_access",
+                %error,
+                "the TLS certificate authority could not be made"
+            );
+        }
+        Ok(outcome)
     }
 
-    /// The certificate of the HTTPS listener, generated and saved on first use.
+    /// The listener's certificate, issued by the local root for the host's current addresses and
+    /// renewed when they change or it nears its expiry.
     ///
     /// The private key is in the result: only the HTTP transport's adapter may call this.
     pub async fn remote_access_tls_identity(
         &self,
     ) -> std::result::Result<nyanpasu_contracts::auth::TlsIdentity, RemoteAuthError> {
-        // The generator covers every interface address it finds; the LAN scope adds none.
-        self.inner.remote_auth.tls_identity(Vec::new()).await
+        self.inner.remote_auth.tls_identity().await
     }
 
-    /// The fingerprint to pin and the expiry of the certificate, or `None` before the HTTPS
-    /// listener first needed one.
-    pub async fn remote_access_tls_summary(
-        &self,
-    ) -> std::result::Result<Option<nyanpasu_contracts::auth::TlsCertificateSummary>, RemoteAuthError>
-    {
-        self.inner.remote_auth.tls_summary().await
-    }
-
-    /// Replaces the certificate, then makes the listener present the new one.
+    /// The fields of the root and of the listener's current certificate, or `None` before HTTPS
+    /// was first turned on. They are read without making either, so the settings page shows
+    /// them while nothing listens.
     ///
-    /// Clients that pinned the old fingerprint refuse the server until they pin the new one.
+    /// # Errors
+    /// Fails when the owner stopped or a saved certificate cannot be read.
+    pub async fn remote_access_certificates(
+        &self,
+    ) -> std::result::Result<
+        Option<nyanpasu_contracts::auth::RemoteAccessCertificates>,
+        RemoteAccessCertificateError,
+    > {
+        let ders = self.inner.remote_auth.tls_certificates().await?;
+        let Some(authority) = ders.authority else {
+            return Ok(None);
+        };
+        let parse = |der: &[u8]| {
+            nyanpasu_contracts::auth::TlsCertificateDetails::parse(der)
+                .map_err(|source| RemoteAccessCertificateError::Parse { source })
+        };
+        Ok(Some(nyanpasu_contracts::auth::RemoteAccessCertificates {
+            authority: parse(&authority)?,
+            leaf: ders.leaf.as_deref().map(parse).transpose()?,
+        }))
+    }
+
+    /// The DER root clients trust, for a certificate viewer or an export, or `None` before HTTPS
+    /// was first turned on.
+    pub async fn remote_access_authority_der(
+        &self,
+    ) -> std::result::Result<Option<Vec<u8>>, RemoteAuthError> {
+        Ok(self.inner.remote_auth.tls_certificates().await?.authority)
+    }
+
+    /// Replaces the root, then makes the listener present a certificate it issued.
+    ///
+    /// Clients that trusted or pinned the old root refuse the server until they trust the new one.
     pub async fn reset_remote_access_tls(
         &self,
     ) -> std::result::Result<
         nyanpasu_runtime_values::runtime::MutationOutcome<()>,
         SetRemoteAccessError,
     > {
-        self.inner.remote_auth.reset_tls(Vec::new()).await?;
+        self.inner.remote_auth.reset_tls().await?;
         self.inner.remote_access.reconcile().await
     }
 

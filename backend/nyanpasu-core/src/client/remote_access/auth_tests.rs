@@ -797,122 +797,156 @@ async fn a_read_token_cannot_fill_the_session_table_and_lock_out_login() {
     );
 }
 
-const TWO_YEARS_PLUS: Duration = Duration::from_secs(731 * 24 * 60 * 60);
+const DAY: Duration = Duration::from_secs(24 * 60 * 60);
+const DAY_MS: i64 = 86_400_000;
+
+impl Harness {
+    async fn authority(&self) -> Option<Vec<u8>> {
+        self.client.tls_certificates().await.unwrap().authority
+    }
+}
 
 #[tokio::test(start_paused = true)]
-async fn the_certificate_is_generated_once_and_survives_a_restart() {
+async fn the_root_is_made_once_and_survives_a_restart() {
     let harness = Harness::start().await;
-    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+    assert_eq!(harness.authority().await, None);
 
-    let addresses = vec!["192.168.1.20".parse().unwrap()];
-    let first = harness
-        .client
-        .tls_identity(addresses.clone())
-        .await
-        .unwrap();
-    let again = harness.client.tls_identity(Vec::new()).await.unwrap();
+    harness.client.ensure_tls_authority().await.unwrap();
+    harness.client.ensure_tls_authority().await.unwrap();
+    let requests = harness.generator.authority_requests();
+    assert_eq!(requests.len(), 1, "a valid root is not made again");
+    // A device whose clock runs a day behind still accepts it, and it outlives many renewals.
+    assert_eq!(requests[0].not_before_ms, START_UNIX_MS - DAY_MS);
+    assert_eq!(requests[0].not_after_ms, START_UNIX_MS + 3650 * DAY_MS);
+    let authority = harness.authority().await.unwrap();
+    // The listener's certificate is not made until something needs it.
+    assert!(harness.generator.issue_requests().is_empty());
+
+    let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
+    assert_eq!(restarted.authority().await, Some(authority.clone()));
+    let identity = restarted.client.tls_identity().await.unwrap();
+    assert_eq!(identity.authority_der(), authority.as_slice());
+    assert!(restarted.generator.authority_requests().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_certificate_is_short_lived_and_reused_while_it_fits() {
+    let harness = Harness::start().await;
+    let first = harness.client.tls_identity().await.unwrap();
+    let again = harness.client.tls_identity().await.unwrap();
 
     assert_eq!(first.fingerprint(), again.fingerprint());
-    let requests = harness.generator.requests();
-    assert_eq!(requests.len(), 1, "a valid certificate is not regenerated");
-    assert_eq!(requests[0].addresses, addresses);
-    // A device whose clock is a few hours behind still accepts it, and it stays within the
-    // 825 days some platforms allow.
-    assert_eq!(requests[0].not_before_ms, START_UNIX_MS - 86_400_000);
-    assert_eq!(requests[0].not_after_ms, START_UNIX_MS + 730 * 86_400_000);
-    assert!(requests[0].not_after_ms - requests[0].not_before_ms <= 825 * 86_400_000);
+    let requests = harness.generator.issue_requests();
     assert_eq!(
-        harness.client.tls_summary().await.unwrap(),
-        Some(first.summary())
+        requests.len(),
+        1,
+        "a fitting certificate is not issued again"
     );
-
-    let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
-    let reloaded = restarted.client.tls_identity(Vec::new()).await.unwrap();
-    assert_eq!(reloaded.fingerprint(), first.fingerprint());
-    assert_eq!(reloaded.private_key_der(), first.private_key_der());
-    // What it covers is kept too, so the settings can tell a later address it misses.
-    assert_eq!(reloaded.addresses(), addresses);
-    assert!(reloaded.covers_address(addresses[0]));
-    assert!(!reloaded.covers_address("192.168.1.21".parse().unwrap()));
-    assert!(restarted.generator.requests().is_empty());
+    assert_eq!(requests[0].not_before_ms, START_UNIX_MS - DAY_MS);
+    assert_eq!(requests[0].not_after_ms, START_UNIX_MS + 7 * DAY_MS);
+    assert_eq!(
+        harness.client.tls_certificates().await.unwrap().leaf,
+        Some(first.certificate_der().to_vec())
+    );
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_expired_certificate_is_replaced() {
+async fn the_certificate_is_renewed_for_new_addresses_and_before_it_expires() {
     let harness = Harness::start().await;
-    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+    let first = harness.client.tls_identity().await.unwrap();
 
-    tokio::time::advance(TWO_YEARS_PLUS).await;
-    let second = harness.client.tls_identity(Vec::new()).await.unwrap();
+    // A new network, such as a VPN coming up, needs a certificate that names it.
+    harness
+        .generator
+        .set_addresses(vec!["100.101.102.103".parse().unwrap()]);
+    let second = harness.client.tls_identity().await.unwrap();
+    assert_ne!(second.fingerprint(), first.fingerprint());
+    assert!(second.covers_address("100.101.102.103".parse().unwrap()));
 
-    assert_ne!(first.fingerprint(), second.fingerprint());
-    assert_eq!(harness.generator.requests().len(), 2);
+    // Five days in, it still has two left and is kept; a moment later it is renewed.
+    tokio::time::advance(5 * DAY - Duration::from_secs(1)).await;
+    let kept = harness.client.tls_identity().await.unwrap();
+    assert_eq!(kept.fingerprint(), second.fingerprint());
+    tokio::time::advance(Duration::from_secs(2)).await;
+    let renewed = harness.client.tls_identity().await.unwrap();
+    assert_ne!(renewed.fingerprint(), second.fingerprint());
+
+    // None of this changes what clients trust.
+    for identity in [&second, &renewed] {
+        assert_eq!(
+            identity.authority_fingerprint(),
+            first.authority_fingerprint()
+        );
+    }
+    assert_eq!(harness.generator.authority_requests().len(), 1);
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_reset_changes_the_fingerprint_and_keeps_the_tokens() {
+async fn a_reset_replaces_the_root_and_keeps_the_tokens() {
     let harness = Harness::start().await;
     let token = harness.create_token(None).await;
-    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+    let first = harness.client.tls_identity().await.unwrap();
 
-    let reset = harness.client.reset_tls(Vec::new()).await.unwrap();
+    let reset = harness.client.reset_tls().await.unwrap();
 
-    assert_ne!(reset.fingerprint, first.fingerprint());
-    // Saving the certificate rewrote the whole record; the token is still in it.
+    assert_ne!(reset.fingerprint, first.authority_fingerprint());
+    let current = harness.client.tls_identity().await.unwrap();
+    assert_eq!(current.authority_fingerprint(), reset.fingerprint);
+    // Saving the root rewrote the whole record; the token is still in it.
     let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
     assert!(restarted.client.authenticate_token(token).await.is_ok());
-    assert_eq!(restarted.client.tls_summary().await.unwrap(), Some(reset));
+    assert_eq!(
+        restarted.authority().await,
+        Some(current.authority_der().to_vec())
+    );
 }
 
 #[tokio::test(start_paused = true)]
-async fn creating_a_token_keeps_the_certificate_in_the_record() {
+async fn creating_a_token_keeps_the_root_in_the_record() {
     let harness = Harness::start().await;
-    let identity = harness.client.tls_identity(Vec::new()).await.unwrap();
+    harness.client.ensure_tls_authority().await.unwrap();
+    let authority = harness.authority().await;
     harness.create_token(None).await;
 
     let restarted = Harness::start_with(RemoteAuthPolicy::default(), harness.store.clone()).await;
-    assert_eq!(
-        restarted.client.tls_summary().await.unwrap(),
-        Some(identity.summary())
-    );
+    assert_eq!(restarted.authority().await, authority);
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_certificate_that_cannot_be_saved_is_not_kept() {
+async fn a_root_that_cannot_be_saved_is_not_kept() {
     let harness = Harness::start().await;
     harness.store.fail_saves.store(true, Ordering::SeqCst);
 
-    let failed = harness.client.tls_identity(Vec::new()).await;
+    let failed = harness.client.tls_identity().await;
     assert!(matches!(
         failed,
         Err(RemoteAuthError::PersistenceFailed { .. })
     ));
-    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+    assert_eq!(harness.authority().await, None);
+    assert!(harness.generator.issue_requests().is_empty());
 
     harness.store.fail_saves.store(false, Ordering::SeqCst);
-    let first = harness.client.tls_identity(Vec::new()).await.unwrap();
+    harness.client.ensure_tls_authority().await.unwrap();
+    let authority = harness.authority().await;
 
-    // A failed reset leaves the certificate clients pinned in place.
+    // A failed reset leaves the root clients trust in place.
     harness.store.fail_saves.store(true, Ordering::SeqCst);
     assert!(matches!(
-        harness.client.reset_tls(Vec::new()).await,
+        harness.client.reset_tls().await,
         Err(RemoteAuthError::PersistenceFailed { .. })
     ));
-    assert_eq!(
-        harness.client.tls_summary().await.unwrap(),
-        Some(first.summary())
-    );
+    assert_eq!(harness.authority().await, authority);
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_record_without_a_certificate_still_loads_and_a_malformed_one_fails_closed() {
+async fn a_record_without_a_root_still_loads_and_a_malformed_one_fails_closed() {
     let store = Arc::new(MemoryStore::default());
     *store.record.lock() = Some(br#"{"version":1,"tokens":[]}"#.to_vec());
     let harness = Harness::start_with(RemoteAuthPolicy::default(), store.clone()).await;
-    assert_eq!(harness.client.tls_summary().await.unwrap(), None);
+    assert_eq!(harness.authority().await, None);
 
     *store.record.lock() = Some(
-        br#"{"version":1,"tokens":[],"tls":{"certificate_hex":"zz","private_key_hex":"00","dns_names":[],"not_after_ms":1}}"#
+        br#"{"version":1,"tokens":[],"authority":{"certificate_hex":"zz","private_key_hex":"00","not_after_ms":1}}"#
             .to_vec(),
     );
     let result = Harness::spawn(RemoteAuthPolicy::default(), &store, &Arc::default()).await;

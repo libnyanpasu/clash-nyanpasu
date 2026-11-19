@@ -32,6 +32,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['listLocalNetworks', ...args],
         queryFn: () => commands.listLocalNetworks(...args),
       }),
+    getRemoteAccessCertificate: (
+      ...args: Parameters<typeof commands.getRemoteAccessCertificate>
+    ) =>
+      queryOptions({
+        queryKey: ['getRemoteAccessCertificate', ...args],
+        queryFn: () => commands.getRemoteAccessCertificate(...args),
+      }),
     getConfigurationStatus: (
       ...args: Parameters<typeof commands.getConfigurationStatus>
     ) =>
@@ -736,6 +743,18 @@ export function createQueryBindings(rpc: RpcClient) {
       mutationKey: ['openWebUrl'],
       mutationFn: (input: Parameters<typeof commands.openWebUrl>) =>
         commands.openWebUrl(...input),
+    }),
+    openRemoteAccessCertificate: mutationOptions({
+      mutationKey: ['openRemoteAccessCertificate'],
+      mutationFn: (
+        input: Parameters<typeof commands.openRemoteAccessCertificate>,
+      ) => commands.openRemoteAccessCertificate(...input),
+    }),
+    exportRemoteAccessAuthority: mutationOptions({
+      mutationKey: ['exportRemoteAccessAuthority'],
+      mutationFn: (
+        input: Parameters<typeof commands.exportRemoteAccessAuthority>,
+      ) => commands.exportRemoteAccessAuthority(...input),
     }),
     openCoreDir: mutationOptions({
       mutationKey: ['openCoreDir'],

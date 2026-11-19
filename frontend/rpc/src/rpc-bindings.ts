@@ -42,6 +42,24 @@ export function createRpcClient(
       typedError<LocalNetwork[], IpcError_Serialize>(
         __RPC_INVOKE('list_local_networks'),
       ),
+    /**
+     *  The fields of the local root clients trust and of the certificate it issued to the listener,
+     *  or `None` before HTTPS was first turned on. They are read without making either, so the
+     *  settings page shows them while nothing listens. Only the desktop settings page asks for them.
+     */
+    getRemoteAccessCertificate: () =>
+      typedError<
+        {
+          /**  The root to compare, pin or import; it outlives every renewal. */
+          authority: TlsCertificateDetails
+          /**
+           *  The certificate the listener presents now, or `None` before it first served HTTPS since
+           *  the application started.
+           */
+          leaf: TlsCertificateDetails | null
+        } | null,
+        IpcError_Serialize
+      >(__RPC_INVOKE('get_remote_access_certificate')),
     getConfigurationStatus: () =>
       __RPC_INVOKE<ConfigurationStatus>('get_configuration_status'),
     /**  Convergence health, retry state and operation and source IDs, without diagnostic text. */
@@ -674,6 +692,22 @@ export function createRpcClient(
       typedError<null, IpcError_Serialize>(
         __RPC_INVOKE('open_web_url', { url }),
       ),
+    /**
+     *  Shows the local root clients trust in the platform's read-only certificate viewer. It opens a
+     *  window on this computer, so only the desktop offers it.
+     */
+    openRemoteAccessCertificate: () =>
+      typedError<null, IpcError_Serialize>(
+        __RPC_INVOKE('open_remote_access_certificate'),
+      ),
+    /**
+     *  Saves the local root clients trust as a PEM `.crt` file the user chooses, to import on other
+     *  devices. Returns whether a file was written; `false` when the user cancelled.
+     */
+    exportRemoteAccessAuthority: () =>
+      typedError<boolean, IpcError_Serialize>(
+        __RPC_INVOKE('export_remote_access_authority'),
+      ),
     openCoreDir: () =>
       typedError<null, IpcError_Serialize>(__RPC_INVOKE('open_core_dir')),
     /**  Links the bundled `nyanpasu-cli` onto the user's `PATH`, for the macOS app and the AppImage. */
@@ -1201,6 +1235,849 @@ export const GRANTABLE_RESOURCES = [
   'settings',
   'system',
   'traffic',
+] as const
+
+export const HTTP_COMMANDS = [
+  {
+    name: 'close_log_session',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'list_log_files',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'open_log_session',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'query_logs',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'mutation',
+    sensitive: true,
+  },
+  {
+    name: 'query_logs_summary',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'report_frontend_events',
+    namespace: 'logs.app',
+    permission: { resource: 'logs', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clear_core_logs',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_core_log',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_core_log_status',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_core_log_status_summary',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_core_logs',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'query_core_logs_summary',
+    namespace: 'logs.core',
+    permission: { resource: 'logs', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'rpc_describe',
+    namespace: 'meta',
+    permission: { resource: 'meta', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'read_profile_file',
+    namespace: 'profile.content',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'save_profile_file',
+    namespace: 'profile.content',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'create_profile_folder',
+    namespace: 'profile.layout',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'create_proxy_group_folder',
+    namespace: 'profile.layout',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_profile_layout',
+    namespace: 'profile.layout',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_proxy_group_layout',
+    namespace: 'profile.layout',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_update_providers_rules',
+    namespace: 'profile.providers',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'update_proxy_provider',
+    namespace: 'profile.providers',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_postprocessing_output',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_runtime_config',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_runtime_exists',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_runtime_yaml',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'inspect_applied_runtime',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'inspect_runtime',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'inspect_runtime_node',
+    namespace: 'profile.runtime',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'activate_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'create_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'delete_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'enhance_profiles',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_profiles',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_profiles_listing',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'import_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'patch_profile_metadata',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'patch_remote_profile_options',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'reorder_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'reorder_profiles_by_list',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'replace_profile_definition',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_global_transforms',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_profile_valid_fields',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'update_profile',
+    namespace: 'profile.store',
+    permission: { resource: 'profile', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_profile_sync_logs',
+    namespace: 'profile.sync',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_profile_sync_runs',
+    namespace: 'profile.sync',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_profile_sync_runs_summary',
+    namespace: 'profile.sync',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_profile_sync_status',
+    namespace: 'profile.sync',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_profile_sync_status_summary',
+    namespace: 'profile.sync',
+    permission: { resource: 'profile', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_delete_connections',
+    namespace: 'proxy.connections',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_group_delay',
+    namespace: 'proxy.delay',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_proxy_delay',
+    namespace: 'proxy.delay',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clear_proxy_fixed',
+    namespace: 'proxy.groups',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_proxies',
+    namespace: 'proxy.groups',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_proxy_group_icons',
+    namespace: 'proxy.groups',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'mutate_proxies',
+    namespace: 'proxy.groups',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'select_proxy',
+    namespace: 'proxy.groups',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_proxy_mode',
+    namespace: 'proxy.mode',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_providers_proxies',
+    namespace: 'proxy.providers',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_healthcheck_proxy_provider',
+    namespace: 'proxy.providers',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_providers_rules',
+    namespace: 'proxy.rules',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_rules',
+    namespace: 'proxy.rules',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_app_config',
+    namespace: 'settings.app',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_app_settings',
+    namespace: 'settings.app',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'patch_app_config',
+    namespace: 'settings.app',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_configs',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'clash_api_get_settings',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_clash_config',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_clash_info',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_clash_settings',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'patch_clash_config',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'patch_runtime_overrides',
+    namespace: 'settings.clash',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'probe_direct_egress',
+    namespace: 'settings.network',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clear_storage',
+    namespace: 'settings.storage',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_all_storage_items',
+    namespace: 'settings.storage',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_storage_item',
+    namespace: 'settings.storage',
+    permission: { resource: 'settings', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'remove_storage_item',
+    namespace: 'settings.storage',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_storage_item',
+    namespace: 'settings.storage',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'change_clash_core',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_get_version',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'fetch_latest_core_versions',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_config_features',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_core_agent_skills',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_core_agent_skills_summary',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_core_dir',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_core_status',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_core_status_summary',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'inspect_updater',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'inspect_updater_summary',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'restart_sidecar',
+    namespace: 'system.core',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_hotkey_functions',
+    namespace: 'system.hotkeys',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_hotkeys',
+    namespace: 'system.hotkeys',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'is_tray_icon_set',
+    namespace: 'system.icons',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'is_widget_icon_set',
+    namespace: 'system.icons',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'set_tray_icon_from_bytes',
+    namespace: 'system.icons',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'set_widget_icon_from_bytes',
+    namespace: 'system.icons',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_ip_lookup_providers',
+    namespace: 'system.network',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_system_accent_color',
+    namespace: 'system.os',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'is_appimage',
+    namespace: 'system.os',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'is_portable',
+    namespace: 'system.os',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_sys_proxy',
+    namespace: 'system.proxy',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'patch_clash_system_config',
+    namespace: 'system.proxy',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'patch_runtime_access',
+    namespace: 'system.proxy',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'patch_system_settings',
+    namespace: 'system.proxy',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_service_install_prompt',
+    namespace: 'system.service',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_service_status_summary',
+    namespace: 'system.service',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'status_service',
+    namespace: 'system.service',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_configuration_status',
+    namespace: 'system.status',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: true,
+  },
+  {
+    name: 'get_configuration_status_summary',
+    namespace: 'system.status',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'get_http_server_status',
+    namespace: 'system.status',
+    permission: { resource: 'system', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'retry_configuration_effect',
+    namespace: 'system.status',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'retry_configuration_runtime',
+    namespace: 'system.status',
+    permission: { resource: 'system', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clear_clash_ws_history',
+    namespace: 'traffic.connections',
+    permission: { resource: 'traffic', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_clash_ws_snapshot',
+    namespace: 'traffic.connections',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_traffic_active_connection_ids',
+    namespace: 'traffic.connections',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_traffic_closed_connections',
+    namespace: 'traffic.connections',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'set_clash_ws_recording',
+    namespace: 'traffic.connections',
+    permission: { resource: 'traffic', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'get_traffic_summary',
+    namespace: 'traffic.usage',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_traffic_report',
+    namespace: 'traffic.usage',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_traffic_usage',
+    namespace: 'traffic.usage',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'query_traffic_usage_by_keys',
+    namespace: 'traffic.usage',
+    permission: { resource: 'traffic', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
 ] as const
 
 export const ROLE_PERMISSIONS = {
@@ -7799,6 +8676,17 @@ export type ReleaseChannelInfo = {
   installed: ReleaseChannel
 }
 
+/**  The local root clients trust, and the short-lived certificate it issued to the listener. */
+export type RemoteAccessCertificates = {
+  /**  The root to compare, pin or import; it outlives every renewal. */
+  authority: TlsCertificateDetails
+  /**
+   *  The certificate the listener presents now, or `None` before it first served HTTPS since
+   *  the application started.
+   */
+  leaf: TlsCertificateDetails | null
+}
+
 /**  The persisted `remote_access` section. */
 export type RemoteAccessConfig = {
   http?: HttpAccessConfig
@@ -9087,11 +9975,43 @@ export type SystemSettingsPatch_Serialize = {
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/**  The certificate's fields, as a certificate viewer names them. */
+export type TlsCertificateDetails = {
+  /**  The distinguished name of the subject, `CN=Clash Nyanpasu`. */
+  subject: string
+  /**  The distinguished name of the issuer; the same as the subject for a self-signed one. */
+  issuer: string
+  /**  The serial number, upper-case hexadecimal pairs separated by `:`. */
+  serial: string
+  /**  Start of validity, in Unix epoch milliseconds. */
+  not_before_ms: number
+  /**  End of validity, in Unix epoch milliseconds. */
+  not_after_ms: number
+  /**  The DNS names of the subject alternative name extension. */
+  dns_names: string[]
+  /**  The IP addresses of the subject alternative name extension. */
+  ip_addresses: string[]
+  /**  The signature algorithm's short name, `ecdsa-with-SHA256`, or its dotted OID. */
+  signature_algorithm: string
+  /**  The public key algorithm's short name, `id-ecPublicKey`, or its dotted OID. */
+  public_key_algorithm: string
+  /**  SHA-256 of the DER encoding, the value clients pin. */
+  sha256: string
+  /**  SHA-1 of the DER encoding, the thumbprint some viewers show instead. */
+  sha1: string
+}
+
 /**  What the settings page and the CLI may show of the certificate: nothing secret. */
 export type TlsCertificateSummary = {
-  /**  The value to compare in a browser warning or to pin in a CLI context. */
+  /**
+   *  The fingerprint of the certificate authority, the value to compare in a browser warning or
+   *  to pin in a CLI context. Renewing the listener's certificate keeps it.
+   */
   fingerprint: string
-  /**  When the certificate expires, in Unix epoch milliseconds. */
+  /**
+   *  When the listener's current certificate expires, in Unix epoch milliseconds. It is renewed
+   *  before then.
+   */
   not_after_ms: number
 }
 

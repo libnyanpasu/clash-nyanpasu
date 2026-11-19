@@ -22,7 +22,7 @@ mod auth_tests;
 #[cfg(test)]
 mod tests;
 
-use std::{net::IpAddr, sync::Arc};
+use std::sync::Arc;
 
 use nyanpasu_config::application::RemoteAccessConfig;
 use nyanpasu_contracts::auth::{
@@ -41,13 +41,14 @@ use self::{
     actor::{Message, RemoteAccessActor},
     auth_actor::{
         Args as AuthArgs, Message as AuthMessage, RemoteAccessAuthActor, Reply as AuthReply,
+        TlsCertificateDers,
     },
     auth_store::load_record,
 };
 pub use self::{
     auth_error::RemoteAuthError,
     auth_store::MAX_SECRET_RECORD_BYTES,
-    error::{LaunchUrlError, SetRemoteAccessError},
+    error::{LaunchUrlError, RemoteAccessCertificateError, SetRemoteAccessError},
 };
 use super::{
     application::ApplicationClient,
@@ -228,7 +229,7 @@ impl RemoteAccessAuthClient {
             tls_generator: ports.tls_generator,
             policy: ports.policy,
             tokens: record.tokens,
-            tls: record.tls,
+            authority: record.authority,
             revocations: revocations.clone(),
         };
         let (actor, _handle) = Actor::spawn(None, RemoteAccessAuthActor, args)
@@ -238,35 +239,39 @@ impl RemoteAccessAuthClient {
         Ok(Self { actor, revocations })
     }
 
-    /// The certificate of the HTTPS listener. The owner generates it on first use, or when the
-    /// saved one expired, and saves it before returning it. `addresses` are added to what a new
-    /// certificate covers; a valid saved certificate is returned as it is.
+    /// The listener's certificate, issued by the local root for the host's current addresses. The
+    /// root is made and saved on first use; the certificate is renewed when the addresses change
+    /// or it nears its expiry, which keeps the root clients trust.
     ///
     /// # Errors
-    /// `PersistenceFailed` when no certificate could be generated or saved; nothing is kept.
-    pub async fn tls_identity(
-        &self,
-        addresses: Vec<IpAddr>,
-    ) -> Result<TlsIdentity, RemoteAuthError> {
-        self.call(|reply| AuthMessage::TlsIdentity { addresses, reply })
+    /// `PersistenceFailed` when no root could be made or saved, or no certificate issued.
+    pub async fn tls_identity(&self) -> Result<TlsIdentity, RemoteAuthError> {
+        self.call(|reply| AuthMessage::TlsIdentity { reply }).await
+    }
+
+    /// Makes and saves the root when none exists yet, so turning HTTPS on shows what to trust
+    /// before anything listens.
+    ///
+    /// # Errors
+    /// `PersistenceFailed` when the root could not be made or saved.
+    pub async fn ensure_tls_authority(&self) -> Result<(), RemoteAuthError> {
+        self.call(|reply| AuthMessage::EnsureTlsAuthority { reply })
             .await
     }
 
-    /// The public view of the certificate, or `None` before the first one was generated.
-    pub async fn tls_summary(&self) -> Result<Option<TlsCertificateSummary>, RemoteAuthError> {
-        self.call(|reply| AuthMessage::TlsSummary { reply }).await
+    /// The DER root and the listener's current certificate, either `None` while not made yet.
+    /// Both are public: every TLS client receives them.
+    pub async fn tls_certificates(&self) -> Result<TlsCertificateDers, RemoteAuthError> {
+        self.call(|reply| AuthMessage::TlsCertificates { reply })
+            .await
     }
 
-    /// Replaces the certificate. Pinned clients must pin the new fingerprint.
+    /// Replaces the root. Clients that trusted or pinned the old one must trust the new one.
     ///
     /// # Errors
-    /// `PersistenceFailed` when the new certificate could not be saved; the old one stays.
-    pub async fn reset_tls(
-        &self,
-        addresses: Vec<IpAddr>,
-    ) -> Result<TlsCertificateSummary, RemoteAuthError> {
-        self.call(|reply| AuthMessage::ResetTls { addresses, reply })
-            .await
+    /// `PersistenceFailed` when the new root could not be saved; the old one stays.
+    pub async fn reset_tls(&self) -> Result<TlsCertificateSummary, RemoteAuthError> {
+        self.call(|reply| AuthMessage::ResetTls { reply }).await
     }
 
     /// Revocations and expiries of tokens and sessions, as they happen.

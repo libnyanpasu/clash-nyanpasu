@@ -4,8 +4,8 @@ use nyanpasu_contracts::{system_dns::SystemDnsError, system_proxy::OsProxyError}
 use nyanpasu_core::{
     client::{
         ClashReadError, ClientError, CoreLogReadError, LaunchUrlError, ProfileSyncReadError,
-        RemoteAuthError, SetRemoteAccessError, http_server::HttpServerControlError,
-        local_socket::LocalSocketControlError,
+        RemoteAccessCertificateError, RemoteAuthError, SetRemoteAccessError,
+        http_server::HttpServerControlError, local_socket::LocalSocketControlError,
     },
     state::config_error::ConfigError,
     storage::StorageOperationError,
@@ -197,6 +197,7 @@ unknown_domain!(
     nyanpasu_core::client::sync::Error,
     nyanpasu_migration::backup::BackupError,
     RemoteAuthError,
+    RemoteAccessCertificateError,
 );
 
 pub type Result<T = ()> = std::result::Result<T, IpcError>;

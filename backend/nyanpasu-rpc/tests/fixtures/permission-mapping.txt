@@ -40,6 +40,7 @@ command | discard_app_update_package | system:write | system.update |  |  | desk
 command | download_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
 command | enable_sync | settings:write | settings.sync |  |  | desktop | nyanpasu-rpc/src/commands/sync.rs
 command | enhance_profiles | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
+command | export_remote_access_authority | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | fetch_latest_core_versions | system:read | system.core |  |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
 command | flush_system_dns_cache | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | get_all_storage_items | settings:read | settings.storage | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/storage.rs
@@ -83,6 +84,7 @@ command | get_profiles_listing | profile:read | profile.store |  |  | desktop,ht
 command | get_proxies | proxy:read | proxy.groups |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
 command | get_proxy_group_icons | proxy:read | proxy.groups | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
 command | get_release_channel | settings:read | settings.app |  |  | desktop | tauri/src/ipc.rs
+command | get_remote_access_certificate | remote:read | remote.settings |  |  | desktop | nyanpasu-rpc/src/commands/remote/settings.rs
 command | get_runtime_config | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_runtime_exists | profile:read | profile.runtime |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_runtime_yaml | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
@@ -125,6 +127,7 @@ command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_native_file_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_remote_access_certificate | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | open_that | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_web_url | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | patch_app_config | settings:write | settings.app |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs

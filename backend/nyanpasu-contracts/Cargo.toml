@@ -22,6 +22,7 @@ async-trait = '0.1'
 mockall = { version = '0.15', optional = true }
 serde = { version = '1.0', features = ['derive'] }
 semver = '1.0'
+sha1 = '0.10'
 sha2 = '0.11'
 snafu = { workspace = true }
 strum = '0.28'
@@ -29,6 +30,7 @@ specta = { version = '^2.0.0-rc.25' }
 url = { version = '2', features = ['serde'] }
 tempfile = '3'
 tokio-util = '0.7'
+x509-parser = '0.18'
 zeroize = { version = '1.9', features = ['derive'] }
 
 [target.'cfg(not(windows))'.dependencies]

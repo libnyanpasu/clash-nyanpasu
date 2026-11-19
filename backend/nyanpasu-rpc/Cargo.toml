@@ -109,7 +109,8 @@ hyper-util = { optional = true, version = '0.1', features = [
 ractor = { version = '0.16', optional = true }
 reqwest = { optional = true, workspace = true }
 rcgen = { optional = true, version = '0.14', default-features = false, features = [
-  'aws_lc_rs'
+  'aws_lc_rs',
+  'x509-parser'
 ] }
 rustls = { optional = true, version = '0.23' }
 tokio-rustls = { optional = true, version = '0.26' }
@@ -127,7 +128,10 @@ tracing-subscriber = { optional = true, version = '0.3', features = [
 tower = { version = '0.5', features = ['util'], optional = true }
 
 [dev-dependencies]
-rcgen = { version = '0.14', default-features = false, features = ['aws_lc_rs'] }
+rcgen = { version = '0.14', default-features = false, features = [
+  'aws_lc_rs',
+  'x509-parser'
+] }
 whoami = '2.0.0'
 atomicwrites = '0.4'
 redb = '4.0.0'

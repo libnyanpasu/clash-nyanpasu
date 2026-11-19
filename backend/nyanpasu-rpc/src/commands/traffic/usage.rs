@@ -1,8 +1,30 @@
 //! Traffic usage and its history.
 
-use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_core::{
+    clash::meow_traffic::{MeowStatistics, MeowTrafficLedger, MeowTrafficLedgerQuery},
+    client::NyanpasuClient,
+};
 
 use crate::{error::Result, registry::RpcState};
+
+/// Session totals and named proxy counters from the Meow controller.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[specta::specta]
+pub async fn get_meow_statistics(
+    client: RpcState<'_, NyanpasuClient>,
+) -> Result<Option<MeowStatistics>> {
+    Ok(client.meow_statistics().await?)
+}
+
+/// The engine's persisted traffic ledger can include host and app names.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[specta::specta]
+pub async fn query_meow_traffic_ledger(
+    client: RpcState<'_, NyanpasuClient>,
+    query: MeowTrafficLedgerQuery,
+) -> Result<Option<MeowTrafficLedger>> {
+    Ok(client.meow_traffic_ledger(query).await?)
+}
 
 #[nyanpasu_rpc::rpc(query)]
 #[specta::specta]

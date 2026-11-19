@@ -3,12 +3,15 @@ use std::time::Duration;
 use anyhow::Result;
 use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName};
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_core_manager::CoreKind;
 
 use crate::clash::{
     api::{
         ClashApiSettings, ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes,
         RuleProviderItem, RulesRes,
     },
+    logbook::{MeowLogbookPage, MeowLogbookQuery},
+    meow_traffic::{MeowStatistics, MeowTrafficLedger, MeowTrafficLedgerQuery},
     proxies::{Proxies, ProxyProviderSummary},
 };
 
@@ -135,6 +138,38 @@ impl NyanpasuClient {
 
     pub async fn clash_configs(&self) -> Result<ClashConfig> {
         config_item(self.inner.core_api.api_client().await?.configs().await?)
+    }
+
+    pub async fn meow_logbook(&self, query: MeowLogbookQuery) -> Result<Option<MeowLogbookPage>> {
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_logbook(query).await?),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn meow_statistics(&self) -> Result<Option<MeowStatistics>> {
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_statistics().await?),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn meow_traffic_ledger(
+        &self,
+        query: MeowTrafficLedgerQuery,
+    ) -> Result<Option<MeowTrafficLedger>> {
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_traffic_ledger(query).await?),
+            None => Ok(None),
+        }
+    }
+
+    async fn meow_api(&self) -> Result<Option<crate::actor_v2::api::ApiClient>> {
+        if meow_reads_served(self.inner.reconciler.applied_core_kind()) {
+            Ok(Some(self.inner.core_api.api_client().await?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// The live core configuration without the controller secret.
@@ -334,6 +369,14 @@ fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
     })
 }
 
+/// Meow-only reads must not reach another core. Only a provable applied kind
+/// decides: the status's kind, or a confirmed apply that still runs. With
+/// nothing provable (a service-mode core with no confirmed apply, or a core
+/// still starting) the reads stay off rather than hit whatever is running.
+fn meow_reads_served(applied_kind: Option<CoreKind>) -> bool {
+    applied_kind == Some(CoreKind::Meow)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ClashReadError, rule_provider_item};
@@ -350,6 +393,22 @@ mod tests {
             assert!(!rendered.contains("sentinel"), "{rendered}");
         }
         assert!(std::error::Error::source(&error).is_none());
+    }
+
+    /// Only a confirmed Meow kind serves the Meow-only reads; meow-alpha runs
+    /// the same kind, while an unknown kind (service mode, still starting) or
+    /// another core must not receive them.
+    #[test]
+    fn meow_reads_follow_the_applied_kind() {
+        use nyanpasu_core_manager::CoreKind;
+
+        assert!(super::meow_reads_served(Some(CoreKind::Meow)));
+        for kind in [CoreKind::Mihomo, CoreKind::ClashRust] {
+            assert!(!super::meow_reads_served(Some(kind)), "{kind:?}");
+        }
+        // A service-mode core with no confirmed apply, or a still starting
+        // core, proves nothing.
+        assert!(!super::meow_reads_served(None));
     }
 
     #[test]

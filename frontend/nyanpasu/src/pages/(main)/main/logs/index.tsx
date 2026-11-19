@@ -17,7 +17,10 @@ import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
-import { RequireCapability } from '@/components/auth/capabilities'
+import {
+  RequireCapability,
+  useCapabilities,
+} from '@/components/auth/capabilities'
 import { RestrictedContent } from '@/components/auth/restricted-content'
 import {
   RegisterContextMenu,
@@ -26,7 +29,12 @@ import {
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashLogs } from '@nyanpasu/query'
+import {
+  isMeowCore,
+  useClashLogs,
+  useSettings,
+  type MeowCore,
+} from '@nyanpasu/query'
 import type {
   CoreLogCursor,
   CoreLogRecord,
@@ -48,6 +56,7 @@ import {
   useSlowLoading,
 } from './_modules/log-viewer'
 import { LogsLayout } from './_modules/logs-layout'
+import MeowLogbook from './_modules/meow-logbook'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/logs/')({
@@ -293,7 +302,7 @@ function Viewer({
   )
 }
 
-function KernelLogs() {
+function KernelLogs({ showLogbook }: { showLogbook: boolean }) {
   const { level } = IndexRoute.useSearch()
   const [following, setFollowing] = useState(true)
   const [search, setSearch] = useState('')
@@ -315,6 +324,7 @@ function KernelLogs() {
   return (
     <LogsLayout
       source="core"
+      showLogbook={showLogbook}
       search={
         <LogSearch
           value={search}
@@ -392,16 +402,58 @@ function KernelLogs() {
   )
 }
 
-function RouteComponent() {
+function LogsContent({
+  core,
+  coreSettled = true,
+}: {
+  core?: MeowCore
+  /** Whether the core selection finished loading; a pending one may still name a Meow core. */
+  coreSettled?: boolean
+}) {
   const { source = 'core' } = IndexRoute.useSearch()
+  const navigate = IndexRoute.useNavigate()
+  const showLogbook = core !== undefined
+
+  // A logbook view needs a running Meow core; once the core selection settles
+  // without one, stop promising it in the URL.
+  useEffect(() => {
+    if (source === 'logbook' && !core && coreSettled) {
+      navigate({
+        search: (previous) => ({ ...previous, source: 'core' }),
+        replace: true,
+      })
+    }
+  }, [source, core, coreSettled, navigate])
+
+  if (source === 'logbook' && core)
+    return <MeowLogbook key={core} core={core} />
+  if (source === 'app' || source === 'service')
+    return <FileLogs key={source} source={source} showLogbook={showLogbook} />
+  return <KernelLogs showLogbook={showLogbook} />
+}
+
+function LogsWithMeowSupport() {
+  const { query } = useSettings()
+  const core = query.data?.core
+
+  return (
+    <LogsContent
+      core={isMeowCore(core) ? core : undefined}
+      coreSettled={!query.isPending}
+    />
+  )
+}
+
+function RouteComponent() {
+  const { canCall } = useCapabilities()
 
   // Log lines and files hold URLs, hosts and paths: `sensitive_read`.
   return (
     <RequireCapability permission="logs:read" fallback={<RestrictedContent />}>
-      {source === 'core' ? (
-        <KernelLogs />
+      {canCall('query_meow_logbook') && canCall('get_app_settings') ? (
+        <LogsWithMeowSupport />
       ) : (
-        <FileLogs key={source} source={source} />
+        <LogsContent />
       )}
     </RequireCapability>
   )

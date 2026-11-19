@@ -24,7 +24,7 @@ import { LogLevel } from './_modules/consts'
 export const Route = createFileRoute('/(main)/main/logs')({
   component: RouteComponent,
   validateSearch: z.object({
-    source: z.enum(['core', 'app', 'service']).optional(),
+    source: z.enum(['core', 'app', 'service', 'logbook']).optional(),
     level: z.enum(LogLevel).nullable().optional(),
   }),
 })
@@ -98,10 +98,13 @@ const LogLevelsSidebar = memo(function LogLevelsSidebar() {
   )
 })
 
-export function LogLevelsLayout({ children }: PropsWithChildren) {
+export function LogLevelsLayout({
+  children,
+  showLevels = true,
+}: PropsWithChildren<{ showLevels?: boolean }>) {
   return (
     <div className={dataPageLayoutVariants()}>
-      <LogLevelsSidebar />
+      {showLevels && <LogLevelsSidebar />}
       {children}
     </div>
   )

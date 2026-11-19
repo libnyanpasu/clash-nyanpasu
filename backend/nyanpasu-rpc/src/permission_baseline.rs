@@ -357,10 +357,10 @@ fn authorization_matches_the_baseline() {
 fn baseline_covers_every_resource_once() {
     let table = baseline();
     let count = |kind| table.keys().filter(|(other, _)| *other == kind).count();
-    assert_eq!(count(Kind::Command), 209);
+    assert_eq!(count(Kind::Command), 212);
     assert_eq!(count(Kind::Event), 17);
     assert_eq!(count(Kind::Route) + count(Kind::Stream), 3);
-    assert_eq!(table.len(), 229);
+    assert_eq!(table.len(), 232);
 
     let names = |kind| -> BTreeSet<String> {
         table

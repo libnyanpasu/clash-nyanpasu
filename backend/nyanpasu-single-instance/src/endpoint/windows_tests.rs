@@ -153,7 +153,20 @@ async fn windows_pipe_name_competition_is_exclusive() {
     exchange(&mut client, &mut server, 11).await;
     drop(client);
     drop(server);
-    let listener = EndpointListener::bind(&endpoint).await.unwrap();
+    // Pending overlapped I/O can hold the pipe handles until cancellation completes.
+    let listener = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut retry = tokio::time::interval(Duration::from_millis(10));
+        loop {
+            retry.tick().await;
+            match EndpointListener::bind(&endpoint).await {
+                Err(EndpointError::AlreadyServing { .. }) => continue,
+                result => break result,
+            }
+        }
+    })
+    .await
+    .expect("the pipe name must become available after both streams close")
+    .unwrap();
     let (mut client, mut server) = connect(&listener, &endpoint).await;
     exchange(&mut client, &mut server, 13).await;
     // Another namespace of the same user is not this endpoint's location.

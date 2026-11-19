@@ -13,6 +13,8 @@ import { m } from '@/paraglide/messages'
 import { dimensionName, usageLabel } from '@/utils/traffic-usage'
 import type {
   Dimension,
+  MeowTrafficLedger,
+  MeowTrafficLedgerQuery,
   ReportRequest,
   Topology,
   TrafficReport,
@@ -29,7 +31,10 @@ import {
   type AnyRoute,
 } from '@tanstack/react-router'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
-import { TestQueryProvider as QueryClientProvider } from './query-provider'
+import {
+  DEFAULT_TEST_CAPABILITIES,
+  TestQueryProvider as QueryClientProvider,
+} from './query-provider'
 import '../src/utils/language'
 import { Route as overviewRoute } from '../src/pages/(main)/main/topology'
 import type { TrafficSearch } from '../src/pages/(main)/main/topology/_modules/search'
@@ -37,6 +42,7 @@ import { TRAFFIC_VIEW_KV_KEY } from '../src/pages/(main)/main/topology/_modules/
 import { Route as rankingsRoute } from '../src/pages/(main)/main/topology/$dimension'
 import { Route as flowRoute } from '../src/pages/(main)/main/topology/flow'
 import { Route as mapRoute } from '../src/pages/(main)/main/topology/map'
+import { Route as meowRoute } from '../src/pages/(main)/main/topology/meow'
 import { Route as trafficRoute } from '../src/pages/(main)/main/topology/route'
 
 vi.mock('./icon-stub', () => ({
@@ -50,6 +56,9 @@ const backend = vi.hoisted(() => ({
   intervals: [] as unknown[],
   retention: '7d',
   usage: [] as UsageGroup[],
+  core: 'mihomo',
+  ledgerQueries: [] as MeowTrafficLedgerQuery[],
+  ledger: null as MeowTrafficLedger | null,
 }))
 
 vi.mock('@nyanpasu/query', async (importOriginal) => {
@@ -70,7 +79,9 @@ vi.mock('@nyanpasu/query', async (importOriginal) => {
       backend.intervals.push(args[1]?.refetchInterval)
       return original.useTrafficReport(...args)
     },
-    useSetting: () => ({ value: backend.retention }),
+    useSetting: (key: string) => ({
+      value: key === 'core' ? backend.core : backend.retention,
+    }),
     useProfile: () => ({
       query: { data: { items: [{ uid: 'main', name: 'Main profile' }] } },
     }),
@@ -155,6 +166,23 @@ function mockBackend() {
 
     const { method, params } = args as RpcCall
 
+    if (method === 'query_meow_traffic_ledger') {
+      backend.ledgerQueries.push(params.query as MeowTrafficLedgerQuery)
+      return backend.ledger
+    }
+
+    if (method === 'get_meow_statistics') {
+      return {
+        uploadTotal: 1_024,
+        downloadTotal: 8_192,
+        proxies: {
+          Exit: { upload: 1_024, download: 8_192 },
+          Relay: { upload: 1_024, download: 8_192 },
+          Unused: { upload: 0, download: 0 },
+        },
+      }
+    }
+
     if (method === 'query_traffic_report') {
       const request = params.request as ReportRequest
       rpc.reports.push(request)
@@ -230,6 +258,7 @@ function createTestRoute(
 async function open(
   onFinished: (fn: () => void | Promise<void>) => void,
   initial?: Partial<TrafficSearch>,
+  allowMeow = false,
 ) {
   const rootRoute = createRootRoute({
     component: () => (
@@ -249,6 +278,7 @@ async function open(
       createTestRoute(overviewRoute, '/', '/', topologyRoute),
       createTestRoute(flowRoute, '/flow/', '/flow/', topologyRoute),
       createTestRoute(mapRoute, '/map/', '/map/', topologyRoute),
+      createTestRoute(meowRoute, '/meow/', '/meow/', topologyRoute),
       createTestRoute(
         rankingsRoute,
         '/$dimension/',
@@ -266,7 +296,35 @@ async function open(
     defaultOptions: { queries: { retry: false } },
   })
   const view = await render(
-    <QueryClientProvider client={queries}>
+    <QueryClientProvider
+      client={queries}
+      capabilities={{
+        ...DEFAULT_TEST_CAPABILITIES,
+        commands: allowMeow
+          ? [
+              {
+                name: 'get_app_settings',
+                permission: { resource: 'settings', access: 'read' },
+                effect: 'query',
+                sensitive: false,
+                allowed: true,
+              },
+              ...['get_meow_statistics', 'query_meow_traffic_ledger'].map(
+                (name) => ({
+                  name,
+                  permission: {
+                    resource: 'traffic' as const,
+                    access: 'read' as const,
+                  },
+                  effect: 'query' as const,
+                  sensitive: true,
+                  allowed: true,
+                }),
+              ),
+            ]
+          : [],
+      }}
+    >
       <TooltipProvider>
         <RouterProvider router={router} />
       </TooltipProvider>
@@ -284,6 +342,9 @@ async function open(
     backend.intervals = []
     backend.retention = '7d'
     backend.usage = []
+    backend.core = 'mihomo'
+    backend.ledgerQueries = []
+    backend.ledger = null
     await page.viewport(1280, 720)
   })
 
@@ -296,6 +357,112 @@ const sidebarItem = (view: Awaited<ReturnType<typeof open>>, name: string) =>
     .getByRole('link', { name })
 
 const summary = `5.00 KiB · ${m.topology_connection_count({ count: 12 })}`
+
+test('Meow traffic filters the persisted ledger and uses the session totals from the core', async ({
+  onTestFinished,
+}) => {
+  // Meow records local days; noon UTC keeps the local day 2026-01-01 in every
+  // zone from UTC-12 to UTC+11, so the local day is stable across CI runners.
+  vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  backend.core = 'meow-alpha'
+  backend.ledger = {
+    enabled: true,
+    upload: 1_024,
+    download: 4_096,
+    requests: 3,
+    rows: [
+      {
+        name: 'example.com',
+        upload: 1_024,
+        download: 4_096,
+        requests: 3,
+        via_upload: 0,
+        via_download: 0,
+      },
+      ...Array.from({ length: 50 }, (_, index) => ({
+        name: `host-${index}.test`,
+        upload: 0,
+        download: 0,
+        requests: 0,
+      })),
+    ],
+  }
+  mockBackend()
+  const view = await open(onTestFinished, undefined, true)
+  await sidebarItem(view, m.meow_traffic_title()).click()
+  await expect
+    .element(view.getByRole('table', { name: m.traffic_dimension_target() }))
+    .toBeVisible()
+  expect(backend.ledgerQueries.at(-1)).toMatchObject({
+    from: '2026-01-01',
+    to: '2026-01-01',
+  })
+  const reads = backend.ledgerQueries.length
+  await view.getByRole('button', { name: m.inspect_refresh() }).click()
+  await expect.poll(() => backend.ledgerQueries.length).toBeGreaterThan(reads)
+  await expect.poll(() => view.getByRole('row').elements().length).toBe(51)
+  await view.getByRole('button', { name: m.meow_traffic_next_page() }).click()
+  await expect
+    .element(view.getByRole('button', { name: 'host-49.test' }))
+    .toBeVisible()
+  await expect.poll(() => view.getByRole('row').elements().length).toBe(2)
+  await view.getByRole('combobox', { name: m.traffic_range_label() }).click()
+  await view.getByRole('option', { name: m.meow_traffic_last_month() }).click()
+  await expect
+    .poll(() => backend.ledgerQueries.at(-1))
+    .toMatchObject({ from: '2025-12-01', to: '2025-12-31' })
+  await view.getByRole('button', { name: 'example.com' }).click()
+  await expect
+    .poll(() => backend.ledgerQueries.at(-1))
+    .toMatchObject({
+      host: 'example.com',
+      by: 'app',
+    })
+  await view
+    .getByRole('button', {
+      name: m.traffic_filter_remove({
+        filter: `${m.traffic_dimension_target()} · example.com`,
+      }),
+    })
+    .click()
+  await expect
+    .poll(() => backend.ledgerQueries.at(-1))
+    .toMatchObject({
+      host: null,
+      by: 'host',
+    })
+
+  await view.getByText(m.meow_traffic_statistics(), { exact: true }).click()
+  const policyTable = view.getByRole('table', { name: m.meow_traffic_policy() })
+  await expect
+    .element(policyTable.getByRole('rowheader', { name: 'Relay' }))
+    .toBeVisible()
+  await expect
+    .element(policyTable.getByRole('rowheader', { name: 'Unused' }))
+    .not.toBeInTheDocument()
+  await expect
+    .element(view.getByRole('definition').first())
+    .toHaveTextContent('9.00 KiB')
+})
+
+test('an older Meow core can lack the traffic ledger and still offer statistics', async ({
+  onTestFinished,
+}) => {
+  backend.core = 'meow'
+  mockBackend()
+  const view = await open(onTestFinished, undefined, true)
+  await sidebarItem(view, m.meow_traffic_title()).click()
+  await expect
+    .element(view.getByText(m.meow_traffic_ledger_unsupported()))
+    .toBeVisible()
+  await view.getByText(m.meow_traffic_statistics(), { exact: true }).click()
+  await expect
+    .element(view.getByRole('table', { name: m.meow_traffic_policy() }))
+    .toBeVisible()
+})
 
 test('traffic views fit at narrow, tablet and desktop widths', async ({
   onTestFinished,

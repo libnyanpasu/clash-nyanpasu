@@ -101,15 +101,17 @@ const FileLogRecord = memo(function FileLogRecord({
   )
 })
 
-export default function FileLogs({ source }: { source: LogSource }) {
+type FileLogsProps = { source: LogSource; showLogbook: boolean }
+
+export default function FileLogs(props: FileLogsProps) {
   return (
     <Modal>
-      <FileLogsContent source={source} />
+      <FileLogsContent {...props} />
     </Modal>
   )
 }
 
-function FileLogsContent({ source }: { source: LogSource }) {
+function FileLogsContent({ source, showLogbook }: FileLogsProps) {
   const { setOpen } = useModal()
   const { level } = Route.useSearch()
   const filterForm = useRef<HTMLFormElement>(null)
@@ -147,6 +149,7 @@ function FileLogsContent({ source }: { source: LogSource }) {
   return (
     <LogsLayout
       source={source}
+      showLogbook={showLogbook}
       search={
         <LogSearch
           value={search}

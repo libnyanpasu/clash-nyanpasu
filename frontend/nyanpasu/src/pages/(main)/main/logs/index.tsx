@@ -29,7 +29,12 @@ import {
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashLogs, useSetting } from '@nyanpasu/query'
+import {
+  isMeowCore,
+  useClashLogs,
+  useSettings,
+  type MeowCore,
+} from '@nyanpasu/query'
 import type {
   CoreLogCursor,
   CoreLogRecord,
@@ -397,9 +402,28 @@ function KernelLogs({ showLogbook }: { showLogbook: boolean }) {
   )
 }
 
-function LogsContent({ core }: { core?: 'meow' | 'meow-alpha' }) {
+function LogsContent({
+  core,
+  coreSettled = true,
+}: {
+  core?: MeowCore
+  /** Whether the core selection finished loading; a pending one may still name a Meow core. */
+  coreSettled?: boolean
+}) {
   const { source = 'core' } = IndexRoute.useSearch()
+  const navigate = IndexRoute.useNavigate()
   const showLogbook = core !== undefined
+
+  // A logbook view needs a running Meow core; once the core selection settles
+  // without one, stop promising it in the URL.
+  useEffect(() => {
+    if (source === 'logbook' && !core && coreSettled) {
+      navigate({
+        search: (previous) => ({ ...previous, source: 'core' }),
+        replace: true,
+      })
+    }
+  }, [source, core, coreSettled, navigate])
 
   if (source === 'logbook' && core)
     return <MeowLogbook key={core} core={core} />
@@ -409,10 +433,13 @@ function LogsContent({ core }: { core?: 'meow' | 'meow-alpha' }) {
 }
 
 function LogsWithMeowSupport() {
-  const { value: core } = useSetting('core')
+  const { query } = useSettings()
+  const core = query.data?.core
+
   return (
     <LogsContent
-      core={core === 'meow' || core === 'meow-alpha' ? core : undefined}
+      core={isMeowCore(core) ? core : undefined}
+      coreSettled={!query.isPending}
     />
   )
 }

@@ -524,6 +524,45 @@ test.for([
   },
 )
 
+test('a stale logbook source waits for the core selection, then rewrites to the core view', async ({
+  onTestFinished,
+}) => {
+  let resolveSettings: (
+    value: ReturnType<typeof ok<{ core: string }>>,
+  ) => void = () => {}
+  mocked.getAppSettings.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveSettings = resolve
+      }),
+  )
+  const pending = await mountLogbook()
+  onTestFinished(() => pending.unmount())
+
+  // A pending selection may still name a Meow core, so a direct logbook link
+  // is not bounced while the settings load.
+  expect(mocked.navigate).not.toHaveBeenCalled()
+
+  resolveSettings(ok({ core: 'meow' }))
+  await expect
+    .poll(() => mocked.queryMeowLogbook.mock.calls.length)
+    .toBeGreaterThan(0)
+  expect(mocked.navigate).not.toHaveBeenCalled()
+  await pending.unmount()
+
+  // With a settled non-Meow core the URL must stop promising the logbook.
+  mocked.getAppSettings.mockResolvedValue(ok({ core: 'mihomo' }))
+  const stale = await mountLogbook()
+  onTestFinished(() => stale.unmount())
+  await expect.poll(() => mocked.navigate.mock.calls.length).toBe(1)
+  const [{ search, replace }] = mocked.navigate.mock.calls[0]
+  expect(replace).toBe(true)
+  expect(search({ source: 'logbook', level: null })).toEqual({
+    source: 'core',
+    level: null,
+  })
+})
+
 test('Meow Alpha distinguishes an unsupported endpoint from a disabled logbook', async ({
   onTestFinished,
 }) => {

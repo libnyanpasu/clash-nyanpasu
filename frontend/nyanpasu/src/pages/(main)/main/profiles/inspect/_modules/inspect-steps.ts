@@ -1,4 +1,7 @@
-import type { OperatorTag, RuntimeInspectionNode } from '@nyanpasu/rpc/types'
+import type {
+  OperatorTag,
+  RuntimeInspectionNode_Serialize,
+} from '@nyanpasu/rpc/types'
 
 // Pure model of the Inspect page. It has no message imports on purpose: the
 // view maps stages and statuses to text.
@@ -19,7 +22,7 @@ export type StepStatus =
 export type Step = {
   /** Stable across rebuilds, unlike the node id. */
   key: string
-  node: RuntimeInspectionNode
+  node: RuntimeInspectionNode_Serialize
   stage: Stage
   /** 1 for the steps shown under their composition. */
   depth: 0 | 1
@@ -31,7 +34,10 @@ export type Step = {
 export const FINAL_KEY = 'final'
 
 /** The stage a node belongs to. The final node wins over its own tag. */
-export function stageOf(node: RuntimeInspectionNode, finalId: number): Stage {
+export function stageOf(
+  node: RuntimeInspectionNode_Serialize,
+  finalId: number,
+): Stage {
   if (node.id === finalId) return 'result'
   const { tag } = node
   switch (tag.kind) {
@@ -51,7 +57,10 @@ export function stageOf(node: RuntimeInspectionNode, finalId: number): Stage {
   }
 }
 
-function baseKey(node: RuntimeInspectionNode, finalId: number): string {
+function baseKey(
+  node: RuntimeInspectionNode_Serialize,
+  finalId: number,
+): string {
   if (node.id === finalId) return FINAL_KEY
   const { tag } = node
   switch (tag.kind) {
@@ -108,7 +117,7 @@ function isRoot(tag: OperatorTag) {
  * shown as unchanged.
  */
 export function stepStatus(
-  node: RuntimeInspectionNode,
+  node: RuntimeInspectionNode_Serialize,
   finalId: number,
 ): StepStatus {
   if (node.max_log_level === 'error') return 'error'
@@ -128,11 +137,11 @@ export function stepStatus(
  * belong to a composition follow it, one level in.
  */
 export function buildSteps(
-  nodes: RuntimeInspectionNode[],
+  nodes: RuntimeInspectionNode_Serialize[],
   finalId: number,
 ): Step[] {
   const seen = new Map<string, number>()
-  const make = (node: RuntimeInspectionNode): Step => {
+  const make = (node: RuntimeInspectionNode_Serialize): Step => {
     const base = baseKey(node, finalId)
     const count = (seen.get(base) ?? 0) + 1
     seen.set(base, count)

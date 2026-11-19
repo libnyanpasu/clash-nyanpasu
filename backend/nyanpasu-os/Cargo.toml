@@ -47,7 +47,7 @@ runas = { workspace = true }
 serde = { version = '1.0', features = ['derive'] }
 sha2 = '0.11'
 snafu = { workspace = true }
-specta = '^2.0.0-rc.25'
+specta = '^2.0.0-rc.28'
 sysinfo = '0.39'
 sysproxy = { workspace = true }
 tempfile = '3.9.0'

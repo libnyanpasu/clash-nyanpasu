@@ -80,9 +80,13 @@ export function createCommandTransport(
       }
       if (bridge !== 'tauri')
         throw new Error('No RPC transport is available for this runtime')
-      const result = await tauriCommands.callRpc(method, params)
-      if (result.status === 'error') throw new RpcFailure(method, result.error)
-      return result.data as T
+      try {
+        return (await tauriCommands.callRpc(method, params)) as T
+      } catch (error) {
+        // A reported failure rejects with its envelope; local faults are Errors.
+        if (error instanceof Error) throw error
+        throw new RpcFailure(method, error as RpcError)
+      }
     },
   }
 }

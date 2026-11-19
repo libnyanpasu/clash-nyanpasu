@@ -7,7 +7,11 @@ import {
   usageAmount,
   usageValue,
 } from '@/utils/traffic-usage'
-import type { Dimension, Topology, TopologyNode } from '@nyanpasu/rpc/types'
+import type {
+  Dimension,
+  Topology_Serialize,
+  TopologyNode_Serialize,
+} from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useTrafficPage } from '../../_modules/traffic-context'
 import { usePageTransition } from '../../_modules/transition'
@@ -54,7 +58,7 @@ export default function CardGraph({
   topology,
 }: {
   layers: readonly Dimension[]
-  topology: Topology
+  topology: Topology_Serialize
 }) {
   const { search, labelOf, onSearchChange } = useTrafficPage()
   const { metric, filters } = search
@@ -63,7 +67,7 @@ export default function CardGraph({
   const graphWidth = COLUMN_STEP * (layers.length - 1) + NODE_WIDTH
 
   const columns = useMemo(() => {
-    const result: TopologyNode[][] = layers.map(() => [])
+    const result: TopologyNode_Serialize[][] = layers.map(() => [])
     for (const node of topology.nodes) result[node.layer]?.push(node)
     return result
   }, [topology, layers])

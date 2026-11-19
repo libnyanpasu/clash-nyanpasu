@@ -58,7 +58,6 @@ vi.mock('@nyanpasu/query', () => ({
       }),
     },
   }),
-  unwrapQueryOptions: (options: unknown) => options,
 }))
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({

@@ -203,7 +203,7 @@ test('browser cannot edit dedicated settings', async ({ onTestFinished }) => {
 test('browser can retry saved hotkeys', async ({ onTestFinished }) => {
   platform.desktop = false
   debug.status.mockResolvedValue(status)
-  debug.retryEffect.mockResolvedValue({ status: 'ok', data: null })
+  debug.retryEffect.mockResolvedValue(null)
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })

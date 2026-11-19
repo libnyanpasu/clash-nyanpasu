@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation } from '@tanstack/react-query'
 import { invokeMutation } from '../ipc/query-options'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -10,10 +9,10 @@ import { useQueryApi } from '../provider/rpc-provider'
 export function useInstallCli() {
   const api = useQueryApi()
 
-  const command = api.mutations.installCli
+  const command = api.mutations.installCli()
 
   return useMutation({
     mutationKey: command.mutationKey,
-    mutationFn: async () => unwrapResult(await invokeMutation(command, [])),
+    mutationFn: async () => await invokeMutation(command),
   })
 }

@@ -1,5 +1,4 @@
 import { useCallback } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   DelayHistory,
   Proxies_Serialize,
@@ -96,25 +95,25 @@ export const useClashProxies = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const proxiesOptions = api.queries.getProxies()
-  const selectProxyCommand = api.mutations.selectProxy
-  const clearProxyFixedCommand = api.mutations.clearProxyFixed
+  const selectProxyCommand = api.mutations.selectProxy()
+  const clearProxyFixedCommand = api.mutations.clearProxyFixed()
 
   const { mutateAsync: mutateSelectProxy } = useMutation({
     mutationKey: selectProxyCommand.mutationKey,
     mutationFn: async ({ group, name }: { group: string; name: string }) =>
-      unwrapResult(await invokeMutation(selectProxyCommand, [group, name])),
+      await invokeMutation(selectProxyCommand, { group, name }),
   })
 
   const { mutateAsync: mutateClearProxyFixed } = useMutation({
     mutationKey: clearProxyFixedCommand.mutationKey,
     mutationFn: async (group: string) =>
-      unwrapResult(await invokeMutation(clearProxyFixedCommand, [group])),
+      await invokeMutation(clearProxyFixedCommand, { group }),
   })
 
   const proxies = useQuery<ClashProxiesQuery | undefined>({
     queryKey: proxiesOptions.queryKey,
     queryFn: async () => {
-      const result = unwrapResult(await invokeQuery(proxiesOptions))
+      const result = await invokeQuery(proxiesOptions)
 
       if (!result) {
         return
@@ -170,15 +169,13 @@ export const useClashProxies = () => {
       args: [string, string | null, ClashProxyDelayOptions?],
     ) => {
       const [name, provider, options] = args
-      const res = unwrapResult(
-        await invokeQuery(
-          api.queries.clashApiGetProxyDelay(
-            name,
-            provider,
-            options?.group ?? null,
-            null,
-            options?.expected ?? null,
-          ),
+      const res = await invokeQuery(
+        api.queries.clashApiGetProxyDelay(
+          name,
+          provider,
+          options?.group ?? null,
+          null,
+          options?.expected ?? null,
         ),
       )
       return {
@@ -218,9 +215,7 @@ export const useClashProxies = () => {
       const expected = options?.expected ?? null
       // The cached snapshot can predate a pin made in flight, in another
       // window, or by an external dashboard, so ask the core before choosing.
-      const data = unwrapResult(
-        await invokeMutation(api.mutations.mutateProxies, []),
-      )
+      const data = await invokeMutation(api.mutations.mutateProxies())
       const target =
         data.global?.name === group
           ? data.global
@@ -230,11 +225,9 @@ export const useClashProxies = () => {
       // tests its members one by one instead.
       if (!target?.fixed) {
         return (
-          unwrapResult(
-            await invokeQuery(
-              api.queries.clashApiGetGroupDelay(group, null, expected),
-            ),
-          ) ?? {}
+          (await invokeQuery(
+            api.queries.clashApiGetGroupDelay(group, null, expected),
+          )) ?? {}
         )
       }
 
@@ -244,15 +237,13 @@ export const useClashProxies = () => {
         PINNED_GROUP_DELAY_CONCURRENCY,
         async (name) => {
           try {
-            const result = unwrapResult(
-              await invokeQuery(
-                api.queries.clashApiGetProxyDelay(
-                  name,
-                  data.nodes[name]?.provider ?? null,
-                  group,
-                  null,
-                  expected,
-                ),
+            const result = await invokeQuery(
+              api.queries.clashApiGetProxyDelay(
+                name,
+                data.nodes[name]?.provider ?? null,
+                group,
+                null,
+                expected,
               ),
             )
             delays[name] = result?.delay ?? 0

@@ -3,12 +3,9 @@ import { Channel } from '@tauri-apps/api/core'
 import { createClosedStreamProbe, type AuthProbe } from './auth-probe'
 import { withClientId } from './client-id'
 
-export type RpcResult<T> =
-  { status: 'ok'; data: T } | { status: 'error'; error: unknown }
-
 export interface ConnectionDetailsRpc<T> {
-  subscribe(channel: Channel<T>): Promise<RpcResult<unknown>>
-  unsubscribe(id: unknown): Promise<RpcResult<unknown>>
+  subscribe(channel: Channel<T>): Promise<unknown>
+  unsubscribe(id: unknown): Promise<unknown>
 }
 
 export interface ConnectionDetailsCallbacks<T> {
@@ -68,39 +65,18 @@ export function createConnectionDetailsTransport<T>(
         if (!disposed) onMessage(message)
       }
       const unsubscribe = (id: unknown) => {
-        rpc
-          .unsubscribe(id)
-          .then((result) => {
-            if (result.status === 'error') {
-              console.error(
-                'failed to unsubscribe from connection details:',
-                result.error,
-              )
-            }
-          })
-          .catch((error: unknown) => {
-            console.error(
-              'failed to unsubscribe from connection details:',
-              error,
-            )
-          })
+        rpc.unsubscribe(id).catch((error: unknown) => {
+          console.error('failed to unsubscribe from connection details:', error)
+        })
       }
       rpc
         .subscribe(channel)
-        .then((result) => {
+        .then((id) => {
           if (disposed) {
-            if (result.status === 'ok') unsubscribe(result.data)
+            unsubscribe(id)
             return
           }
-          if (result.status === 'error') {
-            console.error(
-              'failed to subscribe to connection details:',
-              result.error,
-            )
-            onError(result.error)
-            return
-          }
-          subscriptionId = result.data
+          subscriptionId = id
         })
         .catch((error: unknown) => {
           console.error('failed to subscribe to connection details:', error)

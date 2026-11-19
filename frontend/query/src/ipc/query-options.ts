@@ -1,21 +1,4 @@
-import { RpcFailure, unwrapResult, type Result } from '@nyanpasu/rpc'
-import type { QueryKey } from '@tanstack/react-query'
-
-export function unwrapQueryOptions<
-  TData,
-  TError,
-  TOptions extends { queryKey: QueryKey },
->(
-  options: TOptions,
-  queryFn: (
-    context: never,
-  ) => Result<TData, TError> | Promise<Result<TData, TError>>,
-): { queryKey: QueryKey; queryFn: () => Promise<TData> } {
-  return {
-    queryKey: options.queryKey,
-    queryFn: async () => unwrapResult(await queryFn(undefined as never)),
-  }
-}
+import { RpcFailure } from '@nyanpasu/rpc'
 
 export function invokeQuery<T>(options: {
   queryFn?: (context: never) => T | Promise<T>
@@ -63,10 +46,11 @@ export async function invokeMutation<TInput, TOutput>(
   options: {
     mutationFn?: (input: TInput, context: never) => TOutput | Promise<TOutput>
   },
-  input: TInput,
+  // A command without arguments generates a mutationFn without an input.
+  ...[input]: unknown extends TInput ? [input?: TInput] : [input: TInput]
 ): Promise<TOutput> {
   try {
-    return await options.mutationFn!(input, undefined as never)
+    return await options.mutationFn!(input as TInput, undefined as never)
   } catch (error) {
     // A reported RPC refusal is confirmed; only invoke-layer failures are
     // unconfirmed, while local programming errors propagate.

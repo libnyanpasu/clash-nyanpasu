@@ -55,7 +55,7 @@ test('About shows the version and opens the help links', async () => {
     .poll(() => rpc.openThat)
     .toHaveBeenCalledWith('https://github.com/libnyanpasu/clash-nyanpasu')
 
-  rpc.reportIssue.mockResolvedValue({ status: 'ok', data: null })
+  rpc.reportIssue.mockResolvedValue(null)
   await view
     .getByRole('button', { name: m.header_help_action_issues(), exact: false })
     .click()

@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { type RuleProviderItem } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -20,18 +19,18 @@ export const useClashRulesProvider = (
     ...options,
     queryKey: providersQuery.queryKey,
     queryFn: async (): Promise<ClashRulesProviderQuery> =>
-      unwrapResult(await invokeQuery(providersQuery))?.providers ?? {},
+      (await invokeQuery(providersQuery))?.providers ?? {},
   })
 }
 
 export const useUpdateClashRulesProvider = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const updateProvidersRules = api.mutations.clashApiUpdateProvidersRules
+  const updateProvidersRules = api.mutations.clashApiUpdateProvidersRules()
   return useMutation({
     mutationKey: updateProvidersRules.mutationKey,
     mutationFn: async (name: string) =>
-      unwrapResult(await invokeMutation(updateProvidersRules, [name])),
+      await invokeMutation(updateProvidersRules, { name }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: api.queries.clashApiGetProvidersRules().queryKey,

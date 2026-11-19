@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ConflictChoice,
   SyncConflict,
@@ -36,7 +35,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: SYNC_STATUS_QUERY_KEY,
     enabled,
     queryFn: async () => {
-      const next = unwrapResult(await api.getSyncStatus())
+      const next = await api.getSyncStatus()
       return acceptSyncStatus(
         queryClient.getQueryData<SyncStatus>(SYNC_STATUS_QUERY_KEY),
         next,
@@ -49,13 +48,13 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
   const settings = useQuery({
     queryKey: SYNC_SETTINGS_QUERY_KEY,
     enabled,
-    queryFn: async () => unwrapResult(await api.getSyncSettings()),
+    queryFn: async () => await api.getSyncSettings(),
   })
 
   const conflicts = useQuery({
     queryKey: SYNC_CONFLICTS_QUERY_KEY,
     enabled,
-    queryFn: async () => unwrapResult(await api.listSyncConflicts()),
+    queryFn: async () => await api.listSyncConflicts(),
   })
 
   const snapshots = useQuery({
@@ -129,9 +128,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
       secrets: SyncSecrets | null
     }) => {
       requireEnabled()
-      return unwrapResult(
-        await api.configureSync(input.settings, input.secrets),
-      )
+      return await api.configureSync(input.settings, input.secrets)
     },
     onSettled: refreshAll,
   })
@@ -142,16 +139,14 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
       secrets: SyncSecrets | null
     }) => {
       requireEnabled()
-      return unwrapResult(
-        await api.testSyncConnection(input.settings, input.secrets),
-      )
+      return await api.testSyncConnection(input.settings, input.secrets)
     },
   })
 
   const enable = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.enableSync())
+      return await api.enableSync()
     },
     onSettled: refreshAll,
   })
@@ -159,7 +154,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
   const disable = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.disableSync())
+      return await api.disableSync()
     },
     onSettled: refreshAll,
   })
@@ -167,7 +162,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
   const syncNow = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.syncNow())
+      return await api.syncNow()
     },
     onSettled: refreshAll,
   })
@@ -178,9 +173,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
       choice: ConflictChoice
     }) => {
       requireEnabled()
-      return unwrapResult(
-        await api.resolveSyncConflict(input.conflictId, input.choice),
-      )
+      return await api.resolveSyncConflict(input.conflictId, input.choice)
     },
     onSettled: refreshAll,
   })
@@ -188,7 +181,7 @@ export function useSync({ enabled = true }: { enabled?: boolean } = {}) {
   const restoreSnapshot = useMutation({
     mutationFn: async (snapshotId: string) => {
       requireEnabled()
-      return unwrapResult(await api.restoreSyncSnapshot(snapshotId))
+      return await api.restoreSyncSnapshot(snapshotId)
     },
     onSettled: refreshAll,
   })

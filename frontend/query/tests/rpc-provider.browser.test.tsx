@@ -121,12 +121,12 @@ test('RPC bindings and query cache stay scoped to each provider instance', async
   expect(invokeA).toHaveBeenCalledWith('get_profiles', undefined)
   expect(invokeB).toHaveBeenCalledWith('get_profiles', undefined)
   expect(clientA.getQueryData(['getProfiles'])).toEqual({
-    status: 'ok',
-    data: { owner: 'first', method: 'get_profiles' },
+    owner: 'first',
+    method: 'get_profiles',
   })
   expect(clientB.getQueryData(['getProfiles'])).toEqual({
-    status: 'ok',
-    data: { owner: 'second', method: 'get_profiles' },
+    owner: 'second',
+    method: 'get_profiles',
   })
   expect(clientA.getQueryData(['getProfiles'])).not.toBe(
     clientB.getQueryData(['getProfiles']),

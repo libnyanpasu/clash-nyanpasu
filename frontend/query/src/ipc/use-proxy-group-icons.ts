@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { unwrapQueryOptions } from './query-options'
 
 const NO_ICONS: Readonly<Record<string, string>> = Object.freeze({})
 
@@ -16,7 +15,7 @@ export const useProxyGroupIcons = () => {
   const options = api.queries.getProxyGroupIcons()
 
   const query = useQuery({
-    ...unwrapQueryOptions(options, options.queryFn!),
+    ...options,
     retry: false,
   })
 

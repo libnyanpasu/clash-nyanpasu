@@ -6,7 +6,7 @@ import type {
   ClashConfig,
   ClashSettings,
   MutationOutcome,
-  NetworkRule,
+  NetworkRule_Serialize,
   NyanpasuAppConfig_Serialize,
 } from '@nyanpasu/rpc/types'
 import { MutationCache, QueryClient } from '@tanstack/react-query'
@@ -27,12 +27,16 @@ import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 const PRIVATE_URL = 'https://probe.example/private-token/generate_204'
 
 // A network rule names a Wi-Fi network and a gateway: the safe view never carries it.
-const NETWORK_RULE: NetworkRule = {
+const NETWORK_RULE: NetworkRule_Serialize = {
   id: 'home',
   name: 'Home',
   enabled: true,
-  conditions: { wifi_ssid: 'ssid-sentinel', gateway_mac: 'aa:bb:cc:dd:ee:ff' },
-  actions: { tun: 'disable' },
+  conditions: {
+    wifi_ssid: 'ssid-sentinel',
+    gateway_mac: 'aa:bb:cc:dd:ee:ff',
+    interface_kind: null,
+  },
+  actions: { system_proxy: 'keep', tun: 'disable', transparent_proxy: 'keep' },
 }
 
 // What the safe query returns: the URLs are reduced to flags.
@@ -54,7 +58,11 @@ const appConfig = {
   default_latency_test: PRIVATE_URL,
   network_automation: {
     enabled: true,
-    default_actions: {},
+    default_actions: {
+      system_proxy: 'keep',
+      tun: 'keep',
+      transparent_proxy: 'keep',
+    },
     rules: [NETWORK_RULE],
   },
 } satisfies Partial<NyanpasuAppConfig_Serialize> & Record<string, unknown>

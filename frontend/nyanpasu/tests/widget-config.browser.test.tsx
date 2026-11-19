@@ -29,21 +29,27 @@ const backend = vi.hoisted(() => ({
 }))
 vi.mock('@/services/rpc', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/services/rpc')>()
+  const { RpcFailure } = await import('@nyanpasu/rpc')
   return {
     ...original,
     rpc: {
       ...original.rpc,
       getStorageItem: async () => ({
-        status: 'ok',
-        data: { value: backend.value, revision: backend.revision },
+        value: backend.value,
+        revision: backend.revision,
       }),
       setStorageItem: async (_key: string, value: string) => {
         backend.writes.push(value)
         await backend.wait
-        if (backend.fail) return { status: 'error', error: 'disk full' }
+        if (backend.fail) {
+          throw new RpcFailure('set_storage_item', {
+            kind: 'application_error',
+            message: 'disk full',
+          })
+        }
         backend.value = value
         backend.revision += 1
-        return { status: 'ok', data: backend.revision }
+        return backend.revision
       },
       listenResync: () => () => {},
       events: {

@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type { Mode } from '@nyanpasu/rpc/types'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -23,12 +22,12 @@ export const useProxyMode = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const clashConfig = useClashConfig()
-  const setMode = api.mutations.setProxyMode
+  const setMode = api.mutations.setProxyMode()
 
   const upsertMode = useMutation({
     mutationKey: setMode.mutationKey,
     mutationFn: async (mode: Mode) => {
-      return unwrapResult(await invokeMutation(setMode, [mode]))
+      return await invokeMutation(setMode, { mode })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

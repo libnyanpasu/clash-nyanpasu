@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import type { TopologyEdge, TopologyNode } from '@nyanpasu/rpc/types'
+import type { TopologyEdge, TopologyNode_Serialize } from '@nyanpasu/rpc/types'
 import {
   layoutSankey,
   NODE_GAP,
@@ -10,7 +10,11 @@ const usage = (download: number) => ({
   bytes: { upload: 0, download },
   connections: 1,
 })
-const node = (id: string, layer: number, download: number): TopologyNode => ({
+const node = (
+  id: string,
+  layer: number,
+  download: number,
+): TopologyNode_Serialize => ({
   id,
   layer,
   key: id,

@@ -38,7 +38,6 @@ import {
   useSettings,
   type AnyDegradation,
 } from '@nyanpasu/query'
-import { unwrapResult } from '@nyanpasu/rpc'
 import { type DegradationPhase } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import {
@@ -53,7 +52,7 @@ const reportWindowReady = () => {
   if (detectRuntime().bridge === 'tauri') {
     rpc
       .reportWindowReady()
-      .then(unwrapResult)
+
       .catch((error) =>
         console.error('failed to report the window ready', error),
       )

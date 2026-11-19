@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import {
   useClashWSHistory,
   useClashWSStatus,
@@ -11,7 +10,7 @@ import { invokeMutation } from './query-options'
 // connections do not re-render on every connection sample.
 export const useDeleteClashConnections = () => {
   const api = useQueryApi()
-  const deleteConnectionsCommand = api.mutations.clashApiDeleteConnections
+  const deleteConnectionsCommand = api.mutations.clashApiDeleteConnections()
   const [deleteError, setDeleteError] = useState<unknown>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -24,9 +23,7 @@ export const useDeleteClashConnections = () => {
       setDeleteError(null)
 
       try {
-        unwrapResult(
-          await invokeMutation(deleteConnectionsCommand, [id ?? null]),
-        )
+        await invokeMutation(deleteConnectionsCommand, { id: id ?? null })
       } catch (error) {
         setDeleteError(error)
         throw error

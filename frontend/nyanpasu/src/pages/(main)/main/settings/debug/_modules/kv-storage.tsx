@@ -1,7 +1,7 @@
 import { m } from '@/paraglide/messages'
 import { mutations, queries } from '@/services/rpc'
 import { useLockFn } from '@nyanpasu/hooks'
-import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
+import { invokeMutation } from '@nyanpasu/query'
 import {
   Button,
   Card,
@@ -25,19 +25,17 @@ import {
 
 export default function KVStorage() {
   const storageQuery = queries.getAllStorageItems()
-  const clearStorage = mutations.clearStorage
-  const removeStorageItem = mutations.removeStorageItem
-  const query = useQuery(
-    unwrapQueryOptions(storageQuery, storageQuery.queryFn!),
-  )
+  const clearStorage = mutations.clearStorage()
+  const removeStorageItem = mutations.removeStorageItem()
+  const query = useQuery(storageQuery)
 
   const handleClearAllTask = useLockFn(async () => {
-    await invokeMutation(clearStorage, [])
+    await invokeMutation(clearStorage)
     await query.refetch()
   })
 
   const handleRemoveItem = useLockFn(async (key: string) => {
-    await invokeMutation(removeStorageItem, [key])
+    await invokeMutation(removeStorageItem, { key })
     await query.refetch()
   })
 

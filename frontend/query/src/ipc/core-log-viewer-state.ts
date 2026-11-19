@@ -34,8 +34,8 @@ export function mergeCoreLogRows(
   // Both the backend pages and retained previews are ordered by sequence.
   const retained = (row: CoreLogRow) =>
     row.id.generation === status.generation &&
-    status.first !== null &&
-    status.head !== null &&
+    status.first != null &&
+    status.head != null &&
     row.id.sequence >= status.first.sequence &&
     row.id.sequence <= status.head.sequence
   const left = current.filter(retained)

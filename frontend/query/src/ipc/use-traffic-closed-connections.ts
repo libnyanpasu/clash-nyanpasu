@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ClosedCursor,
   TrafficFilter,
@@ -30,13 +29,11 @@ export function useTrafficClosedConnections(
     queryKey: ['traffic-closed-connections', selection] as const,
     initialPageParam: null as ClosedCursor | null,
     queryFn: async ({ pageParam }) =>
-      unwrapResult(
-        await api.queryTrafficClosedConnections(
-          selection.range,
-          selection.filters,
-          pageParam,
-          PAGE_SIZE,
-        ),
+      await api.queryTrafficClosedConnections(
+        selection.range,
+        selection.filters,
+        pageParam,
+        PAGE_SIZE,
       ),
     getNextPageParam: (page) => page.next ?? undefined,
     // A poll refetches every loaded page, so it slows down as more are loaded

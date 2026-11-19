@@ -46,12 +46,12 @@ const queryClient = useQueryClient()
 
 const query = useQuery({
   queryKey,
-  queryFn: async () => unwrapResult(await rpc.getReleaseChannel()),
+  queryFn: async () => await rpc.getReleaseChannel(),
 })
 
 const mutation = useMutation({
   mutationFn: async (channel: ReleaseChannel) =>
-    unwrapResult(await rpc.setReleaseChannel(channel)),
+    await rpc.setReleaseChannel(channel),
   onSuccess: (_, channel) => queryClient.setQueryData(queryKey, channel),
 })
 

@@ -540,6 +540,13 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getTransparentProxyStatusSummary', ...args],
         queryFn: () => commands.getTransparentProxyStatusSummary(...args),
       }),
+    getTransparentProxyDiagnostics: (
+      ...args: Parameters<typeof commands.getTransparentProxyDiagnostics>
+    ) =>
+      queryOptions({
+        queryKey: ['getTransparentProxyDiagnostics', ...args],
+        queryFn: () => commands.getTransparentProxyDiagnostics(...args),
+      }),
     listRemoteAccessTokens: (
       ...args: Parameters<typeof commands.listRemoteAccessTokens>
     ) =>

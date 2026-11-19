@@ -26,6 +26,7 @@ import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
 import ProxyModeSelector from './_modules/proxy-mode-selector'
 import TransparentProxyButton from './_modules/transparent-proxy-button'
+import TransparentProxyDiagnostics from './_modules/transparent-proxy-diagnostics'
 
 export const Route = createFileRoute('/(main)/main/settings/system/proxy/')({
   component: RouteComponent,
@@ -148,6 +149,9 @@ const CurrentProxy = () => {
         <SettingsCard>
           <SettingsCardContent className="py-4">
             <CurrentSystemProxy />
+            <PlatformLinux>
+              <TransparentProxyDiagnostics />
+            </PlatformLinux>
           </SettingsCardContent>
         </SettingsCard>
       </SettingsGroup>

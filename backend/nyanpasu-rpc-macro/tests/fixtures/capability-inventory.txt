@@ -99,6 +99,7 @@ get_sync_status | desktop | - | - | query | settings:read
 get_sys_proxy | desktop,http,local | os_integration | - | query | system:read
 get_system_accent_color | desktop,http | accent_color | - | query | system:read
 get_traffic_summary | desktop,http,local | - | - | query | traffic:read
+get_transparent_proxy_diagnostics | desktop | - | - | query | system:read
 get_transparent_proxy_status | desktop | - | - | query | system:read
 get_transparent_proxy_status_summary | desktop | - | - | query | system:read
 import_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile:write

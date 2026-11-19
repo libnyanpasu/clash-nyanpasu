@@ -28,3 +28,14 @@ pub async fn get_transparent_proxy_status_summary(
         ),
     )
 }
+
+/// Read-only Linux transparent proxy diagnostics. The value contains observed
+/// host kernel objects, so it stays on the desktop and is marked sensitive.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transparent_proxy_diagnostics(
+    client: State<'_, NyanpasuClient>,
+) -> Result<nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics> {
+    Ok(client.get_transparent_proxy_diagnostics().await?)
+}

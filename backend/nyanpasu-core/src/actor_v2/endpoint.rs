@@ -129,6 +129,13 @@ pub trait ControlEndpoint: Send + Sync {
         ))
     }
 
+    async fn transparent_proxy_diagnostics(
+        &self,
+    ) -> Result<nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics, CoreError>
+    {
+        Ok(nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics::Unsupported)
+    }
+
     async fn effective_config(
         &self,
     ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
@@ -557,6 +564,37 @@ impl ControlEndpoint for ServiceEndpoint {
                 false,
             )
         })
+    }
+
+    async fn transparent_proxy_diagnostics(
+        &self,
+    ) -> Result<nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics, CoreError>
+    {
+        use nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics;
+
+        let response = match self
+            .client
+            .call::<nyanpasu_ipc::api::contract::NetworkTransparentProxyDiagnosticsQuery>(None)
+            .await
+        {
+            Ok(response) => response,
+            Err(nyanpasu_ipc::client::ClientError::HttpStatus { status, .. })
+                if status.as_u16() == 404 =>
+            {
+                return Ok(TransparentProxyDiagnostics::UpdateRequired);
+            }
+            Err(error) => return Err(map_client_error(error)),
+        };
+        response
+            .data
+            .map(|diagnostics| TransparentProxyDiagnostics::Available { diagnostics })
+            .ok_or_else(|| {
+                CoreError::new(
+                    CoreErrorKind::BackendUnavailable,
+                    "service returned no transparent capture diagnostics",
+                    false,
+                )
+            })
     }
 
     async fn effective_config(

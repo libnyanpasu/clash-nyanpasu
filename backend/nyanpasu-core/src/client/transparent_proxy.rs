@@ -84,6 +84,26 @@ pub(super) async fn status(core: &CoreClient) -> anyhow::Result<NetworkTranspare
         .map_err(Into::into)
 }
 
+/// Diagnostics are available only from a Linux privileged service. A local
+/// core, another OS, or an older service reports its typed availability.
+pub(super) async fn diagnostics(
+    core: &CoreClient,
+) -> anyhow::Result<nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics> {
+    use nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics;
+
+    if !cfg!(target_os = "linux") {
+        return Ok(TransparentProxyDiagnostics::Unsupported);
+    }
+    let endpoint = core.connected_endpoint().await?;
+    if endpoint.host() != ExecutionHost::Service {
+        return Ok(TransparentProxyDiagnostics::Unsupported);
+    }
+    endpoint
+        .transparent_proxy_diagnostics()
+        .await
+        .map_err(Into::into)
+}
+
 /// The patch that switches transparent capture on, keeping a mode the user
 /// already chose, or off.
 pub(super) fn switch_patch(config: &ClashConfig, enabled: bool) -> ClashConfigPatch {
@@ -114,5 +134,12 @@ impl NyanpasuClient {
         &self,
     ) -> anyhow::Result<NetworkTransparentProxyStatus> {
         status(&self.inner.core_api).await
+    }
+
+    pub async fn get_transparent_proxy_diagnostics(
+        &self,
+    ) -> anyhow::Result<nyanpasu_runtime_values::transparent_proxy::TransparentProxyDiagnostics>
+    {
+        diagnostics(&self.inner.core_api).await
     }
 }

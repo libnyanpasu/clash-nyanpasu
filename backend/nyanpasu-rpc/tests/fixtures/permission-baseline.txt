@@ -97,6 +97,7 @@ command | get_sync_status | settings:read |  | query | desktop |  |
 command | get_sys_proxy | system:read |  | query | desktop,http,local | os_integration |
 command | get_system_accent_color | system:read |  | query | desktop,http | accent_color |
 command | get_traffic_summary | traffic:read |  | query | desktop,http,local |  |
+command | get_transparent_proxy_diagnostics | system:read | sensitive | query | desktop |  |
 command | get_transparent_proxy_status | system:read | sensitive | query | desktop |  |
 command | get_transparent_proxy_status_summary | system:read |  | query | desktop |  |
 command | import_profile | profile:write |  | mutation | desktop,http,local |  | elevation,os_integration,presentation

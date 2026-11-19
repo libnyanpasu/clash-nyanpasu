@@ -7,7 +7,7 @@ import {
   ItemLabel,
   ItemLabelDescription,
   ItemLabelText,
-} from '../../../../_modules/settings-card'
+} from '../../../../../_modules/settings-card'
 import MechanismActionsFields from './mechanism-actions-fields'
 
 /** What a network that no rule matches does to each mechanism. */

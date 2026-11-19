@@ -1,30 +1,6 @@
-import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import { ComponentProps } from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { useSidebarContext } from '@nyanpasu/ui/sidebar'
+import { BackButton } from '@/components/page-title'
 import { cn } from '@nyanpasu/utils'
-import { Link } from '@tanstack/react-router'
-
-const BackButton = () => {
-  const { isHiddenSide } = useSidebarContext()
-
-  if (!isHiddenSide) {
-    return null
-  }
-
-  return (
-    <Button
-      icon
-      className="flex shrink-0 items-center justify-center"
-      data-slot="proxies-group-back-button"
-      asChild
-    >
-      <Link to="/main/proxies" search={(previous) => ({ q: previous.q })}>
-        <ArrowBackIosNewRounded className="size-4" />
-      </Link>
-    </Button>
-  )
-}
 
 export default function GroupHeader({
   children,
@@ -51,7 +27,10 @@ export default function GroupHeader({
         className="relative flex items-center gap-1 py-2 md:py-4"
         data-slot="proxies-group-header-row"
       >
-        <BackButton />
+        <BackButton
+          className="shrink-0"
+          data-slot="proxies-group-back-button"
+        />
 
         {children}
       </div>

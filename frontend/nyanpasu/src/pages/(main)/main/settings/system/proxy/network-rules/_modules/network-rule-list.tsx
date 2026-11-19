@@ -28,7 +28,7 @@ import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
-} from '../../../../_modules/settings-card'
+} from '../../../../../_modules/settings-card'
 import { InterfaceKindIcon, interfaceKindLabel } from './interface-kind'
 import { actionLabel } from './mechanism-actions-fields'
 import NetworkRuleDialog from './network-rule-dialog'

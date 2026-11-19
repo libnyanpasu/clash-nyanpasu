@@ -15,6 +15,7 @@ import CoreAgentSkillCard from './_modules/core-agent-skill-card'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/ai/')({
   component: GuardedRouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_ai() } },
 })
 
 function GuardedRouteComponent() {
@@ -35,7 +36,7 @@ function RouteComponent() {
 
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_ai()}</PageTitle>
+      <PageTitle />
 
       <div className="space-y-4 px-4 pb-4">
         <div className="space-y-2" data-slot="core-agent-skill-container">

@@ -7,6 +7,7 @@ import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { RestrictedContent } from '@/components/auth/restricted-content'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { useLeafRouteLayout } from '@/components/router/route-layout'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import ProfilesDndProvider from './_modules/profiles-dnd-provider'
@@ -15,6 +16,9 @@ import ProfilesNavigate from './_modules/profiles-navigate'
 
 export const Route = createFileRoute('/(main)/main/profiles')({
   component: RouteComponent,
+  staticData: {
+    crumb: { title: () => m.navbar_label_profiles(), hub: true },
+  },
 })
 
 // A scroll page grows with its content and the viewport scrolls. A fill page

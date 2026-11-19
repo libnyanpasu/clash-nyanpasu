@@ -23,6 +23,7 @@ import TunStackSelector from './_modules/tun-stack-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/network/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_network() } },
 })
 
 const PortSettings = () => {
@@ -80,9 +81,7 @@ const TunSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_network()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permission="settings:read"

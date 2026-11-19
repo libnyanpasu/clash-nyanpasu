@@ -1,12 +1,16 @@
 import { AppContentScrollArea } from '@nyanpasu/ui/scroll-area'
 import { Sidebar, SidebarContent } from '@nyanpasu/ui/sidebar'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import SettingsNavigate from './_modules/settings-navigate'
 
 export const Route = createFileRoute('/(main)/main/settings')({
   component: RouteComponent,
+  staticData: {
+    crumb: { title: () => m.navbar_label_settings(), hub: true },
+  },
 })
 
 function RouteComponent() {

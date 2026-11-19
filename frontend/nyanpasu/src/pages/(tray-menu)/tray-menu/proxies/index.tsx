@@ -77,7 +77,7 @@ function RouteComponent() {
   return (
     <ScrollArea className="h-dvh w-dvw">
       <div className="flex w-dvw flex-col gap-3 p-3">
-        <BackButton to="/tray-menu">
+        <BackButton>
           <span>{m.tray_menu_back_to_tray_menu()}</span>
         </BackButton>
 

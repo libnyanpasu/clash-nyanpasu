@@ -20,6 +20,7 @@ import UwpToolsButton from './_modules/uwp-tools-button'
 
 export const Route = createFileRoute('/(main)/main/settings/system/service/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_service() } },
 })
 
 const SystemService = () => {
@@ -85,9 +86,7 @@ const SystemTools = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_service()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permission="system:read"

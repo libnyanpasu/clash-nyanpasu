@@ -447,6 +447,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getTrafficSummary', ...args],
         queryFn: () => commands.getTrafficSummary(...args),
       }),
+    getMeowStatistics: (
+      ...args: Parameters<typeof commands.getMeowStatistics>
+    ) =>
+      queryOptions({
+        queryKey: ['getMeowStatistics', ...args],
+        queryFn: () => commands.getMeowStatistics(...args),
+      }),
+    queryMeowTrafficLedger: (
+      ...args: Parameters<typeof commands.queryMeowTrafficLedger>
+    ) =>
+      queryOptions({
+        queryKey: ['queryMeowTrafficLedger', ...args],
+        queryFn: () => commands.queryMeowTrafficLedger(...args),
+      }),
     queryTrafficReport: (
       ...args: Parameters<typeof commands.queryTrafficReport>
     ) =>

@@ -11,6 +11,7 @@ use crate::clash::{
         RuleProviderItem, RulesRes,
     },
     logbook::{MeowLogbookPage, MeowLogbookQuery},
+    meow_traffic::{MeowStatistics, MeowTrafficLedger, MeowTrafficLedgerQuery},
     proxies::{Proxies, ProxyProviderSummary},
 };
 
@@ -140,21 +141,38 @@ impl NyanpasuClient {
     }
 
     pub async fn meow_logbook(&self, query: MeowLogbookQuery) -> Result<Option<MeowLogbookPage>> {
-        if self
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_logbook(query).await?),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn meow_statistics(&self) -> Result<Option<MeowStatistics>> {
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_statistics().await?),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn meow_traffic_ledger(
+        &self,
+        query: MeowTrafficLedgerQuery,
+    ) -> Result<Option<MeowTrafficLedger>> {
+        match self.meow_api().await? {
+            Some(api) => Ok(api.meow_traffic_ledger(query).await?),
+            None => Ok(None),
+        }
+    }
+
+    async fn meow_api(&self) -> Result<Option<crate::actor_v2::api::ApiClient>> {
+        match self
             .core_status()
             .snapshot
-            .and_then(|snapshot| snapshot.applied_kind)
-            .is_some_and(|kind| kind != CoreKind::Meow)
+            .and_then(|status| status.applied_kind)
         {
-            return Ok(None);
+            Some(kind) if kind != CoreKind::Meow => Ok(None),
+            _ => Ok(Some(self.inner.core_api.api_client().await?)),
         }
-        Ok(self
-            .inner
-            .core_api
-            .api_client()
-            .await?
-            .meow_logbook(query)
-            .await?)
     }
 
     /// The live core configuration without the controller secret.

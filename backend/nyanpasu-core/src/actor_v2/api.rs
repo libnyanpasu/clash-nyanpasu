@@ -12,7 +12,10 @@ use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo}
 use tokio_util::sync::CancellationToken;
 
 use super::endpoint::EndpointHandle;
-use crate::clash::logbook::{MeowLogbookPage, MeowLogbookQuery};
+use crate::clash::{
+    logbook::{MeowLogbookPage, MeowLogbookQuery},
+    meow_traffic::{MeowStatistics, MeowTrafficLedger, MeowTrafficLedgerQuery},
+};
 use nyanpasu_runtime_values::runtime::InterruptFailure;
 
 #[derive(Debug, thiserror::Error)]
@@ -271,21 +274,51 @@ impl ApiClient {
         &self,
         query: MeowLogbookQuery,
     ) -> Result<Option<MeowLogbookPage>, ApiError> {
-        const OPERATION: &str = "Meow logbook";
-        const PAGE_SIZE: u32 = 50;
-        let request_error = |source| clash_api::Error::Request {
-            operation: OPERATION,
-            source,
-        };
+        #[derive(serde::Serialize)]
+        struct Params {
+            before: Option<u64>,
+            kind: Option<String>,
+            limit: u32,
+        }
+
+        self.meow_read(
+            "logbook",
+            "Meow logbook",
+            Some(Params {
+                before: query.before,
+                kind: query.kind,
+                limit: 50,
+            }),
+        )
+        .await
+    }
+
+    pub async fn meow_statistics(&self) -> Result<Option<MeowStatistics>, ApiError> {
+        self.meow_read("statistics", "Meow statistics", None::<()>)
+            .await
+    }
+
+    pub async fn meow_traffic_ledger(
+        &self,
+        query: MeowTrafficLedgerQuery,
+    ) -> Result<Option<MeowTrafficLedger>, ApiError> {
+        self.meow_read("traffic/ledger", "Meow traffic ledger", Some(query))
+            .await
+    }
+
+    async fn meow_read<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        operation: &'static str,
+        query: Option<impl serde::Serialize>,
+    ) -> Result<Option<T>, ApiError> {
+        let request_error = |source| clash_api::Error::Request { operation, source };
         self.execute(async {
-            let response = self
-                .client
-                .get("logbook")?
-                .query(&query)
-                .query(&[("limit", PAGE_SIZE)])
-                .send()
-                .await
-                .map_err(request_error)?;
+            let mut request = self.client.get(path)?;
+            if let Some(query) = query {
+                request = request.query(&query);
+            }
+            let response = request.send().await.map_err(request_error)?;
             let status = response.status();
             // Older Meow builds do not expose the endpoint.
             if status.as_u16() == 404 {
@@ -293,7 +326,7 @@ impl ApiClient {
             }
             if !status.is_success() {
                 return Err(clash_api::Error::HttpStatus {
-                    operation: OPERATION,
+                    operation,
                     status,
                     body: None,
                 });
@@ -634,6 +667,103 @@ pub(crate) mod tests {
             api.meow_logbook(MeowLogbookQuery::default()).await,
             Err(ApiError::Stale)
         ));
+        core.actor.stop(None);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn meow_traffic_reads_session_totals_and_ledger_with_the_bound_secret() {
+        use crate::clash::meow_traffic::MeowTrafficGroup;
+        use axum::{
+            extract::Query,
+            http::{HeaderMap, StatusCode},
+            response::IntoResponse,
+        };
+
+        let router = Router::new()
+            .route(
+                "/statistics",
+                get(|headers: HeaderMap| async move {
+                    assert_eq!(headers["authorization"], "Bearer test-controller");
+                    Json(serde_json::json!({
+                        "uploadTotal": 100,
+                        "downloadTotal": 200,
+                        "proxies": {
+                            "Exit": {"upload": 100, "download": 200},
+                            "Dialer": {"upload": 100, "download": 200}
+                        }
+                    }))
+                }),
+            )
+            .route(
+                "/traffic/ledger",
+                get(
+                    |headers: HeaderMap, Query(query): Query<MeowTrafficLedgerQuery>| async move {
+                        assert_eq!(headers["authorization"], "Bearer test-controller");
+                        assert_eq!(query.from, "2026-01-01");
+                        assert_eq!(query.to, "2026-01-31");
+                        assert!(matches!(query.by, MeowTrafficGroup::Host));
+                        match query.policy.as_deref() {
+                            Some("Retired") => StatusCode::NOT_FOUND.into_response(),
+                            Some("EU & US") => Json(serde_json::json!({
+                                "enabled": true,
+                                "upload": 100,
+                                "download": 200,
+                                "requests": 1,
+                                "rows": [{
+                                    "name": "example.com",
+                                    "upload": 100,
+                                    "download": 200,
+                                    "requests": 1
+                                }]
+                            }))
+                            .into_response(),
+                            other => panic!("unexpected policy filter: {other:?}"),
+                        }
+                    },
+                ),
+            );
+        let (url, server) = server(router).await;
+        let endpoint = endpoint(url);
+        endpoint.binding.send_modify(|binding| {
+            binding.as_mut().unwrap().secret = Some("test-controller".into());
+        });
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+
+        let statistics = api.meow_statistics().await.unwrap().unwrap();
+        assert_eq!(statistics.upload_total, 100);
+        assert_eq!(statistics.download_total, 200);
+        assert_eq!(statistics.proxies["Dialer"].download, 200);
+        assert_eq!(statistics.proxies["Exit"].download, 200);
+
+        let ledger_query = |policy: &str| MeowTrafficLedgerQuery {
+            from: "2026-01-01".into(),
+            to: "2026-01-31".into(),
+            by: MeowTrafficGroup::Host,
+            host: None,
+            app: None,
+            policy: Some(policy.into()),
+            interface: None,
+        };
+        let ledger = api
+            .meow_traffic_ledger(ledger_query("EU & US"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(ledger.enabled);
+        assert_eq!(ledger.requests, 1);
+        assert_eq!(ledger.rows[0].name, "example.com");
+        assert_eq!(ledger.rows[0].via_upload, 0);
+        assert!(
+            api.meow_traffic_ledger(ledger_query("Retired"))
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        endpoint.binding.send_replace(None);
+        assert!(matches!(api.meow_statistics().await, Err(ApiError::Stale)));
         core.actor.stop(None);
         server.abort();
     }

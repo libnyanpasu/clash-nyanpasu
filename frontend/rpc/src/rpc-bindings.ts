@@ -426,6 +426,28 @@ export function createRpcClient(
       typedError<TrafficSummary, IpcError_Serialize>(
         __RPC_INVOKE('get_traffic_summary'),
       ),
+    /**  Session totals and named proxy counters from the Meow controller. */
+    getMeowStatistics: () =>
+      typedError<
+        {
+          uploadTotal: number
+          downloadTotal: number
+          proxies: { [key in string]: MeowProxyTotals }
+        } | null,
+        IpcError_Serialize
+      >(__RPC_INVOKE('get_meow_statistics')),
+    /**  The engine's persisted traffic ledger can include host and app names. */
+    queryMeowTrafficLedger: (query: MeowTrafficLedgerQuery) =>
+      typedError<
+        {
+          enabled: boolean
+          upload: number
+          download: number
+          requests: number
+          rows: MeowTrafficRow[]
+        } | null,
+        IpcError_Serialize
+      >(__RPC_INVOKE('query_meow_traffic_ledger', { query })),
     queryTrafficReport: (request: ReportRequest) =>
       typedError<TrafficReport, IpcError_Serialize>(
         __RPC_INVOKE('query_traffic_report', { request }),
@@ -4262,6 +4284,46 @@ export type MeowLogbookPage = {
 export type MeowLogbookQuery = {
   before: number | null
   kind: string | null
+}
+
+export type MeowProxyTotals = {
+  upload: number
+  download: number
+}
+
+export type MeowStatistics = {
+  uploadTotal: number
+  downloadTotal: number
+  proxies: { [key in string]: MeowProxyTotals }
+}
+
+export type MeowTrafficGroup = 'host' | 'app' | 'policy' | 'interface'
+
+export type MeowTrafficLedger = {
+  enabled: boolean
+  upload: number
+  download: number
+  requests: number
+  rows: MeowTrafficRow[]
+}
+
+export type MeowTrafficLedgerQuery = {
+  from: string
+  to: string
+  by: MeowTrafficGroup
+  host: string | null
+  app: string | null
+  policy: string | null
+  interface: string | null
+}
+
+export type MeowTrafficRow = {
+  name: string
+  upload: number
+  download: number
+  requests: number
+  via_upload?: number
+  via_download?: number
 }
 
 /**  What a topology orders and merges its nodes by. */

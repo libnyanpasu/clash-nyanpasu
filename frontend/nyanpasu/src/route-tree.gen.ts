@@ -52,6 +52,7 @@ import { Route as mainMainSettingsSyncIndexRouteImport } from './pages/(main)/ma
 import { Route as mainMainTopologyDimensionIndexRouteImport } from './pages/(main)/main/topology/$dimension/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
+import { Route as mainMainTopologyMeowIndexRouteImport } from './pages/(main)/main/topology/meow/index'
 import { Route as trayMenuTrayMenuProxiesGroupNameRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/$name'
 import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main)/main/profiles/$type/detail/$uid'
 import { Route as mainMainProfilesFolderFolderIdIndexRouteImport } from './pages/(main)/main/profiles/folder/$folderId/index'
@@ -308,6 +309,12 @@ const mainMainTopologyMapIndexRoute =
     path: '/map/',
     getParentRoute: () => mainMainTopologyRouteRoute,
   } as any)
+const mainMainTopologyMeowIndexRoute =
+  mainMainTopologyMeowIndexRouteImport.update({
+    id: '/meow/',
+    path: '/meow/',
+    getParentRoute: () => mainMainTopologyRouteRoute,
+  } as any)
 const trayMenuTrayMenuProxiesGroupNameRoute =
   trayMenuTrayMenuProxiesGroupNameRouteImport.update({
     id: '/$name',
@@ -474,6 +481,7 @@ export interface FileRoutesByFullPath {
   '/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map/': typeof mainMainTopologyMapIndexRoute
+  '/main/topology/meow/': typeof mainMainTopologyMeowIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
@@ -526,6 +534,7 @@ export interface FileRoutesByTo {
   '/main/topology/$dimension': typeof mainMainTopologyDimensionIndexRoute
   '/main/topology/flow': typeof mainMainTopologyFlowIndexRoute
   '/main/topology/map': typeof mainMainTopologyMapIndexRoute
+  '/main/topology/meow': typeof mainMainTopologyMeowIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/main/profiles/folder/$folderId': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/main/settings/about/credits': typeof mainMainSettingsAboutCreditsIndexRoute
@@ -592,6 +601,7 @@ export interface FileRoutesById {
   '/(main)/main/topology/$dimension/': typeof mainMainTopologyDimensionIndexRoute
   '/(main)/main/topology/flow/': typeof mainMainTopologyFlowIndexRoute
   '/(main)/main/topology/map/': typeof mainMainTopologyMapIndexRoute
+  '/(main)/main/topology/meow/': typeof mainMainTopologyMeowIndexRoute
   '/(main)/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
   '/(main)/main/profiles/folder/$folderId/': typeof mainMainProfilesFolderFolderIdIndexRoute
   '/(main)/main/settings/about/credits/': typeof mainMainSettingsAboutCreditsIndexRoute
@@ -659,6 +669,7 @@ export interface FileRouteTypes {
     | '/main/topology/$dimension/'
     | '/main/topology/flow/'
     | '/main/topology/map/'
+    | '/main/topology/meow/'
     | '/main/profiles/$type/detail/$uid'
     | '/main/profiles/folder/$folderId/'
     | '/main/settings/about/credits/'
@@ -711,6 +722,7 @@ export interface FileRouteTypes {
     | '/main/topology/$dimension'
     | '/main/topology/flow'
     | '/main/topology/map'
+    | '/main/topology/meow'
     | '/main/profiles/$type/detail/$uid'
     | '/main/profiles/folder/$folderId'
     | '/main/settings/about/credits'
@@ -776,6 +788,7 @@ export interface FileRouteTypes {
     | '/(main)/main/topology/$dimension/'
     | '/(main)/main/topology/flow/'
     | '/(main)/main/topology/map/'
+    | '/(main)/main/topology/meow/'
     | '/(main)/main/profiles/$type/detail/$uid'
     | '/(main)/main/profiles/folder/$folderId/'
     | '/(main)/main/settings/about/credits/'
@@ -1104,6 +1117,13 @@ declare module '@tanstack/react-router' {
       path: '/map'
       fullPath: '/main/topology/map/'
       preLoaderRoute: typeof mainMainTopologyMapIndexRouteImport
+      parentRoute: typeof mainMainTopologyRouteRoute
+    }
+    '/(main)/main/topology/meow/': {
+      id: '/(main)/main/topology/meow/'
+      path: '/meow'
+      fullPath: '/main/topology/meow/'
+      preLoaderRoute: typeof mainMainTopologyMeowIndexRouteImport
       parentRoute: typeof mainMainTopologyRouteRoute
     }
     '/(tray-menu)/tray-menu/proxies/group/$name': {
@@ -1456,6 +1476,7 @@ interface mainMainTopologyRouteRouteChildren {
   mainMainTopologyDimensionIndexRoute: typeof mainMainTopologyDimensionIndexRoute
   mainMainTopologyFlowIndexRoute: typeof mainMainTopologyFlowIndexRoute
   mainMainTopologyMapIndexRoute: typeof mainMainTopologyMapIndexRoute
+  mainMainTopologyMeowIndexRoute: typeof mainMainTopologyMeowIndexRoute
 }
 
 const mainMainTopologyRouteRouteChildren: mainMainTopologyRouteRouteChildren = {
@@ -1463,6 +1484,7 @@ const mainMainTopologyRouteRouteChildren: mainMainTopologyRouteRouteChildren = {
   mainMainTopologyDimensionIndexRoute: mainMainTopologyDimensionIndexRoute,
   mainMainTopologyFlowIndexRoute: mainMainTopologyFlowIndexRoute,
   mainMainTopologyMapIndexRoute: mainMainTopologyMapIndexRoute,
+  mainMainTopologyMeowIndexRoute: mainMainTopologyMeowIndexRoute,
 }
 
 const mainMainTopologyRouteRouteWithChildren =

@@ -13,6 +13,7 @@ import {
 } from '@nyanpasu/ui/navigation-sidebar'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SidebarProvider } from '@nyanpasu/ui/slider-sidebar'
+import { useCapabilities } from '@/components/auth/capabilities'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
@@ -25,6 +26,7 @@ import {
   DataPage,
   dataPageLayoutVariants,
   DataPageSurface,
+  DataPageToolbar,
   useDataPageBottomInset,
 } from '../../_modules/data-page'
 import { useUsageLabelOf } from '../../_modules/use-usage-label-of'
@@ -106,20 +108,25 @@ const TrafficSidebarItem = memo(function TrafficSidebarItem({
 /** The traffic pages' navigation, which only changes with the page shown. */
 const TrafficSidebar = memo(function TrafficSidebar({
   view,
+  showMeow,
 }: {
   view: TrafficView
+  showMeow: boolean
 }) {
   return (
     <NavigationSidebar aria-label={m.traffic_sidebar()}>
       <ScrollArea className="min-h-0 w-full flex-1 [&>div>div]:block!">
         <NavigationSidebarContent className="pb-16">
-          {TRAFFIC_PAGES.map((page) => (
-            <TrafficSidebarItem
-              key={page.view}
-              page={page}
-              active={view === page.view}
-            />
-          ))}
+          {TRAFFIC_PAGES.map(
+            (page) =>
+              (page.view !== 'meow' || showMeow) && (
+                <TrafficSidebarItem
+                  key={page.view}
+                  page={page}
+                  active={view === page.view}
+                />
+              ),
+          )}
         </NavigationSidebarContent>
       </ScrollArea>
       <NavigationSidebarToggle aria-label={m.traffic_sidebar()}>
@@ -145,6 +152,15 @@ export default function TrafficLayout({
   // The parent layout stays mounted across child routes, preserving pause state.
   const [paused, setPaused] = useState(false)
   const { value: retention } = useSetting('traffic_retention')
+  const { canCall } = useCapabilities()
+  const canReadMeow =
+    canCall('get_app_settings') &&
+    canCall('get_meow_statistics') &&
+    canCall('query_meow_traffic_ledger')
+  const { value: core } = useSetting('core', { enabled: canReadMeow })
+  const meowCore =
+    canReadMeow && (core === 'meow' || core === 'meow-alpha') ? core : undefined
+  const meowView = view === 'meow'
   const labelOf = useUsageLabelOf()
   const { range, scope, filters, layers, metric, limit } = search
 
@@ -163,19 +179,22 @@ export default function TrafficLayout({
     [query, metric, view, layers, limit],
   )
 
-  const mockNow = useMockTrafficNow(paused)
-  useLocalIpProbe(mockNow === null)
+  const mockNow = useMockTrafficNow(paused || meowView)
+  useLocalIpProbe(!meowView && mockNow === null)
 
   const { data: recorded, isError: failed } = useTrafficReport(request, {
     refetchInterval: paused ? false : pollInterval(range),
-    enabled: mockNow === null,
+    enabled: !meowView && mockNow === null,
   })
   const mocked = useMemo(
-    () => (mockNow === null ? undefined : mockTrafficReport(request, mockNow)),
-    [request, mockNow],
+    () =>
+      meowView || mockNow === null
+        ? undefined
+        : mockTrafficReport(request, mockNow),
+    [meowView, request, mockNow],
   )
   const report = mocked ?? recorded
-  const isError = !mocked && failed
+  const isError = !meowView && !mocked && failed
   const empty =
     !!report &&
     report.total.connections === 0 &&
@@ -195,6 +214,7 @@ export default function TrafficLayout({
       paused,
       onPausedChange: setPaused,
       onViewConnections,
+      meowCore,
     }),
     [
       search,
@@ -206,6 +226,7 @@ export default function TrafficLayout({
       retention,
       paused,
       onViewConnections,
+      meowCore,
     ],
   )
 
@@ -214,15 +235,21 @@ export default function TrafficLayout({
       <TrafficViewSettingsProvider>
         <SidebarProvider defaultOpen={false}>
           <div className={dataPageLayoutVariants()} data-slot="traffic-page">
-            <TrafficSidebar view={view} />
+            <TrafficSidebar view={view} showMeow={meowCore !== undefined} />
             <DataPage
               title={m.topology_title()}
-              toolbar={<TrafficToolbar>{toolbarStart}</TrafficToolbar>}
+              toolbar={
+                meowView ? (
+                  <DataPageToolbar>{toolbarStart}</DataPageToolbar>
+                ) : (
+                  <TrafficToolbar>{toolbarStart}</TrafficToolbar>
+                )
+              }
             >
               <TrafficSurface>
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                   <h1 className="m-0! text-lg! font-medium">{title}</h1>
-                  {view !== 'overview' && report && !isError && (
+                  {view !== 'overview' && !meowView && report && !isError && (
                     <p className="text-on-surface-variant text-xs tabular-nums">
                       {usageAmount(report.total, 'bytes')} ·{' '}
                       {usageAmount(report.total, 'connections')}

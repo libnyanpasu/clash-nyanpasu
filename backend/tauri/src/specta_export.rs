@@ -123,6 +123,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::system::core::get_core_agent_skills_summary,
             commands::traffic::connections::get_clash_ws_snapshot,
             commands::traffic::usage::get_traffic_summary,
+            commands::traffic::usage::get_meow_statistics,
+            commands::traffic::usage::query_meow_traffic_ledger,
             commands::traffic::usage::query_traffic_report,
             commands::traffic::usage::query_traffic_usage,
             commands::traffic::usage::query_traffic_usage_by_keys,

@@ -73,6 +73,7 @@ get_http_server_status | desktop,http,local | http_server | - | query | system:r
 get_ip_lookup_providers | desktop,http | - | - | query | system:read
 get_ipsb_asn | desktop | - | - | query | system:read
 get_local_socket_status | desktop,local | - | - | query | remote:read
+get_meow_statistics | desktop | - | - | query | traffic:read
 get_network_automation_status | desktop | - | - | query | system:read
 get_postprocessing_output | desktop,http | - | - | query | profile:read
 get_profile_sync_logs | desktop,http | - | - | query | profile:read
@@ -143,6 +144,7 @@ query_core_logs_summary | desktop,http | - | - | query | logs:read
 query_logs | desktop,http,local | - | - | mutation | logs:read
 query_logs_summary | desktop,http | - | - | mutation | logs:read
 query_meow_logbook | desktop | - | - | query | logs:read
+query_meow_traffic_ledger | desktop | - | - | query | traffic:read
 query_traffic_active_connection_ids | desktop,http,local | - | - | query | traffic:read
 query_traffic_closed_connections | desktop,http | - | - | query | traffic:read
 query_traffic_report | desktop,http | - | - | query | traffic:read

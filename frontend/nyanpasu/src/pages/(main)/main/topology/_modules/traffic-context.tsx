@@ -1,4 +1,5 @@
 import AppsRounded from '~icons/material-symbols/apps-rounded'
+import BarChartRounded from '~icons/material-symbols/bar-chart-rounded'
 import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DevicesRounded from '~icons/material-symbols/devices-rounded'
@@ -68,6 +69,12 @@ export const TRAFFIC_PAGES = [
     icon: DashboardRounded,
     title: m.traffic_overview,
   },
+  {
+    view: 'meow',
+    to: '/main/topology/meow',
+    icon: BarChartRounded,
+    title: m.meow_traffic_title,
+  },
   ...ANALYSIS_VIEWS,
   // Each dimension's full listing has its own entry.
   ...RANKINGS.map(({ dimension, icon }) => ({
@@ -99,6 +106,7 @@ export const TrafficPageContext = createContext<{
   paused: boolean
   onPausedChange: (paused: boolean) => void
   onViewConnections?: () => void
+  meowCore?: 'meow' | 'meow-alpha'
 } | null>(null)
 
 export function useTrafficPage() {

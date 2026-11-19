@@ -320,8 +320,9 @@ impl ApiClient {
             }
             let response = request.send().await.map_err(request_error)?;
             let status = response.status();
-            // Older Meow builds do not expose the endpoint.
-            if status.as_u16() == 404 {
+            // A missing route (older Meow builds) or a disallowed method means
+            // the running core does not serve this read.
+            if matches!(status.as_u16(), 404 | 405) {
                 return Ok(None);
             }
             if !status.is_success() {
@@ -602,6 +603,7 @@ pub(crate) mod tests {
                     assert_eq!(params["limit"], "50");
                     match params.get("kind").map(String::as_str) {
                         Some("old-core") => StatusCode::NOT_FOUND.into_response(),
+                        Some("disallowed") => StatusCode::METHOD_NOT_ALLOWED.into_response(),
                         Some("unavailable") => StatusCode::SERVICE_UNAVAILABLE.into_response(),
                         Some("engine & config") => {
                             assert_eq!(params["before"], "43");
@@ -655,6 +657,12 @@ pub(crate) mod tests {
             kind: Some(kind.into()),
         };
         assert!(api.meow_logbook(query("old-core")).await.unwrap().is_none());
+        assert!(
+            api.meow_logbook(query("disallowed"))
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(matches!(
             api.meow_logbook(query("unavailable")).await,
             Err(ApiError::Protocol(clash_api::Error::HttpStatus {

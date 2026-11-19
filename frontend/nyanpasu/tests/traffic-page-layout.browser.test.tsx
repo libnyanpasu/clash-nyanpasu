@@ -361,7 +361,9 @@ const summary = `5.00 KiB · ${m.topology_connection_count({ count: 12 })}`
 test('Meow traffic filters the persisted ledger and uses the session totals from the core', async ({
   onTestFinished,
 }) => {
-  vi.setSystemTime(new Date('2026-01-01T00:15:00Z'))
+  // Meow records local days; noon UTC keeps the local day 2026-01-01 in every
+  // zone from UTC-12 to UTC+11, so the local day is stable across CI runners.
+  vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
   onTestFinished(() => {
     vi.useRealTimers()
   })

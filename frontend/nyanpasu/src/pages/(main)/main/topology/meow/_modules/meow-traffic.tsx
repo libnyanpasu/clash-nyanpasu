@@ -23,12 +23,14 @@ import {
 import { m } from '@/paraglide/messages'
 import { getLocale } from '@/paraglide/runtime'
 import parseTraffic from '@/utils/parse-traffic'
-import { useMeowStatistics, useMeowTrafficLedger } from '@nyanpasu/query'
+import {
+  useMeowStatistics,
+  useMeowTrafficLedger,
+  type MeowCore,
+} from '@nyanpasu/query'
 import type { MeowTrafficGroup } from '@nyanpasu/rpc/types'
 import Notice from '../../_modules/notice'
 import FilterChip from '../../../_modules/filter-chip'
-
-type MeowCore = 'meow' | 'meow-alpha'
 
 const periods = {
   today: m.meow_traffic_today,
@@ -92,6 +94,10 @@ export default function MeowTraffic({ core }: { core: MeowCore }) {
   )
 }
 
+/** The `YYYY-MM-DD` day Meow records, in the device's time zone. */
+const localDay = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
 function Ledger({ core }: { core: MeowCore }) {
   const [period, setPeriod] = useState<Period>('today')
   const [group, setGroup] = useState<MeowTrafficGroup>('host')
@@ -99,17 +105,17 @@ function Ledger({ core }: { core: MeowCore }) {
   const choices = groupKeys.filter(
     (key) => !filters.some((filter) => filter.group === key),
   )
-  // Standalone Meow records days in UTC.
+  // Standalone Meow records days in the device's time zone.
   const today = new Date()
-  const year = today.getUTCFullYear()
-  const month = today.getUTCMonth()
+  const year = today.getFullYear()
+  const month = today.getMonth()
   const from =
     period === 'today'
       ? today
-      : new Date(Date.UTC(year, period === 'month' ? month : month - 1, 1))
-  const to = period === 'previous' ? new Date(Date.UTC(year, month, 0)) : today
-  const fromDay = from.toISOString().slice(0, 10)
-  const toDay = to.toISOString().slice(0, 10)
+      : new Date(year, period === 'month' ? month : month - 1, 1)
+  const to = period === 'previous' ? new Date(year, month, 0) : today
+  const fromDay = localDay(from)
+  const toDay = localDay(to)
   const query = useMeowTrafficLedger(core, {
     from: fromDay,
     to: toDay,
@@ -124,7 +130,6 @@ function Ledger({ core }: { core: MeowCore }) {
   const nextGroup = choices.find((key) => key !== group)
   const dateFormat = new Intl.DateTimeFormat(getLocale(), {
     dateStyle: 'medium',
-    timeZone: 'UTC',
   })
 
   return (
@@ -171,7 +176,6 @@ function Ledger({ core }: { core: MeowCore }) {
           {period === 'today'
             ? dateFormat.format(today)
             : dateFormat.formatRange(from, to)}
-          {' · UTC'}
         </span>
         <Button
           type="button"

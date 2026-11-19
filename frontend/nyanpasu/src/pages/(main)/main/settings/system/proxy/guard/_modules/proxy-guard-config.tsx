@@ -26,7 +26,7 @@ import {
   ItemLabelDescription,
   ItemLabelText,
   SettingsCardAnimatedItem,
-} from '../../../../_modules/settings-card'
+} from '../../../../../_modules/settings-card'
 
 const formSchema = z.object({
   proxyGuardInterval: z.number().min(1),

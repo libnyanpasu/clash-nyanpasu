@@ -24,6 +24,7 @@ export const Route = createFileRoute(
   '/(tray-menu)/tray-menu/proxies/group/$name',
 )({
   component: RouteComponent,
+  staticData: { crumb: { title: ({ params }) => params.name } },
 })
 
 const DelayTestButton = () => {
@@ -167,7 +168,7 @@ function RouteComponent() {
   return (
     <div className="w-dvw p-3">
       <div className="sticky top-3 z-10 flex gap-2">
-        <BackButton className="block" to="/tray-menu/proxies">
+        <BackButton className="block">
           <span>{m.tray_menu_back_to_proxies_menu()}</span>
         </BackButton>
 

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import ImportButton from '../../_modules/import-button'
@@ -20,6 +21,15 @@ import FolderNotFound from './_modules/folder-not-found'
 export const Route = createFileRoute('/(main)/main/profiles/folder/$folderId/')(
   {
     component: RouteComponent,
+    staticData: {
+      crumb: {
+        title: () => m.navbar_label_profiles(),
+        parent: () => ({
+          to: '/main/profiles/$type',
+          params: { type: 'profile' },
+        }),
+      },
+    },
   },
 )
 

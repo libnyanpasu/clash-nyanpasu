@@ -11,14 +11,13 @@ export const Route = createFileRoute(
   '/(main)/main/settings/nyanpasu/public-ip/',
 )({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_public_ip() } },
 })
 
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_public_ip()}
-      </PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4" data-slot="public-ip-settings">

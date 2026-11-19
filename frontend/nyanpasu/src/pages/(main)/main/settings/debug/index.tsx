@@ -80,7 +80,7 @@ const AdvanceToolsSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_debug()}</PageTitle>
+      <PageTitle />
 
       <div className="space-y-4 px-4 pb-4">
         <PathUtilsSettings />

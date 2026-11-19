@@ -282,7 +282,7 @@ function TestTrafficLayout({
       onSearchChange={(update) =>
         navigate({
           to: '.',
-          search: (previous: TrafficSearch) => ({
+          search: (previous) => ({
             ...previous,
             ...update,
             view: undefined,

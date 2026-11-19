@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import ProxyGuardConfig from '../src/pages/(main)/main/settings/system/proxy/_modules/proxy-guard-config'
+import ProxyGuardConfig from '../src/pages/(main)/main/settings/system/proxy/guard/_modules/proxy-guard-config'
 
 const backend = vi.hoisted(() => ({
   value: 10,

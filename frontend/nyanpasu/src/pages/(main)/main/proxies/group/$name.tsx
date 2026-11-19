@@ -56,6 +56,9 @@ import ProxyNodeButton from './_modules/proxy-node-button'
 
 export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
   component: RouteComponent,
+  staticData: {
+    crumb: { title: ({ params }) => params.name },
+  },
 })
 
 // Every node card is as tall as the fab button's fixed h-14 plus the item's

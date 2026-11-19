@@ -24,6 +24,7 @@ import {
 
 export const Route = createFileRoute('/(main)/main/settings/about/credits/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_about_credits_title() } },
 })
 
 function CreditsBrowser({ credits }: { credits: OpenSourceCredits }) {
@@ -115,9 +116,7 @@ function RouteComponent() {
 
   return (
     <>
-      <PageTitle backTo="/main/settings/about">
-        {m.settings_about_credits_title()}
-      </PageTitle>
+      <PageTitle />
 
       <div
         className="flex flex-col gap-4 px-4 pb-4"

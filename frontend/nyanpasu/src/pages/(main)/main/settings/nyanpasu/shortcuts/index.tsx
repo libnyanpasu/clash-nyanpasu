@@ -9,14 +9,15 @@ export const Route = createFileRoute(
   '/(main)/main/settings/nyanpasu/shortcuts/',
 )({
   component: RouteComponent,
+  staticData: {
+    crumb: { title: () => m.settings_nyanpasu_keyboard_shortcuts() },
+  },
 })
 
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_nyanpasu_keyboard_shortcuts()}
-      </PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

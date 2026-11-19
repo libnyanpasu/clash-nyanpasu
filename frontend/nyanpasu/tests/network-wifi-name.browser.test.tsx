@@ -4,8 +4,8 @@ import '@nyanpasu/theme/styles/theme.css'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
-import NetworkRuleList from '../src/pages/(main)/main/settings/system/proxy/_modules/network-rule-list'
-import WifiNameNotice from '../src/pages/(main)/main/settings/system/proxy/_modules/wifi-name-notice'
+import NetworkRuleList from '../src/pages/(main)/main/settings/system/proxy/network-rules/_modules/network-rule-list'
+import WifiNameNotice from '../src/pages/(main)/main/settings/system/proxy/network-rules/_modules/wifi-name-notice'
 
 const backend = vi.hoisted(() => ({
   save: vi.fn(),

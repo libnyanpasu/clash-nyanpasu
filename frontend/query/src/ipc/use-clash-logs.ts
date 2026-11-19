@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  isIpcError,
-  rpcDomainError,
-  RpcFailure,
-  unwrapResult,
-} from '@nyanpasu/rpc'
+import { isIpcError, rpcDomainError, RpcFailure } from '@nyanpasu/rpc'
 import type {
   CoreLogCursor,
   CoreLogError,
@@ -133,7 +128,7 @@ export function useClashLogs(
       try {
         if (needsStatus) {
           needsStatus = false
-          const next = unwrapResult(await rpc.getCoreLogStatus())
+          const next = await rpc.getCoreLogStatus()
           if (disposed || epoch !== requestEpoch) return
           acceptStatus(next)
           publish()
@@ -144,15 +139,13 @@ export function useClashLogs(
         if (loaded && !requestOlder && (!live.current || !hasNew)) return
         const direction =
           requestOlder && older ? 'before' : tail ? 'after' : 'latest'
-        const page = unwrapResult(
-          await rpc.queryCoreLogs({
-            direction,
-            cursor: direction === 'before' ? older : tail,
-            level,
-            keyword,
-            limit: 200,
-          }),
-        )
+        const page = await rpc.queryCoreLogs({
+          direction,
+          cursor: direction === 'before' ? older : tail,
+          level,
+          keyword,
+          limit: 200,
+        })
         if (disposed || epoch !== requestEpoch) return
         acceptStatus(page.status)
         // A clear event can arrive while the old generation's page is in flight.
@@ -230,7 +223,7 @@ export function useClashLogs(
       clear: async () => {
         epoch += 1
         try {
-          unwrapResult(await rpc.clearCoreLogs())
+          await rpc.clearCoreLogs()
           if (disposed) return
           reset()
           needsStatus = true
@@ -288,7 +281,7 @@ export function useClashLogs(
         throw new Error('A Core log detail request is already running')
       detailBusy.current = true
       try {
-        return unwrapResult(await rpc.getCoreLog(cursor))
+        return await rpc.getCoreLog(cursor)
       } finally {
         detailBusy.current = false
       }

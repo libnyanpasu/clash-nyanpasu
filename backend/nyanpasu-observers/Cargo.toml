@@ -23,7 +23,7 @@ anyhow = '1'
 ractor = '0.16'
 serde = { version = '1.0', features = ['derive'] }
 serde_json = '1.0'
-specta = '^2.0.0-rc.25'
+specta = '^2.0.0-rc.28'
 snafu.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

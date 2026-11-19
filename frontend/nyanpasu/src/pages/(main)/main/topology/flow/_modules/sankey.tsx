@@ -4,7 +4,7 @@ import { memo, useMemo, useState } from 'react'
 import { useMeasure } from 'react-use'
 import { m } from '@/paraglide/messages'
 import { dimensionName, usageAmount } from '@/utils/traffic-usage'
-import type { Dimension, Topology } from '@nyanpasu/rpc/types'
+import type { Dimension, Topology_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useTrafficPage } from '../../_modules/traffic-context'
 import { usePageTransition } from '../../_modules/transition'
@@ -81,7 +81,7 @@ export function Sankey({
   topology,
 }: {
   layers: readonly Dimension[]
-  topology: Topology
+  topology: Topology_Serialize
 }) {
   const { search, labelOf, onSearchChange } = useTrafficPage()
   const { metric, filters } = search

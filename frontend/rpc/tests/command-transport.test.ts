@@ -26,14 +26,13 @@ describe('rpc command facade', () => {
     invoke.mockResolvedValue({ items: [] })
 
     const rpc = createRpcClient()
-    await expect(rpc.getProfiles()).resolves.toEqual({
-      status: 'ok',
-      data: { items: [] },
-    })
-    expect(invoke).toHaveBeenCalledWith('call_rpc', {
-      method: 'get_profiles',
-      params: {},
-    })
+    await expect(rpc.getProfiles()).resolves.toEqual({ items: [] })
+    // The generated binding forwards its absent InvokeOptions.
+    expect(invoke).toHaveBeenCalledWith(
+      'call_rpc',
+      { method: 'get_profiles', params: {} },
+      undefined,
+    )
     rpc.dispose()
   })
 
@@ -46,10 +45,7 @@ describe('rpc command facade', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const rpc = createRpcClient()
-    await expect(rpc.inspectRuntimeNode('a', 2)).resolves.toEqual({
-      status: 'ok',
-      data: { items: [] },
-    })
+    await expect(rpc.inspectRuntimeNode('a', 2)).resolves.toEqual({ items: [] })
     expect(fetchMock).toHaveBeenCalledWith('/bridge/rpc', {
       method: 'POST',
       headers: {

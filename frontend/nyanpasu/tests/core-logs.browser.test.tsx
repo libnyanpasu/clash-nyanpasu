@@ -49,7 +49,6 @@ const rpc = {
   listenResync: () => () => {},
 }
 const CoreLogsPage = Route.options.component as ComponentType
-const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 const cursor = (sequence: number) => ({ generation: 'session', sequence })
 const status: CoreLogStatus = {
   generation: 'session',
@@ -80,44 +79,38 @@ const rows = (start: number, count: number): CoreLogRow[] =>
 beforeEach(() => {
   vi.clearAllMocks()
   mocked.source = 'core'
-  mocked.getCoreLogStatus.mockResolvedValue(ok(status))
-  mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) =>
-    ok({
-      rows: query.direction === 'latest' ? rows(201, 20) : [],
-      cursor: cursor(201),
-      more: query.direction === 'latest',
-      status,
-    }),
-  )
+  mocked.getCoreLogStatus.mockResolvedValue(status)
+  mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => ({
+    rows: query.direction === 'latest' ? rows(201, 20) : [],
+    cursor: cursor(201),
+    more: query.direction === 'latest',
+    status,
+  }))
 })
 
 test.for(['app', 'service'] as const)(
   '%s footer selects current and archived files through the dropdown menu',
   async (source, { onTestFinished }) => {
     mocked.source = source
-    mocked.listLogFiles.mockResolvedValue(
-      ok([{ id: 'archive.log', name: 'archive.log', bytes: '100' }]),
-    )
-    mocked.openLogSession.mockResolvedValue(
-      ok({ id: 'session', lease_ms: 60000 }),
-    )
-    mocked.closeLogSession.mockResolvedValue(ok(null))
-    mocked.queryLogs.mockResolvedValue(
-      ok({
-        rows: [],
-        cursor: null,
-        head: null,
-        start: '0',
-        file: 'archive.log',
-        building: false,
-        more: false,
-        partial: false,
-        malformed: '0',
-        truncated: '0',
-        indexed_bytes: '100',
-        file_bytes: '100',
-      }),
-    )
+    mocked.listLogFiles.mockResolvedValue([
+      { id: 'archive.log', name: 'archive.log', bytes: '100' },
+    ])
+    mocked.openLogSession.mockResolvedValue({ id: 'session', lease_ms: 60000 })
+    mocked.closeLogSession.mockResolvedValue(null)
+    mocked.queryLogs.mockResolvedValue({
+      rows: [],
+      cursor: null,
+      head: null,
+      start: '0',
+      file: 'archive.log',
+      building: false,
+      more: false,
+      partial: false,
+      malformed: '0',
+      truncated: '0',
+      indexed_bytes: '100',
+      file_bytes: '100',
+    })
     const view = await render(<CoreLogsPage />, { wrapper: AllPermissions })
     onTestFinished(() => view.unmount())
     await expect.poll(() => mocked.openLogSession.mock.calls.length).toBe(1)
@@ -186,14 +179,12 @@ function pendingLatestPage() {
     (query: CoreLogQuery) =>
       new Promise((resolve) => {
         finish = () =>
-          resolve(
-            ok({
-              rows: query.direction === 'latest' ? rows(201, 20) : [],
-              cursor: cursor(201),
-              more: false,
-              status,
-            }),
-          )
+          resolve({
+            rows: query.direction === 'latest' ? rows(201, 20) : [],
+            cursor: cursor(201),
+            more: false,
+            status,
+          })
       }),
   )
   return () => finish()
@@ -280,24 +271,20 @@ test('scrolling to the top loads older records and preserves the visible row', a
     if (query.direction === 'before') {
       return new Promise((resolve) => {
         finishOlder = () =>
-          resolve(
-            ok({
-              rows: rows(181, 20),
-              cursor: cursor(181),
-              more: false,
-              status,
-            }),
-          )
+          resolve({
+            rows: rows(181, 20),
+            cursor: cursor(181),
+            more: false,
+            status,
+          })
       })
     }
-    return Promise.resolve(
-      ok({
-        rows: query.direction === 'latest' ? rows(201, 20) : [],
-        cursor: cursor(201),
-        more: query.direction === 'latest',
-        status,
-      }),
-    )
+    return Promise.resolve({
+      rows: query.direction === 'latest' ? rows(201, 20) : [],
+      cursor: cursor(201),
+      more: query.direction === 'latest',
+      status,
+    })
   })
   const { view, viewport } = await mountPage()
   onTestFinished(() => view.unmount())
@@ -373,12 +360,12 @@ test('empty filtered pages continue loading until history fills the viewport or 
   mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => {
     const lastPage =
       query.direction === 'before' && query.cursor?.sequence === 180
-    return ok({
+    return {
       rows: lastPage ? rows(160, 2) : [],
       cursor: cursor(query.direction === 'latest' ? 200 : 180),
       more: !lastPage,
       status,
-    })
+    }
   })
   const { view } = await mountPage()
   onTestFinished(() => view.unmount())

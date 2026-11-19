@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useQuery } from '@tanstack/react-query'
 import { invokeQuery } from '../ipc/query-options'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -16,7 +15,7 @@ export function useCoreStatus() {
     queryFn: async () => {
       const res = await invokeQuery(statusOptions)
 
-      const result = unwrapResult(res)
+      const result = res
 
       if (!result) {
         return null

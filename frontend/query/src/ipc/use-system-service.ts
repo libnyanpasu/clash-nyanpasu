@@ -1,7 +1,6 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { invokeMutation } from './query-options'
 
 export type ServiceType = 'install' | 'uninstall' | 'start' | 'stop'
 
@@ -14,31 +13,31 @@ export const useSystemService = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const statusQuery = api.queries.statusService()
-  const installService = api.mutations.installService
-  const uninstallService = api.mutations.uninstallService
-  const startService = api.mutations.startService
-  const stopService = api.mutations.stopService
+  const installService = api.mutations.installService()
+  const uninstallService = api.mutations.uninstallService()
+  const startService = api.mutations.startService()
+  const stopService = api.mutations.stopService()
 
-  const query = useQuery(unwrapQueryOptions(statusQuery, statusQuery.queryFn!))
+  const query = useQuery(statusQuery)
 
   const upsert = useMutation({
     mutationKey: installService.mutationKey,
     mutationFn: async (type: ServiceType) => {
       switch (type) {
         case 'install':
-          unwrapResult(await invokeMutation(installService, []))
+          await invokeMutation(installService)
           break
 
         case 'uninstall':
-          unwrapResult(await invokeMutation(uninstallService, []))
+          await invokeMutation(uninstallService)
           break
 
         case 'start':
-          unwrapResult(await invokeMutation(startService, []))
+          await invokeMutation(startService)
           break
 
         case 'stop':
-          unwrapResult(await invokeMutation(stopService, []))
+          await invokeMutation(stopService)
           break
       }
     },

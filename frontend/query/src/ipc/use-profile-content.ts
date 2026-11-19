@@ -1,7 +1,6 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { invokeMutation } from './query-options'
 
 /**
  * A custom hook that manages profile content data fetching and updating.
@@ -29,7 +28,7 @@ export const useProfileContent = (uid: string) => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const contentQuery = api.queries.readProfileFile(uid)
-  const saveProfile = api.mutations.saveProfileFile
+  const saveProfile = api.mutations.saveProfileFile()
 
   /**
    * A React Query hook that fetches profile content based on a user ID.
@@ -48,7 +47,7 @@ export const useProfileContent = (uid: string) => {
    * ```
    */
   const query = useQuery({
-    ...unwrapQueryOptions(contentQuery, contentQuery.queryFn!),
+    ...contentQuery,
     enabled: !!uid,
   })
 
@@ -69,7 +68,7 @@ export const useProfileContent = (uid: string) => {
   const upsert = useMutation({
     mutationKey: saveProfile.mutationKey,
     mutationFn: async (fileData: string) => {
-      return unwrapResult(await invokeMutation(saveProfile, [uid, fileData]))
+      return await invokeMutation(saveProfile, { uid, fileData })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

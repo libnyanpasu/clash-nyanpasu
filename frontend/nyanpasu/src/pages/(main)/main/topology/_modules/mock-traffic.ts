@@ -4,15 +4,15 @@ import type {
   Metric,
   Rate,
   ReportRequest,
-  Topology,
+  Topology_Serialize,
   TopologyEdge,
-  TopologyNode,
+  TopologyNode_Serialize,
   TopologyRequest,
   TrafficQuery,
   TrafficRange,
-  TrafficReport,
+  TrafficReport_Serialize,
   Usage,
-  UsageGroup,
+  UsageGroup_Serialize,
 } from '@nyanpasu/rpc/types'
 
 // Dev builds only: generated usage for the traffic page, aggregated the way the
@@ -249,8 +249,8 @@ function groups(
   rows: MockRow[],
   dimension: Dimension,
   metric: Metric,
-): UsageGroup[] {
-  const grouped = new Map<string, UsageGroup>()
+): UsageGroup_Serialize[] {
+  const grouped = new Map<string, UsageGroup_Serialize>()
 
   for (const { dimensions, usage, rate } of rows) {
     const key = groupKey(dimensions, dimension)
@@ -274,7 +274,7 @@ function topology(
   rows: MockRow[],
   { layers, limit_per_layer: limit }: TopologyRequest,
   metric: Metric,
-): Topology {
+): Topology_Serialize {
   const value = (usage: Usage) => weight(usage, metric)
 
   // An empty chain skips its layer, as in the backend.
@@ -303,7 +303,7 @@ function topology(
   })
 
   const id = (layer: number, key: string | null) => JSON.stringify([layer, key])
-  const nodes = new Map<string, TopologyNode>()
+  const nodes = new Map<string, TopologyNode_Serialize>()
   const edges = new Map<string, TopologyEdge>()
 
   rows.forEach((row, index) => {
@@ -346,7 +346,7 @@ function topology(
 export function mockTrafficReport(
   request: ReportRequest,
   now: number,
-): TrafficReport {
+): TrafficReport_Serialize {
   const generated = mockRows(now)
   const rows = select(generated, request.query)
   const total = emptyUsage()
@@ -378,8 +378,9 @@ export function mockTrafficReport(
         other,
       }
     }),
-    topology:
-      request.topology && topology(rows, request.topology, request.metric),
+    topology: request.topology
+      ? topology(rows, request.topology, request.metric)
+      : null,
   }
 }
 

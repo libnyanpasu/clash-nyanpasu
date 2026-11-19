@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   FolderId,
   NewProfileRequest_Deserialize,
@@ -124,7 +123,7 @@ const profilesQuery = (queries: ReturnType<typeof useQueryApi>['queries']) => {
   return {
     queryKey: profilesOptions.queryKey,
     queryFn: async () => {
-      const result = unwrapResult(await invokeQuery(profilesOptions))
+      const result = await invokeQuery(profilesOptions)
       if (!result) return undefined
       return {
         ...result,
@@ -187,7 +186,7 @@ export const useProfileUrlProbe = (
 
   return useQuery({
     queryKey: [...options.queryKey, probe?.attempt],
-    queryFn: async () => unwrapResult(await invokeQuery(options)),
+    queryFn: async () => await invokeQuery(options),
     enabled: probe != null,
     staleTime: Infinity,
     gcTime: 0,
@@ -210,21 +209,21 @@ export const useCurrentProfileUid = () => {
 export const useProfileMutations = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const importProfile = api.mutations.importProfile
-  const createProfile = api.mutations.createProfile
-  const updateProfile = api.mutations.updateProfile
-  const patchProfileMetadata = api.mutations.patchProfileMetadata
-  const patchRemoteProfileOptions = api.mutations.patchRemoteProfileOptions
-  const replaceProfileDefinition = api.mutations.replaceProfileDefinition
-  const activateProfile = api.mutations.activateProfile
-  const setProfileValidFields = api.mutations.setProfileValidFields
-  const setGlobalTransformsOptions = api.mutations.setGlobalTransforms
-  const reorderProfilesByList = api.mutations.reorderProfilesByList
-  const setProfileLayout = api.mutations.setProfileLayout
-  const setProxyGroupLayoutCommand = api.mutations.setProxyGroupLayout
-  const createProxyGroupFolderCommand = api.mutations.createProxyGroupFolder
-  const createProfileFolder = api.mutations.createProfileFolder
-  const deleteProfile = api.mutations.deleteProfile
+  const importProfile = api.mutations.importProfile()
+  const createProfile = api.mutations.createProfile()
+  const updateProfile = api.mutations.updateProfile()
+  const patchProfileMetadata = api.mutations.patchProfileMetadata()
+  const patchRemoteProfileOptions = api.mutations.patchRemoteProfileOptions()
+  const replaceProfileDefinition = api.mutations.replaceProfileDefinition()
+  const activateProfile = api.mutations.activateProfile()
+  const setProfileValidFields = api.mutations.setProfileValidFields()
+  const setGlobalTransformsOptions = api.mutations.setGlobalTransforms()
+  const reorderProfilesByList = api.mutations.reorderProfilesByList()
+  const setProfileLayout = api.mutations.setProfileLayout()
+  const setProxyGroupLayoutCommand = api.mutations.setProxyGroupLayout()
+  const createProxyGroupFolderCommand = api.mutations.createProxyGroupFolder()
+  const createProfileFolder = api.mutations.createProfileFolder()
+  const deleteProfile = api.mutations.deleteProfile()
   // The full document and its secret-free listing change together.
   const invalidate = () =>
     Promise.all([
@@ -245,22 +244,18 @@ export const useProfileMutations = () => {
       params: CreateParams,
     ): Promise<RpcProfileMutationOutcome_Serialize> => {
       if (params.type === 'url') {
-        return unwrapResult(
-          await invokeMutation(importProfile, [
-            params.data.url,
-            params.data.name ?? null,
-            params.data.option ?? null,
-            params.data.transform ?? null,
-            params.data.folder ?? null,
-          ]),
-        )
+        return await invokeMutation(importProfile, {
+          url: params.data.url,
+          name: params.data.name ?? null,
+          option: params.data.option ?? null,
+          transform: params.data.transform ?? null,
+          folder: params.data.folder ?? null,
+        })
       }
-      return unwrapResult(
-        await invokeMutation(createProfile, [
-          params.data.request,
-          params.data.fileData,
-        ]),
-      )
+      return await invokeMutation(createProfile, {
+        request: params.data.request,
+        fileData: params.data.fileData,
+      })
     },
     onSuccess: invalidate,
   })
@@ -275,8 +270,7 @@ export const useProfileMutations = () => {
     }: {
       uid: ProfileId
       option?: RemoteProfileOptionsPatch_Deserialize | null
-    }) =>
-      unwrapResult(await invokeMutation(updateProfile, [uid, option ?? null])),
+    }) => await invokeMutation(updateProfile, { uid, option: option ?? null }),
     onSuccess: invalidate,
   })
 
@@ -288,8 +282,7 @@ export const useProfileMutations = () => {
     }: {
       uid: ProfileId
       patch: ProfileMetadataPatch_Deserialize
-    }) =>
-      unwrapResult(await invokeMutation(patchProfileMetadata, [uid, patch])),
+    }) => await invokeMutation(patchProfileMetadata, { uid, patch }),
     onSuccess: invalidate,
   })
 
@@ -301,10 +294,7 @@ export const useProfileMutations = () => {
     }: {
       uid: ProfileId
       patch: RemoteProfileOptionsPatch_Deserialize
-    }) =>
-      unwrapResult(
-        await invokeMutation(patchRemoteProfileOptions, [uid, patch]),
-      ),
+    }) => await invokeMutation(patchRemoteProfileOptions, { uid, patch }),
     onSuccess: invalidate,
   })
 
@@ -316,38 +306,35 @@ export const useProfileMutations = () => {
     }: {
       uid: ProfileId
       definition: ProfileDefinition_Deserialize
-    }) =>
-      unwrapResult(
-        await invokeMutation(replaceProfileDefinition, [uid, definition]),
-      ),
+    }) => await invokeMutation(replaceProfileDefinition, { uid, definition }),
     onSuccess: invalidate,
   })
 
   const activate = useMutation({
     mutationKey: activateProfile.mutationKey,
     mutationFn: async (uid: ProfileId | null) =>
-      unwrapResult(await invokeMutation(activateProfile, [uid])),
+      await invokeMutation(activateProfile, { uid }),
     onSuccess: invalidate,
   })
 
   const setValidFields = useMutation({
     mutationKey: setProfileValidFields.mutationKey,
     mutationFn: async (fields: string[]) =>
-      unwrapResult(await invokeMutation(setProfileValidFields, [fields])),
+      await invokeMutation(setProfileValidFields, { fields }),
     onSuccess: invalidate,
   })
 
   const setGlobalTransforms = useMutation({
     mutationKey: setGlobalTransformsOptions.mutationKey,
     mutationFn: async (ids: ProfileId[]) =>
-      unwrapResult(await invokeMutation(setGlobalTransformsOptions, [ids])),
+      await invokeMutation(setGlobalTransformsOptions, { ids }),
     onSuccess: invalidate,
   })
 
   const sort = useMutation({
     mutationKey: reorderProfilesByList.mutationKey,
     mutationFn: async (uids: ProfileId[]) =>
-      unwrapResult(await invokeMutation(reorderProfilesByList, [uids])),
+      await invokeMutation(reorderProfilesByList, { list: uids }),
     onSuccess: invalidate,
   })
 
@@ -359,7 +346,7 @@ export const useProfileMutations = () => {
     mutationKey: setProfileLayout.mutationKey,
     scope: { id: PROFILE_LAYOUT_SCOPE },
     mutationFn: async (layout: ProfileLayout) =>
-      unwrapResult(await invokeMutation(setProfileLayout, [layout])),
+      await invokeMutation(setProfileLayout, { layout }),
     onMutate: async (layout) => {
       const fullKey: QueryKey = api.queries.getProfiles().queryKey
       const listingKey: QueryKey = api.queries.getProfilesListing().queryKey
@@ -412,8 +399,7 @@ export const useProfileMutations = () => {
     }: {
       name: string
       members: ProfileId[]
-    }) =>
-      unwrapResult(await invokeMutation(createProfileFolder, [name, members])),
+    }) => await invokeMutation(createProfileFolder, { name, members }),
     onSuccess: invalidate,
   })
 
@@ -428,10 +414,7 @@ export const useProfileMutations = () => {
     }: {
       profile: ProfileId
       layout: ProxyGroupLayout
-    }) =>
-      unwrapResult(
-        await invokeMutation(setProxyGroupLayoutCommand, [profile, layout]),
-      ),
+    }) => await invokeMutation(setProxyGroupLayoutCommand, { profile, layout }),
     onMutate: async ({ profile, layout }) => {
       const fullKey: QueryKey = api.queries.getProfiles().queryKey
       const listingKey: QueryKey = api.queries.getProfilesListing().queryKey
@@ -491,20 +474,18 @@ export const useProfileMutations = () => {
       name: string
       members: string[]
     }) =>
-      unwrapResult(
-        await invokeMutation(createProxyGroupFolderCommand, [
-          profile,
-          name,
-          members,
-        ]),
-      ),
+      await invokeMutation(createProxyGroupFolderCommand, {
+        profile,
+        name,
+        members,
+      }),
     onSuccess: invalidate,
   })
 
   const drop = useMutation({
     mutationKey: deleteProfile.mutationKey,
     mutationFn: async (uid: ProfileId) =>
-      unwrapResult(await invokeMutation(deleteProfile, [uid])),
+      await invokeMutation(deleteProfile, { uid }),
     onSuccess: invalidate,
   })
 

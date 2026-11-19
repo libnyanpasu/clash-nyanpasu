@@ -239,7 +239,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -250,7 +250,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -292,7 +292,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot 0.12.5",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -2017,7 +2017,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zip 9.6.0",
  "zip-extensions",
 ]
@@ -2091,7 +2091,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2473,7 +2473,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 2.0.119",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -2539,16 +2539,6 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
-dependencies = [
- "darling_core 0.23.0",
- "darling_macro 0.23.0",
-]
-
-[[package]]
-name = "darling"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed17f5901b6630b993ca003def43f2f8ef4014fc13b047b57aad617ff32bc2ec"
@@ -2586,19 +2576,6 @@ dependencies = [
 
 [[package]]
 name = "darling_core"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9865a50f7c335f53564bb694ef660825eb8610e0a53d3e11bf1b0d3df31e03b0"
-dependencies = [
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "darling_core"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6837e2cf7485aaae18f86181d2f0e9a7ed297a025e220aeabf63fdebd3a2ddff"
@@ -2628,17 +2605,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
 dependencies = [
  "darling_core 0.21.3",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "darling_macro"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
-dependencies = [
- "darling_core 0.23.0",
  "quote",
  "syn 2.0.119",
 ]
@@ -2901,7 +2867,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3326,7 +3292,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4227,7 +4193,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.21",
- "windows 0.58.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -4672,7 +4638,7 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry 0.3.0",
+ "windows-registry 0.6.1",
 ]
 
 [[package]]
@@ -4968,7 +4934,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -6463,7 +6429,7 @@ dependencies = [
  "once_cell",
  "png",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6484,7 +6450,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6817,7 +6783,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7030,7 +6996,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zstd",
 ]
 
@@ -7133,7 +7099,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zeroize",
  "zstd",
 ]
@@ -7154,7 +7120,6 @@ dependencies = [
  "schemars 1.2.2",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "specta",
  "tempfile",
  "thiserror 2.0.21",
@@ -7163,6 +7128,7 @@ dependencies = [
  "tracing",
  "uuid",
  "windows 0.62.2",
+ "yaml_serde 0.10.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "zerocopy",
 ]
 
@@ -7360,7 +7326,7 @@ dependencies = [
  "time",
  "tracing",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7518,7 +7484,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tracing",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7537,7 +7503,7 @@ dependencies = [
  "sha2 0.11.1",
  "snafu 0.9.2",
  "tempfile",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7557,7 +7523,7 @@ dependencies = [
  "specta",
  "tempfile",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7625,7 +7591,7 @@ dependencies = [
  "url",
  "uuid",
  "whoami",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zip 9.6.0",
 ]
 
@@ -7690,7 +7656,7 @@ dependencies = [
  "specta",
  "tokio",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7720,7 +7686,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7830,7 +7796,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -8770,7 +8736,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9855,7 +9821,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10713,7 +10679,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10772,7 +10738,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11221,19 +11187,6 @@ name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap 2.14.2",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap 2.14.2",
  "itoa",
@@ -11713,7 +11666,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -11725,7 +11678,7 @@ version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "287f59010008f0d7cf5e3b03196d666c1acc46c8d3e9cf34c28a1a7157601e72"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -11738,7 +11691,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11799,9 +11752,9 @@ dependencies = [
 
 [[package]]
 name = "specta"
-version = "2.0.0-rc.25"
+version = "2.0.0-rc.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38f9a30cbcbb7011f1da7d73483983bf838af123883e45f2b36ed76328df9c50"
+checksum = "3fa60a95f1bed059a9e9b1f4052dfa8fee47813c429223c8590b338f719ac12e"
 dependencies = [
  "chrono",
  "indexmap 2.14.2",
@@ -11816,9 +11769,9 @@ dependencies = [
 
 [[package]]
 name = "specta-macros"
-version = "2.0.0-rc.25"
+version = "2.0.0-rc.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ce14957ecc2897f1f848b8255b6531d13ddf49cbcf506b7c2c9fb1d005593bb"
+checksum = "7eeb2926ce0ef69a996fb8ad805c39936d47b6f02b327eca79cb207645ac8686"
 dependencies = [
  "Inflector",
  "proc-macro2",
@@ -11828,19 +11781,18 @@ dependencies = [
 
 [[package]]
 name = "specta-serde"
-version = "0.0.12"
+version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee8a72b755ddb8949fd8f17c5db43f0e8a806ea587d9bc602ee3f73240c00029"
+checksum = "69fbb7f8846160cc2924352f5a3b199281742ea335b6b4328d886a44d398e417"
 dependencies = [
  "specta",
- "specta-macros",
 ]
 
 [[package]]
 name = "specta-typescript"
-version = "0.0.12"
+version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639404ee95557f2f8b7e4cb773ffefd45304c7ab8ba21ac83b69051595e083c0"
+checksum = "b96519dc9b060d66e50b55ab10fb550bbf56c7576b9c9cca467d580a53cd473d"
 dependencies = [
  "serde",
  "specta",
@@ -11848,9 +11800,9 @@ dependencies = [
 
 [[package]]
 name = "specta-util"
-version = "0.0.12"
+version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29b1fc02b446f7244a92924fe68c0555921209f1d342990cd1539e9138e69502"
+checksum = "ed24b868f6dec27caa846d02ea7ba6568fea4676dc7ebf27f2ca407f6b787d05"
 dependencies = [
  "specta",
 ]
@@ -12667,10 +12619,12 @@ dependencies = [
 
 [[package]]
 name = "tauri-specta"
-version = "2.0.0-rc.25"
-source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
+version = "2.0.0-rc.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361ab75cf70ddfb59b734738be745f319d3b405dea55392296928f97373c56a9"
 dependencies = [
  "heck 0.5.0",
+ "paste",
  "serde",
  "serde_json",
  "specta",
@@ -12684,20 +12638,22 @@ dependencies = [
 
 [[package]]
 name = "tauri-specta-macros"
-version = "2.0.0-rc.25"
-source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
+version = "2.0.0-rc.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80ba28cf88e5e37a28ce01996b9db94325cdd228d3576bab5e0c224d2a918d9c"
 dependencies = [
- "darling 0.23.0",
+ "darling 0.24.1",
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.10",
 ]
 
 [[package]]
 name = "tauri-specta-query"
-version = "0.0.0"
-source = "git+https://github.com/specta-rs/tauri-specta.git?rev=373c25d080aa0ba909bd23b2b559947079e8dc75#373c25d080aa0ba909bd23b2b559947079e8dc75"
+version = "2.0.0-rc.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "226a120a86a17aa9f77d7b694375978c4a993eef280d694eb5e7d54c7aaeb994"
 dependencies = [
  "heck 0.5.0",
  "serde",
@@ -12777,7 +12733,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13571,7 +13527,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13717,7 +13673,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset 0.9.1",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -14650,7 +14606,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -14671,7 +14627,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
  "raw-window-handle",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
  "windows-version",
 ]
 
@@ -15324,7 +15280,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -15575,6 +15531,19 @@ name = "y4m"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
+
+[[package]]
+name = "yaml_serde"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33b729a08a9a6be689bbad3e2bf8015926db54b6622cc89c3a5f7dc174b9e918"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "libyaml-rs",
+ "ryu",
+ "serde",
+]
 
 [[package]]
 name = "yaml_serde"

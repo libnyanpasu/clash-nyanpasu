@@ -139,9 +139,7 @@ export const ClashWSProvider = ({
         do {
           const result = await api.getClashWsSnapshot()
           if (disposed) return
-          if (result.status === 'error') throw result.error
-          if (!current || result.data.sequence >= current.sequence)
-            current = result.data
+          if (!current || result.sequence >= current.sequence) current = result
           const buffered = pending
           pending = []
           let gap = false
@@ -221,8 +219,7 @@ export const ClashWSProvider = ({
 
   const clearHistory = useCallback(
     async (kind: ClashWsKind) => {
-      const result = await api.clearClashWsHistory(kind)
-      if (result.status === 'error') throw result.error
+      await api.clearClashWsHistory(kind)
       // The sequenced history_cleared event orders this against later samples.
     },
     [api],

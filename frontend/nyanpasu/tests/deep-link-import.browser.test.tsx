@@ -44,7 +44,7 @@ test('a listener that fails to register frees the registration and still imports
   onTestFinished,
 }) => {
   backend.listen.mockRejectedValue(new Error('no event bridge'))
-  backend.take.mockResolvedValue({ status: 'ok', data: [link('a')] })
+  backend.take.mockResolvedValue([link('a')])
   backend.importUrl.mockResolvedValue('a')
 
   mount(onTestFinished)
@@ -62,10 +62,7 @@ test('a link queued twice in one batch is imported once', async ({
   onTestFinished,
 }) => {
   backend.listen.mockResolvedValue(() => {})
-  backend.take.mockResolvedValue({
-    status: 'ok',
-    data: [link('a'), link('a'), link('b')],
-  })
+  backend.take.mockResolvedValue([link('a'), link('a'), link('b')])
   backend.importUrl.mockResolvedValue('a')
 
   mount(onTestFinished)
@@ -79,7 +76,7 @@ test('a cancelled import reports nothing and lets the next link through', async 
   onTestFinished,
 }) => {
   backend.listen.mockResolvedValue(() => {})
-  backend.take.mockResolvedValue({ status: 'ok', data: [link('a'), link('b')] })
+  backend.take.mockResolvedValue([link('a'), link('b')])
   backend.importUrl.mockResolvedValueOnce(null).mockResolvedValueOnce('b')
 
   mount(onTestFinished)

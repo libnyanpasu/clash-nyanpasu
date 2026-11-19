@@ -1,14 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { unwrapQueryOptions } from './query-options'
 
 export const useIsAppImage = () => {
   const api = useQueryApi()
   return useQuery({
-    ...unwrapQueryOptions(
-      api.queries.isAppimage(),
-      api.queries.isAppimage().queryFn!,
-    ),
+    ...api.queries.isAppimage(),
     staleTime: Infinity,
   })
 }
@@ -16,10 +12,7 @@ export const useIsAppImage = () => {
 export const useIsPortable = () => {
   const api = useQueryApi()
   return useQuery({
-    ...unwrapQueryOptions(
-      api.queries.isPortable(),
-      api.queries.isPortable().queryFn!,
-    ),
+    ...api.queries.isPortable(),
     staleTime: Infinity,
   })
 }

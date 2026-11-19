@@ -1081,7 +1081,10 @@ function coreOperationMessage(action: string, failure: CoreFailure): string {
   return withCoreReason(action, failure.kind)
 }
 
-function withCoreReason(action: string, kind: CoreErrorKind | null): string {
+function withCoreReason(
+  action: string,
+  kind: CoreErrorKind | null | undefined,
+): string {
   return kind ? `${action} (${coreReasonMessage(kind)})` : action
 }
 

@@ -3,7 +3,7 @@ import { renderHook } from 'vitest-browser-react'
 import {
   type Proxies_Serialize,
   type Proxy_Serialize,
-  type ProxyGroup,
+  type ProxyGroup_Serialize,
 } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
@@ -30,7 +30,7 @@ const node = (name: string): Proxy_Serialize => ({
   provider: null,
 })
 
-const group = (name: string, delayKey = ''): ProxyGroup => ({
+const group = (name: string, delayKey = ''): ProxyGroup_Serialize => ({
   name,
   type: 'Selector',
   all: ['tested', 'other'],

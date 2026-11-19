@@ -6,7 +6,6 @@ import {
   invokeMutation,
   useQueryApi,
 } from '@nyanpasu/query'
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useQueryClient } from '@tanstack/react-query'
 
 export const useProxiesProviderHealthcheck = (
@@ -19,11 +18,9 @@ export const useProxiesProviderHealthcheck = (
     `healthcheck-proxies-provider-${data.name}`,
     async () => {
       try {
-        unwrapResult(
-          await invokeMutation(api.mutations.clashApiHealthcheckProxyProvider, [
-            data.name,
-          ]),
-        )
+        await invokeMutation(api.mutations.clashApiHealthcheckProxyProvider(), {
+          name: data.name,
+        })
 
         await Promise.all([
           queryClient.invalidateQueries({

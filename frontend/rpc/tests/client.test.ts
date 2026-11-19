@@ -3,7 +3,6 @@ import {
   createIconTransport,
   createRpcClient,
   isIpcError,
-  unwrapResult,
   type RpcEventTransport,
   type RpcTransport,
 } from '../src'
@@ -89,10 +88,7 @@ describe('RPC client instances', () => {
     clientTransport.invoke.mockRejectedValueOnce(domainError)
     const client = createRpcClient(clientTransport.transport)
 
-    await expect(client.getProfiles()).resolves.toEqual({
-      status: 'error',
-      error: domainError,
-    })
+    await expect(client.getProfiles()).rejects.toBe(domainError)
     expect(isIpcError(domainError)).toBe(true)
     expect(
       isIpcError({
@@ -101,13 +97,6 @@ describe('RPC client instances', () => {
         detail: 'cause chain',
       }),
     ).toBe(true)
-    expect(() => unwrapResult({ status: 'error', error: domainError })).toThrow(
-      expect.objectContaining({
-        kind: domainError.kind,
-        detail: domainError.detail,
-      }),
-    )
-    expect(unwrapResult({ status: 'ok', data: 'ready' })).toBe('ready')
   })
 
   it('recognizes public IpcError without detail, rejects outer RpcError and malformed shapes, and supports union CoreLogCommandError', async () => {
@@ -193,23 +182,13 @@ describe('RPC client instances', () => {
       expect(isIpcError(malformed)).toBe(false)
     }
 
-    expect(() => unwrapResult({ status: 'error', error: publicError })).toThrow(
-      expect.objectContaining({ message: publicError.message }),
-    )
-
     const clientTransport = fakeTransport()
     clientTransport.invoke
       .mockRejectedValueOnce(publicError)
       .mockRejectedValueOnce(richCoreError)
     const client = createRpcClient(clientTransport.transport)
 
-    await expect(client.clearCoreLogs()).resolves.toEqual({
-      status: 'error',
-      error: publicError,
-    })
-    await expect(client.clearCoreLogs()).resolves.toEqual({
-      status: 'error',
-      error: richCoreError,
-    })
+    await expect(client.clearCoreLogs()).rejects.toBe(publicError)
+    await expect(client.clearCoreLogs()).rejects.toBe(richCoreError)
   })
 })

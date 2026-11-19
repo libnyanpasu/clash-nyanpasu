@@ -5,7 +5,6 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import {
-  unwrapQueryOptions,
   useClashSetting,
   useClashSettings,
   useClashSystemSetting,
@@ -77,7 +76,7 @@ export const useTransparentProxy = () => {
   const isActive = mode !== 'disabled'
   const statusOptions = api.queries.getTransparentProxyStatusSummary()
   const status = useQuery({
-    ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
+    ...statusOptions,
     enabled: visible && Boolean(serviceMode.value),
     refetchInterval: serviceMode.value ? 2000 : false,
   })

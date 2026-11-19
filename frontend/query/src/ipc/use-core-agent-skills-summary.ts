@@ -4,7 +4,6 @@ import type {
 } from '@nyanpasu/rpc/types'
 import { useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { unwrapQueryOptions } from './query-options'
 
 /** Safe summary of the agent skills shipped by a core's release archive. */
 export const useCoreAgentSkillsSummary = (
@@ -16,7 +15,7 @@ export const useCoreAgentSkillsSummary = (
   )
 
   return useQuery({
-    ...unwrapQueryOptions(options, options.queryFn!),
+    ...options,
     enabled: !!core,
   })
 }

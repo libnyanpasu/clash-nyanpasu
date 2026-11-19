@@ -10,10 +10,10 @@ import NetworkStatisticWidgetIconConfig from '../src/pages/(main)/main/settings/
 const state = vi.hoisted(() => ({
   upload: vi.fn(),
   mutations: {
-    setTrayIcon: { name: 'setTrayIcon' },
-    setTrayIconFromBytes: { name: 'setTrayIconFromBytes' },
-    setWidgetIcon: { name: 'setWidgetIcon' },
-    setWidgetIconFromBytes: { name: 'setWidgetIconFromBytes' },
+    setTrayIcon: () => ({ name: 'setTrayIcon' }),
+    setTrayIconFromBytes: () => ({ name: 'setTrayIconFromBytes' }),
+    setWidgetIcon: () => ({ name: 'setWidgetIcon' }),
+    setWidgetIconFromBytes: () => ({ name: 'setWidgetIconFromBytes' }),
   },
 }))
 // The tray offers no presets here; the widget's own set still does.
@@ -30,7 +30,7 @@ vi.mock('@/services/rpc', () => ({
   queries: {
     isWidgetIconSet: (mode: string) => ({
       queryKey: ['isWidgetIconSet', mode],
-      queryFn: async () => ({ status: 'ok', data: false }),
+      queryFn: async () => false,
     }),
   },
   mutations: state.mutations,
@@ -38,8 +38,8 @@ vi.mock('@/services/rpc', () => ({
 vi.mock('@nyanpasu/query', async (original) => ({
   ...(await original<typeof import('@nyanpasu/query')>()),
   useWidgetIcon: () => undefined,
-  invokeMutation: (mutation: unknown, args: unknown[]) =>
-    state.upload(mutation, ...args),
+  invokeMutation: (mutation: unknown, input: Record<string, unknown>) =>
+    state.upload(mutation, ...Object.values(input)),
 }))
 
 test('the widget presets write the widget icons, not the tray icons', async ({
@@ -79,9 +79,9 @@ test('the widget presets write the widget icons, not the tray icons', async ({
   expect(
     state.upload.mock.calls.map(([mutation, mode]) => [mutation, mode]),
   ).toEqual([
-    [state.mutations.setWidgetIconFromBytes, 'normal'],
-    [state.mutations.setWidgetIconFromBytes, 'tun'],
-    [state.mutations.setWidgetIconFromBytes, 'system_proxy'],
+    [state.mutations.setWidgetIconFromBytes(), 'normal'],
+    [state.mutations.setWidgetIconFromBytes(), 'tun'],
+    [state.mutations.setWidgetIconFromBytes(), 'system_proxy'],
   ])
   expect(invalidate).toHaveBeenCalledWith({
     queryKey: ['isWidgetIconSet', 'tun'],

@@ -19,7 +19,6 @@ import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { usePlatform } from '@nyanpasu/platform/react'
 import { useCoreDir, useServicePrompt, useSystemService } from '@nyanpasu/query'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   CoreControllerInfo,
   CoreState,
@@ -327,7 +326,7 @@ const ServiceInstallButton = () => {
   const handleInstallClick = useLockFn(async () => {
     try {
       await upsert.mutateAsync('install')
-      unwrapResult(await rpc.restartSidecar())
+      await rpc.restartSidecar()
     } catch (e) {
       const errorMessage = `${m.settings_system_proxy_system_service_ctrl_failed_install()}: ${formatError(e)}`
 

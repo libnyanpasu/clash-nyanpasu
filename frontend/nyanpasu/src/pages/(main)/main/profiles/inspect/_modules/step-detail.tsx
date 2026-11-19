@@ -17,8 +17,6 @@ import {
 import { usePageEntered } from '@/components/router/animated-outlet'
 import { m } from '@/paraglide/messages'
 import { queries } from '@/services/rpc'
-import { unwrapQueryOptions } from '@nyanpasu/query'
-import type { RuntimeInspectionContent } from '@nyanpasu/rpc/types'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CompactButton } from '../../_modules/compact-controls'
@@ -72,9 +70,9 @@ export default function StepDetail({
   const findInputRef = useRef<HTMLInputElement>(null)
 
   const contentQuery = queries.inspectRuntimeNode(snapshotId, step.node.id)
-  const content = useQuery<RuntimeInspectionContent>({
+  const content = useQuery({
     queryKey: contentQuery.queryKey,
-    queryFn: unwrapQueryOptions(contentQuery, contentQuery.queryFn!).queryFn,
+    queryFn: contentQuery.queryFn,
     retry: false,
     refetchOnWindowFocus: false,
     gcTime: 0,

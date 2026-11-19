@@ -1839,7 +1839,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clash-api"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "backon",
  "chrono",
@@ -2017,7 +2017,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zip 9.6.0",
  "zip-extensions",
 ]
@@ -7030,7 +7030,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zstd",
 ]
 
@@ -7133,14 +7133,14 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zeroize",
  "zstd",
 ]
 
 [[package]]
 name = "nyanpasu-core-manager"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "backon",
  "camino",
@@ -7154,7 +7154,6 @@ dependencies = [
  "schemars 1.2.2",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "specta",
  "tempfile",
  "thiserror 2.0.21",
@@ -7163,12 +7162,13 @@ dependencies = [
  "tracing",
  "uuid",
  "windows 0.62.2",
+ "yaml_serde 0.10.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "zerocopy",
 ]
 
 [[package]]
 name = "nyanpasu-core-metadata"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "constcat",
  "enumset",
@@ -7240,7 +7240,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anyhow",
  "derive_builder",
@@ -7265,7 +7265,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-jobs"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "futures-util",
  "jiff",
@@ -7311,7 +7311,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-logging"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "file-id",
@@ -7360,7 +7360,7 @@ dependencies = [
  "time",
  "tracing",
  "uuid",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7518,7 +7518,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tracing",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7537,7 +7537,7 @@ dependencies = [
  "sha2 0.11.1",
  "snafu 0.9.2",
  "tempfile",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7557,7 +7557,7 @@ dependencies = [
  "specta",
  "tempfile",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7625,7 +7625,7 @@ dependencies = [
  "url",
  "uuid",
  "whoami",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
  "zip 9.6.0",
 ]
 
@@ -7690,7 +7690,7 @@ dependencies = [
  "specta",
  "tokio",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7720,12 +7720,12 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
 name = "nyanpasu-serde"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "indexmap 2.14.2",
  "nyanpasu-serde-derive",
@@ -7734,7 +7734,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-serde-derive"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
@@ -7830,7 +7830,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "yaml_serde",
+ "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
 ]
 
 [[package]]
@@ -7985,7 +7985,7 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-windows-security"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "windows 0.62.2",
@@ -11221,19 +11221,6 @@ name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap 2.14.2",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap 2.14.2",
  "itoa",
@@ -15575,6 +15562,19 @@ name = "y4m"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
+
+[[package]]
+name = "yaml_serde"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33b729a08a9a6be689bbad3e2bf8015926db54b6622cc89c3a5f7dc174b9e918"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "libyaml-rs",
+ "ryu",
+ "serde",
+]
 
 [[package]]
 name = "yaml_serde"

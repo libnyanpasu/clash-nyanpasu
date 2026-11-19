@@ -1,12 +1,10 @@
-import { unwrapResult, type Result } from '@nyanpasu/rpc'
 import type {
-  ApplicationPreferencesPatch_Serialize,
+  ApplicationPreferencesPatch_Deserialize,
   ApplicationSettings_Serialize,
   ClashConfig,
   ClashSettings,
   ClashSettingsPatch_Deserialize,
   ClashSystemPatch_Deserialize,
-  IpcError,
   NyanpasuAppConfig_Serialize,
   RpcUnitMutationOutcome_Serialize,
   SystemSettingsPatch_Deserialize,
@@ -19,21 +17,19 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { invokeMutation, invokeQuery } from './query-options'
 
 type ConfigQuery<TConfig> = {
   queryKey: QueryKey
-  queryFn?: (
-    context: never,
-  ) => Result<TConfig, IpcError> | Promise<Result<TConfig, IpcError>>
+  queryFn?: (context: never) => TConfig | Promise<TConfig>
 }
 
 type ConfigMutation<TPatch> = {
   mutationKey?: MutationKey
   mutationFn?: (
-    input: [TPatch],
+    input: { patch: TPatch },
     context: never,
-  ) => Promise<Result<RpcUnitMutationOutcome_Serialize, IpcError>>
+  ) => Promise<RpcUnitMutationOutcome_Serialize>
 }
 
 type QueryApi = ReturnType<typeof useQueryApi>
@@ -63,7 +59,8 @@ const useTypedConfig = <TConfig, TPatch>(
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    ...unwrapQueryOptions(configQuery, configQuery.queryFn!),
+    queryKey: configQuery.queryKey,
+    queryFn: async () => await invokeQuery(configQuery),
     enabled: options?.enabled,
   })
 
@@ -74,7 +71,7 @@ const useTypedConfig = <TConfig, TPatch>(
     // still committed, so it stays on the success path. Do not collapse it to
     // a bare value.
     mutationFn: async (patch: TPatch) => {
-      return unwrapResult(await invokeMutation(patchConfig, [patch]))
+      return await invokeMutation(patchConfig, { patch })
     },
     // Returning the refetch keeps the patch pending until the config is read
     // back, so the next patch is built from saved values, not stale ones.
@@ -143,7 +140,7 @@ const useTypedConfigField = <
  * selection use their own commands. Keep nested patches optional when they are
  * untouched.
  */
-type AppConfigPatch = Partial<ApplicationPreferencesPatch_Serialize>
+type AppConfigPatch = Partial<ApplicationPreferencesPatch_Deserialize>
 
 /**
  * The application settings the interface reads (`ApplicationSettings`): the
@@ -163,7 +160,7 @@ export const useSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ApplicationSettings_Serialize, AppConfigPatch>(
     api.queries.getAppSettings(),
-    api.mutations.patchAppConfig,
+    api.mutations.patchAppConfig(),
     appSettingsKeys(api),
     options,
   )
@@ -193,7 +190,7 @@ export const useFullSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<NyanpasuAppConfig_Serialize, AppConfigPatch>(
     api.queries.getAppConfig(),
-    api.mutations.patchAppConfig,
+    api.mutations.patchAppConfig(),
     appSettingsKeys(api),
     options,
   )
@@ -234,7 +231,7 @@ export const useSystemSettings = (options?: { enabled?: boolean }) => {
     SystemSettingsPatch_Deserialize
   >(
     api.queries.getAppSettings(),
-    api.mutations.patchSystemSettings,
+    api.mutations.patchSystemSettings(),
     appSettingsKeys(api),
     options,
   )
@@ -276,7 +273,7 @@ export const useFullSystemSettings = () => {
     SystemSettingsPatch_Deserialize
   >(
     api.queries.getAppConfig(),
-    api.mutations.patchSystemSettings,
+    api.mutations.patchSystemSettings(),
     appSettingsKeys(api),
   )
 }
@@ -312,7 +309,7 @@ export const useClashSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ClashSettings, ClashSettingsPatch_Deserialize>(
     api.queries.getClashSettings(),
-    api.mutations.patchClashConfig,
+    api.mutations.patchClashConfig(),
     clashSettingsKeys(api),
     options,
   )
@@ -348,7 +345,7 @@ export const useClashSystemSettings = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
   return useTypedConfig<ClashConfig, ClashSystemPatch_Deserialize>(
     api.queries.getClashConfig(),
-    api.mutations.patchClashSystemConfig,
+    api.mutations.patchClashSystemConfig(),
     clashSettingsKeys(api),
     options,
   )

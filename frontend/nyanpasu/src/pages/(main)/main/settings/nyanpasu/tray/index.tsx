@@ -12,6 +12,7 @@ import WindowCloseBehaviorCards from './_modules/window-close-behavior'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu/tray/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_tray() } },
 })
 
 function RouteComponent() {
@@ -19,7 +20,7 @@ function RouteComponent() {
 
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_tray()}</PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

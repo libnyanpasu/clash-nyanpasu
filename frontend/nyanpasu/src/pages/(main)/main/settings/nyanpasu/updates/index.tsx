@@ -10,6 +10,7 @@ import UpdateStatusCard from './_modules/update-status-card'
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu/updates/')(
   {
     component: RouteComponent,
+    staticData: { crumb: { title: () => m.settings_label_updates() } },
   },
 )
 
@@ -25,9 +26,7 @@ function UpdatesMasonryItem({ children }: { children: ReactNode }) {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_updates()}
-      </PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

@@ -23,7 +23,7 @@ nyanpasu-utils.workspace = true
 
 snafu.workspace = true
 thiserror.workspace = true
-specta = { version = '^2.0.0-rc.25', features = [
+specta = { version = '^2.0.0-rc.28', features = [
   'serde_json',
   'indexmap',
   'url',

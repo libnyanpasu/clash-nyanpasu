@@ -1,6 +1,5 @@
 import { commands } from '@/services/rpc'
 import { detectRuntime } from '@nyanpasu/platform'
-import { unwrapResult } from '@nyanpasu/rpc'
 
 export type SelectedFile =
   { type: 'path'; path: string } | { type: 'file'; file: File }
@@ -11,9 +10,7 @@ export const pickFile = async (
 ): Promise<SelectedFile | null> => {
   const { bridge, platform } = detectRuntime()
   if (bridge === 'tauri') {
-    const path = unwrapResult(
-      await commands.openNativeFileDialog(title, filters),
-    )
+    const path = await commands.openNativeFileDialog(title, filters)
     return path ? { type: 'path', path } : null
   }
   if (platform.surface !== 'browser') return null

@@ -13,12 +13,10 @@ export default function FolderHeader({ folder }: { folder: ProfileFolder }) {
 
   return (
     <PageTitle
-      backTo="/main/profiles"
+      title={folder.name}
       actions={
         <FolderActionsMenu folder={folder.id} onDeleted={handleDeleted} />
       }
-    >
-      {folder.name}
-    </PageTitle>
+    />
   )
 }

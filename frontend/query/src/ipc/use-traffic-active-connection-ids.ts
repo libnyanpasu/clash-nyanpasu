@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type { TrafficFilter } from '@nyanpasu/rpc/types'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -15,8 +14,7 @@ export function useTrafficActiveConnectionIds(
 
   return useQuery({
     queryKey: ['traffic-active-connection-ids', filters] as const,
-    queryFn: async () =>
-      unwrapResult(await api.queryTrafficActiveConnectionIds(filters)),
+    queryFn: async () => await api.queryTrafficActiveConnectionIds(filters),
     // Other filters keep showing the previous ids until their own arrive.
     placeholderData: keepPreviousData,
     refetchInterval: 1000,

@@ -6,6 +6,7 @@ import { CUSTOM_CSS_PRESETS } from '@/assets/custom-css-presets'
 import useCustomCss, { reportCustomCssError } from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
 import { usePlatform } from '@nyanpasu/platform/react'
+import CustomCssNameDialog from '../../_modules/custom-css-name-dialog'
 import {
   ItemContainer,
   ItemLabel,
@@ -14,9 +15,7 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
-import CustomCssNameDialog from './custom-css-name-dialog'
+} from '../../../../../_modules/settings-card'
 
 /**
  * The stylesheets bundled with the app. They cannot be edited; duplicate one
@@ -36,10 +35,6 @@ export default function CustomCssPresets() {
 
   return (
     <div data-slot="custom-css-presets-container">
-      <SettingsLabel>
-        {m.settings_user_interface_custom_css_presets_group()}
-      </SettingsLabel>
-
       <SettingsGroup>
         {presets.map((preset) => (
           <Modal key={preset.id}>

@@ -61,7 +61,7 @@ function mountWidget(
       case 'get_service_status_summary':
         return summaries.service
       case 'get_storage_item':
-        return { status: 'ok', data: { value: null, revision: 0 } }
+        return { value: null, revision: 0 }
       default:
         return null
     }

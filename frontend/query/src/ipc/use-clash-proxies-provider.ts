@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { type ProxyProviderSummary_Serialize } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -20,7 +19,7 @@ export const useClashProxiesProvider = (
     ...options,
     queryKey: providersQuery.queryKey,
     queryFn: async () => {
-      const result = unwrapResult(await invokeQuery(providersQuery))
+      const result = await invokeQuery(providersQuery)
 
       if (!result) return {} as ClashProxiesProviderQuery
 
@@ -36,11 +35,11 @@ export const useClashProxiesProvider = (
 export const useUpdateClashProxiesProvider = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const updateProxyProvider = api.mutations.updateProxyProvider
+  const updateProxyProvider = api.mutations.updateProxyProvider()
   return useMutation({
     mutationKey: updateProxyProvider.mutationKey,
     mutationFn: async (name: string) =>
-      unwrapResult(await invokeMutation(updateProxyProvider, [name])),
+      await invokeMutation(updateProxyProvider, { name }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: api.queries.clashApiGetProvidersProxies().queryKey,

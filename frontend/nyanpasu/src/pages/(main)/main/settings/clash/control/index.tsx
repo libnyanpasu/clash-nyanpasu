@@ -13,6 +13,7 @@ import WebUI from './_modules/web-ui'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/control/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_control() } },
 })
 
 const ExternalControllerSettings = () => {
@@ -46,9 +47,7 @@ const WebUISettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_control()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permission="settings:read"

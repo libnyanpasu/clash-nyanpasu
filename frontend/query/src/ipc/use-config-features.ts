@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { unwrapQueryOptions } from './query-options'
 
 /**
  * The config keys and values the selected core reads, for the settings that
@@ -9,10 +8,5 @@ import { unwrapQueryOptions } from './query-options'
  */
 export const useConfigFeatures = () => {
   const api = useQueryApi()
-  return useQuery(
-    unwrapQueryOptions(
-      api.queries.getConfigFeatures(),
-      api.queries.getConfigFeatures().queryFn!,
-    ),
-  )
+  return useQuery(api.queries.getConfigFeatures())
 }

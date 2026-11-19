@@ -34,8 +34,8 @@ import type {
   NetworkRule,
   WifiName,
 } from '@nyanpasu/rpc/types'
-import AnimatedErrorItem from '../../../../_modules/error-item'
-import { SettingsLabel } from '../../../../_modules/settings-card'
+import AnimatedErrorItem from '../../../../../_modules/error-item'
+import { SettingsLabel } from '../../../../../_modules/settings-card'
 import { INTERFACE_KIND_OPTIONS, interfaceKindLabel } from './interface-kind'
 import MechanismActionsFields from './mechanism-actions-fields'
 import { OptionRow, OptionRowLabel } from './option-row'

@@ -22,12 +22,7 @@ import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  unwrapQueryOptions,
-  useClashSystemSetting,
-  useQueryApi,
-  useSetting,
-} from '@nyanpasu/query'
+import { useClashSystemSetting, useQueryApi, useSetting } from '@nyanpasu/query'
 import type {
   NetworkTransparentProxyMode,
   TransparentProxyConfig,
@@ -172,7 +167,7 @@ export default function TransparentProxyConfigSettings() {
   const statusOptions = api.queries.getTransparentProxyStatusSummary()
   const supportedCore = core.value === 'mihomo' || core.value === 'mihomo-alpha'
   const statusQuery = useQuery({
-    ...unwrapQueryOptions(statusOptions, statusOptions.queryFn!),
+    ...statusOptions,
     enabled: supportedCore,
     refetchInterval: serviceMode.value ? 2000 : false,
   })

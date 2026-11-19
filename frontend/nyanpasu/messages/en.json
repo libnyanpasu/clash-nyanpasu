@@ -129,6 +129,7 @@
   "settings_system_proxy_proxy_guard_switch_label": "System Proxy Guard",
   "settings_system_proxy_proxy_guard_switch_description": "Continuously monitors system proxy settings and automatically restores them if changed by third-party apps.",
   "settings_system_proxy_proxy_guard_interval_label": "System Proxy Guard Interval",
+  "settings_system_proxy_proxy_guard_entry_interval": "Check every {interval} min",
   "settings_system_proxy_proxy_bypass_label": "System Proxy Bypass",
   "settings_system_proxy_current_system_proxy_label": "Current System Proxy",
   "settings_system_proxy_transparent_diagnostics_label": "Transparent Proxy Diagnostics",
@@ -180,6 +181,16 @@
   "settings_system_proxy_transparent_diagnostics_view_all": "View all connections",
   "settings_system_proxy_network_automation_label": "Network Rules",
   "settings_system_proxy_network_automation_switch_label": "Follow Network Rules",
+  "settings_system_proxy_network_automation_entry_rules": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rule",
+        "countPlural=other": "{count} rules"
+      }
+    }
+  ],
   "settings_system_proxy_network_automation_switch_description": "When you join a network, the first matching rule turns system proxy, TUN and transparent proxy on or off. A switch you change by hand stays until you move to a different network.",
   "settings_system_proxy_network_automation_current_network": "Current network",
   "settings_system_proxy_network_automation_network_reading": "Reading the network…",
@@ -292,6 +303,16 @@
   "settings_user_interface_theme_color_chroma": "Chroma",
   "settings_user_interface_theme_color_tone": "Tone",
   "settings_user_interface_custom_css_group": "Custom CSS",
+  "settings_user_interface_custom_css_entry_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} CSS item",
+        "countPlural=other": "{count} CSS items"
+      }
+    }
+  ],
   "settings_user_interface_custom_css_empty": "No custom CSS",
   "settings_user_interface_custom_css_chars": "{count} characters",
   "settings_user_interface_custom_css_large_warning": "CSS content is large, may affect performance",
@@ -311,6 +332,16 @@
   "settings_user_interface_custom_css_reorder": "Reorder {name}",
   "settings_user_interface_custom_css_row_actions": "Actions for {name}",
   "settings_user_interface_custom_css_presets_group": "Bundled presets",
+  "settings_user_interface_custom_css_presets_entry_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} preset",
+        "countPlural=other": "{count} presets"
+      }
+    }
+  ],
   "settings_user_interface_custom_css_preset_duplicate": "Duplicate to edit",
   "settings_user_interface_custom_css_preset_copy_name": "{name} (copy)",
   "custom_css_preset_vertical_navbar_name": "Vertical Navbar",

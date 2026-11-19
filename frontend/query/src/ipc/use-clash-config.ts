@@ -1,7 +1,5 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ClashAccessPatch_Deserialize,
-  ClashApiSettings,
   ClashOverridesSettingsPatch_Deserialize,
 } from '@nyanpasu/rpc/types'
 import {
@@ -12,7 +10,7 @@ import {
   type QueryKey,
 } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { invokeMutation } from './query-options'
 
 /**
  * The live core configuration (`/configs`) without the controller secret
@@ -27,16 +25,14 @@ export const useClashConfig = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const configQuery = api.queries.clashApiGetSettings()
-  const patchConfig = api.mutations.patchRuntimeOverrides
+  const patchConfig = api.mutations.patchRuntimeOverrides()
 
-  const query = useQuery<ClashApiSettings | undefined>(
-    unwrapQueryOptions(configQuery, configQuery.queryFn!),
-  )
+  const query = useQuery(configQuery)
 
   const upsert = useMutation({
     mutationKey: patchConfig.mutationKey,
     mutationFn: async (payload: ClashOverridesSettingsPatch_Deserialize) => {
-      return unwrapResult(await invokeMutation(patchConfig, [payload]))
+      return await invokeMutation(patchConfig, { patch: payload })
     },
     onSuccess: () => {
       refreshLiveConfig(
@@ -62,12 +58,12 @@ export const useClashConfig = () => {
 export const useClashAccess = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
-  const patchConfig = api.mutations.patchRuntimeAccess
+  const patchConfig = api.mutations.patchRuntimeAccess()
 
   const upsert = useMutation({
     mutationKey: patchConfig.mutationKey,
     mutationFn: async (payload: ClashAccessPatch_Deserialize) => {
-      return unwrapResult(await invokeMutation(patchConfig, [payload]))
+      return await invokeMutation(patchConfig, { patch: payload })
     },
     onSuccess: () => {
       refreshLiveConfig(

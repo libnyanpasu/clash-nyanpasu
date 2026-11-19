@@ -11,6 +11,7 @@ import TrafficRetentionSelector from './_modules/traffic-retention-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu/logs/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_logs() } },
 })
 
 const AppLogSettings = () => {
@@ -56,7 +57,7 @@ const TrafficSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_logs()}</PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

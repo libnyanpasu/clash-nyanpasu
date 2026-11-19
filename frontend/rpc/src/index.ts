@@ -3,7 +3,6 @@ export * from './command-transport'
 export * from './event-transport'
 export * from './icon-transport'
 export * from './result'
-export type { Result } from './result'
 export {
   ANONYMOUS_PERMISSIONS_LIMIT,
   ASSIGNABLE_ROLES,

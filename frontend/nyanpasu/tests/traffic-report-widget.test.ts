@@ -8,7 +8,11 @@ import {
   usageTotalBytes,
   zeroTrafficUsage,
 } from '@/components/widgets/widget-traffic-report-model'
-import type { TrafficReport, Usage, UsageGroup } from '@nyanpasu/rpc/types'
+import type {
+  TrafficReport,
+  Usage,
+  UsageGroup_Serialize,
+} from '@nyanpasu/rpc/types'
 
 const usage = (
   upload: number,
@@ -16,7 +20,11 @@ const usage = (
   connections: number,
 ): Usage => ({ bytes: { upload, download }, connections })
 
-const group = (key: string, upload: number, download: number): UsageGroup => ({
+const group = (
+  key: string,
+  upload: number,
+  download: number,
+): UsageGroup_Serialize => ({
   key,
   usage: usage(upload, download, 1),
   current_rate: null,

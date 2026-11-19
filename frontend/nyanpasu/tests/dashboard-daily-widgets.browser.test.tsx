@@ -79,16 +79,13 @@ vi.mock('@/services/rpc', async (importOriginal) => {
     rpc: {
       ...original.rpc,
       getStorageItem: async (key: string) => ({
-        status: 'ok',
-        data: {
-          value: backend.value.get(key) ?? null,
-          revision: backend.revision,
-        },
+        value: backend.value.get(key) ?? null,
+        revision: backend.revision,
       }),
       setStorageItem: async (key: string, value: string) => {
         backend.value.set(key, value)
         backend.revision += 1
-        return { status: 'ok', data: backend.revision }
+        return backend.revision
       },
       listenResync: () => () => {},
       events: {

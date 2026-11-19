@@ -593,606 +593,1216 @@ export function createQueryBindings(rpc: RpcClient) {
         queryFn: () => commands.listSyncSnapshots(...args),
       }),
   }
-  const mutations = {
-    writeClipboardText: mutationOptions({
-      mutationKey: ['writeClipboardText'],
-      mutationFn: (input: Parameters<typeof commands.writeClipboardText>) =>
-        commands.writeClipboardText(...input),
-    }),
-    showNativeNotification: mutationOptions({
-      mutationKey: ['showNativeNotification'],
-      mutationFn: (input: Parameters<typeof commands.showNativeNotification>) =>
-        commands.showNativeNotification(...input),
-    }),
-    showNativeMessageDialog: mutationOptions({
-      mutationKey: ['showNativeMessageDialog'],
-      mutationFn: (
-        input: Parameters<typeof commands.showNativeMessageDialog>,
-      ) => commands.showNativeMessageDialog(...input),
-    }),
-    askNativeDialog: mutationOptions({
-      mutationKey: ['askNativeDialog'],
-      mutationFn: (input: Parameters<typeof commands.askNativeDialog>) =>
-        commands.askNativeDialog(...input),
-    }),
-    openNativeFileDialog: mutationOptions({
-      mutationKey: ['openNativeFileDialog'],
-      mutationFn: (input: Parameters<typeof commands.openNativeFileDialog>) =>
-        commands.openNativeFileDialog(...input),
-    }),
-    retryConfigurationRuntime: mutationOptions({
-      mutationKey: ['retryConfigurationRuntime'],
-      mutationFn: (
-        input: Parameters<typeof commands.retryConfigurationRuntime>,
-      ) => commands.retryConfigurationRuntime(...input),
-    }),
-    retryConfigurationEffect: mutationOptions({
-      mutationKey: ['retryConfigurationEffect'],
-      mutationFn: (
-        input: Parameters<typeof commands.retryConfigurationEffect>,
-      ) => commands.retryConfigurationEffect(...input),
-    }),
-    setReleaseChannel: mutationOptions({
-      mutationKey: ['setReleaseChannel'],
-      mutationFn: (input: Parameters<typeof commands.setReleaseChannel>) =>
-        commands.setReleaseChannel(...input),
-    }),
-    checkAppUpdate: mutationOptions({
-      mutationKey: ['checkAppUpdate'],
-      mutationFn: (input: Parameters<typeof commands.checkAppUpdate>) =>
-        commands.checkAppUpdate(...input),
-    }),
-    downloadAppUpdate: mutationOptions({
-      mutationKey: ['downloadAppUpdate'],
-      mutationFn: (input: Parameters<typeof commands.downloadAppUpdate>) =>
-        commands.downloadAppUpdate(...input),
-    }),
-    cancelAppUpdateDownload: mutationOptions({
-      mutationKey: ['cancelAppUpdateDownload'],
-      mutationFn: (
-        input: Parameters<typeof commands.cancelAppUpdateDownload>,
-      ) => commands.cancelAppUpdateDownload(...input),
-    }),
-    installAppUpdate: mutationOptions({
-      mutationKey: ['installAppUpdate'],
-      mutationFn: (input: Parameters<typeof commands.installAppUpdate>) =>
-        commands.installAppUpdate(...input),
-    }),
-    discardAppUpdatePackage: mutationOptions({
-      mutationKey: ['discardAppUpdatePackage'],
-      mutationFn: (
-        input: Parameters<typeof commands.discardAppUpdatePackage>,
-      ) => commands.discardAppUpdatePackage(...input),
-    }),
-    subscribeClashConnectionDetails: mutationOptions({
-      mutationKey: ['subscribeClashConnectionDetails'],
-      mutationFn: (
-        input: Parameters<typeof commands.subscribeClashConnectionDetails>,
-      ) => commands.subscribeClashConnectionDetails(...input),
-    }),
-    unsubscribeClashConnectionDetails: mutationOptions({
-      mutationKey: ['unsubscribeClashConnectionDetails'],
-      mutationFn: (
-        input: Parameters<typeof commands.unsubscribeClashConnectionDetails>,
-      ) => commands.unsubscribeClashConnectionDetails(...input),
-    }),
-    probeDirectEgress: mutationOptions({
-      mutationKey: ['probeDirectEgress'],
-      mutationFn: (input: Parameters<typeof commands.probeDirectEgress>) =>
-        commands.probeDirectEgress(...input),
-    }),
-    testStunServer: mutationOptions({
-      mutationKey: ['testStunServer'],
-      mutationFn: (input: Parameters<typeof commands.testStunServer>) =>
-        commands.testStunServer(...input),
-    }),
-    clearCoreLogs: mutationOptions({
-      mutationKey: ['clearCoreLogs'],
-      mutationFn: (input: Parameters<typeof commands.clearCoreLogs>) =>
-        commands.clearCoreLogs(...input),
-    }),
-    openLogSession: mutationOptions({
-      mutationKey: ['openLogSession'],
-      mutationFn: (input: Parameters<typeof commands.openLogSession>) =>
-        commands.openLogSession(...input),
-    }),
-    queryLogs: mutationOptions({
-      mutationKey: ['queryLogs'],
-      mutationFn: (input: Parameters<typeof commands.queryLogs>) =>
-        commands.queryLogs(...input),
-    }),
-    queryLogsSummary: mutationOptions({
-      mutationKey: ['queryLogsSummary'],
-      mutationFn: (input: Parameters<typeof commands.queryLogsSummary>) =>
-        commands.queryLogsSummary(...input),
-    }),
-    closeLogSession: mutationOptions({
-      mutationKey: ['closeLogSession'],
-      mutationFn: (input: Parameters<typeof commands.closeLogSession>) =>
-        commands.closeLogSession(...input),
-    }),
-    reportFrontendEvents: mutationOptions({
-      mutationKey: ['reportFrontendEvents'],
-      mutationFn: (input: Parameters<typeof commands.reportFrontendEvents>) =>
-        commands.reportFrontendEvents(...input),
-    }),
-    flushSystemDnsCache: mutationOptions({
-      mutationKey: ['flushSystemDnsCache'],
-      mutationFn: (input: Parameters<typeof commands.flushSystemDnsCache>) =>
-        commands.flushSystemDnsCache(...input),
-    }),
-    openAppConfigDir: mutationOptions({
-      mutationKey: ['openAppConfigDir'],
-      mutationFn: (input: Parameters<typeof commands.openAppConfigDir>) =>
-        commands.openAppConfigDir(...input),
-    }),
-    openAppDataDir: mutationOptions({
-      mutationKey: ['openAppDataDir'],
-      mutationFn: (input: Parameters<typeof commands.openAppDataDir>) =>
-        commands.openAppDataDir(...input),
-    }),
-    openBackupsDir: mutationOptions({
-      mutationKey: ['openBackupsDir'],
-      mutationFn: (input: Parameters<typeof commands.openBackupsDir>) =>
-        commands.openBackupsDir(...input),
-    }),
-    createConfigBackup: mutationOptions({
-      mutationKey: ['createConfigBackup'],
-      mutationFn: (input: Parameters<typeof commands.createConfigBackup>) =>
-        commands.createConfigBackup(...input),
-    }),
-    openLogsDir: mutationOptions({
-      mutationKey: ['openLogsDir'],
-      mutationFn: (input: Parameters<typeof commands.openLogsDir>) =>
-        commands.openLogsDir(...input),
-    }),
-    openWebUrl: mutationOptions({
-      mutationKey: ['openWebUrl'],
-      mutationFn: (input: Parameters<typeof commands.openWebUrl>) =>
-        commands.openWebUrl(...input),
-    }),
-    openRemoteAccessCertificate: mutationOptions({
-      mutationKey: ['openRemoteAccessCertificate'],
-      mutationFn: (
-        input: Parameters<typeof commands.openRemoteAccessCertificate>,
-      ) => commands.openRemoteAccessCertificate(...input),
-    }),
-    exportRemoteAccessAuthority: mutationOptions({
-      mutationKey: ['exportRemoteAccessAuthority'],
-      mutationFn: (
-        input: Parameters<typeof commands.exportRemoteAccessAuthority>,
-      ) => commands.exportRemoteAccessAuthority(...input),
-    }),
-    openCoreDir: mutationOptions({
-      mutationKey: ['openCoreDir'],
-      mutationFn: (input: Parameters<typeof commands.openCoreDir>) =>
-        commands.openCoreDir(...input),
-    }),
-    installCli: mutationOptions({
-      mutationKey: ['installCli'],
-      mutationFn: (input: Parameters<typeof commands.installCli>) =>
-        commands.installCli(...input),
-    }),
-    restartSidecar: mutationOptions({
-      mutationKey: ['restartSidecar'],
-      mutationFn: (input: Parameters<typeof commands.restartSidecar>) =>
-        commands.restartSidecar(...input),
-    }),
-    patchAppConfig: mutationOptions({
-      mutationKey: ['patchAppConfig'],
-      mutationFn: (input: Parameters<typeof commands.patchAppConfig>) =>
-        commands.patchAppConfig(...input),
-    }),
-    patchSystemSettings: mutationOptions({
-      mutationKey: ['patchSystemSettings'],
-      mutationFn: (input: Parameters<typeof commands.patchSystemSettings>) =>
-        commands.patchSystemSettings(...input),
-    }),
-    patchClashConfig: mutationOptions({
-      mutationKey: ['patchClashConfig'],
-      mutationFn: (input: Parameters<typeof commands.patchClashConfig>) =>
-        commands.patchClashConfig(...input),
-    }),
-    patchClashSystemConfig: mutationOptions({
-      mutationKey: ['patchClashSystemConfig'],
-      mutationFn: (input: Parameters<typeof commands.patchClashSystemConfig>) =>
-        commands.patchClashSystemConfig(...input),
-    }),
-    applyNetworkAutomation: mutationOptions({
-      mutationKey: ['applyNetworkAutomation'],
-      mutationFn: (input: Parameters<typeof commands.applyNetworkAutomation>) =>
-        commands.applyNetworkAutomation(...input),
-    }),
-    requestWifiNameAccess: mutationOptions({
-      mutationKey: ['requestWifiNameAccess'],
-      mutationFn: (input: Parameters<typeof commands.requestWifiNameAccess>) =>
-        commands.requestWifiNameAccess(...input),
-    }),
-    patchRuntimeOverrides: mutationOptions({
-      mutationKey: ['patchRuntimeOverrides'],
-      mutationFn: (input: Parameters<typeof commands.patchRuntimeOverrides>) =>
-        commands.patchRuntimeOverrides(...input),
-    }),
-    patchRuntimeAccess: mutationOptions({
-      mutationKey: ['patchRuntimeAccess'],
-      mutationFn: (input: Parameters<typeof commands.patchRuntimeAccess>) =>
-        commands.patchRuntimeAccess(...input),
-    }),
-    setProxyMode: mutationOptions({
-      mutationKey: ['setProxyMode'],
-      mutationFn: (input: Parameters<typeof commands.setProxyMode>) =>
-        commands.setProxyMode(...input),
-    }),
-    changeClashCore: mutationOptions({
-      mutationKey: ['changeClashCore'],
-      mutationFn: (input: Parameters<typeof commands.changeClashCore>) =>
-        commands.changeClashCore(...input),
-    }),
-    clashApiDeleteConnections: mutationOptions({
-      mutationKey: ['clashApiDeleteConnections'],
-      mutationFn: (
-        input: Parameters<typeof commands.clashApiDeleteConnections>,
-      ) => commands.clashApiDeleteConnections(...input),
-    }),
-    clashApiUpdateProvidersRules: mutationOptions({
-      mutationKey: ['clashApiUpdateProvidersRules'],
-      mutationFn: (
-        input: Parameters<typeof commands.clashApiUpdateProvidersRules>,
-      ) => commands.clashApiUpdateProvidersRules(...input),
-    }),
-    invokeUwpTool: mutationOptions({
-      mutationKey: ['invokeUwpTool'],
-      mutationFn: (input: Parameters<typeof commands.invokeUwpTool>) =>
-        commands.invokeUwpTool(...input),
-    }),
-    updateCore: mutationOptions({
-      mutationKey: ['updateCore'],
-      mutationFn: (input: Parameters<typeof commands.updateCore>) =>
-        commands.updateCore(...input),
-    }),
-    collectLogs: mutationOptions({
-      mutationKey: ['collectLogs'],
-      mutationFn: (input: Parameters<typeof commands.collectLogs>) =>
-        commands.collectLogs(...input),
-    }),
-    reportIssue: mutationOptions({
-      mutationKey: ['reportIssue'],
-      mutationFn: (input: Parameters<typeof commands.reportIssue>) =>
-        commands.reportIssue(...input),
-    }),
-    setTrayIconFromBytes: mutationOptions({
-      mutationKey: ['setTrayIconFromBytes'],
-      mutationFn: (input: Parameters<typeof commands.setTrayIconFromBytes>) =>
-        commands.setTrayIconFromBytes(...input),
-    }),
-    setWidgetIconFromBytes: mutationOptions({
-      mutationKey: ['setWidgetIconFromBytes'],
-      mutationFn: (input: Parameters<typeof commands.setWidgetIconFromBytes>) =>
-        commands.setWidgetIconFromBytes(...input),
-    }),
-    enhanceProfiles: mutationOptions({
-      mutationKey: ['enhanceProfiles'],
-      mutationFn: (input: Parameters<typeof commands.enhanceProfiles>) =>
-        commands.enhanceProfiles(...input),
-    }),
-    importProfile: mutationOptions({
-      mutationKey: ['importProfile'],
-      mutationFn: (input: Parameters<typeof commands.importProfile>) =>
-        commands.importProfile(...input),
-    }),
-    takePendingDeepLinks: mutationOptions({
-      mutationKey: ['takePendingDeepLinks'],
-      mutationFn: (input: Parameters<typeof commands.takePendingDeepLinks>) =>
-        commands.takePendingDeepLinks(...input),
-    }),
-    createProfile: mutationOptions({
-      mutationKey: ['createProfile'],
-      mutationFn: (input: Parameters<typeof commands.createProfile>) =>
-        commands.createProfile(...input),
-    }),
-    reorderProfile: mutationOptions({
-      mutationKey: ['reorderProfile'],
-      mutationFn: (input: Parameters<typeof commands.reorderProfile>) =>
-        commands.reorderProfile(...input),
-    }),
-    reorderProfilesByList: mutationOptions({
-      mutationKey: ['reorderProfilesByList'],
-      mutationFn: (input: Parameters<typeof commands.reorderProfilesByList>) =>
-        commands.reorderProfilesByList(...input),
-    }),
-    setProfileLayout: mutationOptions({
-      mutationKey: ['setProfileLayout'],
-      mutationFn: (input: Parameters<typeof commands.setProfileLayout>) =>
-        commands.setProfileLayout(...input),
-    }),
-    createProfileFolder: mutationOptions({
-      mutationKey: ['createProfileFolder'],
-      mutationFn: (input: Parameters<typeof commands.createProfileFolder>) =>
-        commands.createProfileFolder(...input),
-    }),
-    setProxyGroupLayout: mutationOptions({
-      mutationKey: ['setProxyGroupLayout'],
-      mutationFn: (input: Parameters<typeof commands.setProxyGroupLayout>) =>
-        commands.setProxyGroupLayout(...input),
-    }),
-    createProxyGroupFolder: mutationOptions({
-      mutationKey: ['createProxyGroupFolder'],
-      mutationFn: (input: Parameters<typeof commands.createProxyGroupFolder>) =>
-        commands.createProxyGroupFolder(...input),
-    }),
-    updateProfile: mutationOptions({
-      mutationKey: ['updateProfile'],
-      mutationFn: (input: Parameters<typeof commands.updateProfile>) =>
-        commands.updateProfile(...input),
-    }),
-    deleteProfile: mutationOptions({
-      mutationKey: ['deleteProfile'],
-      mutationFn: (input: Parameters<typeof commands.deleteProfile>) =>
-        commands.deleteProfile(...input),
-    }),
-    activateProfile: mutationOptions({
-      mutationKey: ['activateProfile'],
-      mutationFn: (input: Parameters<typeof commands.activateProfile>) =>
-        commands.activateProfile(...input),
-    }),
-    setGlobalTransforms: mutationOptions({
-      mutationKey: ['setGlobalTransforms'],
-      mutationFn: (input: Parameters<typeof commands.setGlobalTransforms>) =>
-        commands.setGlobalTransforms(...input),
-    }),
-    setProfileValidFields: mutationOptions({
-      mutationKey: ['setProfileValidFields'],
-      mutationFn: (input: Parameters<typeof commands.setProfileValidFields>) =>
-        commands.setProfileValidFields(...input),
-    }),
-    patchProfileMetadata: mutationOptions({
-      mutationKey: ['patchProfileMetadata'],
-      mutationFn: (input: Parameters<typeof commands.patchProfileMetadata>) =>
-        commands.patchProfileMetadata(...input),
-    }),
-    patchRemoteProfileOptions: mutationOptions({
-      mutationKey: ['patchRemoteProfileOptions'],
-      mutationFn: (
-        input: Parameters<typeof commands.patchRemoteProfileOptions>,
-      ) => commands.patchRemoteProfileOptions(...input),
-    }),
-    replaceProfileDefinition: mutationOptions({
-      mutationKey: ['replaceProfileDefinition'],
-      mutationFn: (
-        input: Parameters<typeof commands.replaceProfileDefinition>,
-      ) => commands.replaceProfileDefinition(...input),
-    }),
-    viewProfile: mutationOptions({
-      mutationKey: ['viewProfile'],
-      mutationFn: (input: Parameters<typeof commands.viewProfile>) =>
-        commands.viewProfile(...input),
-    }),
-    saveProfileFile: mutationOptions({
-      mutationKey: ['saveProfileFile'],
-      mutationFn: (input: Parameters<typeof commands.saveProfileFile>) =>
-        commands.saveProfileFile(...input),
-    }),
-    setCustomAppDir: mutationOptions({
-      mutationKey: ['setCustomAppDir'],
-      mutationFn: (input: Parameters<typeof commands.setCustomAppDir>) =>
-        commands.setCustomAppDir(...input),
-    }),
-    installService: mutationOptions({
-      mutationKey: ['installService'],
-      mutationFn: (input: Parameters<typeof commands.installService>) =>
-        commands.installService(...input),
-    }),
-    uninstallService: mutationOptions({
-      mutationKey: ['uninstallService'],
-      mutationFn: (input: Parameters<typeof commands.uninstallService>) =>
-        commands.uninstallService(...input),
-    }),
-    startService: mutationOptions({
-      mutationKey: ['startService'],
-      mutationFn: (input: Parameters<typeof commands.startService>) =>
-        commands.startService(...input),
-    }),
-    stopService: mutationOptions({
-      mutationKey: ['stopService'],
-      mutationFn: (input: Parameters<typeof commands.stopService>) =>
-        commands.stopService(...input),
-    }),
-    restartService: mutationOptions({
-      mutationKey: ['restartService'],
-      mutationFn: (input: Parameters<typeof commands.restartService>) =>
-        commands.restartService(...input),
-    }),
-    setServiceMode: mutationOptions({
-      mutationKey: ['setServiceMode'],
-      mutationFn: (input: Parameters<typeof commands.setServiceMode>) =>
-        commands.setServiceMode(...input),
-    }),
-    setRemoteAccess: mutationOptions({
-      mutationKey: ['setRemoteAccess'],
-      mutationFn: (input: Parameters<typeof commands.setRemoteAccess>) =>
-        commands.setRemoteAccess(...input),
-    }),
-    resetRemoteAccessTls: mutationOptions({
-      mutationKey: ['resetRemoteAccessTls'],
-      mutationFn: (input: Parameters<typeof commands.resetRemoteAccessTls>) =>
-        commands.resetRemoteAccessTls(...input),
-    }),
-    createHttpLaunchUrl: mutationOptions({
-      mutationKey: ['createHttpLaunchUrl'],
-      mutationFn: (input: Parameters<typeof commands.createHttpLaunchUrl>) =>
-        commands.createHttpLaunchUrl(...input),
-    }),
-    createRemoteAccessToken: mutationOptions({
-      mutationKey: ['createRemoteAccessToken'],
-      mutationFn: (
-        input: Parameters<typeof commands.createRemoteAccessToken>,
-      ) => commands.createRemoteAccessToken(...input),
-    }),
-    revokeRemoteAccessToken: mutationOptions({
-      mutationKey: ['revokeRemoteAccessToken'],
-      mutationFn: (
-        input: Parameters<typeof commands.revokeRemoteAccessToken>,
-      ) => commands.revokeRemoteAccessToken(...input),
-    }),
-    revokeRemoteBrowserSession: mutationOptions({
-      mutationKey: ['revokeRemoteBrowserSession'],
-      mutationFn: (
-        input: Parameters<typeof commands.revokeRemoteBrowserSession>,
-      ) => commands.revokeRemoteBrowserSession(...input),
-    }),
-    selectProxy: mutationOptions({
-      mutationKey: ['selectProxy'],
-      mutationFn: (input: Parameters<typeof commands.selectProxy>) =>
-        commands.selectProxy(...input),
-    }),
-    clearProxyFixed: mutationOptions({
-      mutationKey: ['clearProxyFixed'],
-      mutationFn: (input: Parameters<typeof commands.clearProxyFixed>) =>
-        commands.clearProxyFixed(...input),
-    }),
-    updateProxyProvider: mutationOptions({
-      mutationKey: ['updateProxyProvider'],
-      mutationFn: (input: Parameters<typeof commands.updateProxyProvider>) =>
-        commands.updateProxyProvider(...input),
-    }),
-    clashApiHealthcheckProxyProvider: mutationOptions({
-      mutationKey: ['clashApiHealthcheckProxyProvider'],
-      mutationFn: (
-        input: Parameters<typeof commands.clashApiHealthcheckProxyProvider>,
-      ) => commands.clashApiHealthcheckProxyProvider(...input),
-    }),
-    restartApplication: mutationOptions({
-      mutationKey: ['restartApplication'],
-      mutationFn: (input: Parameters<typeof commands.restartApplication>) =>
-        commands.restartApplication(...input),
-    }),
-    setTrayIcon: mutationOptions({
-      mutationKey: ['setTrayIcon'],
-      mutationFn: (input: Parameters<typeof commands.setTrayIcon>) =>
-        commands.setTrayIcon(...input),
-    }),
-    setWidgetIcon: mutationOptions({
-      mutationKey: ['setWidgetIcon'],
-      mutationFn: (input: Parameters<typeof commands.setWidgetIcon>) =>
-        commands.setWidgetIcon(...input),
-    }),
-    openThat: mutationOptions({
-      mutationKey: ['openThat'],
-      mutationFn: (input: Parameters<typeof commands.openThat>) =>
-        commands.openThat(...input),
-    }),
-    setStorageItem: mutationOptions({
-      mutationKey: ['setStorageItem'],
-      mutationFn: (input: Parameters<typeof commands.setStorageItem>) =>
-        commands.setStorageItem(...input),
-    }),
-    removeStorageItem: mutationOptions({
-      mutationKey: ['removeStorageItem'],
-      mutationFn: (input: Parameters<typeof commands.removeStorageItem>) =>
-        commands.removeStorageItem(...input),
-    }),
-    clearStorage: mutationOptions({
-      mutationKey: ['clearStorage'],
-      mutationFn: (input: Parameters<typeof commands.clearStorage>) =>
-        commands.clearStorage(...input),
-    }),
-    setHotkeys: mutationOptions({
-      mutationKey: ['setHotkeys'],
-      mutationFn: (input: Parameters<typeof commands.setHotkeys>) =>
-        commands.setHotkeys(...input),
-    }),
-    mutateProxies: mutationOptions({
-      mutationKey: ['mutateProxies'],
-      mutationFn: (input: Parameters<typeof commands.mutateProxies>) =>
-        commands.mutateProxies(...input),
-    }),
-    setClashWsRecording: mutationOptions({
-      mutationKey: ['setClashWsRecording'],
-      mutationFn: (input: Parameters<typeof commands.setClashWsRecording>) =>
-        commands.setClashWsRecording(...input),
-    }),
-    clearClashWsHistory: mutationOptions({
-      mutationKey: ['clearClashWsHistory'],
-      mutationFn: (input: Parameters<typeof commands.clearClashWsHistory>) =>
-        commands.clearClashWsHistory(...input),
-    }),
-    saveWindowSizeState: mutationOptions({
-      mutationKey: ['saveWindowSizeState'],
-      mutationFn: (input: Parameters<typeof commands.saveWindowSizeState>) =>
-        commands.saveWindowSizeState(...input),
-    }),
-    createMainWindow: mutationOptions({
-      mutationKey: ['createMainWindow'],
-      mutationFn: (input: Parameters<typeof commands.createMainWindow>) =>
-        commands.createMainWindow(...input),
-    }),
-    createDebugTrayMenuWindow: mutationOptions({
-      mutationKey: ['createDebugTrayMenuWindow'],
-      mutationFn: (
-        input: Parameters<typeof commands.createDebugTrayMenuWindow>,
-      ) => commands.createDebugTrayMenuWindow(...input),
-    }),
-    simulateCrash: mutationOptions({
-      mutationKey: ['simulateCrash'],
-      mutationFn: (input: Parameters<typeof commands.simulateCrash>) =>
-        commands.simulateCrash(...input),
-    }),
-    createEditorWindow: mutationOptions({
-      mutationKey: ['createEditorWindow'],
-      mutationFn: (input: Parameters<typeof commands.createEditorWindow>) =>
-        commands.createEditorWindow(...input),
-    }),
-    reportWindowReady: mutationOptions({
-      mutationKey: ['reportWindowReady'],
-      mutationFn: (input: Parameters<typeof commands.reportWindowReady>) =>
-        commands.reportWindowReady(...input),
-    }),
-    copyClashEnv: mutationOptions({
-      mutationKey: ['copyClashEnv'],
-      mutationFn: (input: Parameters<typeof commands.copyClashEnv>) =>
-        commands.copyClashEnv(...input),
-    }),
-    quitApplication: mutationOptions({
-      mutationKey: ['quitApplication'],
-      mutationFn: (input: Parameters<typeof commands.quitApplication>) =>
-        commands.quitApplication(...input),
-    }),
-    configureSync: mutationOptions({
-      mutationKey: ['configureSync'],
-      mutationFn: (input: Parameters<typeof commands.configureSync>) =>
-        commands.configureSync(...input),
-    }),
-    testSyncConnection: mutationOptions({
-      mutationKey: ['testSyncConnection'],
-      mutationFn: (input: Parameters<typeof commands.testSyncConnection>) =>
-        commands.testSyncConnection(...input),
-    }),
-    enableSync: mutationOptions({
-      mutationKey: ['enableSync'],
-      mutationFn: (input: Parameters<typeof commands.enableSync>) =>
-        commands.enableSync(...input),
-    }),
-    disableSync: mutationOptions({
-      mutationKey: ['disableSync'],
-      mutationFn: (input: Parameters<typeof commands.disableSync>) =>
-        commands.disableSync(...input),
-    }),
-    syncNow: mutationOptions({
-      mutationKey: ['syncNow'],
-      mutationFn: (input: Parameters<typeof commands.syncNow>) =>
-        commands.syncNow(...input),
-    }),
-    resolveSyncConflict: mutationOptions({
-      mutationKey: ['resolveSyncConflict'],
-      mutationFn: (input: Parameters<typeof commands.resolveSyncConflict>) =>
-        commands.resolveSyncConflict(...input),
-    }),
-    restoreSyncSnapshot: mutationOptions({
-      mutationKey: ['restoreSyncSnapshot'],
-      mutationFn: (input: Parameters<typeof commands.restoreSyncSnapshot>) =>
-        commands.restoreSyncSnapshot(...input),
-    }),
+  const queryKeys = {
+    rpcDescribe: (
+      ...args: Partial<Parameters<typeof commands.rpcDescribe>>
+    ) => ['rpcDescribe', ...args],
+    getHttpServerStatus: (
+      ...args: Partial<Parameters<typeof commands.getHttpServerStatus>>
+    ) => ['getHttpServerStatus', ...args],
+    getLocalSocketStatus: (
+      ...args: Partial<Parameters<typeof commands.getLocalSocketStatus>>
+    ) => ['getLocalSocketStatus', ...args],
+    listLocalNetworks: (
+      ...args: Partial<Parameters<typeof commands.listLocalNetworks>>
+    ) => ['listLocalNetworks', ...args],
+    getRemoteAccessCertificate: (
+      ...args: Partial<Parameters<typeof commands.getRemoteAccessCertificate>>
+    ) => ['getRemoteAccessCertificate', ...args],
+    getConfigurationStatus: (
+      ...args: Partial<Parameters<typeof commands.getConfigurationStatus>>
+    ) => ['getConfigurationStatus', ...args],
+    getConfigurationStatusSummary: (
+      ...args: Partial<
+        Parameters<typeof commands.getConfigurationStatusSummary>
+      >
+    ) => ['getConfigurationStatusSummary', ...args],
+    getServiceStatusSummary: (
+      ...args: Partial<Parameters<typeof commands.getServiceStatusSummary>>
+    ) => ['getServiceStatusSummary', ...args],
+    getCoreStatusSummary: (
+      ...args: Partial<Parameters<typeof commands.getCoreStatusSummary>>
+    ) => ['getCoreStatusSummary', ...args],
+    readClipboardText: (
+      ...args: Partial<Parameters<typeof commands.readClipboardText>>
+    ) => ['readClipboardText', ...args],
+    queryCoreLogs: (
+      ...args: Partial<Parameters<typeof commands.queryCoreLogs>>
+    ) => ['queryCoreLogs', ...args],
+    queryCoreLogsSummary: (
+      ...args: Partial<Parameters<typeof commands.queryCoreLogsSummary>>
+    ) => ['queryCoreLogsSummary', ...args],
+    getCoreLog: (...args: Partial<Parameters<typeof commands.getCoreLog>>) => [
+      'getCoreLog',
+      ...args,
+    ],
+    getCoreLogStatus: (
+      ...args: Partial<Parameters<typeof commands.getCoreLogStatus>>
+    ) => ['getCoreLogStatus', ...args],
+    getCoreLogStatusSummary: (
+      ...args: Partial<Parameters<typeof commands.getCoreLogStatusSummary>>
+    ) => ['getCoreLogStatusSummary', ...args],
+    listLogFiles: (
+      ...args: Partial<Parameters<typeof commands.listLogFiles>>
+    ) => ['listLogFiles', ...args],
+    getSysProxy: (
+      ...args: Partial<Parameters<typeof commands.getSysProxy>>
+    ) => ['getSysProxy', ...args],
+    getClashInfo: (
+      ...args: Partial<Parameters<typeof commands.getClashInfo>>
+    ) => ['getClashInfo', ...args],
+    getRuntimeConfig: (
+      ...args: Partial<Parameters<typeof commands.getRuntimeConfig>>
+    ) => ['getRuntimeConfig', ...args],
+    getRuntimeYaml: (
+      ...args: Partial<Parameters<typeof commands.getRuntimeYaml>>
+    ) => ['getRuntimeYaml', ...args],
+    getRuntimeExists: (
+      ...args: Partial<Parameters<typeof commands.getRuntimeExists>>
+    ) => ['getRuntimeExists', ...args],
+    inspectRuntime: (
+      ...args: Partial<Parameters<typeof commands.inspectRuntime>>
+    ) => ['inspectRuntime', ...args],
+    inspectAppliedRuntime: (
+      ...args: Partial<Parameters<typeof commands.inspectAppliedRuntime>>
+    ) => ['inspectAppliedRuntime', ...args],
+    inspectRuntimeNode: (
+      ...args: Partial<Parameters<typeof commands.inspectRuntimeNode>>
+    ) => ['inspectRuntimeNode', ...args],
+    getPostprocessingOutput: (
+      ...args: Partial<Parameters<typeof commands.getPostprocessingOutput>>
+    ) => ['getPostprocessingOutput', ...args],
+    clashApiGetProxyDelay: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetProxyDelay>>
+    ) => ['clashApiGetProxyDelay', ...args],
+    clashApiGetSettings: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetSettings>>
+    ) => ['clashApiGetSettings', ...args],
+    clashApiGetConfigs: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetConfigs>>
+    ) => ['clashApiGetConfigs', ...args],
+    clashApiGetVersion: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetVersion>>
+    ) => ['clashApiGetVersion', ...args],
+    clashApiGetRules: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetRules>>
+    ) => ['clashApiGetRules', ...args],
+    clashApiGetProvidersRules: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetProvidersRules>>
+    ) => ['clashApiGetProvidersRules', ...args],
+    clashApiGetGroupDelay: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetGroupDelay>>
+    ) => ['clashApiGetGroupDelay', ...args],
+    clashApiGetProvidersProxies: (
+      ...args: Partial<Parameters<typeof commands.clashApiGetProvidersProxies>>
+    ) => ['clashApiGetProvidersProxies', ...args],
+    fetchLatestCoreVersions: (
+      ...args: Partial<Parameters<typeof commands.fetchLatestCoreVersions>>
+    ) => ['fetchLatestCoreVersions', ...args],
+    inspectUpdater: (
+      ...args: Partial<Parameters<typeof commands.inspectUpdater>>
+    ) => ['inspectUpdater', ...args],
+    inspectUpdaterSummary: (
+      ...args: Partial<Parameters<typeof commands.inspectUpdaterSummary>>
+    ) => ['inspectUpdaterSummary', ...args],
+    getCoreVersion: (
+      ...args: Partial<Parameters<typeof commands.getCoreVersion>>
+    ) => ['getCoreVersion', ...args],
+    getAppSettings: (
+      ...args: Partial<Parameters<typeof commands.getAppSettings>>
+    ) => ['getAppSettings', ...args],
+    getAppConfig: (
+      ...args: Partial<Parameters<typeof commands.getAppConfig>>
+    ) => ['getAppConfig', ...args],
+    getClashSettings: (
+      ...args: Partial<Parameters<typeof commands.getClashSettings>>
+    ) => ['getClashSettings', ...args],
+    getClashConfig: (
+      ...args: Partial<Parameters<typeof commands.getClashConfig>>
+    ) => ['getClashConfig', ...args],
+    getConfigFeatures: (
+      ...args: Partial<Parameters<typeof commands.getConfigFeatures>>
+    ) => ['getConfigFeatures', ...args],
+    getIpLookupProviders: (
+      ...args: Partial<Parameters<typeof commands.getIpLookupProviders>>
+    ) => ['getIpLookupProviders', ...args],
+    getHotkeyFunctions: (
+      ...args: Partial<Parameters<typeof commands.getHotkeyFunctions>>
+    ) => ['getHotkeyFunctions', ...args],
+    getProfiles: (
+      ...args: Partial<Parameters<typeof commands.getProfiles>>
+    ) => ['getProfiles', ...args],
+    getProfilesListing: (
+      ...args: Partial<Parameters<typeof commands.getProfilesListing>>
+    ) => ['getProfilesListing', ...args],
+    probeProfileUrl: (
+      ...args: Partial<Parameters<typeof commands.probeProfileUrl>>
+    ) => ['probeProfileUrl', ...args],
+    getProfileSyncStatus: (
+      ...args: Partial<Parameters<typeof commands.getProfileSyncStatus>>
+    ) => ['getProfileSyncStatus', ...args],
+    getProfileSyncRuns: (
+      ...args: Partial<Parameters<typeof commands.getProfileSyncRuns>>
+    ) => ['getProfileSyncRuns', ...args],
+    getProfileSyncStatusSummary: (
+      ...args: Partial<Parameters<typeof commands.getProfileSyncStatusSummary>>
+    ) => ['getProfileSyncStatusSummary', ...args],
+    getProfileSyncRunsSummary: (
+      ...args: Partial<Parameters<typeof commands.getProfileSyncRunsSummary>>
+    ) => ['getProfileSyncRunsSummary', ...args],
+    getProfileSyncLogs: (
+      ...args: Partial<Parameters<typeof commands.getProfileSyncLogs>>
+    ) => ['getProfileSyncLogs', ...args],
+    readProfileFile: (
+      ...args: Partial<Parameters<typeof commands.readProfileFile>>
+    ) => ['readProfileFile', ...args],
+    getCustomAppDir: (
+      ...args: Partial<Parameters<typeof commands.getCustomAppDir>>
+    ) => ['getCustomAppDir', ...args],
+    statusService: (
+      ...args: Partial<Parameters<typeof commands.statusService>>
+    ) => ['statusService', ...args],
+    isPortable: (...args: Partial<Parameters<typeof commands.isPortable>>) => [
+      'isPortable',
+      ...args,
+    ],
+    getProxies: (...args: Partial<Parameters<typeof commands.getProxies>>) => [
+      'getProxies',
+      ...args,
+    ],
+    getProxyGroupIcons: (
+      ...args: Partial<Parameters<typeof commands.getProxyGroupIcons>>
+    ) => ['getProxyGroupIcons', ...args],
+    isTrayIconSet: (
+      ...args: Partial<Parameters<typeof commands.isTrayIconSet>>
+    ) => ['isTrayIconSet', ...args],
+    isWidgetIconSet: (
+      ...args: Partial<Parameters<typeof commands.isWidgetIconSet>>
+    ) => ['isWidgetIconSet', ...args],
+    getCoreStatus: (
+      ...args: Partial<Parameters<typeof commands.getCoreStatus>>
+    ) => ['getCoreStatus', ...args],
+    getNetworkAutomationStatus: (
+      ...args: Partial<Parameters<typeof commands.getNetworkAutomationStatus>>
+    ) => ['getNetworkAutomationStatus', ...args],
+    urlDelayTest: (
+      ...args: Partial<Parameters<typeof commands.urlDelayTest>>
+    ) => ['urlDelayTest', ...args],
+    getIpsbAsn: (...args: Partial<Parameters<typeof commands.getIpsbAsn>>) => [
+      'getIpsbAsn',
+      ...args,
+    ],
+    isAppimage: (...args: Partial<Parameters<typeof commands.isAppimage>>) => [
+      'isAppimage',
+      ...args,
+    ],
+    getServiceInstallPrompt: (
+      ...args: Partial<Parameters<typeof commands.getServiceInstallPrompt>>
+    ) => ['getServiceInstallPrompt', ...args],
+    getStorageItem: (
+      ...args: Partial<Parameters<typeof commands.getStorageItem>>
+    ) => ['getStorageItem', ...args],
+    getAllStorageItems: (
+      ...args: Partial<Parameters<typeof commands.getAllStorageItems>>
+    ) => ['getAllStorageItems', ...args],
+    getHotkeys: (...args: Partial<Parameters<typeof commands.getHotkeys>>) => [
+      'getHotkeys',
+      ...args,
+    ],
+    getCoreDir: (...args: Partial<Parameters<typeof commands.getCoreDir>>) => [
+      'getCoreDir',
+      ...args,
+    ],
+    getCoreAgentSkills: (
+      ...args: Partial<Parameters<typeof commands.getCoreAgentSkills>>
+    ) => ['getCoreAgentSkills', ...args],
+    getCoreAgentSkillsSummary: (
+      ...args: Partial<Parameters<typeof commands.getCoreAgentSkillsSummary>>
+    ) => ['getCoreAgentSkillsSummary', ...args],
+    getClashWsSnapshot: (
+      ...args: Partial<Parameters<typeof commands.getClashWsSnapshot>>
+    ) => ['getClashWsSnapshot', ...args],
+    getTrafficSummary: (
+      ...args: Partial<Parameters<typeof commands.getTrafficSummary>>
+    ) => ['getTrafficSummary', ...args],
+    queryTrafficReport: (
+      ...args: Partial<Parameters<typeof commands.queryTrafficReport>>
+    ) => ['queryTrafficReport', ...args],
+    queryTrafficUsage: (
+      ...args: Partial<Parameters<typeof commands.queryTrafficUsage>>
+    ) => ['queryTrafficUsage', ...args],
+    queryTrafficUsageByKeys: (
+      ...args: Partial<Parameters<typeof commands.queryTrafficUsageByKeys>>
+    ) => ['queryTrafficUsageByKeys', ...args],
+    queryTrafficClosedConnections: (
+      ...args: Partial<
+        Parameters<typeof commands.queryTrafficClosedConnections>
+      >
+    ) => ['queryTrafficClosedConnections', ...args],
+    queryTrafficActiveConnectionIds: (
+      ...args: Partial<
+        Parameters<typeof commands.queryTrafficActiveConnectionIds>
+      >
+    ) => ['queryTrafficActiveConnectionIds', ...args],
+    getAppUpdateState: (
+      ...args: Partial<Parameters<typeof commands.getAppUpdateState>>
+    ) => ['getAppUpdateState', ...args],
+    getAppUpdateSummary: (
+      ...args: Partial<Parameters<typeof commands.getAppUpdateSummary>>
+    ) => ['getAppUpdateSummary', ...args],
+    getAppUpdateChangelog: (
+      ...args: Partial<Parameters<typeof commands.getAppUpdateChangelog>>
+    ) => ['getAppUpdateChangelog', ...args],
+    getReleaseChannel: (
+      ...args: Partial<Parameters<typeof commands.getReleaseChannel>>
+    ) => ['getReleaseChannel', ...args],
+    getSystemAccentColor: (
+      ...args: Partial<Parameters<typeof commands.getSystemAccentColor>>
+    ) => ['getSystemAccentColor', ...args],
+    getTransparentProxyStatus: (
+      ...args: Partial<Parameters<typeof commands.getTransparentProxyStatus>>
+    ) => ['getTransparentProxyStatus', ...args],
+    getTransparentProxyStatusSummary: (
+      ...args: Partial<
+        Parameters<typeof commands.getTransparentProxyStatusSummary>
+      >
+    ) => ['getTransparentProxyStatusSummary', ...args],
+    getTransparentProxyDiagnostics: (
+      ...args: Partial<
+        Parameters<typeof commands.getTransparentProxyDiagnostics>
+      >
+    ) => ['getTransparentProxyDiagnostics', ...args],
+    listRemoteAccessTokens: (
+      ...args: Partial<Parameters<typeof commands.listRemoteAccessTokens>>
+    ) => ['listRemoteAccessTokens', ...args],
+    listRemoteBrowserSessions: (
+      ...args: Partial<Parameters<typeof commands.listRemoteBrowserSessions>>
+    ) => ['listRemoteBrowserSessions', ...args],
+    getSyncStatus: (
+      ...args: Partial<Parameters<typeof commands.getSyncStatus>>
+    ) => ['getSyncStatus', ...args],
+    getSyncSettings: (
+      ...args: Partial<Parameters<typeof commands.getSyncSettings>>
+    ) => ['getSyncSettings', ...args],
+    getSyncProviderKinds: (
+      ...args: Partial<Parameters<typeof commands.getSyncProviderKinds>>
+    ) => ['getSyncProviderKinds', ...args],
+    listSyncConflicts: (
+      ...args: Partial<Parameters<typeof commands.listSyncConflicts>>
+    ) => ['listSyncConflicts', ...args],
+    listSyncSnapshots: (
+      ...args: Partial<Parameters<typeof commands.listSyncSnapshots>>
+    ) => ['listSyncSnapshots', ...args],
   }
-
-  return { queries, mutations }
+  const mutations = {
+    writeClipboardText: () =>
+      mutationOptions({
+        mutationKey: ['writeClipboardText'],
+        mutationFn: (input: {
+          text: Parameters<typeof commands.writeClipboardText>[0]
+        }) => commands.writeClipboardText(input.text),
+      }),
+    showNativeNotification: () =>
+      mutationOptions({
+        mutationKey: ['showNativeNotification'],
+        mutationFn: (input: {
+          title: Parameters<typeof commands.showNativeNotification>[0]
+          body: Parameters<typeof commands.showNativeNotification>[1]
+        }) => commands.showNativeNotification(input.title, input.body),
+      }),
+    showNativeMessageDialog: () =>
+      mutationOptions({
+        mutationKey: ['showNativeMessageDialog'],
+        mutationFn: (input: {
+          message: Parameters<typeof commands.showNativeMessageDialog>[0]
+          title: Parameters<typeof commands.showNativeMessageDialog>[1]
+          kind: Parameters<typeof commands.showNativeMessageDialog>[2]
+          buttons: Parameters<typeof commands.showNativeMessageDialog>[3]
+        }) =>
+          commands.showNativeMessageDialog(
+            input.message,
+            input.title,
+            input.kind,
+            input.buttons,
+          ),
+      }),
+    askNativeDialog: () =>
+      mutationOptions({
+        mutationKey: ['askNativeDialog'],
+        mutationFn: (input: {
+          message: Parameters<typeof commands.askNativeDialog>[0]
+          title: Parameters<typeof commands.askNativeDialog>[1]
+          kind: Parameters<typeof commands.askNativeDialog>[2]
+        }) => commands.askNativeDialog(input.message, input.title, input.kind),
+      }),
+    openNativeFileDialog: () =>
+      mutationOptions({
+        mutationKey: ['openNativeFileDialog'],
+        mutationFn: (input: {
+          title: Parameters<typeof commands.openNativeFileDialog>[0]
+          filters: Parameters<typeof commands.openNativeFileDialog>[1]
+        }) => commands.openNativeFileDialog(input.title, input.filters),
+      }),
+    retryConfigurationRuntime: () =>
+      mutationOptions({
+        mutationKey: ['retryConfigurationRuntime'],
+        mutationFn: () => commands.retryConfigurationRuntime(),
+      }),
+    retryConfigurationEffect: () =>
+      mutationOptions({
+        mutationKey: ['retryConfigurationEffect'],
+        mutationFn: (input: {
+          kind: Parameters<typeof commands.retryConfigurationEffect>[0]
+        }) => commands.retryConfigurationEffect(input.kind),
+      }),
+    setReleaseChannel: () =>
+      mutationOptions({
+        mutationKey: ['setReleaseChannel'],
+        mutationFn: (input: {
+          channel: Parameters<typeof commands.setReleaseChannel>[0]
+        }) => commands.setReleaseChannel(input.channel),
+      }),
+    checkAppUpdate: () =>
+      mutationOptions({
+        mutationKey: ['checkAppUpdate'],
+        mutationFn: () => commands.checkAppUpdate(),
+      }),
+    downloadAppUpdate: () =>
+      mutationOptions({
+        mutationKey: ['downloadAppUpdate'],
+        mutationFn: () => commands.downloadAppUpdate(),
+      }),
+    cancelAppUpdateDownload: () =>
+      mutationOptions({
+        mutationKey: ['cancelAppUpdateDownload'],
+        mutationFn: () => commands.cancelAppUpdateDownload(),
+      }),
+    installAppUpdate: () =>
+      mutationOptions({
+        mutationKey: ['installAppUpdate'],
+        mutationFn: () => commands.installAppUpdate(),
+      }),
+    discardAppUpdatePackage: () =>
+      mutationOptions({
+        mutationKey: ['discardAppUpdatePackage'],
+        mutationFn: () => commands.discardAppUpdatePackage(),
+      }),
+    subscribeClashConnectionDetails: () =>
+      mutationOptions({
+        mutationKey: ['subscribeClashConnectionDetails'],
+        mutationFn: (input: {
+          onFrame: Parameters<
+            typeof commands.subscribeClashConnectionDetails
+          >[0]
+        }) => commands.subscribeClashConnectionDetails(input.onFrame),
+      }),
+    unsubscribeClashConnectionDetails: () =>
+      mutationOptions({
+        mutationKey: ['unsubscribeClashConnectionDetails'],
+        mutationFn: (input: {
+          id: Parameters<typeof commands.unsubscribeClashConnectionDetails>[0]
+        }) => commands.unsubscribeClashConnectionDetails(input.id),
+      }),
+    probeDirectEgress: () =>
+      mutationOptions({
+        mutationKey: ['probeDirectEgress'],
+        mutationFn: () => commands.probeDirectEgress(),
+      }),
+    testStunServer: () =>
+      mutationOptions({
+        mutationKey: ['testStunServer'],
+        mutationFn: (input: {
+          host: Parameters<typeof commands.testStunServer>[0]
+          port: Parameters<typeof commands.testStunServer>[1]
+        }) => commands.testStunServer(input.host, input.port),
+      }),
+    clearCoreLogs: () =>
+      mutationOptions({
+        mutationKey: ['clearCoreLogs'],
+        mutationFn: () => commands.clearCoreLogs(),
+      }),
+    openLogSession: () =>
+      mutationOptions({
+        mutationKey: ['openLogSession'],
+        mutationFn: (input: {
+          source: Parameters<typeof commands.openLogSession>[0]
+          request: Parameters<typeof commands.openLogSession>[1]
+        }) => commands.openLogSession(input.source, input.request),
+      }),
+    queryLogs: () =>
+      mutationOptions({
+        mutationKey: ['queryLogs'],
+        mutationFn: (input: {
+          source: Parameters<typeof commands.queryLogs>[0]
+          request: Parameters<typeof commands.queryLogs>[1]
+        }) => commands.queryLogs(input.source, input.request),
+      }),
+    queryLogsSummary: () =>
+      mutationOptions({
+        mutationKey: ['queryLogsSummary'],
+        mutationFn: (input: {
+          source: Parameters<typeof commands.queryLogsSummary>[0]
+          request: Parameters<typeof commands.queryLogsSummary>[1]
+        }) => commands.queryLogsSummary(input.source, input.request),
+      }),
+    closeLogSession: () =>
+      mutationOptions({
+        mutationKey: ['closeLogSession'],
+        mutationFn: (input: {
+          source: Parameters<typeof commands.closeLogSession>[0]
+          session: Parameters<typeof commands.closeLogSession>[1]
+        }) => commands.closeLogSession(input.source, input.session),
+      }),
+    reportFrontendEvents: () =>
+      mutationOptions({
+        mutationKey: ['reportFrontendEvents'],
+        mutationFn: (input: {
+          batch: Parameters<typeof commands.reportFrontendEvents>[0]
+        }) => commands.reportFrontendEvents(input.batch),
+      }),
+    flushSystemDnsCache: () =>
+      mutationOptions({
+        mutationKey: ['flushSystemDnsCache'],
+        mutationFn: () => commands.flushSystemDnsCache(),
+      }),
+    openAppConfigDir: () =>
+      mutationOptions({
+        mutationKey: ['openAppConfigDir'],
+        mutationFn: () => commands.openAppConfigDir(),
+      }),
+    openAppDataDir: () =>
+      mutationOptions({
+        mutationKey: ['openAppDataDir'],
+        mutationFn: () => commands.openAppDataDir(),
+      }),
+    openBackupsDir: () =>
+      mutationOptions({
+        mutationKey: ['openBackupsDir'],
+        mutationFn: () => commands.openBackupsDir(),
+      }),
+    createConfigBackup: () =>
+      mutationOptions({
+        mutationKey: ['createConfigBackup'],
+        mutationFn: () => commands.createConfigBackup(),
+      }),
+    openLogsDir: () =>
+      mutationOptions({
+        mutationKey: ['openLogsDir'],
+        mutationFn: () => commands.openLogsDir(),
+      }),
+    openWebUrl: () =>
+      mutationOptions({
+        mutationKey: ['openWebUrl'],
+        mutationFn: (input: {
+          url: Parameters<typeof commands.openWebUrl>[0]
+        }) => commands.openWebUrl(input.url),
+      }),
+    openRemoteAccessCertificate: () =>
+      mutationOptions({
+        mutationKey: ['openRemoteAccessCertificate'],
+        mutationFn: () => commands.openRemoteAccessCertificate(),
+      }),
+    exportRemoteAccessAuthority: () =>
+      mutationOptions({
+        mutationKey: ['exportRemoteAccessAuthority'],
+        mutationFn: () => commands.exportRemoteAccessAuthority(),
+      }),
+    openCoreDir: () =>
+      mutationOptions({
+        mutationKey: ['openCoreDir'],
+        mutationFn: () => commands.openCoreDir(),
+      }),
+    installCli: () =>
+      mutationOptions({
+        mutationKey: ['installCli'],
+        mutationFn: () => commands.installCli(),
+      }),
+    restartSidecar: () =>
+      mutationOptions({
+        mutationKey: ['restartSidecar'],
+        mutationFn: () => commands.restartSidecar(),
+      }),
+    patchAppConfig: () =>
+      mutationOptions({
+        mutationKey: ['patchAppConfig'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchAppConfig>[0]
+        }) => commands.patchAppConfig(input.patch),
+      }),
+    patchSystemSettings: () =>
+      mutationOptions({
+        mutationKey: ['patchSystemSettings'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchSystemSettings>[0]
+        }) => commands.patchSystemSettings(input.patch),
+      }),
+    patchClashConfig: () =>
+      mutationOptions({
+        mutationKey: ['patchClashConfig'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchClashConfig>[0]
+        }) => commands.patchClashConfig(input.patch),
+      }),
+    patchClashSystemConfig: () =>
+      mutationOptions({
+        mutationKey: ['patchClashSystemConfig'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchClashSystemConfig>[0]
+        }) => commands.patchClashSystemConfig(input.patch),
+      }),
+    applyNetworkAutomation: () =>
+      mutationOptions({
+        mutationKey: ['applyNetworkAutomation'],
+        mutationFn: () => commands.applyNetworkAutomation(),
+      }),
+    requestWifiNameAccess: () =>
+      mutationOptions({
+        mutationKey: ['requestWifiNameAccess'],
+        mutationFn: () => commands.requestWifiNameAccess(),
+      }),
+    patchRuntimeOverrides: () =>
+      mutationOptions({
+        mutationKey: ['patchRuntimeOverrides'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchRuntimeOverrides>[0]
+        }) => commands.patchRuntimeOverrides(input.patch),
+      }),
+    patchRuntimeAccess: () =>
+      mutationOptions({
+        mutationKey: ['patchRuntimeAccess'],
+        mutationFn: (input: {
+          patch: Parameters<typeof commands.patchRuntimeAccess>[0]
+        }) => commands.patchRuntimeAccess(input.patch),
+      }),
+    setProxyMode: () =>
+      mutationOptions({
+        mutationKey: ['setProxyMode'],
+        mutationFn: (input: {
+          mode: Parameters<typeof commands.setProxyMode>[0]
+        }) => commands.setProxyMode(input.mode),
+      }),
+    changeClashCore: () =>
+      mutationOptions({
+        mutationKey: ['changeClashCore'],
+        mutationFn: (input: {
+          clashCore: Parameters<typeof commands.changeClashCore>[0]
+        }) => commands.changeClashCore(input.clashCore),
+      }),
+    clashApiDeleteConnections: () =>
+      mutationOptions({
+        mutationKey: ['clashApiDeleteConnections'],
+        mutationFn: (input: {
+          id: Parameters<typeof commands.clashApiDeleteConnections>[0]
+        }) => commands.clashApiDeleteConnections(input.id),
+      }),
+    clashApiUpdateProvidersRules: () =>
+      mutationOptions({
+        mutationKey: ['clashApiUpdateProvidersRules'],
+        mutationFn: (input: {
+          name: Parameters<typeof commands.clashApiUpdateProvidersRules>[0]
+        }) => commands.clashApiUpdateProvidersRules(input.name),
+      }),
+    invokeUwpTool: () =>
+      mutationOptions({
+        mutationKey: ['invokeUwpTool'],
+        mutationFn: () => commands.invokeUwpTool(),
+      }),
+    updateCore: () =>
+      mutationOptions({
+        mutationKey: ['updateCore'],
+        mutationFn: (input: {
+          coreType: Parameters<typeof commands.updateCore>[0]
+        }) => commands.updateCore(input.coreType),
+      }),
+    collectLogs: () =>
+      mutationOptions({
+        mutationKey: ['collectLogs'],
+        mutationFn: () => commands.collectLogs(),
+      }),
+    reportIssue: () =>
+      mutationOptions({
+        mutationKey: ['reportIssue'],
+        mutationFn: (input: {
+          page: Parameters<typeof commands.reportIssue>[0]
+        }) => commands.reportIssue(input.page),
+      }),
+    setTrayIconFromBytes: () =>
+      mutationOptions({
+        mutationKey: ['setTrayIconFromBytes'],
+        mutationFn: (input: {
+          mode: Parameters<typeof commands.setTrayIconFromBytes>[0]
+          bytesBase64: Parameters<typeof commands.setTrayIconFromBytes>[1]
+        }) => commands.setTrayIconFromBytes(input.mode, input.bytesBase64),
+      }),
+    setWidgetIconFromBytes: () =>
+      mutationOptions({
+        mutationKey: ['setWidgetIconFromBytes'],
+        mutationFn: (input: {
+          mode: Parameters<typeof commands.setWidgetIconFromBytes>[0]
+          bytesBase64: Parameters<typeof commands.setWidgetIconFromBytes>[1]
+        }) => commands.setWidgetIconFromBytes(input.mode, input.bytesBase64),
+      }),
+    enhanceProfiles: () =>
+      mutationOptions({
+        mutationKey: ['enhanceProfiles'],
+        mutationFn: () => commands.enhanceProfiles(),
+      }),
+    importProfile: () =>
+      mutationOptions({
+        mutationKey: ['importProfile'],
+        mutationFn: (input: {
+          url: Parameters<typeof commands.importProfile>[0]
+          name: Parameters<typeof commands.importProfile>[1]
+          option: Parameters<typeof commands.importProfile>[2]
+          transform: Parameters<typeof commands.importProfile>[3]
+          folder: Parameters<typeof commands.importProfile>[4]
+        }) =>
+          commands.importProfile(
+            input.url,
+            input.name,
+            input.option,
+            input.transform,
+            input.folder,
+          ),
+      }),
+    takePendingDeepLinks: () =>
+      mutationOptions({
+        mutationKey: ['takePendingDeepLinks'],
+        mutationFn: () => commands.takePendingDeepLinks(),
+      }),
+    createProfile: () =>
+      mutationOptions({
+        mutationKey: ['createProfile'],
+        mutationFn: (input: {
+          request: Parameters<typeof commands.createProfile>[0]
+          fileData: Parameters<typeof commands.createProfile>[1]
+        }) => commands.createProfile(input.request, input.fileData),
+      }),
+    reorderProfile: () =>
+      mutationOptions({
+        mutationKey: ['reorderProfile'],
+        mutationFn: (input: {
+          activeId: Parameters<typeof commands.reorderProfile>[0]
+          overId: Parameters<typeof commands.reorderProfile>[1]
+        }) => commands.reorderProfile(input.activeId, input.overId),
+      }),
+    reorderProfilesByList: () =>
+      mutationOptions({
+        mutationKey: ['reorderProfilesByList'],
+        mutationFn: (input: {
+          list: Parameters<typeof commands.reorderProfilesByList>[0]
+        }) => commands.reorderProfilesByList(input.list),
+      }),
+    setProfileLayout: () =>
+      mutationOptions({
+        mutationKey: ['setProfileLayout'],
+        mutationFn: (input: {
+          layout: Parameters<typeof commands.setProfileLayout>[0]
+        }) => commands.setProfileLayout(input.layout),
+      }),
+    createProfileFolder: () =>
+      mutationOptions({
+        mutationKey: ['createProfileFolder'],
+        mutationFn: (input: {
+          name: Parameters<typeof commands.createProfileFolder>[0]
+          members: Parameters<typeof commands.createProfileFolder>[1]
+        }) => commands.createProfileFolder(input.name, input.members),
+      }),
+    setProxyGroupLayout: () =>
+      mutationOptions({
+        mutationKey: ['setProxyGroupLayout'],
+        mutationFn: (input: {
+          profile: Parameters<typeof commands.setProxyGroupLayout>[0]
+          layout: Parameters<typeof commands.setProxyGroupLayout>[1]
+        }) => commands.setProxyGroupLayout(input.profile, input.layout),
+      }),
+    createProxyGroupFolder: () =>
+      mutationOptions({
+        mutationKey: ['createProxyGroupFolder'],
+        mutationFn: (input: {
+          profile: Parameters<typeof commands.createProxyGroupFolder>[0]
+          name: Parameters<typeof commands.createProxyGroupFolder>[1]
+          members: Parameters<typeof commands.createProxyGroupFolder>[2]
+        }) =>
+          commands.createProxyGroupFolder(
+            input.profile,
+            input.name,
+            input.members,
+          ),
+      }),
+    updateProfile: () =>
+      mutationOptions({
+        mutationKey: ['updateProfile'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.updateProfile>[0]
+          option: Parameters<typeof commands.updateProfile>[1]
+        }) => commands.updateProfile(input.uid, input.option),
+      }),
+    deleteProfile: () =>
+      mutationOptions({
+        mutationKey: ['deleteProfile'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.deleteProfile>[0]
+        }) => commands.deleteProfile(input.uid),
+      }),
+    activateProfile: () =>
+      mutationOptions({
+        mutationKey: ['activateProfile'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.activateProfile>[0]
+        }) => commands.activateProfile(input.uid),
+      }),
+    setGlobalTransforms: () =>
+      mutationOptions({
+        mutationKey: ['setGlobalTransforms'],
+        mutationFn: (input: {
+          ids: Parameters<typeof commands.setGlobalTransforms>[0]
+        }) => commands.setGlobalTransforms(input.ids),
+      }),
+    setProfileValidFields: () =>
+      mutationOptions({
+        mutationKey: ['setProfileValidFields'],
+        mutationFn: (input: {
+          fields: Parameters<typeof commands.setProfileValidFields>[0]
+        }) => commands.setProfileValidFields(input.fields),
+      }),
+    patchProfileMetadata: () =>
+      mutationOptions({
+        mutationKey: ['patchProfileMetadata'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.patchProfileMetadata>[0]
+          patch: Parameters<typeof commands.patchProfileMetadata>[1]
+        }) => commands.patchProfileMetadata(input.uid, input.patch),
+      }),
+    patchRemoteProfileOptions: () =>
+      mutationOptions({
+        mutationKey: ['patchRemoteProfileOptions'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.patchRemoteProfileOptions>[0]
+          patch: Parameters<typeof commands.patchRemoteProfileOptions>[1]
+        }) => commands.patchRemoteProfileOptions(input.uid, input.patch),
+      }),
+    replaceProfileDefinition: () =>
+      mutationOptions({
+        mutationKey: ['replaceProfileDefinition'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.replaceProfileDefinition>[0]
+          definition: Parameters<typeof commands.replaceProfileDefinition>[1]
+        }) => commands.replaceProfileDefinition(input.uid, input.definition),
+      }),
+    viewProfile: () =>
+      mutationOptions({
+        mutationKey: ['viewProfile'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.viewProfile>[0]
+        }) => commands.viewProfile(input.uid),
+      }),
+    saveProfileFile: () =>
+      mutationOptions({
+        mutationKey: ['saveProfileFile'],
+        mutationFn: (input: {
+          uid: Parameters<typeof commands.saveProfileFile>[0]
+          fileData: Parameters<typeof commands.saveProfileFile>[1]
+        }) => commands.saveProfileFile(input.uid, input.fileData),
+      }),
+    setCustomAppDir: () =>
+      mutationOptions({
+        mutationKey: ['setCustomAppDir'],
+        mutationFn: (input: {
+          path: Parameters<typeof commands.setCustomAppDir>[0]
+        }) => commands.setCustomAppDir(input.path),
+      }),
+    installService: () =>
+      mutationOptions({
+        mutationKey: ['installService'],
+        mutationFn: () => commands.installService(),
+      }),
+    uninstallService: () =>
+      mutationOptions({
+        mutationKey: ['uninstallService'],
+        mutationFn: () => commands.uninstallService(),
+      }),
+    startService: () =>
+      mutationOptions({
+        mutationKey: ['startService'],
+        mutationFn: () => commands.startService(),
+      }),
+    stopService: () =>
+      mutationOptions({
+        mutationKey: ['stopService'],
+        mutationFn: () => commands.stopService(),
+      }),
+    restartService: () =>
+      mutationOptions({
+        mutationKey: ['restartService'],
+        mutationFn: () => commands.restartService(),
+      }),
+    setServiceMode: () =>
+      mutationOptions({
+        mutationKey: ['setServiceMode'],
+        mutationFn: (input: {
+          enabled: Parameters<typeof commands.setServiceMode>[0]
+        }) => commands.setServiceMode(input.enabled),
+      }),
+    setRemoteAccess: () =>
+      mutationOptions({
+        mutationKey: ['setRemoteAccess'],
+        mutationFn: (input: {
+          config: Parameters<typeof commands.setRemoteAccess>[0]
+        }) => commands.setRemoteAccess(input.config),
+      }),
+    resetRemoteAccessTls: () =>
+      mutationOptions({
+        mutationKey: ['resetRemoteAccessTls'],
+        mutationFn: () => commands.resetRemoteAccessTls(),
+      }),
+    createHttpLaunchUrl: () =>
+      mutationOptions({
+        mutationKey: ['createHttpLaunchUrl'],
+        mutationFn: () => commands.createHttpLaunchUrl(),
+      }),
+    createRemoteAccessToken: () =>
+      mutationOptions({
+        mutationKey: ['createRemoteAccessToken'],
+        mutationFn: (input: {
+          request: Parameters<typeof commands.createRemoteAccessToken>[0]
+        }) => commands.createRemoteAccessToken(input.request),
+      }),
+    revokeRemoteAccessToken: () =>
+      mutationOptions({
+        mutationKey: ['revokeRemoteAccessToken'],
+        mutationFn: (input: {
+          id: Parameters<typeof commands.revokeRemoteAccessToken>[0]
+        }) => commands.revokeRemoteAccessToken(input.id),
+      }),
+    revokeRemoteBrowserSession: () =>
+      mutationOptions({
+        mutationKey: ['revokeRemoteBrowserSession'],
+        mutationFn: (input: {
+          id: Parameters<typeof commands.revokeRemoteBrowserSession>[0]
+        }) => commands.revokeRemoteBrowserSession(input.id),
+      }),
+    selectProxy: () =>
+      mutationOptions({
+        mutationKey: ['selectProxy'],
+        mutationFn: (input: {
+          group: Parameters<typeof commands.selectProxy>[0]
+          name: Parameters<typeof commands.selectProxy>[1]
+        }) => commands.selectProxy(input.group, input.name),
+      }),
+    clearProxyFixed: () =>
+      mutationOptions({
+        mutationKey: ['clearProxyFixed'],
+        mutationFn: (input: {
+          group: Parameters<typeof commands.clearProxyFixed>[0]
+        }) => commands.clearProxyFixed(input.group),
+      }),
+    updateProxyProvider: () =>
+      mutationOptions({
+        mutationKey: ['updateProxyProvider'],
+        mutationFn: (input: {
+          name: Parameters<typeof commands.updateProxyProvider>[0]
+        }) => commands.updateProxyProvider(input.name),
+      }),
+    clashApiHealthcheckProxyProvider: () =>
+      mutationOptions({
+        mutationKey: ['clashApiHealthcheckProxyProvider'],
+        mutationFn: (input: {
+          name: Parameters<typeof commands.clashApiHealthcheckProxyProvider>[0]
+        }) => commands.clashApiHealthcheckProxyProvider(input.name),
+      }),
+    restartApplication: () =>
+      mutationOptions({
+        mutationKey: ['restartApplication'],
+        mutationFn: () => commands.restartApplication(),
+      }),
+    setTrayIcon: () =>
+      mutationOptions({
+        mutationKey: ['setTrayIcon'],
+        mutationFn: (input: {
+          mode: Parameters<typeof commands.setTrayIcon>[0]
+          path: Parameters<typeof commands.setTrayIcon>[1]
+        }) => commands.setTrayIcon(input.mode, input.path),
+      }),
+    setWidgetIcon: () =>
+      mutationOptions({
+        mutationKey: ['setWidgetIcon'],
+        mutationFn: (input: {
+          mode: Parameters<typeof commands.setWidgetIcon>[0]
+          path: Parameters<typeof commands.setWidgetIcon>[1]
+        }) => commands.setWidgetIcon(input.mode, input.path),
+      }),
+    openThat: () =>
+      mutationOptions({
+        mutationKey: ['openThat'],
+        mutationFn: (input: {
+          path: Parameters<typeof commands.openThat>[0]
+        }) => commands.openThat(input.path),
+      }),
+    setStorageItem: () =>
+      mutationOptions({
+        mutationKey: ['setStorageItem'],
+        mutationFn: (input: {
+          key: Parameters<typeof commands.setStorageItem>[0]
+          value: Parameters<typeof commands.setStorageItem>[1]
+        }) => commands.setStorageItem(input.key, input.value),
+      }),
+    removeStorageItem: () =>
+      mutationOptions({
+        mutationKey: ['removeStorageItem'],
+        mutationFn: (input: {
+          key: Parameters<typeof commands.removeStorageItem>[0]
+        }) => commands.removeStorageItem(input.key),
+      }),
+    clearStorage: () =>
+      mutationOptions({
+        mutationKey: ['clearStorage'],
+        mutationFn: () => commands.clearStorage(),
+      }),
+    setHotkeys: () =>
+      mutationOptions({
+        mutationKey: ['setHotkeys'],
+        mutationFn: (input: {
+          hotkeys: Parameters<typeof commands.setHotkeys>[0]
+        }) => commands.setHotkeys(input.hotkeys),
+      }),
+    mutateProxies: () =>
+      mutationOptions({
+        mutationKey: ['mutateProxies'],
+        mutationFn: () => commands.mutateProxies(),
+      }),
+    setClashWsRecording: () =>
+      mutationOptions({
+        mutationKey: ['setClashWsRecording'],
+        mutationFn: (input: {
+          kind: Parameters<typeof commands.setClashWsRecording>[0]
+          enabled: Parameters<typeof commands.setClashWsRecording>[1]
+        }) => commands.setClashWsRecording(input.kind, input.enabled),
+      }),
+    clearClashWsHistory: () =>
+      mutationOptions({
+        mutationKey: ['clearClashWsHistory'],
+        mutationFn: (input: {
+          kind: Parameters<typeof commands.clearClashWsHistory>[0]
+        }) => commands.clearClashWsHistory(input.kind),
+      }),
+    saveWindowSizeState: () =>
+      mutationOptions({
+        mutationKey: ['saveWindowSizeState'],
+        mutationFn: (input: {
+          label: Parameters<typeof commands.saveWindowSizeState>[0]
+        }) => commands.saveWindowSizeState(input.label),
+      }),
+    createMainWindow: () =>
+      mutationOptions({
+        mutationKey: ['createMainWindow'],
+        mutationFn: () => commands.createMainWindow(),
+      }),
+    createDebugTrayMenuWindow: () =>
+      mutationOptions({
+        mutationKey: ['createDebugTrayMenuWindow'],
+        mutationFn: () => commands.createDebugTrayMenuWindow(),
+      }),
+    simulateCrash: () =>
+      mutationOptions({
+        mutationKey: ['simulateCrash'],
+        mutationFn: (input: {
+          mainThread: Parameters<typeof commands.simulateCrash>[0]
+        }) => commands.simulateCrash(input.mainThread),
+      }),
+    createEditorWindow: () =>
+      mutationOptions({
+        mutationKey: ['createEditorWindow'],
+        mutationFn: (input: {
+          windowType: Parameters<typeof commands.createEditorWindow>[0]
+          uid: Parameters<typeof commands.createEditorWindow>[1]
+        }) => commands.createEditorWindow(input.windowType, input.uid),
+      }),
+    reportWindowReady: () =>
+      mutationOptions({
+        mutationKey: ['reportWindowReady'],
+        mutationFn: () => commands.reportWindowReady(),
+      }),
+    copyClashEnv: () =>
+      mutationOptions({
+        mutationKey: ['copyClashEnv'],
+        mutationFn: (input: {
+          envType: Parameters<typeof commands.copyClashEnv>[0]
+        }) => commands.copyClashEnv(input.envType),
+      }),
+    quitApplication: () =>
+      mutationOptions({
+        mutationKey: ['quitApplication'],
+        mutationFn: () => commands.quitApplication(),
+      }),
+    configureSync: () =>
+      mutationOptions({
+        mutationKey: ['configureSync'],
+        mutationFn: (input: {
+          settings: Parameters<typeof commands.configureSync>[0]
+          secrets: Parameters<typeof commands.configureSync>[1]
+        }) => commands.configureSync(input.settings, input.secrets),
+      }),
+    testSyncConnection: () =>
+      mutationOptions({
+        mutationKey: ['testSyncConnection'],
+        mutationFn: (input: {
+          settings: Parameters<typeof commands.testSyncConnection>[0]
+          secrets: Parameters<typeof commands.testSyncConnection>[1]
+        }) => commands.testSyncConnection(input.settings, input.secrets),
+      }),
+    enableSync: () =>
+      mutationOptions({
+        mutationKey: ['enableSync'],
+        mutationFn: () => commands.enableSync(),
+      }),
+    disableSync: () =>
+      mutationOptions({
+        mutationKey: ['disableSync'],
+        mutationFn: () => commands.disableSync(),
+      }),
+    syncNow: () =>
+      mutationOptions({
+        mutationKey: ['syncNow'],
+        mutationFn: () => commands.syncNow(),
+      }),
+    resolveSyncConflict: () =>
+      mutationOptions({
+        mutationKey: ['resolveSyncConflict'],
+        mutationFn: (input: {
+          conflictId: Parameters<typeof commands.resolveSyncConflict>[0]
+          choice: Parameters<typeof commands.resolveSyncConflict>[1]
+        }) => commands.resolveSyncConflict(input.conflictId, input.choice),
+      }),
+    restoreSyncSnapshot: () =>
+      mutationOptions({
+        mutationKey: ['restoreSyncSnapshot'],
+        mutationFn: (input: {
+          snapshotId: Parameters<typeof commands.restoreSyncSnapshot>[0]
+        }) => commands.restoreSyncSnapshot(input.snapshotId),
+      }),
+  }
+  const mutationKeys = {
+    writeClipboardText: () => ['writeClipboardText'],
+    showNativeNotification: () => ['showNativeNotification'],
+    showNativeMessageDialog: () => ['showNativeMessageDialog'],
+    askNativeDialog: () => ['askNativeDialog'],
+    openNativeFileDialog: () => ['openNativeFileDialog'],
+    retryConfigurationRuntime: () => ['retryConfigurationRuntime'],
+    retryConfigurationEffect: () => ['retryConfigurationEffect'],
+    setReleaseChannel: () => ['setReleaseChannel'],
+    checkAppUpdate: () => ['checkAppUpdate'],
+    downloadAppUpdate: () => ['downloadAppUpdate'],
+    cancelAppUpdateDownload: () => ['cancelAppUpdateDownload'],
+    installAppUpdate: () => ['installAppUpdate'],
+    discardAppUpdatePackage: () => ['discardAppUpdatePackage'],
+    subscribeClashConnectionDetails: () => ['subscribeClashConnectionDetails'],
+    unsubscribeClashConnectionDetails: () => [
+      'unsubscribeClashConnectionDetails',
+    ],
+    probeDirectEgress: () => ['probeDirectEgress'],
+    testStunServer: () => ['testStunServer'],
+    clearCoreLogs: () => ['clearCoreLogs'],
+    openLogSession: () => ['openLogSession'],
+    queryLogs: () => ['queryLogs'],
+    queryLogsSummary: () => ['queryLogsSummary'],
+    closeLogSession: () => ['closeLogSession'],
+    reportFrontendEvents: () => ['reportFrontendEvents'],
+    flushSystemDnsCache: () => ['flushSystemDnsCache'],
+    openAppConfigDir: () => ['openAppConfigDir'],
+    openAppDataDir: () => ['openAppDataDir'],
+    openBackupsDir: () => ['openBackupsDir'],
+    createConfigBackup: () => ['createConfigBackup'],
+    openLogsDir: () => ['openLogsDir'],
+    openWebUrl: () => ['openWebUrl'],
+    openRemoteAccessCertificate: () => ['openRemoteAccessCertificate'],
+    exportRemoteAccessAuthority: () => ['exportRemoteAccessAuthority'],
+    openCoreDir: () => ['openCoreDir'],
+    installCli: () => ['installCli'],
+    restartSidecar: () => ['restartSidecar'],
+    patchAppConfig: () => ['patchAppConfig'],
+    patchSystemSettings: () => ['patchSystemSettings'],
+    patchClashConfig: () => ['patchClashConfig'],
+    patchClashSystemConfig: () => ['patchClashSystemConfig'],
+    applyNetworkAutomation: () => ['applyNetworkAutomation'],
+    requestWifiNameAccess: () => ['requestWifiNameAccess'],
+    patchRuntimeOverrides: () => ['patchRuntimeOverrides'],
+    patchRuntimeAccess: () => ['patchRuntimeAccess'],
+    setProxyMode: () => ['setProxyMode'],
+    changeClashCore: () => ['changeClashCore'],
+    clashApiDeleteConnections: () => ['clashApiDeleteConnections'],
+    clashApiUpdateProvidersRules: () => ['clashApiUpdateProvidersRules'],
+    invokeUwpTool: () => ['invokeUwpTool'],
+    updateCore: () => ['updateCore'],
+    collectLogs: () => ['collectLogs'],
+    reportIssue: () => ['reportIssue'],
+    setTrayIconFromBytes: () => ['setTrayIconFromBytes'],
+    setWidgetIconFromBytes: () => ['setWidgetIconFromBytes'],
+    enhanceProfiles: () => ['enhanceProfiles'],
+    importProfile: () => ['importProfile'],
+    takePendingDeepLinks: () => ['takePendingDeepLinks'],
+    createProfile: () => ['createProfile'],
+    reorderProfile: () => ['reorderProfile'],
+    reorderProfilesByList: () => ['reorderProfilesByList'],
+    setProfileLayout: () => ['setProfileLayout'],
+    createProfileFolder: () => ['createProfileFolder'],
+    setProxyGroupLayout: () => ['setProxyGroupLayout'],
+    createProxyGroupFolder: () => ['createProxyGroupFolder'],
+    updateProfile: () => ['updateProfile'],
+    deleteProfile: () => ['deleteProfile'],
+    activateProfile: () => ['activateProfile'],
+    setGlobalTransforms: () => ['setGlobalTransforms'],
+    setProfileValidFields: () => ['setProfileValidFields'],
+    patchProfileMetadata: () => ['patchProfileMetadata'],
+    patchRemoteProfileOptions: () => ['patchRemoteProfileOptions'],
+    replaceProfileDefinition: () => ['replaceProfileDefinition'],
+    viewProfile: () => ['viewProfile'],
+    saveProfileFile: () => ['saveProfileFile'],
+    setCustomAppDir: () => ['setCustomAppDir'],
+    installService: () => ['installService'],
+    uninstallService: () => ['uninstallService'],
+    startService: () => ['startService'],
+    stopService: () => ['stopService'],
+    restartService: () => ['restartService'],
+    setServiceMode: () => ['setServiceMode'],
+    setRemoteAccess: () => ['setRemoteAccess'],
+    resetRemoteAccessTls: () => ['resetRemoteAccessTls'],
+    createHttpLaunchUrl: () => ['createHttpLaunchUrl'],
+    createRemoteAccessToken: () => ['createRemoteAccessToken'],
+    revokeRemoteAccessToken: () => ['revokeRemoteAccessToken'],
+    revokeRemoteBrowserSession: () => ['revokeRemoteBrowserSession'],
+    selectProxy: () => ['selectProxy'],
+    clearProxyFixed: () => ['clearProxyFixed'],
+    updateProxyProvider: () => ['updateProxyProvider'],
+    clashApiHealthcheckProxyProvider: () => [
+      'clashApiHealthcheckProxyProvider',
+    ],
+    restartApplication: () => ['restartApplication'],
+    setTrayIcon: () => ['setTrayIcon'],
+    setWidgetIcon: () => ['setWidgetIcon'],
+    openThat: () => ['openThat'],
+    setStorageItem: () => ['setStorageItem'],
+    removeStorageItem: () => ['removeStorageItem'],
+    clearStorage: () => ['clearStorage'],
+    setHotkeys: () => ['setHotkeys'],
+    mutateProxies: () => ['mutateProxies'],
+    setClashWsRecording: () => ['setClashWsRecording'],
+    clearClashWsHistory: () => ['clearClashWsHistory'],
+    saveWindowSizeState: () => ['saveWindowSizeState'],
+    createMainWindow: () => ['createMainWindow'],
+    createDebugTrayMenuWindow: () => ['createDebugTrayMenuWindow'],
+    simulateCrash: () => ['simulateCrash'],
+    createEditorWindow: () => ['createEditorWindow'],
+    reportWindowReady: () => ['reportWindowReady'],
+    copyClashEnv: () => ['copyClashEnv'],
+    quitApplication: () => ['quitApplication'],
+    configureSync: () => ['configureSync'],
+    testSyncConnection: () => ['testSyncConnection'],
+    enableSync: () => ['enableSync'],
+    disableSync: () => ['disableSync'],
+    syncNow: () => ['syncNow'],
+    resolveSyncConflict: () => ['resolveSyncConflict'],
+    restoreSyncSnapshot: () => ['restoreSyncSnapshot'],
+  }
+  return { queries, mutations, queryKeys, mutationKeys }
 }

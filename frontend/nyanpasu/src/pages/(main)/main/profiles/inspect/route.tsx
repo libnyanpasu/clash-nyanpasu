@@ -17,7 +17,7 @@ import { useOpenProfile, useProfileLookup } from '@/components/profile-label'
 import { keepReturn } from '@/components/router/cross-navigation'
 import { m } from '@/paraglide/messages'
 import { events, queries } from '@/services/rpc'
-import { unwrapQueryOptions, useKvStorage } from '@nyanpasu/query'
+import { useKvStorage } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import {
   useQuery,
@@ -103,7 +103,7 @@ function RouteComponent() {
       ? queries.inspectAppliedRuntime()
       : queries.inspectRuntime()
   const inspection = useQuery({
-    ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
+    ...inspectionQuery,
     refetchOnWindowFocus: false,
     retry: false,
   })

@@ -12,7 +12,6 @@ import {
   MutationUnconfirmedError,
   sourceMessage,
 } from '@nyanpasu/query'
-import { unwrapResult } from '@nyanpasu/rpc'
 import {
   type ConfigurationStatus,
   type ConvergenceHealth,
@@ -177,16 +176,14 @@ export default function ConfigurationStatus() {
 
   const retry = useMutation({
     mutationFn: async (kind?: EffectKind) =>
-      unwrapResult(
-        await invokeMutation(
-          {
-            mutationFn: () =>
-              kind
-                ? commands.retryConfigurationEffect(kind)
-                : commands.retryConfigurationRuntime(),
-          },
-          undefined,
-        ),
+      await invokeMutation(
+        {
+          mutationFn: () =>
+            kind
+              ? commands.retryConfigurationEffect(kind)
+              : commands.retryConfigurationRuntime(),
+        },
+        undefined,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: STATUS_KEY }),
   })

@@ -12,6 +12,7 @@ import ManagedGuardFieldSelector from './_modules/managed-guard-field-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/core/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_core_settings() } },
 })
 
 const CoreBehaviorSettings = () => {
@@ -59,9 +60,7 @@ const ConnectionSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_core_settings()}
-      </PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

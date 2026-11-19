@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { rpcDomainError, RpcFailure, unwrapResult } from '@nyanpasu/rpc'
+import { rpcDomainError, RpcFailure } from '@nyanpasu/rpc'
 import {
   type Filter,
   type LogCursor,
@@ -80,7 +80,7 @@ export function useFileLogs(
       let delay = 1000
       try {
         if (!session) {
-          const files = unwrapResult(await api.listLogFiles(source))
+          const files = await api.listLogFiles(source)
           if (disposed) return
           setView((value) => ({ ...value, files }))
           if (!files.length) {
@@ -88,12 +88,10 @@ export function useFileLogs(
             delay = 1000
             return
           }
-          const opened = unwrapResult(
-            await api.openLogSession(source, {
-              request_id: crypto.randomUUID(),
-              file,
-            }),
-          )
+          const opened = await api.openLogSession(source, {
+            request_id: crypto.randomUUID(),
+            file,
+          })
           if (disposed) {
             close(opened.id)
             return
@@ -103,15 +101,13 @@ export function useFileLogs(
         const direction =
           requestOlder && older && !floor ? 'before' : tail ? 'after' : 'latest'
         const requestEpoch = epoch
-        const page = unwrapResult(
-          await api.queryLogs(source, {
-            session,
-            filter: currentFilter,
-            direction,
-            cursor: direction === 'before' ? older : tail,
-            limit: 200,
-          }),
-        )
+        const page = await api.queryLogs(source, {
+          session,
+          filter: currentFilter,
+          direction,
+          cursor: direction === 'before' ? older : tail,
+          limit: 200,
+        })
         if (disposed) return
         if (requestEpoch !== epoch) return
         failures = 0

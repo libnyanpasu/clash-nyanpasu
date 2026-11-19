@@ -4,7 +4,6 @@ import { m } from '@/paraglide/messages'
 import { commands, events } from '@/services/rpc'
 import { parseInstallConfigDeepLink, receiveDeepLinks } from '@/utils/deep-link'
 import { message } from '@/utils/notification'
-import { unwrapResult } from '@nyanpasu/rpc'
 
 // Guard against duplicate registration across React StrictMode's double-mount
 // and against multiple hook consumers: only one global listener should exist.
@@ -78,7 +77,7 @@ export function useDeepLinkImport() {
             listenerRegistered = false
             throw error
           }),
-        take: async () => unwrapResult(await commands.takePendingDeepLinks()),
+        take: async () => await commands.takePendingDeepLinks(),
       },
       handleDeepLink,
       (error) => {

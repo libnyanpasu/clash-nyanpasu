@@ -17,8 +17,8 @@ export interface IconSetStore {
     Omit<LazyImageProps, 'src'> & { mode: TrayIcon; version?: number }
   >
   isSetQuery: typeof queries.isTrayIconSet
-  setIcon: typeof mutations.setTrayIcon
-  setIconFromBytes: typeof mutations.setTrayIconFromBytes
+  setIcon: ReturnType<typeof mutations.setTrayIcon>
+  setIconFromBytes: ReturnType<typeof mutations.setTrayIconFromBytes>
   /** Identifies the icon set in preset detection. */
   kind: 'tray' | 'widget'
   isSetKey: string
@@ -36,8 +36,8 @@ export const TRAY_ICON_STORE: IconSetStore = {
   useIcon: useTrayIcon,
   Image: TrayImage,
   isSetQuery: (mode) => queries.isTrayIconSet(mode),
-  setIcon: mutations.setTrayIcon,
-  setIconFromBytes: mutations.setTrayIconFromBytes,
+  setIcon: mutations.setTrayIcon(),
+  setIconFromBytes: mutations.setTrayIconFromBytes(),
   kind: 'tray',
   isSetKey: 'isTrayIconSet',
   presets: false,

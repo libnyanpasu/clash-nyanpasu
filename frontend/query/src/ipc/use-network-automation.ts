@@ -1,11 +1,10 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   NetworkAutomationStatus,
   RpcNetworkAutomationStatus,
 } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
-import { invokeMutation, unwrapQueryOptions } from './query-options'
+import { invokeMutation } from './query-options'
 import { useFullSystemSetting } from './use-settings'
 
 /** The status is read by polling: the host has no network-change event. */
@@ -46,19 +45,18 @@ export const useNetworkAutomationStatus = () => {
   const api = useQueryApi()
   const queryClient = useQueryClient()
   const statusQuery = api.queries.getNetworkAutomationStatus()
-  const applyMutation = api.mutations.applyNetworkAutomation
-  const requestMutation = api.mutations.requestWifiNameAccess
+  const applyMutation = api.mutations.applyNetworkAutomation()
+  const requestMutation = api.mutations.requestWifiNameAccess()
 
   const query = useQuery({
-    ...unwrapQueryOptions(statusQuery, statusQuery.queryFn!),
+    ...statusQuery,
     refetchInterval: STATUS_REFETCH_INTERVAL,
   })
 
   // Applying writes the capture switches, so their settings are read again.
   const applyNow = useMutation({
     mutationKey: applyMutation.mutationKey,
-    mutationFn: async () =>
-      unwrapResult(await invokeMutation(applyMutation, [])),
+    mutationFn: async () => await invokeMutation(applyMutation),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: statusQuery.queryKey }),
@@ -77,7 +75,7 @@ export const useNetworkAutomationStatus = () => {
   const requestWifiName = useMutation({
     mutationKey: requestMutation.mutationKey,
     mutationFn: async () =>
-      networkReadingOf(unwrapResult(await invokeMutation(requestMutation, []))),
+      networkReadingOf(await invokeMutation(requestMutation)),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: statusQuery.queryKey }),
   })

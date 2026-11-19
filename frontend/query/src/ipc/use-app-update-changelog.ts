@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import { skipToken, useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 
@@ -11,7 +10,7 @@ export const useAppUpdateChangelog = (from: string, to: string | undefined) => {
     queryFn:
       to == null
         ? skipToken
-        : async () => unwrapResult(await api.getAppUpdateChangelog(from, to)),
+        : async () => await api.getAppUpdateChangelog(from, to),
     // Published notes rarely change; reopening the dialog should not refetch.
     staleTime: Infinity,
     retry: false,

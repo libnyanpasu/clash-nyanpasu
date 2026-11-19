@@ -65,7 +65,7 @@ function RouteComponent() {
       navigate({
         // The current child page, whichever it is.
         to: '.',
-        search: (previous: TrafficSearch) => ({
+        search: (previous) => ({
           ...previous,
           ...update,
           view: undefined,

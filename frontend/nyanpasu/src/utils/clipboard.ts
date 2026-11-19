@@ -1,6 +1,5 @@
 import { commands } from '@/services/rpc'
 import { detectRuntime } from '@nyanpasu/platform'
-import { unwrapResult } from '@nyanpasu/rpc'
 
 export const readClipboardText = async () => {
   const runtime = detectRuntime()
@@ -8,7 +7,7 @@ export const readClipboardText = async () => {
     return navigator.clipboard.readText()
   if (runtime.bridge !== 'tauri')
     throw new Error('Clipboard is unavailable in this runtime')
-  return unwrapResult(await commands.readClipboardText())
+  return await commands.readClipboardText()
 }
 
 export const writeClipboardText = async (text: string) => {
@@ -17,5 +16,5 @@ export const writeClipboardText = async (text: string) => {
     return navigator.clipboard.writeText(text)
   if (runtime.bridge !== 'tauri')
     throw new Error('Clipboard is unavailable in this runtime')
-  return unwrapResult(await commands.writeClipboardText(text))
+  return await commands.writeClipboardText(text)
 }

@@ -6,12 +6,7 @@ import {
   detectRuntime,
   showWebNotification,
 } from '@nyanpasu/platform'
-import {
-  isIpcError,
-  rpcDomainError,
-  RpcFailure,
-  unwrapResult,
-} from '@nyanpasu/rpc'
+import { isIpcError, rpcDomainError, RpcFailure } from '@nyanpasu/rpc'
 import type { NativeDialogButtons, NativeDialogKind } from '@nyanpasu/rpc/types'
 import { formatError } from './index'
 import { profileDialogLabel, profileMessageParts } from './profile-label'
@@ -40,7 +35,7 @@ export const notification = async ({ title, body }: NotificationOptions) => {
   if (
     runtime.platform.surface === 'desktop' &&
     runtime.platform.clientOs === 'windows' &&
-    unwrapResult(await commands.isPortable())
+    (await commands.isPortable())
   ) {
     await message(body ? `${title}: ${body}` : title, {
       title: 'Clash Nyanpasu',
@@ -50,7 +45,7 @@ export const notification = async ({ title, body }: NotificationOptions) => {
 
   if (runtime.bridge !== 'tauri')
     throw new Error('Notifications are unavailable in this runtime')
-  unwrapResult(await commands.showNativeNotification(title, body ?? null))
+  await commands.showNativeNotification(title, body ?? null)
 }
 
 type MessageButtons =
@@ -124,7 +119,7 @@ export const ask = async (
 
   const title = typeof options === 'string' ? options : (options?.title ?? null)
   const kind = typeof options === 'string' ? 'info' : (options?.kind ?? 'info')
-  return unwrapResult(await commands.askNativeDialog(value, title, kind))
+  return await commands.askNativeDialog(value, title, kind)
 }
 
 export const message = async (
@@ -195,13 +190,11 @@ export const message = async (
       : dialog?.title
         ? `Clash Nyanpasu - ${dialog.title}`
         : 'Clash Nyanpasu'
-  unwrapResult(
-    await commands.showNativeMessageDialog(
-      value,
-      title,
-      dialog?.kind ?? 'info',
-      buttons,
-    ),
+  await commands.showNativeMessageDialog(
+    value,
+    title,
+    dialog?.kind ?? 'info',
+    buttons,
   )
 }
 
@@ -219,13 +212,11 @@ const showErrorMessage = async (
     ok: copyLabel,
     cancel: m.common_close(),
   }
-  const result = unwrapResult(
-    await commands.showNativeMessageDialog(
-      value,
-      title,
-      dialog?.kind ?? 'info',
-      buttons,
-    ),
+  const result = await commands.showNativeMessageDialog(
+    value,
+    title,
+    dialog?.kind ?? 'info',
+    buttons,
   )
   if (result === copyLabel) await writeClipboardText(details)
 }

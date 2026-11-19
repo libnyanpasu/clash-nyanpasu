@@ -1,4 +1,3 @@
-import { AnimatePresence } from 'motion/react'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import {
@@ -9,21 +8,14 @@ import { m } from '@/paraglide/messages'
 import { PlatformDesktop, PlatformLinux } from '@nyanpasu/platform/react'
 import { useNetworkAutomation, useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
+import { SettingsLinkRow } from '../../_modules/settings-link-row'
 import {
   SettingsCard,
-  SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
 } from '../../../_modules/settings-card'
 import CurrentSystemProxy from './_modules/current-system-proxy'
-import NetworkAutomationStatus from './_modules/network-automation-status'
-import NetworkAutomationSwitch from './_modules/network-automation-switch'
-import NetworkDefaultActions from './_modules/network-default-actions'
-import NetworkRuleList from './_modules/network-rule-list'
-import ProxyBypassConfig from './_modules/proxy-bypass-config'
-import ProxyGuardConfig from './_modules/proxy-guard-config'
-import ProxyGuardSwitch from './_modules/proxy-guard-switch'
 import ProxyModeSelector from './_modules/proxy-mode-selector'
 import TransparentProxyButton from './_modules/transparent-proxy-button'
 import TransparentProxyDiagnostics from './_modules/transparent-proxy-diagnostics'
@@ -58,81 +50,55 @@ const ProxyMode = () => {
   )
 }
 
-const ProxyGuard = () => {
-  const { value } = useSetting('enable_proxy_guard')
+const ProxyGuardEntry = () => {
+  const { value: enabled } = useSetting('enable_proxy_guard')
+  const { value: interval } = useSetting('proxy_guard_interval')
+
+  const description = enabled
+    ? `${m.common_enabled()} · ${m.settings_system_proxy_proxy_guard_entry_interval({ interval: interval || 1 })}`
+    : m.common_disabled()
 
   return (
-    <div data-slot="proxy-guard-container">
+    <div data-slot="proxy-guard-section">
       <SettingsLabel>
         {m.settings_system_proxy_proxy_guard_label()}
       </SettingsLabel>
 
-      <ReadOnlyScope permissions={['system:write']} banner={false}>
-        <SettingsGroup>
-          <SettingsCard>
-            <SettingsCardContent>
-              <ProxyGuardSwitch />
-            </SettingsCardContent>
-          </SettingsCard>
-
-          <AnimatePresence initial={false}>
-            {value && (
-              <SettingsCard asChild>
-                <SettingsCardAnimatedItem>
-                  <SettingsCardContent>
-                    <ProxyGuardConfig />
-
-                    <ProxyBypassConfig />
-                  </SettingsCardContent>
-                </SettingsCardAnimatedItem>
-              </SettingsCard>
-            )}
-          </AnimatePresence>
-        </SettingsGroup>
-      </ReadOnlyScope>
+      <SettingsGroup>
+        <SettingsLinkRow
+          to="/main/settings/system/proxy/guard"
+          title={m.settings_system_proxy_proxy_guard_switch_label()}
+          description={description}
+          data-slot="proxy-guard-entry"
+        />
+      </SettingsGroup>
     </div>
   )
 }
 
-const NetworkRules = () => {
+const NetworkRulesEntry = () => {
   const { policy } = useNetworkAutomation()
 
+  const enabled = Boolean(policy?.enabled)
+  const ruleCount = policy?.rules?.length ?? 0
+
+  const description = enabled
+    ? `${m.common_enabled()} · ${m.settings_system_proxy_network_automation_entry_rules({ count: ruleCount })}`
+    : m.common_disabled()
+
   return (
-    <div data-slot="network-automation-container">
+    <div data-slot="network-automation-section">
       <SettingsLabel>
         {m.settings_system_proxy_network_automation_label()}
       </SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <NetworkAutomationSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
-
-        <AnimatePresence initial={false}>
-          {policy?.enabled && (
-            <SettingsCard key="status" asChild>
-              <SettingsCardAnimatedItem>
-                <SettingsCardContent>
-                  <NetworkAutomationStatus />
-                </SettingsCardContent>
-              </SettingsCardAnimatedItem>
-            </SettingsCard>
-          )}
-
-          {policy?.enabled && <NetworkRuleList key="rules" />}
-
-          {policy?.enabled && (
-            <SettingsCard key="default-actions" asChild>
-              <SettingsCardAnimatedItem>
-                <SettingsCardContent>
-                  <NetworkDefaultActions />
-                </SettingsCardContent>
-              </SettingsCardAnimatedItem>
-            </SettingsCard>
-          )}
-        </AnimatePresence>
+        <SettingsLinkRow
+          to="/main/settings/system/proxy/network-rules"
+          title={m.settings_system_proxy_network_automation_switch_label()}
+          description={description}
+          data-slot="network-automation-entry"
+        />
       </SettingsGroup>
     </div>
   )
@@ -162,15 +128,15 @@ const CurrentProxy = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_proxy()}</PageTitle>
+      <PageTitle />
 
       <div className="space-y-4 px-4 pb-4">
         <ProxyMode />
 
-        <ProxyGuard />
+        <ProxyGuardEntry />
 
         <PlatformDesktop>
-          <NetworkRules />
+          <NetworkRulesEntry />
         </PlatformDesktop>
 
         <CurrentProxy />

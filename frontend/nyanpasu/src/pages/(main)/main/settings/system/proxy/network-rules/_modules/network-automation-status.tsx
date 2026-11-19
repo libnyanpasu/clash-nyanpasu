@@ -20,7 +20,7 @@ import {
   ItemLabel,
   ItemLabelDescription,
   ItemLabelText,
-} from '../../../../_modules/settings-card'
+} from '../../../../../_modules/settings-card'
 import { InterfaceKindIcon } from './interface-kind'
 import WifiNameNotice from './wifi-name-notice'
 

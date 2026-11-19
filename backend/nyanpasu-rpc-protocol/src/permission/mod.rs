@@ -161,6 +161,7 @@ mod tests {
                 "get_service_install_prompt",
                 "get_storage_item",
                 "get_sync_settings",
+                "get_transparent_proxy_diagnostics",
                 "get_transparent_proxy_status",
                 "inspect_applied_runtime",
                 "inspect_runtime",

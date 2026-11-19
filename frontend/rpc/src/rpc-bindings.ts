@@ -623,6 +623,16 @@ export function createRpcClient(
         undefined,
         options,
       ),
+    /**
+     *  Read-only Linux transparent proxy diagnostics. The value contains observed
+     *  host kernel objects, so it stays on the desktop and is marked sensitive.
+     */
+    getTransparentProxyDiagnostics: (options?: InvokeOptions) =>
+      __RPC_INVOKE<TransparentProxyDiagnostics_Serialize>(
+        'get_transparent_proxy_diagnostics',
+        undefined,
+        options,
+      ),
     listRemoteAccessTokens: (options?: InvokeOptions) =>
       __RPC_INVOKE<AccessTokenSummary_Serialize[]>(
         'list_remote_access_tokens',
@@ -7112,7 +7122,117 @@ export type NetworkStatisticWidgetLogo_Serialize = {
   source: NetworkStatisticWidgetLogoSource
 }
 
+/**  The capture scope last successfully applied by this service. */
+export type NetworkTransparentProxyAppliedScope = {
+  mode: NetworkTransparentProxyMode
+  port: number
+  local: boolean
+  interfaces: string[]
+  ipv6: boolean
+  /**  Derived from the mode: TPROXY captures TCP and UDP, REDIRECT only TCP. */
+  protocols: NetworkTransparentProxyProtocol[]
+}
+
+/**  The fixed bypass classes in the generated capture rules. */
+export type NetworkTransparentProxyBypass = {
+  /**  Root-owned local traffic is excluded from local capture. */
+  root_uid: boolean
+  /**  Destinations routed as local are excluded. */
+  local_destination: boolean
+  /**
+   *  Loopback, link-local, private, documentation, multicast and reserved
+   *  destinations are excluded.
+   */
+  private_reserved: boolean
+  /**  Core egress carrying the bypass mark is excluded. */
+  core_egress_mark: boolean
+}
+
+/**  A read-only snapshot of the service's applied scope and observed kernel objects. */
+export type NetworkTransparentProxyDiagnostics =
+  | NetworkTransparentProxyDiagnostics_Serialize
+  | NetworkTransparentProxyDiagnostics_Deserialize
+
+/**  A read-only snapshot of the service's applied scope and observed kernel objects. */
+export type NetworkTransparentProxyDiagnostics_Deserialize = {
+  supported: boolean
+  /**  The last applied scope, even when it is stale and awaiting cleanup. */
+  applied?: NetworkTransparentProxyAppliedScope | null
+  /**
+   *  The applied scope no longer matches the running core, or owned resources
+   *  remain without an applied scope.
+   */
+  stale: boolean
+  marks: NetworkTransparentProxyMarks
+  routing: NetworkTransparentProxyRouting
+  bypass: NetworkTransparentProxyBypass
+  objects: NetworkTransparentProxyObjectObservation[]
+}
+
+/**  A read-only snapshot of the service's applied scope and observed kernel objects. */
+export type NetworkTransparentProxyDiagnostics_Serialize = {
+  supported: boolean
+  /**  The last applied scope, even when it is stale and awaiting cleanup. */
+  applied: NetworkTransparentProxyAppliedScope | null
+  /**
+   *  The applied scope no longer matches the running core, or owned resources
+   *  remain without an applied scope.
+   */
+  stale: boolean
+  marks: NetworkTransparentProxyMarks
+  routing: NetworkTransparentProxyRouting
+  bypass: NetworkTransparentProxyBypass
+  objects: NetworkTransparentProxyObjectObservation[]
+}
+
+/**  The fixed packet marks and policy-routing identity used by transparent capture. */
+export type NetworkTransparentProxyMarks = {
+  capture_mark: number
+  capture_mask: number
+  egress_mark: number
+}
+
 export type NetworkTransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
+
+/**  One kernel object this service manages or expects for the applied capture scope. */
+export type NetworkTransparentProxyObject =
+  | 'nft_table'
+  | 'nft_output_chain'
+  | 'nft_prerouting_chain'
+  | 'nft_output_ipv4_capture'
+  | 'nft_output_ipv6_capture'
+  | 'nft_prerouting_ipv4_capture'
+  | 'nft_prerouting_ipv6_capture'
+  | 'policy_rule_ipv4'
+  | 'policy_rule_ipv6'
+  | 'policy_route_ipv4'
+  | 'policy_route_ipv6'
+
+export type NetworkTransparentProxyObjectObservation = {
+  object: NetworkTransparentProxyObject
+  /**  Whether the applied scope requires this object. */
+  expected: boolean
+  state: NetworkTransparentProxyObjectState
+}
+
+export type NetworkTransparentProxyObjectState =
+  | 'present'
+  | 'absent'
+  | 'foreign'
+  | 'read_error'
+  /**
+   *  The object is not part of this mode or configured scope (for example
+   *  policy routing while REDIRECT is active).
+   */
+  | 'not_applicable'
+
+export type NetworkTransparentProxyProtocol = 'tcp' | 'udp'
+
+/**  The policy-routing rule and table identifiers, displayed for diagnostics only. */
+export type NetworkTransparentProxyRouting = {
+  rule_priority: number
+  table: number
+}
 
 export type NetworkTransparentProxyStatus =
   | NetworkTransparentProxyStatus_Serialize
@@ -12262,6 +12382,35 @@ export type TransparentProxyConfig_Serialize = {
   interfaces: string[]
   ipv6: boolean
 }
+
+/**  Availability of the Linux service diagnostics endpoint. */
+export type TransparentProxyDiagnostics =
+  | TransparentProxyDiagnostics_Serialize
+  | TransparentProxyDiagnostics_Deserialize
+
+/**  Availability of the Linux service diagnostics endpoint. */
+export type TransparentProxyDiagnostics_Deserialize =
+  /**  The service answered with its applied scope and observed kernel objects. */
+  | {
+      kind: 'available'
+      diagnostics: NetworkTransparentProxyDiagnostics_Deserialize
+    }
+  /**  An installed service predates the diagnostics endpoint. */
+  | { kind: 'update_required' }
+  /**  The host is not Linux or does not run the privileged service. */
+  | { kind: 'unsupported' }
+
+/**  Availability of the Linux service diagnostics endpoint. */
+export type TransparentProxyDiagnostics_Serialize =
+  /**  The service answered with its applied scope and observed kernel objects. */
+  | {
+      kind: 'available'
+      diagnostics: NetworkTransparentProxyDiagnostics_Serialize
+    }
+  /**  An installed service predates the diagnostics endpoint. */
+  | { kind: 'update_required' }
+  /**  The host is not Linux or does not run the privileged service. */
+  | { kind: 'unsupported' }
 
 export type TransparentProxyMode = 'disabled' | 'redir' | 'tproxy'
 

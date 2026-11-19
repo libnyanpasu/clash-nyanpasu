@@ -142,6 +142,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::system::os::get_system_accent_color,
             ipc::system::proxy::get_transparent_proxy_status,
             ipc::system::proxy::get_transparent_proxy_status_summary,
+            ipc::system::proxy::get_transparent_proxy_diagnostics,
             commands::remote::tokens::list_remote_access_tokens,
             commands::remote::sessions::list_remote_browser_sessions,
             commands::settings::sync::get_sync_status,

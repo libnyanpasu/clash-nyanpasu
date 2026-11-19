@@ -98,6 +98,7 @@ command | get_sync_status | settings:read | settings.sync |  |  | desktop | nyan
 command | get_sys_proxy | system:read | system.proxy |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
 command | get_system_accent_color | system:read | system.os |  |  | desktop,http | nyanpasu-rpc/src/commands/host.rs
 command | get_traffic_summary | traffic:read | traffic.usage |  |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
+command | get_transparent_proxy_diagnostics | system:read | system.proxy | sensitive |  | desktop | tauri/src/ipc.rs
 command | get_transparent_proxy_status | system:read | system.proxy | sensitive |  | desktop | tauri/src/ipc.rs
 command | get_transparent_proxy_status_summary | system:read | system.proxy |  |  | desktop | tauri/src/ipc.rs
 command | import_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs

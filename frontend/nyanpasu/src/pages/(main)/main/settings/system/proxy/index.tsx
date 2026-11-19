@@ -18,6 +18,7 @@ import {
 import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyModeSelector from './_modules/proxy-mode-selector'
 import TransparentProxyButton from './_modules/transparent-proxy-button'
+import TransparentProxyDiagnostics from './_modules/transparent-proxy-diagnostics'
 
 export const Route = createFileRoute('/(main)/main/settings/system/proxy/')({
   component: RouteComponent,
@@ -114,6 +115,9 @@ const CurrentProxy = () => {
         <SettingsCard>
           <SettingsCardContent className="py-4">
             <CurrentSystemProxy />
+            <PlatformLinux>
+              <TransparentProxyDiagnostics />
+            </PlatformLinux>
           </SettingsCardContent>
         </SettingsCard>
       </SettingsGroup>

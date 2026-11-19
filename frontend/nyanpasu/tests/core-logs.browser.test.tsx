@@ -1,20 +1,29 @@
 import type { ComponentType, PropsWithChildren } from 'react'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { createQueryBindings } from '@nyanpasu/query'
+import type { RpcClient } from '@nyanpasu/rpc'
 import type {
   CoreLogQuery,
   CoreLogRow,
   CoreLogStatus,
+  MeowLogbookQuery,
+  RpcDescribeResponse,
 } from '@nyanpasu/rpc/types'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { CapabilitiesProvider } from '../src/components/auth/capabilities'
 import { Route } from '../src/pages/(main)/main/logs'
 import { m } from '../src/paraglide/messages'
 import { AllPermissions } from './all-permissions'
+import { DEFAULT_TEST_CAPABILITIES } from './query-provider'
 
 const mocked = vi.hoisted(() => ({
   queryCoreLogs: vi.fn(),
   getCoreLogStatus: vi.fn(),
   navigate: vi.fn(),
-  source: 'core' as 'core' | 'app' | 'service',
+  source: 'core' as 'core' | 'app' | 'service' | 'logbook',
+  queryMeowLogbook: vi.fn(),
+  getAppSettings: vi.fn(),
   listLogFiles: vi.fn(),
   openLogSession: vi.fn(),
   closeLogSession: vi.fn(),
@@ -26,7 +35,7 @@ vi.mock('@nyanpasu/query/provider/rpc-provider', async (importOriginal) => ({
     typeof import('@nyanpasu/query/provider/rpc-provider')
   >()),
   useRpc: () => rpc,
-  useQueryApi: () => rpc,
+  useQueryApi: () => queryApi,
 }))
 
 vi.mock('../src/pages/(main)/main/logs/route', () => ({
@@ -48,6 +57,7 @@ const rpc = {
   events: { coreLogsChanged: { listen: async () => () => {} } },
   listenResync: () => () => {},
 }
+const queryApi = { ...rpc, ...createQueryBindings(rpc as unknown as RpcClient) }
 const CoreLogsPage = Route.options.component as ComponentType
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 const cursor = (sequence: number) => ({ generation: 'session', sequence })
@@ -390,4 +400,161 @@ test('empty filtered pages continue loading until history fills the viewport or 
       .filter(([query]) => query.direction === 'before')
       .map(([query]) => query.cursor.sequence),
   ).toEqual([200, 180])
+})
+
+function mountLogbook(allowed = true) {
+  mocked.source = 'logbook'
+  const capabilities: RpcDescribeResponse = {
+    ...DEFAULT_TEST_CAPABILITIES,
+    commands: [
+      {
+        name: 'query_meow_logbook',
+        effect: 'query',
+        permission: { resource: 'logs', access: 'read' },
+        sensitive: true,
+        allowed,
+      },
+      {
+        name: 'get_app_settings',
+        effect: 'query',
+        permission: { resource: 'settings', access: 'read' },
+        sensitive: false,
+        allowed: true,
+      },
+    ],
+  }
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(<CoreLogsPage />, {
+    wrapper: ({ children }) => (
+      <CapabilitiesProvider snapshot={capabilities}>
+        <QueryClientProvider client={client}>
+          <div style={{ display: 'flex', height: 570 }}>{children}</div>
+        </QueryClientProvider>
+      </CapabilitiesProvider>
+    ),
+  })
+}
+
+const entry = {
+  id: 42,
+  time: '2026-01-20T12:00:00Z',
+  last: '2026-01-20T12:10:00Z',
+  count: 3,
+  kind: 'engine.start',
+  level: 'info',
+  subject: null,
+  message: 'Meow started',
+  fields: { test: 'example' },
+}
+
+test('Meow Logbook filters and pages through persistent events', async ({
+  onTestFinished,
+}) => {
+  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow' }))
+  mocked.queryMeowLogbook.mockImplementation(
+    async ({ before, kind }: MeowLogbookQuery) =>
+      ok({
+        enabled: true,
+        entries:
+          before === 42
+            ? [
+                {
+                  ...entry,
+                  id: 41,
+                  kind: 'config.reload',
+                  message: 'Config reloaded',
+                },
+              ]
+            : [entry],
+        more: before === null && kind === null,
+      }),
+  )
+  const view = await mountLogbook()
+  onTestFinished(() => view.unmount())
+  await expect
+    .element(view.getByText(m.logs_source_logbook(), { exact: true }))
+    .toBeVisible()
+  await expect.element(view.getByText(entry.message)).toBeVisible()
+  await expect.element(view.getByText('engine.start · ×3')).toBeVisible()
+  await view.getByRole('button', { name: m.logs_view_json() }).click()
+  await expect
+    .poll(
+      () => view.container.querySelector('[data-slot="log-json"]')?.textContent,
+    )
+    .toContain('"test": "example"')
+
+  await view.getByRole('button', { name: m.logs_load_older() }).click()
+  await expect.element(view.getByText('Config reloaded')).toBeVisible()
+  expect(mocked.queryMeowLogbook).toHaveBeenLastCalledWith({
+    before: 42,
+    kind: null,
+  })
+  await view.getByRole('button', { name: m.logs_logbook_newer() }).click()
+  await expect.element(view.getByText(entry.message)).toBeVisible()
+
+  await view
+    .getByRole('combobox', { name: m.logs_logbook_event_type() })
+    .click()
+  await view.getByRole('option', { name: 'engine', exact: true }).click()
+  await expect
+    .poll(() => mocked.queryMeowLogbook.mock.lastCall)
+    .toEqual([{ before: null, kind: 'engine' }])
+  await expect
+    .element(view.getByRole('button', { name: m.logs_load_older() }))
+    .toBeDisabled()
+})
+
+test.for([
+  { core: 'mihomo', allowed: true },
+  { core: 'meow', allowed: false },
+])(
+  'Logbook is hidden on $core with RPC allowed = $allowed',
+  async ({ core, allowed }, { onTestFinished }) => {
+    mocked.getAppSettings.mockResolvedValue(ok({ core }))
+    const view = await mountLogbook(allowed)
+    onTestFinished(() => view.unmount())
+    if (allowed)
+      await expect.poll(() => mocked.getAppSettings.mock.calls.length).toBe(1)
+    await expect
+      .element(view.getByText(m.logs_source_logbook(), { exact: true }))
+      .not.toBeInTheDocument()
+    expect(mocked.queryMeowLogbook).not.toHaveBeenCalled()
+  },
+)
+
+test('Meow Alpha distinguishes an unsupported endpoint from a disabled logbook', async ({
+  onTestFinished,
+}) => {
+  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow-alpha' }))
+  mocked.queryMeowLogbook.mockResolvedValue(ok(null))
+  const unsupported = await mountLogbook()
+  await expect
+    .element(unsupported.getByText(m.logs_logbook_unsupported()))
+    .toBeVisible()
+  await unsupported.unmount()
+
+  mocked.queryMeowLogbook.mockResolvedValue(
+    ok({ enabled: false, entries: [], more: false }),
+  )
+  const disabled = await mountLogbook()
+  onTestFinished(() => disabled.unmount())
+  await expect
+    .element(disabled.getByText(m.logs_logbook_disabled()))
+    .toBeVisible()
+})
+
+test('Meow Logbook can retry a failed read', async ({ onTestFinished }) => {
+  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow' }))
+  mocked.queryMeowLogbook
+    .mockRejectedValueOnce(new Error('controller unavailable'))
+    .mockResolvedValue(ok({ enabled: true, entries: [entry], more: false }))
+  const view = await mountLogbook()
+  onTestFinished(() => view.unmount())
+  await expect
+    .element(view.getByText(m.logs_logbook_unavailable()))
+    .toBeVisible()
+  await view.getByRole('button', { name: m.logs_retry() }).click()
+  await expect.element(view.getByText(entry.message)).toBeVisible()
 })

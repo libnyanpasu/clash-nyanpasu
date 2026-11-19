@@ -60,6 +60,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::system::os::read_clipboard_text,
             commands::logs::core::query_core_logs,
             commands::logs::core::query_core_logs_summary,
+            commands::logs::core::query_meow_logbook,
             commands::logs::core::get_core_log,
             commands::logs::core::get_core_log_status,
             commands::logs::core::get_core_log_status_summary,

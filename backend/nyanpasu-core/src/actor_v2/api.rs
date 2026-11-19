@@ -12,6 +12,7 @@ use nyanpasu_ipc::api::{core::v2::CoreApiConnection, status::CoreControllerInfo}
 use tokio_util::sync::CancellationToken;
 
 use super::endpoint::EndpointHandle;
+use crate::clash::logbook::{MeowLogbookPage, MeowLogbookQuery};
 use nyanpasu_runtime_values::runtime::InterruptFailure;
 
 #[derive(Debug, thiserror::Error)]
@@ -266,6 +267,42 @@ impl ApiClient {
         self.execute(self.client.configs()).await
     }
 
+    pub async fn meow_logbook(
+        &self,
+        query: MeowLogbookQuery,
+    ) -> Result<Option<MeowLogbookPage>, ApiError> {
+        const OPERATION: &str = "Meow logbook";
+        const PAGE_SIZE: u32 = 50;
+        let request_error = |source| clash_api::Error::Request {
+            operation: OPERATION,
+            source,
+        };
+        self.execute(async {
+            let response = self
+                .client
+                .get("logbook")?
+                .query(&query)
+                .query(&[("limit", PAGE_SIZE)])
+                .send()
+                .await
+                .map_err(request_error)?;
+            let status = response.status();
+            // Older Meow builds do not expose the endpoint.
+            if status.as_u16() == 404 {
+                return Ok(None);
+            }
+            if !status.is_success() {
+                return Err(clash_api::Error::HttpStatus {
+                    operation: OPERATION,
+                    status,
+                    body: None,
+                });
+            }
+            response.json().await.map(Some).map_err(request_error)
+        })
+        .await
+    }
+
     pub async fn rule_providers(
         &self,
     ) -> Result<indexmap::IndexMap<clash_api::RuleProviderName, clash_api::RuleProvider>, ApiError>
@@ -511,6 +548,92 @@ pub(crate) mod tests {
         assert_eq!(config.allow_lan, None);
         endpoint.binding.send_replace(None);
         assert!(matches!(api.configs().await, Err(ApiError::Stale)));
+        core.actor.stop(None);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn meow_logbook_uses_the_bound_controller_and_handles_older_cores() {
+        use axum::{
+            extract::Query,
+            http::{HeaderMap, StatusCode},
+            response::IntoResponse,
+        };
+        use std::collections::HashMap;
+
+        let (url, server) = server(Router::new().route(
+            "/logbook",
+            get(
+                |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| async move {
+                    assert_eq!(headers["authorization"], "Bearer test-controller");
+                    assert_eq!(params["limit"], "50");
+                    match params.get("kind").map(String::as_str) {
+                        Some("old-core") => StatusCode::NOT_FOUND.into_response(),
+                        Some("unavailable") => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+                        Some("engine & config") => {
+                            assert_eq!(params["before"], "43");
+                            Json(serde_json::json!({
+                                "enabled": true,
+                                "more": true,
+                                "rev": 50,
+                                "entries": [{
+                                    "id": 42,
+                                    "rev": 49,
+                                    "time": "2026-01-20T12:00:00Z",
+                                    "count": 1,
+                                    "kind": "engine.start",
+                                    "level": "info",
+                                    "message": "Meow started"
+                                }]
+                            }))
+                            .into_response()
+                        }
+                        other => panic!("unexpected query: {other:?}"),
+                    }
+                },
+            ),
+        ))
+        .await;
+        let endpoint = endpoint(url);
+        endpoint.binding.send_modify(|binding| {
+            binding.as_mut().unwrap().secret = Some("test-controller".into());
+        });
+        let core = CoreClient::spawn(endpoint.clone()).await.unwrap();
+        let api = core.api_client().await.unwrap();
+        let page = api
+            .meow_logbook(MeowLogbookQuery {
+                before: Some(43),
+                kind: Some("engine & config".into()),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(page.enabled && page.more);
+        let [entry] = page.entries.as_slice() else {
+            panic!("expected one event")
+        };
+        assert_eq!(entry.id, 42);
+        assert_eq!(entry.last, None);
+        assert_eq!(entry.subject, None);
+        assert_eq!(entry.fields, None);
+
+        let query = |kind: &str| MeowLogbookQuery {
+            before: None,
+            kind: Some(kind.into()),
+        };
+        assert!(api.meow_logbook(query("old-core")).await.unwrap().is_none());
+        assert!(matches!(
+            api.meow_logbook(query("unavailable")).await,
+            Err(ApiError::Protocol(clash_api::Error::HttpStatus {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                ..
+            }))
+        ));
+        endpoint.binding.send_replace(None);
+        assert!(matches!(
+            api.meow_logbook(MeowLogbookQuery::default()).await,
+            Err(ApiError::Stale)
+        ));
         core.actor.stop(None);
         server.abort();
     }

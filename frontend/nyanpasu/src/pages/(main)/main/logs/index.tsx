@@ -17,7 +17,10 @@ import {
   useScrollAreaViewport,
   useScrollAreaViewportElement,
 } from '@nyanpasu/ui/scroll-area'
-import { RequireCapability } from '@/components/auth/capabilities'
+import {
+  RequireCapability,
+  useCapabilities,
+} from '@/components/auth/capabilities'
 import { RestrictedContent } from '@/components/auth/restricted-content'
 import {
   RegisterContextMenu,
@@ -26,7 +29,7 @@ import {
 } from '@/components/providers/context-menu-provider'
 import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashLogs } from '@nyanpasu/query'
+import { useClashLogs, useSetting } from '@nyanpasu/query'
 import type {
   CoreLogCursor,
   CoreLogRecord,
@@ -48,6 +51,7 @@ import {
   useSlowLoading,
 } from './_modules/log-viewer'
 import { LogsLayout } from './_modules/logs-layout'
+import MeowLogbook from './_modules/meow-logbook'
 import { Route as IndexRoute } from './route'
 
 export const Route = createFileRoute('/(main)/main/logs/')({
@@ -293,7 +297,7 @@ function Viewer({
   )
 }
 
-function KernelLogs() {
+function KernelLogs({ showLogbook }: { showLogbook: boolean }) {
   const { level } = IndexRoute.useSearch()
   const [following, setFollowing] = useState(true)
   const [search, setSearch] = useState('')
@@ -315,6 +319,7 @@ function KernelLogs() {
   return (
     <LogsLayout
       source="core"
+      showLogbook={showLogbook}
       search={
         <LogSearch
           value={search}
@@ -392,16 +397,36 @@ function KernelLogs() {
   )
 }
 
-function RouteComponent() {
+function LogsContent({ core }: { core?: 'meow' | 'meow-alpha' }) {
   const { source = 'core' } = IndexRoute.useSearch()
+  const showLogbook = core !== undefined
+
+  if (source === 'logbook' && core)
+    return <MeowLogbook key={core} core={core} />
+  if (source === 'app' || source === 'service')
+    return <FileLogs key={source} source={source} showLogbook={showLogbook} />
+  return <KernelLogs showLogbook={showLogbook} />
+}
+
+function LogsWithMeowSupport() {
+  const { value: core } = useSetting('core')
+  return (
+    <LogsContent
+      core={core === 'meow' || core === 'meow-alpha' ? core : undefined}
+    />
+  )
+}
+
+function RouteComponent() {
+  const { canCall } = useCapabilities()
 
   // Log lines and files hold URLs, hosts and paths: `sensitive_read`.
   return (
     <RequireCapability permission="logs:read" fallback={<RestrictedContent />}>
-      {source === 'core' ? (
-        <KernelLogs />
+      {canCall('query_meow_logbook') && canCall('get_app_settings') ? (
+        <LogsWithMeowSupport />
       ) : (
-        <FileLogs key={source} source={source} />
+        <LogsContent />
       )}
     </RequireCapability>
   )

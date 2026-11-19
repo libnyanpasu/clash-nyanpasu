@@ -72,6 +72,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryCoreLogsSummary', ...args],
         queryFn: () => commands.queryCoreLogsSummary(...args),
       }),
+    queryMeowLogbook: (...args: Parameters<typeof commands.queryMeowLogbook>) =>
+      queryOptions({
+        queryKey: ['queryMeowLogbook', ...args],
+        queryFn: () => commands.queryMeowLogbook(...args),
+      }),
     getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
       queryOptions({
         queryKey: ['getCoreLog', ...args],

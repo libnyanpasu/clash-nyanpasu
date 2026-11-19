@@ -1,7 +1,10 @@
 //! Core logs.
 
 use nyanpasu_contracts::logs::{CoreLogCursor, CoreLogStatus, CoreLogStatusSummary};
-use nyanpasu_core::client::NyanpasuClient;
+use nyanpasu_core::{
+    clash::logbook::{MeowLogbookPage, MeowLogbookQuery},
+    client::NyanpasuClient,
+};
 use nyanpasu_observers::logs::{
     CoreLogPage, CoreLogPageSummary, CoreLogQuery, CoreLogRecord, CoreLogResult,
     CoreLogSummaryQuery,
@@ -54,6 +57,16 @@ pub async fn query_core_logs(
     query: CoreLogQuery,
 ) -> CoreLogResult<CoreLogPage> {
     client.query_core_logs(query).await
+}
+
+/// Engine events may include profile names and URLs.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[specta::specta]
+pub async fn query_meow_logbook(
+    client: RpcState<'_, NyanpasuClient>,
+    query: MeowLogbookQuery,
+) -> Result<Option<MeowLogbookPage>> {
+    Ok(client.meow_logbook(query).await?)
 }
 
 /// Public core-log page summary without payloads, source labels, raw timestamps, keyword search, or storage error text.

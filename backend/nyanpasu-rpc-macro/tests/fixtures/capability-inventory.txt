@@ -142,6 +142,7 @@ query_core_logs | desktop,http,local | - | - | query | logs:read
 query_core_logs_summary | desktop,http | - | - | query | logs:read
 query_logs | desktop,http,local | - | - | mutation | logs:read
 query_logs_summary | desktop,http | - | - | mutation | logs:read
+query_meow_logbook | desktop | - | - | query | logs:read
 query_traffic_active_connection_ids | desktop,http,local | - | - | query | traffic:read
 query_traffic_closed_connections | desktop,http | - | - | query | traffic:read
 query_traffic_report | desktop,http | - | - | query | traffic:read

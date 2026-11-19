@@ -62,6 +62,16 @@ export function createRpcClient(
       typedError<CoreLogPageSummary, IpcError_Serialize>(
         __RPC_INVOKE('query_core_logs_summary', { query }),
       ),
+    /**  Engine events may include profile names and URLs. */
+    queryMeowLogbook: (query: MeowLogbookQuery) =>
+      typedError<
+        {
+          enabled: boolean
+          entries: MeowLogbookEntry[]
+          more: boolean
+        } | null,
+        IpcError_Serialize
+      >(__RPC_INVOKE('query_meow_logbook', { query })),
     getCoreLog: (cursor: CoreLogCursor) =>
       typedError<CoreLogRecord, CoreLogError>(
         __RPC_INVOKE('get_core_log', { cursor }),
@@ -4229,6 +4239,29 @@ export type MechanismOutcomes = {
   system_proxy: MechanismOutcome
   tun: MechanismOutcome
   transparent_proxy: MechanismOutcome
+}
+
+export type MeowLogbookEntry = {
+  id: number
+  time: string
+  last: string | null
+  count: number
+  kind: string
+  level: string
+  subject: string | null
+  message: string
+  fields: { [key in string]: JsonValue | null } | null
+}
+
+export type MeowLogbookPage = {
+  enabled: boolean
+  entries: MeowLogbookEntry[]
+  more: boolean
+}
+
+export type MeowLogbookQuery = {
+  before: number | null
+  kind: string | null
 }
 
 /**  What a topology orders and merges its nodes by. */

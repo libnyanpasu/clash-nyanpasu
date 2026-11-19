@@ -3,12 +3,14 @@ use std::time::Duration;
 use anyhow::Result;
 use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName};
 use nyanpasu_config::application::NyanpasuAppConfig;
+use nyanpasu_core_manager::CoreKind;
 
 use crate::clash::{
     api::{
         ClashApiSettings, ClashConfig, ClashRule, ClashVersion, ProvidersRulesRes,
         RuleProviderItem, RulesRes,
     },
+    logbook::{MeowLogbookPage, MeowLogbookQuery},
     proxies::{Proxies, ProxyProviderSummary},
 };
 
@@ -135,6 +137,24 @@ impl NyanpasuClient {
 
     pub async fn clash_configs(&self) -> Result<ClashConfig> {
         config_item(self.inner.core_api.api_client().await?.configs().await?)
+    }
+
+    pub async fn meow_logbook(&self, query: MeowLogbookQuery) -> Result<Option<MeowLogbookPage>> {
+        if self
+            .core_status()
+            .snapshot
+            .and_then(|snapshot| snapshot.applied_kind)
+            .is_some_and(|kind| kind != CoreKind::Meow)
+        {
+            return Ok(None);
+        }
+        Ok(self
+            .inner
+            .core_api
+            .api_client()
+            .await?
+            .meow_logbook(query)
+            .await?)
     }
 
     /// The live core configuration without the controller secret.

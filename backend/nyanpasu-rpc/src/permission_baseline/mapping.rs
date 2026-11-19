@@ -6,7 +6,7 @@
 //! between the frozen scope baseline and the mapping (permissions, with callers converted by
 //! design section 7) must fall in one of the allowed change categories. The resulting change list
 //! and the sensitive resources each role reaches are a committed report, kept fresh by a test.
-//! The resource table must hold exactly the mapping: that is what the switch put in force.
+//! The resource table must hold the mapping for every migrated resource.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -335,29 +335,24 @@ fn mapping_report_is_fresh() {
     );
 }
 
-/// The switch put the mapping in force: every resource requires, marks and exposes exactly what
-/// the reviewed mapping gives it.
+/// Resources from the scope migration keep their reviewed permission, marking and namespace.
+/// Later additions are covered by the current permission baseline.
 #[test]
 fn the_resource_table_holds_the_mapping() {
     let mapped = mapping();
     let table = current();
-    assert_eq!(
-        table.keys().collect::<BTreeSet<_>>(),
-        mapped.keys().collect::<BTreeSet<_>>()
-    );
-    for (key, row) in &table {
-        let expected = &mapped[key];
+    for (key, expected) in &mapped {
+        let row = &table[key];
         assert_eq!(row.permission, expected.permission, "{key:?}");
         assert_eq!(row.sensitive, expected.sensitive, "{key:?}");
         assert_eq!(row.targets, expected.targets, "{key:?}");
     }
-    // Every resource sits in the namespace tree where the mapping placed it.
-    for resource in nyanpasu_rpc_protocol::permission::RESOURCES {
-        let expected = mapped
+    for ((_, name), expected) in &mapped {
+        let resource = nyanpasu_rpc_protocol::permission::RESOURCES
             .iter()
-            .find(|((_, name), _)| name == resource.name)
-            .map(|(_, mapped)| mapped.namespace.as_str());
-        assert_eq!(Some(resource.namespace), expected, "{}", resource.name);
+            .find(|resource| resource.name == name)
+            .unwrap();
+        assert_eq!(resource.namespace, expected.namespace, "{name}");
     }
 }
 

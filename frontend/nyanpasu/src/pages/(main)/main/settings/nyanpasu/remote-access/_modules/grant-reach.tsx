@@ -44,45 +44,50 @@ export default function GrantReach({ held }: { held: HeldPermissions }) {
         {m.settings_remote_access_reach_description()}
       </p>
 
-      {[...groups].map(([resource, commands]) => (
-        <section
-          key={resource}
-          className="mt-3 flex flex-col gap-1"
-          data-slot="grant-reach-group"
-        >
-          <h4 className="text-on-surface-variant text-xs font-medium">
-            {RESOURCE_LABELS[resource]()}
-          </h4>
+      <div
+        className="mt-1 max-h-72 overflow-y-auto"
+        data-slot="grant-reach-list"
+      >
+        {[...groups].map(([resource, commands]) => (
+          <section
+            key={resource}
+            className="mt-2 flex flex-col gap-1"
+            data-slot="grant-reach-group"
+          >
+            <h4 className="text-on-surface-variant text-xs font-medium">
+              {RESOURCE_LABELS[resource]()}
+            </h4>
 
-          <ul className="flex flex-col gap-1">
-            {commands.map((command) => (
-              <li
-                key={command.name}
-                className="flex flex-wrap items-center gap-1.5"
-                data-slot="grant-reach-command"
-              >
-                <code className="bg-surface-variant/50 rounded px-1.5 py-0.5 text-xs">
-                  {command.name}
-                </code>
+            <ul className="flex flex-col gap-1">
+              {commands.map((command) => (
+                <li
+                  key={command.name}
+                  className="flex flex-wrap items-center gap-1.5"
+                  data-slot="grant-reach-command"
+                >
+                  <code className="bg-surface-variant/50 rounded px-1.5 py-0.5 text-xs">
+                    {command.name}
+                  </code>
 
-                <span className="text-on-surface-variant text-xs">
-                  {RESOURCE_LABELS[command.permission.resource]()}{' '}
-                  {ACCESS_LABELS[command.permission.access]()} ·{' '}
-                  {command.effect === 'query'
-                    ? m.settings_remote_access_reach_query()
-                    : m.settings_remote_access_reach_mutation()}
-                </span>
-
-                {command.sensitive && (
-                  <span className="bg-error-container text-on-error-container rounded px-1.5 py-0.5 text-xs">
-                    {m.settings_remote_access_reach_sensitive()}
+                  <span className="text-on-surface-variant text-xs">
+                    {RESOURCE_LABELS[command.permission.resource]()}{' '}
+                    {ACCESS_LABELS[command.permission.access]()} ·{' '}
+                    {command.effect === 'query'
+                      ? m.settings_remote_access_reach_query()
+                      : m.settings_remote_access_reach_mutation()}
                   </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+
+                  {command.sensitive && (
+                    <span className="bg-error-container text-on-error-container rounded px-1.5 py-0.5 text-xs">
+                      {m.settings_remote_access_reach_sensitive()}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </details>
   )
 }

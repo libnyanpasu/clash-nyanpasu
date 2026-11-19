@@ -130,7 +130,7 @@ function CreateTokenDialog() {
       onExitComplete={reset}
     >
       <Card
-        className="w-[28rem] max-w-full"
+        className="flex max-h-[calc(100dvh-4rem)] w-[28rem] max-w-full flex-col"
         data-slot="remote-access-create-token-dialog"
       >
         {created ? (
@@ -190,7 +190,7 @@ function CreateTokenDialog() {
               </ModalTitle>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="min-h-0 overflow-y-auto">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(event) => {

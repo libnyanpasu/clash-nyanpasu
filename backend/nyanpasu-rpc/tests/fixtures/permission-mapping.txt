@@ -72,6 +72,7 @@ command | get_http_server_status | system:read | system.status |  |  | desktop,h
 command | get_ip_lookup_providers | system:read | system.network |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_ipsb_asn | system:read | system.network |  |  | desktop | tauri/src/ipc.rs
 command | get_local_socket_status | remote:read | remote.settings |  |  | desktop,local | nyanpasu-rpc/src/commands/status.rs
+command | get_meow_statistics | traffic:read | traffic.usage | sensitive |  | desktop | nyanpasu-rpc/src/commands/traffic/usage.rs
 command | get_network_automation_status | system:read | system.network | sensitive |  | desktop | nyanpasu-rpc/src/commands/runtime.rs
 command | get_postprocessing_output | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | get_profile_sync_logs | profile:read | profile.sync | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
@@ -145,6 +146,8 @@ command | query_core_logs | logs:read | logs.core | sensitive |  | desktop,http,
 command | query_core_logs_summary | logs:read | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
 command | query_logs | logs:read | logs.app | sensitive | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | query_logs_summary | logs:read | logs.app |  | read | desktop,http | nyanpasu-rpc/src/commands/logs.rs
+command | query_meow_logbook | logs:read | logs.core | sensitive |  | desktop | nyanpasu-rpc/src/commands/logs/core.rs
+command | query_meow_traffic_ledger | traffic:read | traffic.usage | sensitive |  | desktop | nyanpasu-rpc/src/commands/traffic/usage.rs
 command | query_traffic_active_connection_ids | traffic:read | traffic.connections |  |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
 command | query_traffic_closed_connections | traffic:read | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
 command | query_traffic_report | traffic:read | traffic.usage |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs

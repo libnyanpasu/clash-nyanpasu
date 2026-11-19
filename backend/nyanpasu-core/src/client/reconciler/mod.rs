@@ -45,6 +45,7 @@ use super::{
         CoreLifecycleWorkflow, Output, Ownership, RECOVERY_INTERVAL, ServiceRecovery,
     },
     runtime,
+    runtime_recovery::{ObservedRuntime, confirmed_apply_kind},
 };
 #[cfg(test)]
 use crate::actor_v2::HandoffReport;
@@ -731,6 +732,24 @@ impl RuntimeReconcilerClient {
     }
     pub fn core_status(&self) -> CoreStatusProjection {
         self.0.core.status()
+    }
+
+    /// The applied core kind the host can prove: the live status publishes it,
+    /// or a confirmed apply whose receipt still matches the observed runtime
+    /// names it. A service host never publishes the kind
+    /// (`TODO(service-applied-kind)`), so without this recovery every Meow
+    /// read would treat it as unknown.
+    pub fn applied_core_kind(&self) -> Option<nyanpasu_core_manager::CoreKind> {
+        let status = self.core_status();
+        status
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.applied_kind)
+            .or_else(|| {
+                self.0.runtime.confirmed().and_then(|confirmed| {
+                    confirmed_apply_kind(&confirmed.receipt, &ObservedRuntime::from_status(&status))
+                })
+            })
     }
     pub fn core_events(&self) -> broadcast::Receiver<CoreStatusProjection> {
         self.0.core.subscribe_events()

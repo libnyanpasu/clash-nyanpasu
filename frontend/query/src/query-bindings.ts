@@ -86,6 +86,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['queryCoreLogsSummary', ...args],
         queryFn: () => commands.queryCoreLogsSummary(...args),
       }),
+    queryMeowLogbook: (...args: Parameters<typeof commands.queryMeowLogbook>) =>
+      queryOptions({
+        queryKey: ['queryMeowLogbook', ...args],
+        queryFn: () => commands.queryMeowLogbook(...args),
+      }),
     getCoreLog: (...args: Parameters<typeof commands.getCoreLog>) =>
       queryOptions({
         queryKey: ['getCoreLog', ...args],
@@ -456,6 +461,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['getTrafficSummary', ...args],
         queryFn: () => commands.getTrafficSummary(...args),
       }),
+    getMeowStatistics: (
+      ...args: Parameters<typeof commands.getMeowStatistics>
+    ) =>
+      queryOptions({
+        queryKey: ['getMeowStatistics', ...args],
+        queryFn: () => commands.getMeowStatistics(...args),
+      }),
+    queryMeowTrafficLedger: (
+      ...args: Parameters<typeof commands.queryMeowTrafficLedger>
+    ) =>
+      queryOptions({
+        queryKey: ['queryMeowTrafficLedger', ...args],
+        queryFn: () => commands.queryMeowTrafficLedger(...args),
+      }),
     queryTrafficReport: (
       ...args: Parameters<typeof commands.queryTrafficReport>
     ) =>
@@ -632,6 +651,9 @@ export function createQueryBindings(rpc: RpcClient) {
     queryCoreLogsSummary: (
       ...args: Partial<Parameters<typeof commands.queryCoreLogsSummary>>
     ) => ['queryCoreLogsSummary', ...args],
+    queryMeowLogbook: (
+      ...args: Partial<Parameters<typeof commands.queryMeowLogbook>>
+    ) => ['queryMeowLogbook', ...args],
     getCoreLog: (...args: Partial<Parameters<typeof commands.getCoreLog>>) => [
       'getCoreLog',
       ...args,
@@ -825,6 +847,12 @@ export function createQueryBindings(rpc: RpcClient) {
     getTrafficSummary: (
       ...args: Partial<Parameters<typeof commands.getTrafficSummary>>
     ) => ['getTrafficSummary', ...args],
+    getMeowStatistics: (
+      ...args: Partial<Parameters<typeof commands.getMeowStatistics>>
+    ) => ['getMeowStatistics', ...args],
+    queryMeowTrafficLedger: (
+      ...args: Partial<Parameters<typeof commands.queryMeowTrafficLedger>>
+    ) => ['queryMeowTrafficLedger', ...args],
     queryTrafficReport: (
       ...args: Partial<Parameters<typeof commands.queryTrafficReport>>
     ) => ['queryTrafficReport', ...args],

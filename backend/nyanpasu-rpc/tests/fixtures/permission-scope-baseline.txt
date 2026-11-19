@@ -72,6 +72,7 @@ command | get_http_server_status | read | query | desktop,http,local | http_serv
 command | get_ip_lookup_providers | read | query | desktop,http |  |
 command | get_ipsb_asn | read | query | desktop |  |
 command | get_local_socket_status | remote_admin | query | desktop,local |  |
+command | get_meow_statistics | sensitive_read | query | desktop |  |
 command | get_network_automation_status | sensitive_read | query | desktop |  |
 command | get_postprocessing_output | sensitive_read | query | desktop,http |  |
 command | get_profile_sync_logs | sensitive_read | query | desktop,http |  |
@@ -143,6 +144,8 @@ command | probe_direct_egress | settings | mutation | desktop,http |  |
 command | probe_profile_url | sensitive_read | query | desktop |  |
 command | query_core_logs | sensitive_read | query | desktop,http,local |  |
 command | query_core_logs_summary | read | query | desktop,http |  |
+command | query_meow_logbook | sensitive_read | query | desktop |  |
+command | query_meow_traffic_ledger | sensitive_read | query | desktop |  |
 command | query_logs | sensitive_read | mutation | desktop,http,local |  |
 command | query_logs_summary | read | mutation | desktop,http |  |
 command | query_traffic_active_connection_ids | read | query | desktop,http,local |  |

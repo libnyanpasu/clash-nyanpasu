@@ -105,6 +105,16 @@ export function createRpcClient(
         { query },
         options,
       ),
+    /**  Engine events may include profile names and URLs. */
+    queryMeowLogbook: (
+      query: MeowLogbookQuery_Deserialize,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<MeowLogbookPage_Serialize | null>(
+        'query_meow_logbook',
+        { query },
+        options,
+      ),
     getCoreLog: (cursor: CoreLogCursor, options?: InvokeOptions) =>
       __RPC_INVOKE<CoreLogRecord_Serialize>(
         'get_core_log',
@@ -486,6 +496,23 @@ export function createRpcClient(
       __RPC_INVOKE<TrafficSummary_Serialize>(
         'get_traffic_summary',
         undefined,
+        options,
+      ),
+    /**  Session totals and named proxy counters from the Meow controller. */
+    getMeowStatistics: (options?: InvokeOptions) =>
+      __RPC_INVOKE<MeowStatistics | null>(
+        'get_meow_statistics',
+        undefined,
+        options,
+      ),
+    /**  The engine's persisted traffic ledger can include host and app names. */
+    queryMeowTrafficLedger: (
+      query: MeowTrafficLedgerQuery_Deserialize,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<MeowTrafficLedger_Serialize | null>(
+        'query_meow_traffic_ledger',
+        { query },
         options,
       ),
     queryTrafficReport: (
@@ -6623,6 +6650,137 @@ export type MechanismOutcomes = {
   system_proxy: MechanismOutcome
   tun: MechanismOutcome
   transparent_proxy: MechanismOutcome
+}
+
+export type MeowLogbookEntry =
+  MeowLogbookEntry_Serialize | MeowLogbookEntry_Deserialize
+
+export type MeowLogbookEntry_Deserialize = {
+  id: number
+  time: string
+  last?: string | null
+  count: number
+  kind: string
+  level: string
+  subject?: string | null
+  message: string
+  fields?: { [key in string]: JsonValue | null } | null
+}
+
+export type MeowLogbookEntry_Serialize = {
+  id: number
+  time: string
+  last: string | null
+  count: number
+  kind: string
+  level: string
+  subject: string | null
+  message: string
+  fields: { [key in string]: JsonValue | null } | null
+}
+
+export type MeowLogbookPage =
+  MeowLogbookPage_Serialize | MeowLogbookPage_Deserialize
+
+export type MeowLogbookPage_Deserialize = {
+  enabled: boolean
+  entries: MeowLogbookEntry_Deserialize[]
+  more: boolean
+}
+
+export type MeowLogbookPage_Serialize = {
+  enabled: boolean
+  entries: MeowLogbookEntry_Serialize[]
+  more: boolean
+}
+
+export type MeowLogbookQuery =
+  MeowLogbookQuery_Serialize | MeowLogbookQuery_Deserialize
+
+export type MeowLogbookQuery_Deserialize = {
+  before?: number | null
+  kind?: string | null
+}
+
+export type MeowLogbookQuery_Serialize = {
+  before: number | null
+  kind: string | null
+}
+
+export type MeowProxyTotals = {
+  upload: number
+  download: number
+}
+
+export type MeowStatistics = {
+  uploadTotal: number
+  downloadTotal: number
+  proxies: { [key in string]: MeowProxyTotals }
+}
+
+export type MeowTrafficGroup = 'host' | 'app' | 'policy' | 'interface'
+
+export type MeowTrafficLedger =
+  MeowTrafficLedger_Serialize | MeowTrafficLedger_Deserialize
+
+export type MeowTrafficLedgerQuery =
+  MeowTrafficLedgerQuery_Serialize | MeowTrafficLedgerQuery_Deserialize
+
+export type MeowTrafficLedgerQuery_Deserialize = {
+  from: string
+  to: string
+  by: MeowTrafficGroup
+  host?: string | null
+  app?: string | null
+  policy?: string | null
+  interface?: string | null
+}
+
+export type MeowTrafficLedgerQuery_Serialize = {
+  from: string
+  to: string
+  by: MeowTrafficGroup
+  host: string | null
+  app: string | null
+  policy: string | null
+  interface: string | null
+}
+
+export type MeowTrafficLedger_Deserialize = {
+  enabled: boolean
+  upload: number
+  download: number
+  requests: number
+  rows: MeowTrafficRow_Deserialize[]
+}
+
+export type MeowTrafficLedger_Serialize = {
+  enabled: boolean
+  upload: number
+  download: number
+  requests: number
+  rows: MeowTrafficRow_Serialize[]
+}
+
+export type MeowTrafficRow =
+  MeowTrafficRow_Serialize | MeowTrafficRow_Deserialize
+
+export type MeowTrafficRow_Deserialize = {
+  name: string
+  upload: number
+  download: number
+  requests: number
+  via_upload?: number
+  via_download?: number
+}
+
+export type MeowTrafficRow_Serialize = {
+  name: string
+  upload: number
+  download: number
+  requests: number
+  via_upload: number
+  via_download: number
 }
 
 /**  What a topology orders and merges its nodes by. */

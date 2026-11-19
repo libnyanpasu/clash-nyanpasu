@@ -25,7 +25,7 @@ use crate::{
     },
     client::{
         runtime_error,
-        runtime_recovery::{ObservedRuntime, matches_confirmed_apply},
+        runtime_recovery::{ObservedRuntime, confirmed_apply_kind},
     },
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
@@ -477,13 +477,9 @@ impl CoreLifecycleWorkflow {
         &self,
         status: &crate::actor_v2::CoreStatusProjection,
     ) -> Option<CoreKind> {
-        let confirmed = self.runtime.confirmed()?;
-        let observed = ObservedRuntime::from_status(status);
-        if !matches_confirmed_apply(&confirmed.receipt, &observed) {
-            return None;
-        }
-        let core_type: nyanpasu_utils::core::CoreType = (&confirmed.receipt.target_core).into();
-        wire_core_type_to_kind(&core_type)
+        self.runtime.confirmed().and_then(|confirmed| {
+            confirmed_apply_kind(&confirmed.receipt, &ObservedRuntime::from_status(status))
+        })
     }
 
     /// Installs `artifact` and restarts the core when the replacement owes it

@@ -1,8 +1,11 @@
 //! Verifies whether an observed running instance matches a confirmed application.
+use nyanpasu_core_manager::CoreKind;
 use nyanpasu_ipc::api::status::CoreStateDetail;
 
 use crate::{
-    actor_v2::{CoreStatusProjection, facade::AppliedConfigBinding},
+    actor_v2::{
+        CoreStatusProjection, endpoint::wire_core_type_to_kind, facade::AppliedConfigBinding,
+    },
     state::mutation::runtime_apply::RuntimeApplyReceipt,
 };
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
@@ -68,6 +71,18 @@ pub(in crate::client) fn matches_confirmed_apply(
         && observed.source_hash.as_deref() == Some(receipt.binding.revision.source_hash.as_str())
         && matches!(observed.state, Some(CoreStateDetail::Running { epoch, .. })
             if epoch == receipt.binding.revision.epoch)
+}
+
+/// The core kind a confirmed apply proves when the status does not publish one
+/// (`TODO(service-applied-kind)` keeps a service host silent): the receipt must
+/// still match the observed runtime, so its target names the binary in use.
+pub(in crate::client) fn confirmed_apply_kind(
+    receipt: &RuntimeApplyReceipt,
+    observed: &ObservedRuntime,
+) -> Option<CoreKind> {
+    matches_confirmed_apply(receipt, observed)
+        .then(|| wire_core_type_to_kind(&(&receipt.target_core).into()))
+        .flatten()
 }
 
 #[cfg(test)]
@@ -182,5 +197,34 @@ mod confirmed_apply_tests {
             }
             assert!(!matches_confirmed_apply(&receipt, &mismatch), "{field}");
         }
+    }
+
+    /// A matching receipt recovers the confirmed apply's core kind for hosts
+    /// that do not publish the applied kind (service mode).
+    #[test]
+    fn a_confirmed_apply_names_its_core_kind_only_while_it_still_runs() {
+        let receipt = super::tests::receipt();
+        let running = ObservedRuntime {
+            host: receipt.host,
+            instance_id: None,
+            binding: Some(receipt.binding.clone()),
+            state: Some(CoreStateDetail::Running {
+                epoch: receipt.binding.revision.epoch,
+                pid: 42,
+            }),
+            source_hash: Some(receipt.binding.revision.source_hash.clone()),
+        };
+        assert_eq!(
+            confirmed_apply_kind(&receipt, &running),
+            Some(nyanpasu_core_manager::CoreKind::Mihomo)
+        );
+
+        let mut replaced = running.clone();
+        replaced.source_hash = Some("different".into());
+        assert_eq!(confirmed_apply_kind(&receipt, &replaced), None);
+
+        let mut stopped = running;
+        stopped.state = Some(CoreStateDetail::Stopped { reason: None });
+        assert_eq!(confirmed_apply_kind(&receipt, &stopped), None);
     }
 }

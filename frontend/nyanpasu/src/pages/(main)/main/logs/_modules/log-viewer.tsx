@@ -219,7 +219,7 @@ export const LogRecord = memo(function LogRecord({
   incompleteTitle?: string
   loadRaw?: () => Promise<unknown>
   expanded?: boolean
-  onInspect: () => void
+  onInspect?: () => void
 }) {
   const [showJson, setShowJson] = useState(false)
   const showing = expanded ?? showJson
@@ -323,7 +323,7 @@ export const LogRecord = memo(function LogRecord({
             aria-controls={jsonId}
             className={rowActionVariants()}
             onClick={() => {
-              if (expanded !== undefined || !showing) onInspect()
+              if (expanded !== undefined || !showing) onInspect?.()
               if (expanded === undefined) setShowJson(!showJson)
             }}
           >

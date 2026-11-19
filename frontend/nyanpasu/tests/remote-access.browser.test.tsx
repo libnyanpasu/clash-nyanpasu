@@ -45,6 +45,15 @@ const committed = {
 
 type HttpConfig = Record<string, unknown>
 
+const networks = [
+  { interface: 'Ethernet', address: '192.168.1.20', network: '192.168.1.0/24' },
+  {
+    interface: 'Tailscale',
+    address: '100.101.102.103',
+    network: '100.64.0.0/10',
+  },
+]
+
 async function mount(
   onTestFinished: TestContext['onTestFinished'],
   ui: React.ReactNode,
@@ -67,6 +76,7 @@ async function mount(
     open_web_url: () => null,
     list_remote_access_tokens: () => [],
     list_remote_browser_sessions: () => [],
+    list_local_networks: () => networks,
     ...handlers,
   })
   const client = new QueryClient({
@@ -220,43 +230,41 @@ test('the web interface switch and the port are saved without losing the rest', 
   })
 })
 
-test('local open warns and offers anonymous permissions up to the operator role', async ({
+const choice = (
+  view: Awaited<ReturnType<typeof render>>,
+  group: () => string,
+  option: () => string,
+) =>
+  view.getByRole('radiogroup', { name: group() }).getByRole('radio', {
+    name: option(),
+  })
+
+test('optional authentication warns and offers anonymous permissions up to the operator role', async ({
   onTestFinished,
 }) => {
   const { view, saved } = await mount(
     onTestFinished,
     <ServerSettings />,
     {},
-    { enabled: true, port: 8765, strategy: 'local_authenticated' },
+    { enabled: true, port: 8765, auth: 'required', listen: 'local' },
   )
   expect(
-    view
-      .getByText(m.settings_remote_access_strategy_local_open_warning())
-      .query(),
+    view.getByText(m.settings_remote_access_auth_optional_warning()).query(),
   ).toBeNull()
 
-  await view
-    .getByRole('button', {
-      name: m.settings_remote_access_strategy_title(),
-      exact: false,
-    })
-    .click()
-  await view
-    .getByRole('menuitemcheckbox', {
-      name: m.settings_remote_access_strategy_local_open(),
-      exact: false,
-    })
-    .click()
+  await choice(
+    view,
+    m.settings_remote_access_auth_title,
+    m.settings_remote_access_auth_optional,
+  ).click()
 
   expect(saved).toHaveBeenLastCalledWith({
     config: {
-      http: { enabled: true, port: 8765, strategy: 'local_open' },
+      http: { enabled: true, port: 8765, auth: 'optional', listen: 'local' },
     },
   })
   await expect
-    .element(
-      view.getByText(m.settings_remote_access_strategy_local_open_warning()),
-    )
+    .element(view.getByText(m.settings_remote_access_auth_optional_warning()))
     .toBeVisible()
 
   const row = (resource: () => string) =>
@@ -296,7 +304,8 @@ test('local open warns and offers anonymous permissions up to the operator role'
       http: {
         enabled: true,
         port: 8765,
-        strategy: 'local_open',
+        auth: 'optional',
+        listen: 'local',
         anonymous_permissions: { proxy: 'write' },
       },
     },
@@ -306,71 +315,160 @@ test('local open warns and offers anonymous permissions up to the operator role'
 const lan = {
   enabled: true,
   port: 8765,
-  strategy: 'lan_authenticated',
+  auth: 'required',
+  listen: 'lan',
   tls: 'self_signed',
-  lan_bind: null,
+  lan_allow: ['192.168.1.0/24'],
 }
 
 const fingerprint =
   'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89'
 
-test('sharing on the local network brings HTTPS, warns and cannot drop HTTPS', async ({
+test('the LAN scope brings HTTPS and authentication, allows the private networks and warns', async ({
   onTestFinished,
 }) => {
   const { view, saved } = await mount(
     onTestFinished,
     <ServerSettings />,
     {},
-    { enabled: true, port: 8765, strategy: 'local_authenticated' },
+    { enabled: true, port: 8765, auth: 'optional', listen: 'local' },
   )
   const https = view.getByRole('switch', {
     name: m.settings_remote_access_tls_title(),
   })
   await expect.element(https).not.toBeChecked()
+  const lanScope = choice(
+    view,
+    m.settings_remote_access_listen_title,
+    m.settings_remote_access_listen_lan,
+  )
+  await expect.element(lanScope).toBeEnabled()
 
-  await view
-    .getByRole('button', {
-      name: m.settings_remote_access_strategy_title(),
-      exact: false,
-    })
-    .click()
-  await view
-    .getByRole('menuitemcheckbox', {
-      name: m.settings_remote_access_strategy_lan_authenticated(),
-      exact: false,
-    })
-    .click()
+  await lanScope.click()
 
-  // One write carries both fields, so the committed value is never LAN without HTTPS.
+  // One write carries every field, so the committed value never leaves this computer without
+  // HTTPS or with anonymous access.
   expect(saved).toHaveBeenLastCalledWith({
     config: {
       http: {
         enabled: true,
         port: 8765,
-        strategy: 'lan_authenticated',
+        auth: 'required',
+        listen: 'lan',
         tls: 'self_signed',
+        lan_allow: ['192.168.1.0/24'],
       },
     },
   })
   await expect
-    .element(
-      view.getByText(
-        m.settings_remote_access_strategy_lan_authenticated_warning(),
-      ),
-    )
+    .element(view.getByText(m.settings_remote_access_listen_lan_warning()))
     .toBeVisible()
   await expect.element(https).toBeChecked()
   await expect.element(https).toBeDisabled()
+  await expect
+    .element(
+      choice(
+        view,
+        m.settings_remote_access_auth_title,
+        m.settings_remote_access_auth_optional,
+      ),
+    )
+    .toBeDisabled()
 })
 
-test('HTTPS can be chosen on its own for the loopback strategies', async ({
+test('every network is reachable only after choosing it, with its own warning', async ({
   onTestFinished,
 }) => {
   const { view, saved } = await mount(
     onTestFinished,
     <ServerSettings />,
     {},
-    { enabled: true, port: 8765, strategy: 'local_authenticated', tls: 'http' },
+    lan,
+  )
+
+  await choice(
+    view,
+    m.settings_remote_access_listen_title,
+    m.settings_remote_access_listen_any,
+  ).click()
+
+  // The allow list is kept for a later return to the LAN scope.
+  expect(saved).toHaveBeenLastCalledWith({
+    config: { http: { ...lan, listen: 'any' } },
+  })
+  await expect
+    .element(view.getByText(m.settings_remote_access_listen_any_warning()))
+    .toBeVisible()
+  expect(
+    view.getByText(m.settings_remote_access_lan_allow_title()).query(),
+  ).toBeNull()
+})
+
+test('allowed networks are toggled and the last one cannot be removed', async ({
+  onTestFinished,
+}) => {
+  const { view, saved } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {},
+    { ...lan, lan_allow: ['192.168.1.0/24', '10.147.17.0/24'] },
+  )
+  const network = (name: string) =>
+    view.getByRole('checkbox', { name, exact: false })
+
+  // An allowed network that is not connected now stays listed so it can be removed.
+  await expect
+    .element(view.getByText(m.settings_remote_access_lan_allow_disconnected()))
+    .toBeVisible()
+  await expect.element(network('100.64.0.0/10')).not.toBeChecked()
+
+  await network('100.64.0.0/10').click()
+  expect(saved).toHaveBeenLastCalledWith({
+    config: {
+      http: {
+        ...lan,
+        lan_allow: ['192.168.1.0/24', '10.147.17.0/24', '100.64.0.0/10'],
+      },
+    },
+  })
+
+  await network('10.147.17.0/24').click()
+  await network('100.64.0.0/10').click()
+  expect(saved).toHaveBeenLastCalledWith({
+    config: { http: { ...lan, lan_allow: ['192.168.1.0/24'] } },
+  })
+  await expect.element(network('192.168.1.0/24')).toBeDisabled()
+})
+
+test('the LAN scope cannot be chosen while this computer has no network', async ({
+  onTestFinished,
+}) => {
+  const { view } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    { list_local_networks: () => [] },
+    { enabled: true, port: 8765, listen: 'local', lan_allow: [] },
+  )
+
+  await expect
+    .element(
+      choice(
+        view,
+        m.settings_remote_access_listen_title,
+        m.settings_remote_access_listen_lan,
+      ),
+    )
+    .toBeDisabled()
+})
+
+test('HTTPS can be chosen on its own for the loopback scope', async ({
+  onTestFinished,
+}) => {
+  const { view, saved } = await mount(
+    onTestFinished,
+    <ServerSettings />,
+    {},
+    { enabled: true, port: 8765, listen: 'local', tls: 'http' },
   )
   const https = view.getByRole('switch', {
     name: m.settings_remote_access_tls_title(),
@@ -384,47 +482,10 @@ test('HTTPS can be chosen on its own for the loopback strategies', async ({
       http: {
         enabled: true,
         port: 8765,
-        strategy: 'local_authenticated',
+        listen: 'local',
         tls: 'self_signed',
       },
     },
-  })
-})
-
-test('the LAN address is validated, saved, and cleared to every interface', async ({
-  onTestFinished,
-}) => {
-  const { view, saved } = await mount(
-    onTestFinished,
-    <ServerSettings />,
-    {},
-    lan,
-  )
-  const address = view.getByRole('textbox', {
-    name: m.settings_remote_access_lan_bind_title(),
-  })
-  const save = view.getByRole('button', { name: m.common_save() }).first()
-  await expect.element(address).toBeEnabled()
-
-  await address.fill('300.1.1.1')
-  await expect
-    .element(view.getByRole('alert'))
-    .toHaveTextContent(m.settings_remote_access_lan_bind_invalid())
-  await expect.element(save).toBeDisabled()
-
-  await address.fill('192.168.1.20')
-  await save.click()
-  expect(saved).toHaveBeenLastCalledWith({
-    config: { http: { ...lan, lan_bind: '192.168.1.20' } },
-  })
-
-  await address.fill('fd00::5')
-  await expect.element(save).toBeEnabled()
-
-  await address.fill('')
-  await save.click()
-  expect(saved).toHaveBeenLastCalledWith({
-    config: { http: { ...lan, lan_bind: null } },
   })
 })
 
@@ -489,64 +550,6 @@ test('the certificate fingerprint is shown and replacing it asks first', async (
       undefined,
     ),
   )
-})
-
-const listening = {
-  ...on,
-  tls: { fingerprint, not_after_ms: Date.UTC(2028, 0, 2) },
-}
-const onePort = { ...lan, lan_bind: '192.168.1.20' }
-
-test('an address the certificate does not cover is explained next to the replacement', async ({
-  onTestFinished,
-}) => {
-  const { view } = await mount(
-    onTestFinished,
-    <ServerSettings />,
-    {
-      get_http_server_status: () => ({
-        ...listening,
-        bind_outside_certificate: true,
-      }),
-    },
-    onePort,
-  )
-
-  await expect
-    .element(
-      view.getByText(m.settings_remote_access_certificate_address_mismatch()),
-    )
-    .toBeVisible()
-  await expect
-    .element(
-      view.getByRole('button', {
-        name: m.settings_remote_access_certificate_reset(),
-      }),
-    )
-    .toBeEnabled()
-})
-
-test('no address warning is shown while the certificate covers the address', async ({
-  onTestFinished,
-}) => {
-  const { view } = await mount(
-    onTestFinished,
-    <ServerSettings />,
-    {
-      get_http_server_status: () => ({
-        ...listening,
-        bind_outside_certificate: false,
-      }),
-    },
-    onePort,
-  )
-
-  await expect.element(view.getByText(fingerprint)).toBeVisible()
-  expect(
-    view
-      .getByText(m.settings_remote_access_certificate_address_mismatch())
-      .query(),
-  ).toBeNull()
 })
 
 test('a certificate the listener cannot serve can still be replaced', async ({

@@ -292,7 +292,9 @@ pub enum PublicRemoteAccessErrorKind {
     PortZero,
     AnonymousBeyondOperator,
     UseDedicatedCommand,
-    LanRequiresTls,
+    OptionalAuthenticationBeyondLocal,
+    NetworkRequiresTls,
+    LanAllowEmpty,
 }
 
 /// Safe public hotkey parse rejection discriminant without binding strings.

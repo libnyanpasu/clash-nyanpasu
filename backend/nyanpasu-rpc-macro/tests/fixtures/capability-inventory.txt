@@ -113,6 +113,7 @@ is_appimage | desktop,http | - | - | query | system:read
 is_portable | desktop,http | - | - | query | system:read
 is_tray_icon_set | desktop,http | - | - | query | system:read
 is_widget_icon_set | desktop,http | - | - | query | system:read
+list_local_networks | desktop | - | - | query | remote:read
 list_log_files | desktop,http,local | - | - | query | logs:read
 list_remote_access_tokens | desktop,local | - | - | query | remote:read
 list_remote_browser_sessions | desktop,local | - | - | query | remote:read

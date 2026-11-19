@@ -381,14 +381,12 @@ async fn remote_administration_runs_end_to_end_against_a_real_core() {
     assert_eq!(status["settings"]["http"]["enabled"], true, "{status}");
     let off = shell.cli(&["remote", "http", "off"]).await;
     assert_eq!(off.status, ExitStatus::Success, "{}", off.stderr);
-    let open = shell
-        .cli(&["remote", "http", "strategy", "local_open"])
-        .await;
+    let open = shell.cli(&["remote", "http", "auth", "optional"]).await;
     assert_eq!(open.status, ExitStatus::Success, "{}", open.stderr);
     assert!(open.stderr.contains("every OS user"), "{}", open.stderr);
     let status = shell.cli(&["--json", "remote", "status"]).await.json();
     assert_eq!(status["settings"]["http"]["enabled"], false, "{status}");
-    assert_eq!(status["settings"]["http"]["strategy"], "local_open");
+    assert_eq!(status["settings"]["http"]["auth"], "optional");
 
     // Without a local-socket owner the switch cannot follow; nothing is committed.
     let socket = shell.cli(&["remote", "socket", "on"]).await;

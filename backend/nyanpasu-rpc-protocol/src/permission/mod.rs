@@ -200,6 +200,7 @@ mod tests {
                 "create_http_launch_url",
                 "create_remote_access_token",
                 "get_local_socket_status",
+                "list_local_networks",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
                 "reset_remote_access_tls",
@@ -208,7 +209,8 @@ mod tests {
                 "set_remote_access",
             ]
         );
-        // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
+        // The launch URL is a credential for a browser, so it stays with the desktop that opens it,
+        // and the network list serves only the desktop settings page.
         assert_eq!(
             names(|command| command.permission.resource == Resource::Remote
                 && command.targets.contains(&RpcTarget::Local)),

@@ -5,6 +5,7 @@ pub mod bundle_metadata;
 pub mod core_install;
 pub mod core_version;
 pub mod elevation;
+pub mod local_networks;
 pub mod logs;
 pub mod network_environment;
 pub mod service;

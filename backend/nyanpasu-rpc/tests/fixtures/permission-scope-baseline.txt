@@ -111,6 +111,7 @@ command | is_appimage | read | query | desktop,http |  |
 command | is_portable | read | query | desktop,http |  |
 command | is_tray_icon_set | read | query | desktop,http |  |
 command | is_widget_icon_set | read | query | desktop,http |  |
+command | list_local_networks | remote_admin | query | desktop |  |
 command | list_log_files | read | query | desktop,http,local |  |
 command | list_remote_access_tokens | remote_admin | query | desktop,local |  |
 command | list_remote_browser_sessions | remote_admin | query | desktop,local |  |

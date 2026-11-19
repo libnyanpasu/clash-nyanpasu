@@ -1176,7 +1176,7 @@ async fn session_anonymous_and_system_only_callers_follow_their_permissions() {
 
 #[tokio::test]
 async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
-    use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig};
+    use nyanpasu_config::application::{HttpAccessConfig, RemoteAccessConfig};
     use nyanpasu_rpc_protocol::RpcOwner;
 
     use crate::http::{
@@ -1338,7 +1338,6 @@ async fn remote_admin_commands_are_never_http_and_work_on_desktop() {
     let config = RemoteAccessConfig {
         http: HttpAccessConfig {
             enabled: true,
-            strategy: HttpAccessStrategy::LocalAuthenticated,
             ..Default::default()
         },
         ..Default::default()
@@ -1637,7 +1636,7 @@ async fn http_owner_isolation_supports_sse_client_id_query_and_rejects_invalid_n
 
 #[tokio::test]
 async fn set_remote_access_rejects_anonymous_permissions_beyond_the_operator_role() {
-    use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, RemoteAccessConfig};
+    use nyanpasu_config::application::{HttpAccessConfig, HttpAuthentication, RemoteAccessConfig};
     use nyanpasu_core::client::SetRemoteAccessError;
 
     let fixture = Fixture::new(false).await;
@@ -1646,7 +1645,7 @@ async fn set_remote_access_rejects_anonymous_permissions_beyond_the_operator_rol
     let local_open = |anonymous_permissions| RemoteAccessConfig {
         http: HttpAccessConfig {
             enabled: true,
-            strategy: HttpAccessStrategy::LocalOpen,
+            auth: HttpAuthentication::Optional,
             anonymous_permissions,
             ..Default::default()
         },

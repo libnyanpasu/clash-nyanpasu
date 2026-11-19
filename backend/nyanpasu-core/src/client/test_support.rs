@@ -11,6 +11,7 @@ pub mod workflow;
 use super::Result;
 use nyanpasu_contracts::{
     bundle_metadata::BundleMetadata,
+    local_networks::MockLocalNetworkSource,
     net::{ChangelogHttp, MockDirectEgressProbe, MockIconFetcher, MockNetworkDiagnostics},
 };
 use std::sync::{Arc, Mutex as StdMutex};
@@ -1022,6 +1023,7 @@ pub fn test_adapters(
         local_socket: None,
         changelog_http: Arc::new(|_| Arc::new(UnconfiguredChangelogHttp)),
         network_environment: None,
+        local_networks: Arc::new(MockLocalNetworkSource::new()),
         runtime_build,
         profile_files,
     }

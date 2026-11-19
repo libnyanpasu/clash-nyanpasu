@@ -417,6 +417,7 @@ fn host_adapters(
         http_server: None,
         local_socket: None,
         network_environment: None,
+        local_networks: Arc::new(nyanpasu_os::local_networks::IfAddrsLocalNetworks),
         changelog_http: Arc::new(move |ports| {
             Arc::new(nyanpasu_net::changelog_http::ReqwestChangelogHttp::new(
                 ports,

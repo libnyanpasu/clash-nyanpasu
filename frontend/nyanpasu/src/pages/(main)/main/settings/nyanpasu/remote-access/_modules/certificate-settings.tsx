@@ -21,10 +21,8 @@ import {
  */
 export default function CertificateSettings({
   tls,
-  bindOutsideCertificate,
 }: {
   tls?: TlsCertificateSummary
-  bindOutsideCertificate: boolean
 }) {
   const { resetCertificate } = useRemoteAccess()
   const [error, setError] = useState<string | null>(null)
@@ -78,16 +76,6 @@ export default function CertificateSettings({
         <ItemLabelDescription data-slot="remote-access-certificate-none">
           {m.settings_remote_access_certificate_none()}
         </ItemLabelDescription>
-      )}
-
-      {bindOutsideCertificate && (
-        <p
-          role="note"
-          data-slot="remote-access-certificate-address"
-          className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
-        >
-          {m.settings_remote_access_certificate_address_mismatch()}
-        </p>
       )}
 
       <div>

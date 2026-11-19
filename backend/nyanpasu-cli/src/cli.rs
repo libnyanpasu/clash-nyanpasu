@@ -3,10 +3,11 @@
 //! Subcommands that reach the shell map to curated operations (see `commands.rs`) through
 //! [`Command::plan`]; everything else is local to the CLI.
 
-use std::{net::IpAddr, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+use ipnet::Ipv4Net;
 use nyanpasu_contracts::auth::TlsFingerprint;
 use serde_json::{Value, json};
 
@@ -270,7 +271,7 @@ pub enum ConfigCommand {
 pub enum RemoteCommand {
     /// Show the remote access settings and what each listener is doing.
     Status,
-    /// Turn the HTTP server on or off, or choose how it authenticates.
+    /// Turn the HTTP server on or off, or choose who can reach it and how they authenticate.
     #[command(subcommand)]
     Http(HttpCommand),
     /// Turn the local socket on or off. Turning it off ends this connection's access.
@@ -293,50 +294,43 @@ pub enum HttpCommand {
     On,
     /// Stop the HTTP server.
     Off,
-    /// Choose how HTTP callers authenticate.
-    Strategy {
-        /// `local_authenticated` requires a credential; `local_open` lets every local
-        /// process of every OS user call the API with the configured anonymous permissions;
-        /// `lan_authenticated` listens on the LAN over HTTPS and requires a credential from
-        /// every caller, so it also turns HTTPS on.
+    /// Choose whether HTTP callers must authenticate.
+    Auth {
+        /// `required` needs a credential from every caller; `optional` lets every local process
+        /// of every OS user call the API with the configured anonymous permissions, and needs
+        /// `listen local`.
         #[arg(value_enum)]
-        strategy: HttpStrategy,
+        mode: HttpAuthMode,
     },
-    /// Choose the address `lan_authenticated` listens on, or every IPv4 interface with `all`.
-    LanBind {
-        /// An IP address of this computer, or `all`.
-        #[arg(value_parser = parse_lan_bind)]
-        address: LanBind,
+    /// Choose which peers can reach the HTTP server.
+    Listen {
+        /// `local` is this computer only; `lan` adds the networks of `lan-allow`; `any` is every
+        /// network. Both network scopes need HTTPS and a credential, so they turn both on.
+        #[arg(value_enum)]
+        scope: HttpListenScope,
     },
-    /// Serve plain HTTP or HTTPS with the self-signed certificate. The LAN strategy needs HTTPS.
+    /// Choose the networks `listen lan` accepts connections from, besides this computer.
+    LanAllow {
+        /// IPv4 networks in CIDR notation, such as `192.168.1.0/24`.
+        #[arg(required = true, value_parser = parse_network)]
+        networks: Vec<Ipv4Net>,
+    },
+    /// Serve plain HTTP or HTTPS with the self-signed certificate. A network scope needs HTTPS.
     Tls {
         #[arg(value_enum)]
         mode: HttpTlsMode,
     },
 }
 
-/// Where `lan_authenticated` listens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LanBind {
-    /// Every IPv4 interface.
-    All,
-    /// One address of this computer.
-    Address(IpAddr),
-}
-
-fn parse_lan_bind(text: &str) -> Result<LanBind, String> {
-    if text.eq_ignore_ascii_case("all") {
-        return Ok(LanBind::All);
-    }
+fn parse_network(text: &str) -> Result<Ipv4Net, String> {
     text.parse()
-        .map(LanBind::Address)
-        .map_err(|_| format!("`{text}` is neither an IP address nor `all`"))
+        .map_err(|_| format!("`{text}` is not an IPv4 network such as 192.168.1.0/24"))
 }
 
 /// Whether the HTTP server speaks TLS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum HttpTlsMode {
-    /// Plain HTTP, loopback strategies only.
+    /// Plain HTTP, `listen local` only.
     #[value(name = "http")]
     Http,
     /// HTTPS with the self-signed certificate.
@@ -354,24 +348,38 @@ impl HttpTlsMode {
     }
 }
 
-/// How the HTTP server authenticates a caller.
+/// Whether an HTTP caller must present a credential.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum HttpStrategy {
-    #[value(name = "local_authenticated", alias = "local-authenticated")]
-    LocalAuthenticated,
-    #[value(name = "local_open", alias = "local-open")]
-    LocalOpen,
-    #[value(name = "lan_authenticated", alias = "lan-authenticated")]
-    LanAuthenticated,
+pub enum HttpAuthMode {
+    Required,
+    Optional,
 }
 
-impl HttpStrategy {
+impl HttpAuthMode {
     /// The persisted spelling.
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::LocalAuthenticated => "local_authenticated",
-            Self::LocalOpen => "local_open",
-            Self::LanAuthenticated => "lan_authenticated",
+            Self::Required => "required",
+            Self::Optional => "optional",
+        }
+    }
+}
+
+/// Which peers can reach the HTTP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HttpListenScope {
+    Local,
+    Lan,
+    Any,
+}
+
+impl HttpListenScope {
+    /// The persisted spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Lan => "lan",
+            Self::Any => "any",
         }
     }
 }
@@ -916,8 +924,15 @@ mod tests {
             &["remote", "status"][..],
             &["remote", "http", "on"],
             &["remote", "http", "off"],
-            &["remote", "http", "strategy", "local_open"],
-            &["remote", "http", "strategy", "local-authenticated"],
+            &["remote", "http", "auth", "optional"],
+            &["remote", "http", "listen", "lan"],
+            &[
+                "remote",
+                "http",
+                "lan-allow",
+                "192.168.1.0/24",
+                "100.64.0.0/10",
+            ],
             &["remote", "socket", "on"],
             &["remote", "socket", "off"],
             &["remote", "token", "create", "laptop", "--role", "viewer"],
@@ -1008,8 +1023,11 @@ mod tests {
                 "--expires-in",
                 "soon",
             ],
-            &["remote", "http", "strategy", "internet_open"],
-            &["remote", "http", "lan-bind", "not-an-address"],
+            &["remote", "http", "auth", "none"],
+            &["remote", "http", "listen", "internet"],
+            &["remote", "http", "lan-allow"],
+            &["remote", "http", "lan-allow", "192.168.1.20"],
+            &["remote", "http", "lan-allow", "fd00::/8"],
             &["remote", "http", "tls", "plain"],
         ] {
             assert!(

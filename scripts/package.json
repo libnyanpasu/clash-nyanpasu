@@ -25,11 +25,11 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/adm-zip": "0.5.7",
+    "@types/adm-zip": "0.6.0",
     "@types/d3": "7.4.3",
-    "@types/figlet": "1.7.0",
+    "@types/figlet": "1.12.0",
     "@types/node": "24.19.2",
-    "@types/semver": "7.7.1",
+    "@types/semver": "7.8.0",
     "@types/spdx-expression-parse": "3.0.5"
   }
 }

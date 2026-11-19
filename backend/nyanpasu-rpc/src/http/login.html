@@ -141,11 +141,13 @@
         session.
       </p>
       <div id="fingerprint-note" role="note" hidden>
-        This connection uses a certificate the app made for itself, so your
-        browser cannot vouch for it. Before you enter a token, open the
-        certificate details in your browser and check that its SHA-256
+        This connection uses a certificate from the app's own certificate
+        authority, so your browser cannot vouch for it. Before you enter a
+        token, open the certificate details in your browser, select the top
+        certificate of the chain (the authority) and check that its SHA-256
         fingerprint is the one shown in the desktop app under Settings &rarr;
-        Remote access. If the two differ, do not sign in.
+        Remote access. If the two differ, do not sign in. Importing the exported
+        authority on this device removes the warning.
       </div>
       <form id="login-form">
         <label for="token">Access token</label>

@@ -12,14 +12,14 @@ use nyanpasu_cli::{
     error::ExitStatus,
     target::Environment,
 };
-use nyanpasu_config::application::{HttpAccessConfig, HttpAccessStrategy, HttpTls, Role};
+use nyanpasu_config::application::{HttpAccessConfig, HttpListen, HttpTls, Role};
 use nyanpasu_contracts::auth::{CreateAccessTokenRequest, Grant, TlsFingerprint, TokenName};
 use nyanpasu_rpc::{
     http::{
         HttpServerClient,
         auth::NyanpasuClientHttpAuthenticator,
         routes::RpcHttpRoutes,
-        test_support::{StaticTlsIdentity, self_signed_identity},
+        test_support::{StaticTlsIdentity, TestAuthority, issued_identity},
         tls::HttpTlsIdentitySource,
     },
     test_support::Fixture,
@@ -30,7 +30,10 @@ struct Lan {
     server: HttpServerClient,
     url: String,
     token: String,
+    /// The root the server's certificates come from, which the CLI pins.
     certificate: TlsFingerprint,
+    root: TestAuthority,
+    source: Arc<StaticTlsIdentity>,
     directory: tempfile::TempDir,
 }
 
@@ -39,22 +42,24 @@ impl Lan {
         let fixture = Fixture::new(false).await;
         let routes = Arc::new(RpcHttpRoutes::default());
         routes.install(&fixture.rpc).unwrap();
-        let identity = self_signed_identity(&[]);
-        let certificate = identity.fingerprint();
+        let root = TestAuthority::new();
+        let identity = root.issue(&[]);
+        let certificate = identity.authority_fingerprint();
+        let source = Arc::new(StaticTlsIdentity::new(identity));
         let server = HttpServerClient::spawn_with_tls(
             None,
             routes,
             Arc::new(NyanpasuClientHttpAuthenticator::new(
                 &fixture.rpc.dependencies().client,
             )),
-            Some(Arc::new(StaticTlsIdentity::new(identity)) as Arc<dyn HttpTlsIdentitySource>),
+            Some(source.clone() as Arc<dyn HttpTlsIdentitySource>),
         )
         .await
         .unwrap();
         let status = server
             .configure(&HttpAccessConfig {
                 enabled: true,
-                strategy: HttpAccessStrategy::LanAuthenticated,
+                listen: HttpListen::Any,
                 tls: HttpTls::SelfSigned,
                 ..Default::default()
             })
@@ -80,6 +85,8 @@ impl Lan {
             url: status.url.unwrap(),
             token,
             certificate,
+            root,
+            source,
             directory: tempfile::tempdir().unwrap(),
         }
     }
@@ -170,9 +177,30 @@ async fn the_pinned_certificate_is_accepted() {
 }
 
 #[tokio::test]
+async fn a_certificate_renewed_by_the_pinned_root_is_still_accepted() {
+    let lan = Lan::start().await;
+    // The app renews its certificate for new addresses; the pin names the root, not the
+    // certificate, so it keeps working.
+    lan.source.replace(lan.root.issue(&["renewed.local"]));
+    lan.server
+        .configure(&HttpAccessConfig {
+            enabled: true,
+            listen: HttpListen::Any,
+            tls: HttpTls::SelfSigned,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let (status, _, stderr) = lan.run(Some(lan.certificate), &["methods"], "").await;
+    assert_eq!(status, ExitStatus::Success, "{stderr}");
+    lan.stop().await;
+}
+
+#[tokio::test]
 async fn another_certificate_is_refused_before_the_token_is_sent() {
     let lan = Lan::start().await;
-    let other = self_signed_identity(&[]).fingerprint();
+    let other = issued_identity(&[]).authority_fingerprint();
     let (status, _, stderr) = lan.run(Some(other), &["methods"], "").await;
 
     assert_eq!(status, ExitStatus::Unauthenticated, "{stderr}");

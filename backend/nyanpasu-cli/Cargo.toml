@@ -26,6 +26,7 @@ nyanpasu-single-instance = { path = '../nyanpasu-single-instance' }
 clap = { version = '4', features = ['derive', 'env'] }
 clap_complete = '4'
 dirs = '7'
+ipnet = '2.12'
 keyring = '4'
 # `query` is optional in reqwest 0.13 and no other dependency of this package turns it on, so
 # the sidecar build (`cargo build -p nyanpasu-cli`, without dev-dependencies) needs it.

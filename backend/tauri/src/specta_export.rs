@@ -52,6 +52,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::meta::rpc_describe,
             commands::system::status::get_http_server_status,
             commands::remote::settings::get_local_socket_status,
+            commands::remote::settings::list_local_networks,
+            commands::remote::settings::get_remote_access_certificate,
             commands::system::status::get_configuration_status,
             commands::system::status::get_configuration_status_summary,
             commands::system::service::get_service_status_summary,
@@ -178,6 +180,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::settings::backup::create_config_backup,
             ipc::system::os::open_logs_dir,
             ipc::system::os::open_web_url,
+            ipc::remote::open_remote_access_certificate,
+            ipc::remote::export_remote_access_authority,
             ipc::system::core::open_core_dir,
             ipc::system::os::install_cli,
             commands::system::core::restart_sidecar,
@@ -306,18 +310,42 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
     )
 }
 
-/// The role expansions, the anonymous limit and what a token can be granted, which the frontend
-/// offers and explains to the user; only the backend validates and admits.
+/// A command an HTTP caller may reach, as the token dialog lists it.
+#[derive(serde::Serialize, specta::Type)]
+struct HttpCommand {
+    name: &'static str,
+    /// The module path below the command root, such as `proxy.delay`.
+    namespace: &'static str,
+    permission: nyanpasu_config::application::Permission,
+    effect: nyanpasu_rpc_protocol::CommandEffect,
+    sensitive: bool,
+}
+
+/// The role expansions, the anonymous limit, what a token can be granted and the commands HTTP
+/// offers, which the frontend shows and explains to the user; only the backend validates and
+/// admits.
 fn permission_constants(
     builder: tauri_specta::Builder<tauri::Wry>,
 ) -> tauri_specta::Builder<tauri::Wry> {
     use nyanpasu_config::application::{ANONYMOUS_PERMISSIONS_LIMIT, Role};
     use nyanpasu_contracts::auth::Grant;
+    use nyanpasu_rpc_protocol::{RpcTarget, permission::RESOURCES};
     use strum::IntoEnumIterator as _;
 
     let roles = Role::iter()
         .map(|role| (role.to_string(), role.permissions()))
         .collect::<std::collections::BTreeMap<_, _>>();
+    let http_commands: Vec<HttpCommand> = RESOURCES
+        .iter()
+        .filter(|resource| resource.is_command() && resource.targets.contains(&RpcTarget::Http))
+        .map(|command| HttpCommand {
+            name: command.name,
+            namespace: command.namespace,
+            permission: command.permission,
+            effect: command.effect,
+            sensitive: command.sensitive,
+        })
+        .collect();
     builder
         .constant("ROLE_PERMISSIONS", roles)
         .constant("ANONYMOUS_PERMISSIONS_LIMIT", ANONYMOUS_PERMISSIONS_LIMIT)
@@ -326,6 +354,7 @@ fn permission_constants(
             "GRANTABLE_RESOURCES",
             Grant::grantable_resources().collect::<Vec<_>>(),
         )
+        .constant("HTTP_COMMANDS", http_commands)
 }
 
 pub(crate) fn adapt_rpc_bindings(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {

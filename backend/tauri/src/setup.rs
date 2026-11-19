@@ -382,6 +382,7 @@ pub fn setup<M: tauri::Manager<tauri::Wry>>(
             network_environment: Some(Arc::new(
                 nyanpasu_os::network_environment::NetdevNetworkEnvironment::new(),
             )),
+            local_networks: Arc::new(nyanpasu_os::local_networks::IfAddrsLocalNetworks),
             http_server: Some({
                 let frontend = Some(http_server_frontend(&app_handle));
                 Arc::new(move || {

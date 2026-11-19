@@ -630,15 +630,16 @@ async fn choose_pin<C: Connector>(
     let presented = services.connector.probe_certificate(url).await?;
     write!(
         io.stderr,
-        "{url} presents a certificate with the SHA-256 fingerprint\n  {presented}\n\
+        "{url} presents a certificate issued by the authority with the SHA-256 fingerprint\n  \
+         {presented}\n\
          Compare it with the fingerprint in the app's remote access settings.\n\
-         Pin this certificate? [y/N] "
+         Pin this certificate authority? [y/N] "
     )?;
     io.stderr.flush()?;
     if !confirmed(io.stdin)? {
         return Err(CliError::usage(
-            "the certificate was not pinned and nothing was saved; verify the fingerprint and \
-             pass it with --fingerprint",
+            "the certificate authority was not pinned and nothing was saved; verify the \
+             fingerprint and pass it with --fingerprint",
         ));
     }
     Ok(Some(presented))
@@ -1176,7 +1177,7 @@ mod tests {
             declined.stderr
         );
         assert!(
-            declined.stderr.contains("Pin this certificate?"),
+            declined.stderr.contains("Pin this certificate authority?"),
             "{}",
             declined.stderr
         );
@@ -1387,9 +1388,9 @@ mod tests {
 
     fn committed_settings() -> Value {
         json!({"remote_access": {
-            "http": {"enabled": false, "strategy": "local_authenticated", "port": null,
-                     "serve_webui": true, "anonymous_permissions": {},
-                     "lan_bind": null, "tls": "http"},
+            "http": {"enabled": false, "auth": "required", "listen": "local",
+                     "lan_allow": [], "port": null, "serve_webui": true,
+                     "anonymous_permissions": {}, "tls": "http"},
             "local_socket": {"enabled": true},
         }})
     }
@@ -1434,9 +1435,9 @@ mod tests {
             (&["remote", "http", "on"][..], "/http/enabled", json!(true)),
             (&["remote", "http", "off"], "/http/enabled", json!(false)),
             (
-                &["remote", "http", "strategy", "local_open"],
-                "/http/strategy",
-                json!("local_open"),
+                &["remote", "http", "auth", "optional"],
+                "/http/auth",
+                json!("optional"),
             ),
             (
                 &["remote", "socket", "off"],
@@ -1444,14 +1445,20 @@ mod tests {
                 json!(false),
             ),
             (
-                &["remote", "http", "lan-bind", "192.168.1.20"],
-                "/http/lan_bind",
-                json!("192.168.1.20"),
+                &[
+                    "remote",
+                    "http",
+                    "lan-allow",
+                    "192.168.1.0/24",
+                    "100.64.0.0/10",
+                ],
+                "/http/lan_allow",
+                json!(["192.168.1.0/24", "100.64.0.0/10"]),
             ),
             (
-                &["remote", "http", "lan-bind", "all"],
-                "/http/lan_bind",
-                Value::Null,
+                &["remote", "http", "listen", "local"],
+                "/http/listen",
+                json!("local"),
             ),
             (
                 &["remote", "http", "tls", "self_signed"],
@@ -1490,33 +1497,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_lan_strategy_brings_https_and_warns() {
-        let transport = FakeTransport::new(vec![
-            describe_remote(),
-            Ok(committed_settings()),
-            Ok(json!({"status": "committed", "value": null})),
-        ]);
-        let harness = harness(Ok(transport));
-        let run = invoke(
-            &harness,
-            &Environment::default(),
-            &["remote", "http", "strategy", "lan_authenticated"],
-            "",
-        )
-        .await;
-        assert_eq!(run.status, ExitStatus::Success, "{}", run.stderr);
-        assert!(
-            run.stderr.contains("compare the certificate fingerprint"),
-            "{}",
-            run.stderr
-        );
-        let calls = harness.services.connector.calls();
-        let sent = &calls[2].1["config"]["http"];
-        assert_eq!(sent["strategy"], "lan_authenticated");
-        assert_eq!(
-            sent["tls"], "self_signed",
-            "credentials never cross the LAN in the clear"
-        );
+    async fn a_network_scope_brings_https_and_a_credential_and_warns() {
+        for scope in ["lan", "any"] {
+            let mut committed = committed_settings();
+            committed["remote_access"]["http"]["auth"] = json!("optional");
+            let transport = FakeTransport::new(vec![
+                describe_remote(),
+                Ok(committed),
+                Ok(json!({"status": "committed", "value": null})),
+            ]);
+            let harness = harness(Ok(transport));
+            let run = invoke(
+                &harness,
+                &Environment::default(),
+                &["remote", "http", "listen", scope],
+                "",
+            )
+            .await;
+            assert_eq!(run.status, ExitStatus::Success, "{scope}: {}", run.stderr);
+            assert!(
+                run.stderr.contains("compare the certificate fingerprint"),
+                "{}",
+                run.stderr
+            );
+            let calls = harness.services.connector.calls();
+            let sent = &calls[2].1["config"]["http"];
+            assert_eq!(sent["listen"], scope);
+            assert_eq!(
+                sent["tls"], "self_signed",
+                "credentials never cross the network in the clear"
+            );
+            assert_eq!(sent["auth"], "required", "only this computer may skip them");
+        }
     }
 
     #[tokio::test]
@@ -1553,7 +1565,7 @@ mod tests {
         let run = invoke(
             &harness,
             &Environment::default(),
-            &["remote", "http", "strategy", "local_open"],
+            &["remote", "http", "auth", "optional"],
             "",
         )
         .await;

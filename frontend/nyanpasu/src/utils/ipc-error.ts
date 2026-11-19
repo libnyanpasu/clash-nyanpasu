@@ -748,8 +748,12 @@ function publicRemoteAccessErrorMessage(
       return m.error_config_remote_access_anonymous_beyond_operator()
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()
-    case 'lan_requires_tls':
-      return m.error_config_remote_access_lan_requires_tls()
+    case 'optional_authentication_beyond_local':
+      return m.error_config_remote_access_optional_authentication_beyond_local()
+    case 'network_requires_tls':
+      return m.error_config_remote_access_network_requires_tls()
+    case 'lan_allow_empty':
+      return m.error_config_remote_access_lan_allow_empty()
   }
 }
 
@@ -838,8 +842,12 @@ function remoteAccessErrorMessage(error: RemoteAccessError): string {
       })
     case 'use_dedicated_command':
       return m.error_config_remote_access_use_dedicated_command()
-    case 'lan_requires_tls':
-      return m.error_config_remote_access_lan_requires_tls()
+    case 'optional_authentication_beyond_local':
+      return m.error_config_remote_access_optional_authentication_beyond_local()
+    case 'network_requires_tls':
+      return m.error_config_remote_access_network_requires_tls()
+    case 'lan_allow_empty':
+      return m.error_config_remote_access_lan_allow_empty()
   }
 }
 

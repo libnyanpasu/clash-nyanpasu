@@ -42,17 +42,14 @@ pub enum HttpServerFault {
 #[derive(Debug, Clone, Default, serde::Serialize, specta::Type, PartialEq, Eq)]
 pub struct HttpServerStatus {
     pub enabled: bool,
-    /// The bound origin, for example `http://127.0.0.1:41234/` or `https://192.168.1.20:41234/`.
+    /// An origin this computer reaches the listener at, `http://127.0.0.1:41234/` or
+    /// `https://127.0.0.1:41234/`; a listener on every interface is reached through loopback.
     pub url: Option<String>,
     /// The bound port, which the facade records when the settings leave it open.
     pub port: Option<u16>,
     /// The certificate the listener presents, when it serves HTTPS. Its fingerprint is what a
     /// client pins; it is public to every TLS client, so it is not a secret.
     pub tls: Option<TlsCertificateSummary>,
-    /// The listener is bound to one address that its certificate does not cover, because the
-    /// certificate was made before that address was configured. A client that connects to it
-    /// fails the certificate's name check until the certificate is replaced.
-    pub bind_outside_certificate: bool,
     pub fault: Option<HttpServerFault>,
 }
 

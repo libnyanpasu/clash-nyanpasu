@@ -1,6 +1,7 @@
 //! Deterministic fakes of the authentication ports for tests of the owner and its transports.
 
 use std::{
+    net::IpAddr,
     sync::{
         Mutex,
         atomic::{AtomicU8, AtomicU64, Ordering},
@@ -12,8 +13,8 @@ use async_trait::async_trait;
 use zeroize::Zeroizing;
 
 use super::{
-    AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError, TlsCertificateGenerator,
-    TlsCertificateRequest, TlsGenerateError, TlsIdentity,
+    AuthClock, EntropyError, EntropySource, SecretStore, SecretStoreError, TlsAuthority,
+    TlsCertificateGenerator, TlsCertificateRequest, TlsGenerateError, TlsIdentity,
 };
 
 const START_UNIX_MS: u64 = 1_700_000_000_000;
@@ -77,44 +78,86 @@ impl SecretStore for MemorySecretStore {
     }
 }
 
-/// A generator of distinguishable placeholder identities that remembers what it was asked for.
+/// A generator of distinguishable placeholder certificates that remembers what it was asked for.
 ///
-/// The bytes are not a real certificate, so only code that never parses them may use it.
+/// The bytes are not real certificates, so only code that never parses them may use it.
 #[derive(Debug, Default)]
 pub struct FakeTlsGenerator {
-    requests: Mutex<Vec<TlsCertificateRequest>>,
+    authorities: Mutex<Vec<TlsCertificateRequest>>,
+    issued: Mutex<Vec<TlsCertificateRequest>>,
+    addresses: Mutex<Vec<IpAddr>>,
 }
 
 impl FakeTlsGenerator {
-    /// Every request so far, oldest first.
-    pub fn requests(&self) -> Vec<TlsCertificateRequest> {
-        self.requests
+    /// Every root request so far, oldest first.
+    pub fn authority_requests(&self) -> Vec<TlsCertificateRequest> {
+        self.authorities
             .lock()
             .expect("no holder of the requests panics")
             .clone()
+    }
+
+    /// Every server certificate request so far, oldest first.
+    pub fn issue_requests(&self) -> Vec<TlsCertificateRequest> {
+        self.issued
+            .lock()
+            .expect("no holder of the requests panics")
+            .clone()
+    }
+
+    /// Changes the addresses the host reports, as a new network would.
+    pub fn set_addresses(&self, addresses: Vec<IpAddr>) {
+        *self
+            .addresses
+            .lock()
+            .expect("no holder of the addresses panics") = addresses;
     }
 }
 
 #[async_trait]
 impl TlsCertificateGenerator for FakeTlsGenerator {
-    async fn generate(
+    async fn generate_authority(
         &self,
+        request: TlsCertificateRequest,
+    ) -> Result<TlsAuthority, TlsGenerateError> {
+        let mut requests = self
+            .authorities
+            .lock()
+            .expect("no holder of the requests panics");
+        requests.push(request);
+        let serial = requests.len();
+        Ok(TlsAuthority::new(
+            format!("authority-{serial}").into_bytes(),
+            format!("authority-key-{serial}").into_bytes(),
+            request.not_after_ms,
+        ))
+    }
+
+    async fn issue(
+        &self,
+        authority: &TlsAuthority,
         request: TlsCertificateRequest,
     ) -> Result<TlsIdentity, TlsGenerateError> {
         let mut requests = self
-            .requests
+            .issued
             .lock()
             .expect("no holder of the requests panics");
-        let serial = requests.len() + 1;
-        let not_after_ms = request.not_after_ms;
-        let addresses = request.addresses.clone();
         requests.push(request);
+        let serial = requests.len();
         Ok(TlsIdentity::new(
             format!("certificate-{serial}").into_bytes(),
             format!("private-key-{serial}").into_bytes(),
+            authority.certificate_der().to_vec(),
             vec!["localhost".to_owned()],
-            addresses,
-            not_after_ms,
+            self.addresses(),
+            request.not_after_ms,
         ))
+    }
+
+    fn addresses(&self) -> Vec<IpAddr> {
+        self.addresses
+            .lock()
+            .expect("no holder of the addresses panics")
+            .clone()
     }
 }

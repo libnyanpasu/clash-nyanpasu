@@ -269,6 +269,7 @@ deelevate = '0.2.0'
 winreg = { version = '0.56', features = ['transactions'] }
 windows-registry = '0.6.0'
 windows-sys = { version = '0.61', features = [
+  'Win32_Security_Cryptography_UI',
   'Win32_System_LibraryLoader',
   'Win32_System_Console',
   'Win32_System_SystemInformation',

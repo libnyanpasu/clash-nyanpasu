@@ -1,8 +1,11 @@
-//! The self-signed TLS identity of the HTTP listener, its public fingerprint and its generator port.
+//! The HTTP listener's certificate authority, the short-lived certificates it issues, their public
+//! fingerprints and the generator port.
 //!
-//! The private key lives only in [`TlsIdentity`], which has no `Serialize` and redacts `Debug`.
-//! Everything a client or the settings page may see is [`TlsFingerprint`] and
-//! [`TlsCertificateSummary`].
+//! A long-lived local root ([`TlsAuthority`]) is what clients trust or pin. The listener presents
+//! a short-lived certificate it issued for the host's current addresses ([`TlsIdentity`]), so new
+//! addresses or a renewal never change what clients trust. Private keys live only in these two
+//! types, which have no `Serialize` and redact `Debug`. Everything a client or the settings page
+//! may see is [`TlsFingerprint`] and [`TlsCertificateSummary`].
 
 use std::{fmt, net::IpAddr, str::FromStr};
 
@@ -99,29 +102,87 @@ impl Type for TlsFingerprint {
 /// What the settings page and the CLI may show of the certificate: nothing secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct TlsCertificateSummary {
-    /// The value to compare in a browser warning or to pin in a CLI context.
+    /// The fingerprint of the certificate authority, the value to compare in a browser warning or
+    /// to pin in a CLI context. Renewing the listener's certificate keeps it.
     pub fingerprint: TlsFingerprint,
-    /// When the certificate expires, in Unix epoch milliseconds.
+    /// When the listener's current certificate expires, in Unix epoch milliseconds. It is renewed
+    /// before then.
     pub not_after_ms: i64,
 }
 
-/// A certificate with its private key.
+/// The local certificate authority: a self-signed root and its private key.
+#[derive(Clone)]
+pub struct TlsAuthority {
+    certificate_der: Vec<u8>,
+    private_key_der: Zeroizing<Vec<u8>>,
+    not_after_ms: i64,
+}
+
+impl TlsAuthority {
+    /// Assembles an authority from its DER certificate, its PKCS#8 DER private key and its expiry.
+    #[must_use]
+    pub fn new(certificate_der: Vec<u8>, private_key_der: Vec<u8>, not_after_ms: i64) -> Self {
+        Self {
+            certificate_der,
+            private_key_der: Zeroizing::new(private_key_der),
+            not_after_ms,
+        }
+    }
+
+    /// The DER-encoded root certificate, which clients trust.
+    #[must_use]
+    pub fn certificate_der(&self) -> &[u8] {
+        &self.certificate_der
+    }
+
+    /// The PKCS#8 DER private key that signs the listener's certificates.
+    #[must_use]
+    pub fn private_key_der(&self) -> &[u8] {
+        &self.private_key_der
+    }
+
+    /// When the root expires, in Unix epoch milliseconds.
+    #[must_use]
+    pub const fn not_after_ms(&self) -> i64 {
+        self.not_after_ms
+    }
+
+    /// The pinnable fingerprint of the root.
+    #[must_use]
+    pub fn fingerprint(&self) -> TlsFingerprint {
+        TlsFingerprint::of_certificate(&self.certificate_der)
+    }
+}
+
+impl fmt::Debug for TlsAuthority {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TlsAuthority")
+            .field("fingerprint", &self.fingerprint())
+            .field("not_after_ms", &self.not_after_ms)
+            .field("private_key_der", &"[REDACTED]")
+            .finish()
+    }
+}
+
+/// A certificate the authority issued for the listener, with its private key.
 #[derive(Clone)]
 pub struct TlsIdentity {
     certificate_der: Vec<u8>,
     private_key_der: Zeroizing<Vec<u8>>,
+    authority_der: Vec<u8>,
     dns_names: Vec<String>,
     addresses: Vec<IpAddr>,
     not_after_ms: i64,
 }
 
 impl TlsIdentity {
-    /// Assembles an identity from a DER certificate, its PKCS#8 DER private key, the DNS names and
-    /// IP addresses the certificate covers and its expiry.
+    /// Assembles an identity from a DER certificate, its PKCS#8 DER private key, the DER root that
+    /// issued it, the DNS names and IP addresses the certificate covers and its expiry.
     #[must_use]
     pub fn new(
         certificate_der: Vec<u8>,
         private_key_der: Vec<u8>,
+        authority_der: Vec<u8>,
         dns_names: Vec<String>,
         addresses: Vec<IpAddr>,
         not_after_ms: i64,
@@ -129,10 +190,23 @@ impl TlsIdentity {
         Self {
             certificate_der,
             private_key_der: Zeroizing::new(private_key_der),
+            authority_der,
             dns_names,
             addresses,
             not_after_ms,
         }
+    }
+
+    /// The DER root that issued the certificate, sent after it so clients can build the chain.
+    #[must_use]
+    pub fn authority_der(&self) -> &[u8] {
+        &self.authority_der
+    }
+
+    /// The fingerprint of the issuing root, which clients pin.
+    #[must_use]
+    pub fn authority_fingerprint(&self) -> TlsFingerprint {
+        TlsFingerprint::of_certificate(&self.authority_der)
     }
 
     /// The DNS names the certificate covers, lower case. A request may name the server by one
@@ -172,17 +246,17 @@ impl TlsIdentity {
         self.not_after_ms
     }
 
-    /// The pinnable fingerprint of the certificate.
+    /// The fingerprint of this certificate, which changes with every renewal.
     #[must_use]
     pub fn fingerprint(&self) -> TlsFingerprint {
         TlsFingerprint::of_certificate(&self.certificate_der)
     }
 
-    /// The non-secret view.
+    /// The non-secret view: the root's fingerprint and this certificate's expiry.
     #[must_use]
     pub fn summary(&self) -> TlsCertificateSummary {
         TlsCertificateSummary {
-            fingerprint: self.fingerprint(),
+            fingerprint: self.authority_fingerprint(),
             not_after_ms: self.not_after_ms,
         }
     }
@@ -192,20 +266,16 @@ impl fmt::Debug for TlsIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TlsIdentity")
             .field("fingerprint", &self.fingerprint())
+            .field("authority", &self.authority_fingerprint())
             .field("not_after_ms", &self.not_after_ms)
             .field("private_key_der", &"[REDACTED]")
             .finish()
     }
 }
 
-/// What a new certificate must cover and for how long.
-///
-/// The generator always adds the loopback addresses, `localhost`, and the host name and
-/// interface addresses it can discover; `addresses` adds the configured `lan_bind`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// How long a new certificate is valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TlsCertificateRequest {
-    /// Addresses beyond the ones the generator discovers.
-    pub addresses: Vec<IpAddr>,
     /// Start of validity, in Unix epoch milliseconds.
     pub not_before_ms: i64,
     /// End of validity, in Unix epoch milliseconds.
@@ -220,14 +290,26 @@ pub struct TlsGenerateError {
     pub reason: String,
 }
 
-/// Generates a self-signed certificate and its private key.
+/// Makes the local root and the listener's certificates it issues.
 #[async_trait]
 pub trait TlsCertificateGenerator: Send + Sync {
-    /// A fresh identity valid for `request`.
-    async fn generate(
+    /// A fresh self-signed root, valid for `request`, that may sign server certificates.
+    async fn generate_authority(
         &self,
         request: TlsCertificateRequest,
+    ) -> Result<TlsAuthority, TlsGenerateError>;
+
+    /// A fresh server certificate signed by `authority` and valid for `request`. It covers the
+    /// loopback addresses, `localhost`, the host name and [`Self::addresses`].
+    async fn issue(
+        &self,
+        authority: &TlsAuthority,
+        request: TlsCertificateRequest,
     ) -> Result<TlsIdentity, TlsGenerateError>;
+
+    /// The IP addresses a certificate issued now would cover. When they differ from the current
+    /// certificate's, the owner issues a new one.
+    fn addresses(&self) -> Vec<IpAddr>;
 }
 
 #[cfg(test)]
@@ -275,6 +357,7 @@ mod tests {
         let identity = TlsIdentity::new(
             b"cert".to_vec(),
             b"super-secret-key".to_vec(),
+            b"root".to_vec(),
             Vec::new(),
             Vec::new(),
             7,
@@ -284,5 +367,14 @@ mod tests {
         assert!(debug.contains("REDACTED"), "{debug}");
         let summary = serde_json::to_string(&identity.summary()).unwrap();
         assert!(!summary.contains("secret"), "{summary}");
+        assert_eq!(
+            identity.summary().fingerprint,
+            identity.authority_fingerprint()
+        );
+
+        let authority = TlsAuthority::new(b"root".to_vec(), b"root-secret-key".to_vec(), 9);
+        let debug = format!("{authority:?}");
+        assert!(!debug.contains("root-secret-key"), "{debug}");
+        assert!(debug.contains("REDACTED"), "{debug}");
     }
 }

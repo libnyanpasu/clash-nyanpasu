@@ -1,8 +1,11 @@
-//! HTTPS for the listener: the consumer-owned certificate port and the TLS accept loop.
+//! HTTPS for the listener: the consumer-owned certificate port, the replaceable certificate and
+//! the TLS accept loop.
 //!
 //! The certificate comes from the remote-access owner in core through [`HttpTlsIdentitySource`];
-//! this module never generates or stores one. A listener that is configured for HTTPS and cannot
-//! get a certificate does not start, so credentials never cross the network in the clear.
+//! this module never generates or stores one. The listener presents it with its issuing root, and
+//! a renewal replaces it for the next handshake without restarting the listener. A listener that is
+//! configured for HTTPS and cannot get a certificate does not start, so credentials never cross the
+//! network in the clear.
 
 use std::{
     io,
@@ -11,19 +14,21 @@ use std::{
 };
 
 use axum::Router;
-use nyanpasu_contracts::auth::TlsIdentity;
+use nyanpasu_contracts::auth::{TlsFingerprint, TlsIdentity};
 use nyanpasu_core::client::{NyanpasuClient, WeakNyanpasuClient};
 use rustls::{
     ServerConfig,
     crypto::aws_lc_rs,
     pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
+    server::{ClientHello, ResolvesServerCert},
+    sign::CertifiedKey,
 };
 use snafu::Snafu;
 use tokio::{net::TcpListener, task::JoinSet};
 use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 
-use super::listener;
+use super::{PeerPolicy, listener};
 use crate::registry::SetupError;
 
 /// A client that does not finish the TLS handshake in this time is dropped, so idle sockets
@@ -96,27 +101,79 @@ impl HttpTlsIdentitySource for RpcHttpTls {
     }
 }
 
-/// An acceptor for `identity`, offering HTTP/2 and HTTP/1.1.
+/// The certificate the listener presents, which a renewal replaces while it serves.
+#[derive(Debug)]
+pub(super) struct CertificateSlot {
+    current: parking_lot::RwLock<(TlsFingerprint, Arc<CertifiedKey>)>,
+}
+
+impl CertificateSlot {
+    fn new(identity: &TlsIdentity) -> Result<Self, rustls::Error> {
+        Ok(Self {
+            current: parking_lot::RwLock::new((identity.fingerprint(), certified_key(identity)?)),
+        })
+    }
+
+    /// Presents `identity` from the next handshake on, unless it is the one presented already.
+    ///
+    /// # Errors
+    /// Fails when the certificate and key do not form a usable pair; the current one stays.
+    pub(super) fn present(&self, identity: &TlsIdentity) -> Result<(), rustls::Error> {
+        if self.current.read().0 == identity.fingerprint() {
+            return Ok(());
+        }
+        let key = certified_key(identity)?;
+        *self.current.write() = (identity.fingerprint(), key);
+        Ok(())
+    }
+}
+
+impl ResolvesServerCert for CertificateSlot {
+    fn resolve(&self, _: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+        Some(self.current.read().1.clone())
+    }
+}
+
+/// The certificate followed by its issuing root, so a client that trusts the root can build the
+/// chain, and its signing key.
+fn certified_key(identity: &TlsIdentity) -> Result<Arc<CertifiedKey>, rustls::Error> {
+    let key = aws_lc_rs::default_provider()
+        .key_provider
+        .load_private_key(PrivateKeyDer::from(PrivatePkcs8KeyDer::from(
+            identity.private_key_der().to_vec(),
+        )))?;
+    let chain = vec![
+        CertificateDer::from(identity.certificate_der().to_vec()),
+        CertificateDer::from(identity.authority_der().to_vec()),
+    ];
+    let key = CertifiedKey::new(chain, key);
+    key.keys_match()?;
+    Ok(Arc::new(key))
+}
+
+/// An acceptor presenting `identity`, offering HTTP/2 and HTTP/1.1, and the slot that replaces
+/// its certificate.
 ///
 /// # Errors
 /// Fails when the certificate and key do not form a usable pair.
-pub(super) fn acceptor(identity: &TlsIdentity) -> Result<TlsAcceptor, rustls::Error> {
-    let certificate = CertificateDer::from(identity.certificate_der().to_vec());
-    let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(
-        identity.private_key_der().to_vec(),
-    ));
+pub(super) fn acceptor(
+    identity: &TlsIdentity,
+) -> Result<(TlsAcceptor, Arc<CertificateSlot>), rustls::Error> {
+    let slot = Arc::new(CertificateSlot::new(identity)?);
     let mut config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
         .with_safe_default_protocol_versions()?
         .with_no_client_auth()
-        .with_single_cert(vec![certificate], key)?;
+        .with_cert_resolver(slot.clone());
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-    Ok(TlsAcceptor::from(Arc::new(config)))
+    Ok((TlsAcceptor::from(Arc::new(config)), slot))
 }
 
-/// Serves `app` over TLS until `stop` is cancelled, then drains the open connections.
+/// Serves `app` over TLS to the peers `peers` admits until `stop` is cancelled, then drains the
+/// open connections.
 pub(super) async fn serve(
     listener: TcpListener,
     acceptor: TlsAcceptor,
+    peers: PeerPolicy,
     app: Router,
     stop: CancellationToken,
 ) {
@@ -129,6 +186,13 @@ pub(super) async fn serve(
                 nyanpasu_owner_support::blocking::join(joined);
             }
             accepted = listener.accept() => match accepted {
+                Ok((_, peer)) if !peers.admits(peer.ip()) => {
+                    tracing::debug!(
+                        target: "nyanpasu::remote_access",
+                        %peer,
+                        "connection from a network outside the LAN allow list dropped"
+                    );
+                }
                 Ok((stream, peer)) => {
                     let (acceptor, app, stop) = (acceptor.clone(), app.clone(), stop.child_token());
                     connections.spawn(async move {

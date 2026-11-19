@@ -89,16 +89,28 @@ another class.
 `remote_access` is written only by `set_remote_access`, a `remote:write` mutation reachable
 from Desktop and the same-user local socket but never over HTTP, that
 returns `MutationOutcome`: the settings commit first, then the HTTP listener follows
-them (`HttpServerActor` restarts on `port`, `serve_webui`, `strategy`, `lan_bind`, `tls`,
+them (`HttpServerActor` restarts on `port`, `serve_webui`, `auth`, `listen`, `lan_allow`, `tls`,
 `anonymous_permissions` or certificate changes), and a listener that cannot follow is a
 `http_server_unavailable` degradation, never a rollback. A single serial owner
 (`RemoteAccessClient` in core) runs the whole operation, so concurrent edits cannot
 configure the listener from an older snapshot and a caller that leaves does not cancel
 it. Startup validates the saved settings (`RemoteAccessConfig::validate` rejects
-`anonymous_permissions` beyond the `operator` role, and `lan_authenticated` without
-`tls: self_signed`) before activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
+`anonymous_permissions` beyond the `operator` role, `auth: optional` beyond `listen: local`, a
+network `listen` without `tls: self_signed`, and `listen: lan` with an empty `lan_allow`) before
+activating a listener. `get_http_server_status` is HTTP- and Local-exposed and
 never carries a credential; `get_local_socket_status` returns the endpoint path, so it is a
-`remote:read` query on Desktop and Local only. Access tokens and browser sessions are managed
+`remote:read` query on Desktop and Local only. `list_local_networks` returns the host's IPv4
+networks (interface name, address and CIDR network) that `lan_allow` may name; it is a Desktop-only
+`remote:read` query, so the reviewed Local allowlist is unchanged. `get_remote_access_certificate`
+(a Desktop-only `remote:read` query) reads the local root and the listener's current certificate
+without making either and returns their viewer fields (`RemoteAccessCertificates` of
+`TlsCertificateDetails`: subject, issuer, serial, validity, SANs, algorithms and SHA-256/SHA-1
+fingerprints), so the settings page shows them while nothing listens.
+`open_remote_access_certificate` (a Desktop-only native `remote:write` mutation, capability `opener`)
+shows the root in the platform's read-only viewer: the Windows certificate dialog, Quick Look on
+macOS, or `gcr-viewer`, else `xdg-open`, on Linux; none of them imports it into a trust store.
+`export_remote_access_authority` (Desktop-only native, capability `dialog`) saves the root as a PEM
+`.crt` file the user chooses, for importing on other devices. Access tokens and browser sessions are managed
 through the `remote` commands in `nyanpasu-rpc/src/commands/remote/{tokens,sessions,settings}.rs`
 (`list_remote_access_tokens`, `create_remote_access_token`, `revoke_remote_access_token`,
 `list_remote_browser_sessions`, `revoke_remote_browser_session`), which Desktop and the local
@@ -112,25 +124,33 @@ revocation; capacity never turns into a global login denial.
 `create_http_launch_url` stays Desktop-only: it is a browser credential, and a mutation so
 launch codes are not kept in a client cache.
 
-`tls: self_signed` serves HTTPS with the application's own certificate. The remote-access
-authentication owner generates it on first use (an `HttpTlsIdentitySource` port, installed late
-like the authenticator; `nyanpasu-os` implements the generator) and keeps it with the token hashes
-in `auth-secrets.json`; it is replaced only on expiry or by `reset_remote_access_tls`
-(`remote:write`, Desktop and Local only), because a new certificate breaks every pinned client.
-A listener that must serve HTTPS and has no usable certificate, or one it cannot build a TLS
-configuration from, stops with the `tls_unavailable` fault; it never falls back to plain HTTP, and
-`reset_remote_access_tls` repairs it. A certificate is valid from one day before it was made, so a
-device whose clock runs behind does not reject it. The certificate keeps the addresses it covers,
-and the status reports `bind_outside_certificate` when `lan_bind` names one it does not. `get_http_server_status` carries the certificate's SHA-256
-fingerprint and expiry, which are public to every TLS client. `lan_authenticated` binds `lan_bind`
-(every IPv4 interface when unset), always serves HTTPS and requires a credential from every caller,
-loopback peers included. Its `Host` policy accepts an IP literal on the bound port or a name the
+`tls: self_signed` serves HTTPS with certificates from the application's own certificate
+authority. The remote-access authentication owner makes the root (ten years, path length zero, no
+name constraints) when HTTPS is turned on or first needed, and keeps it with the token hashes in
+`auth-secrets.json`; it is replaced only near its end or by `reset_remote_access_tls`
+(`remote:write`, Desktop and Local only), because a new root breaks every client that trusted or
+pinned it. The listener presents a seven-day certificate the root issues for `localhost`, the host
+name and every interface address (an `HttpTlsIdentitySource` port, installed late like the
+authenticator; `nyanpasu-os` implements the generator), followed by the root. It is memory only:
+the owner issues a new one when none exists, the host's addresses changed, or less than two days are
+left, and the listener asks for it every minute and presents a new one from the next handshake on
+without restarting; only a new root restarts the listener. A listener that must serve HTTPS and has
+no usable certificate, or one it cannot build a TLS configuration from, stops with the
+`tls_unavailable` fault; it never falls back to plain HTTP, and `reset_remote_access_tls` repairs
+it. Certificates are valid from one day before they were made, so a device whose clock runs behind
+does not reject them. `get_http_server_status` carries the root's SHA-256 fingerprint and the
+current certificate's expiry, which are public to every TLS client. The settings
+split who may reach the listener from how they authenticate: `listen: local` binds `127.0.0.1`;
+`listen: lan` and `listen: any` bind every IPv4 interface, always serve HTTPS and require a
+credential from every caller (`auth: required`), loopback peers included. `listen: lan` drops a
+connection before the TLS handshake unless its peer is loopback or in a `lan_allow` network. Its `Host` policy accepts an IP literal on the bound port or a name the
 certificate covers (`localhost`, the host name and `<host>.local`); a `Host` without a port names
 the scheme's default port (443 under TLS), as browsers send it; HTTP/2 carries the authority as
 `:authority` instead of `Host`, so the policy reads either and refuses a request in which they
-differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the fingerprint per context
-(`context add --fingerprint`, or an interactive trust on first use that prints it), sends nothing,
-not even the token, to a server with another certificate, and exits with status 4. `nyanpasu-server`
+differ. The session cookie is `Secure` under TLS. `nyanpasu-cli` pins the root's fingerprint per
+context (`context add --fingerprint`, or an interactive trust on first use that prints it), accepts
+a certificate that root signed and that is within its validity whatever name it was reached by,
+sends nothing, not even the token, to a server with another root, and exits with status 4. `nyanpasu-server`
 keeps its plain loopback listener.
 
 `set_hotkeys` and `set_service_mode` are Desktop-only mutations. The shared
@@ -227,7 +247,7 @@ or credentials.
 `RemoteAccessAuthActor`: after Host/Origin verification and `Content-Type: application/json`
 checks on `/bridge/rpc`, credentials resolve in order as `Authorization: Bearer <token>` on
 `/bridge/*` only (`Principal::Token`), `nyanpasu_session` (`HttpOnly; SameSite=Strict; Path=/`)
-cookie (`Principal::Session`, `sess_...`), or (when `strategy` is `local_open`)
+cookie (`Principal::Session`, `sess_...`), or (under `auth: optional` with `listen: local`)
 `Principal::Anonymous` with the `anonymous` role, which holds only capability discovery, plus
 `anonymous_permissions` capped at the `operator` role by `cap_anonymous_permissions`, whatever
 the persisted settings say. The desktop window and the same-user local socket are the `owner`;
@@ -386,8 +406,8 @@ that become the frontend bindings are checked against it.
   configuration text, paths or diagnostics (the Clash secret, profile or runtime contents,
   generic storage, the clipboard, sync logs that echo request URLs). It never takes part in
   admission: a sensitive read requires its domain's `read` like any other. `rpc_describe` reports
-  it, the token dialog and the anonymous settings list the sensitive commands of the desktop that
-  a grant reaches, and `nyanpasu-cli remote token create` lists, in its human-readable output, those
+  it, the token dialog and the anonymous settings list every HTTP command a grant reaches with its
+  permission and effect and mark the sensitive ones, and `nyanpasu-cli remote token create` lists, in its human-readable output, those
   its local connection describes, which omits HTTP-only commands. The reserved data sharing layer
   will gate their responses. A shell, OS or elevation facility needs
   `system:write`.
@@ -411,8 +431,9 @@ that become the frontend bindings are checked against it.
   `owner` (adds `remote:write`). Admission never sees a role, only the expanded permissions.
   The RPC bindings export the expansions as `ROLE_PERMISSIONS`, the anonymous limit as
   `ANONYMOUS_PERMISSIONS_LIMIT`, and what a token can be granted (`Grant::ASSIGNABLE_ROLES`,
-  `Grant::grantable_resources`) as `ASSIGNABLE_ROLES` and `GRANTABLE_RESOURCES`; the frontend
-  reads them from `@nyanpasu/rpc` rather than copying them.
+  `Grant::grantable_resources`) as `ASSIGNABLE_ROLES` and `GRANTABLE_RESOURCES`, and the commands
+  HTTP offers (name, namespace, permission, effect and `sensitive`, from the resource table) as
+  `HTTP_COMMANDS`; the frontend reads them from `@nyanpasu/rpc` rather than copying them.
 - The resource table tests pin the sensitive set, the HTTP-reachable `system:write` set and the
   `remote` set with its Local subset, so changing any of them is a reviewed change.
 
@@ -509,7 +530,7 @@ local socket/CLI must enter this same kernel at INFO.
 - Use `rpc(owner)` and the injected `RpcOwner` for caller-owned resources such as log sessions. Enforce ownership on every resource operation; do not use Tauri window identity as the shared domain identity or trust a client-supplied owner.
 - Use `rpc(result)` when a Result alias needs explicit fallible-return handling. Preserve structured `RpcError` metadata and domain errors across both transports; never serialize an error as a successful payload or flatten it into an unstructured string.
 - Application error conversion belongs to the registry consumer: `nyanpasu_rpc::error::application_error_for` (given the visibility the redaction layer decided) walks the source chain and preserves domain payloads and core retry metadata for `Full` responses, while projecting `Public` responses to typed `PublicFailure` payloads without `IpcError::detail`, raw error text, paths, URLs, or credentials (`CoreLogCommandError` exposes the public/full union explicitly on the core log mutations; transport/parse errors use `RpcError::unknown_method_for` / `invalid_params_for`). Keep these conversions as free functions, outside the `RpcError` envelope. HTTP owner cookie parsing and status mapping are likewise free functions in the HTTP adapter; protocol values do not own transport parsing or classification.
-- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `local_open` anonymous access), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback, except under `lan_authenticated`, which listens on the LAN over HTTPS only. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
+- Keep HTTP RPC, SSE, and the development proxy behind token/session authentication (or explicitly configured `auth: optional` anonymous access on loopback), Host/Origin checks, and `/bridge/rpc` `application/json` checks. `nyanpasu_session` authenticates an established browser session (`HttpOnly; SameSite=Strict; Path=/`); `X-Nyanpasu-Client-Id` (or `?client_id=` on SSE routes) isolates per-tab/per-client `RpcOwner::http` namespaces within the resolved principal. Keep the server disabled by default and bound to loopback, except under `listen: lan` or `listen: any`, which listen on every IPv4 interface over HTTPS only. Frontend assets and the dev frontend are optional: without either, authenticated API calls work and missing static pages return 404.
 - Shared frontend event subscriptions use `event-transport.ts` through `rpc.events`. Preserve shared connection disposal and state resynchronization on connection, reconnection, and event-buffer overflow. Register shared events in the transport metadata and publish them through the bus and its delivery adapters; do not create desktop-only listeners for shared state.
 - The unified transport does not change actor ownership rules: in-process RPC waits for the real result without a timeout, and dropping a caller does not cancel owner-started work. Network/IPC and connection-draining deadlines stay at their respective boundaries. A transport timeout does not prove cancellation or safe retry.
 - Verify changed shared commands on both transports, including error mapping, query/mutation classification, HTTP capability restrictions, and owner isolation where applicable.
@@ -520,7 +541,7 @@ Icon reads use special byte entries rather than JSON commands. The neutral
 `nyanpasu_rpc::icons` module owns `IconRequest`, the shared path/query parser,
 MIME validation and reads through the existing cache and host ports. HTTP mounts
 `GET /bridge/icons/{*path}` behind the listener's Host/Origin and HTTP authentication
-(`Authorization: Bearer`, `nyanpasu_session`, or clamped `local_open` anonymous); the
+(`Authorization: Bearer`, `nyanpasu_session`, or clamped `auth: optional` anonymous); the
 resolved principal identifies the audit owner. Desktop registers
 `nyanpasu-icons` and calls the neutral module directly, with accepted requests
 tracked by the existing startup task tracker and refused during shutdown.

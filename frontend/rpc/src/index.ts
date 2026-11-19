@@ -9,6 +9,7 @@ export {
   ASSIGNABLE_ROLES,
   createRpcClient,
   GRANTABLE_RESOURCES,
+  HTTP_COMMANDS,
   ROLE_PERMISSIONS,
 } from './rpc-bindings'
 export * from './rpc-failure'

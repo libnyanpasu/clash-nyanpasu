@@ -96,42 +96,96 @@ async fn symlink_and_non_regular_targets_are_refused() {
     ));
 }
 
+const NOT_BEFORE_MS: i64 = 1_700_000_000_000;
+
+fn validity(days: i64) -> nyanpasu_contracts::auth::TlsCertificateRequest {
+    nyanpasu_contracts::auth::TlsCertificateRequest {
+        not_before_ms: NOT_BEFORE_MS - 86_400_000,
+        not_after_ms: NOT_BEFORE_MS + days * 86_400_000,
+    }
+}
+
 #[tokio::test]
-async fn a_generated_certificate_covers_loopback_and_the_requested_address() {
-    use nyanpasu_contracts::auth::{TlsCertificateGenerator as _, TlsCertificateRequest};
+async fn an_issued_certificate_covers_loopback_and_the_interfaces() {
+    use nyanpasu_contracts::auth::TlsCertificateGenerator as _;
 
     use super::RcgenCertificateGenerator;
 
-    let request = TlsCertificateRequest {
-        addresses: vec!["192.168.77.5".parse().unwrap()],
-        not_before_ms: 1_700_000_000_000,
-        not_after_ms: 1_700_000_000_000 + 86_400_000,
-    };
+    let authority = RcgenCertificateGenerator
+        .generate_authority(validity(3650))
+        .await
+        .unwrap();
     let identity = RcgenCertificateGenerator
-        .generate(request.clone())
+        .issue(&authority, validity(7))
         .await
         .unwrap();
 
-    assert_eq!(identity.not_after_ms(), request.not_after_ms);
+    assert_eq!(identity.not_after_ms(), validity(7).not_after_ms);
     assert!(identity.dns_names().iter().any(|name| name == "localhost"));
-    // The identity reports the addresses the certificate really names.
-    for covered in ["127.0.0.1", "::1", "192.168.77.5"] {
+    assert_eq!(identity.addresses(), RcgenCertificateGenerator.addresses());
+    for covered in ["127.0.0.1", "::1"] {
         assert!(
             identity.covers_address(covered.parse().unwrap()),
             "{covered}"
         );
     }
-    assert!(!identity.covers_address("192.168.77.6".parse().unwrap()));
-    assert!(!identity.certificate_der().is_empty());
+    assert_eq!(identity.authority_der(), authority.certificate_der());
+    assert_eq!(identity.summary().fingerprint, authority.fingerprint());
     assert!(rcgen::KeyPair::try_from(identity.private_key_der()).is_ok());
+    assert!(rcgen::KeyPair::try_from(authority.private_key_der()).is_ok());
 
-    // Two identities are different certificates: the key is fresh every time.
-    let other = RcgenCertificateGenerator.generate(request).await.unwrap();
-    assert_ne!(identity.fingerprint(), other.fingerprint());
+    // A renewal is a new certificate from the same root: the key is fresh every time.
+    let renewed = RcgenCertificateGenerator
+        .issue(&authority, validity(7))
+        .await
+        .unwrap();
+    assert_ne!(identity.fingerprint(), renewed.fingerprint());
+    assert_eq!(
+        identity.authority_fingerprint(),
+        renewed.authority_fingerprint()
+    );
 }
 
-/// A TLS handshake in which the client trusts the generated certificate as its only root and
-/// checks the name, so the certificate's names and usages are the ones a real client enforces.
+#[tokio::test]
+async fn the_root_and_its_certificates_read_back_with_their_roles() {
+    use nyanpasu_contracts::auth::{TlsCertificateDetails, TlsCertificateGenerator as _};
+
+    use super::RcgenCertificateGenerator;
+
+    let authority = RcgenCertificateGenerator
+        .generate_authority(validity(3650))
+        .await
+        .unwrap();
+    let identity = RcgenCertificateGenerator
+        .issue(&authority, validity(7))
+        .await
+        .unwrap();
+
+    let root = TlsCertificateDetails::parse(authority.certificate_der()).unwrap();
+    assert!(
+        root.subject.contains("Clash Nyanpasu Local CA"),
+        "{}",
+        root.subject
+    );
+    assert_eq!(root.issuer, root.subject, "the root signs itself");
+    assert_eq!(root.not_before_ms, validity(3650).not_before_ms);
+    assert_eq!(root.not_after_ms, validity(3650).not_after_ms);
+    assert_eq!(root.sha256, authority.fingerprint());
+
+    let leaf = TlsCertificateDetails::parse(identity.certificate_der()).unwrap();
+    assert_eq!(leaf.subject, "CN=Clash Nyanpasu");
+    assert_eq!(leaf.issuer, root.subject, "the root issued it");
+    assert!(leaf.dns_names.iter().any(|name| name == "localhost"));
+    assert_eq!(leaf.ip_addresses, identity.addresses());
+    assert_eq!(leaf.signature_algorithm, "ecdsa-with-SHA256");
+    assert_eq!(leaf.sha256, identity.fingerprint());
+    assert_eq!(leaf.sha1.len(), 20 * 3 - 1);
+
+    assert!(TlsCertificateDetails::parse(b"not a certificate").is_err());
+}
+
+/// A TLS handshake in which the client trusts the root as its only one and checks the name, so
+/// the chain, names and usages are the ones a real client enforces.
 async fn handshake(
     identity: &nyanpasu_contracts::auth::TlsIdentity,
     name: rustls::pki_types::ServerName<'static>,
@@ -141,20 +195,23 @@ async fn handshake(
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let certificate = CertificateDer::from(identity.certificate_der().to_vec());
+    let authority = CertificateDer::from(identity.authority_der().to_vec());
     let server = rustls::ServerConfig::builder_with_provider(provider.clone())
         .with_safe_default_protocol_versions()
         .unwrap()
         .with_no_client_auth()
         .with_single_cert(
-            vec![certificate.clone()],
+            vec![
+                CertificateDer::from(identity.certificate_der().to_vec()),
+                authority.clone(),
+            ],
             PrivateKeyDer::from(PrivatePkcs8KeyDer::from(
                 identity.private_key_der().to_vec(),
             )),
         )
         .unwrap();
     let mut roots = rustls::RootCertStore::empty();
-    roots.add(certificate).unwrap();
+    roots.add(authority).unwrap();
     let client = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .unwrap()
@@ -173,26 +230,30 @@ async fn handshake(
 }
 
 #[tokio::test]
-async fn a_generated_certificate_is_valid_for_every_name_it_covers_and_no_other() {
+async fn a_client_trusting_the_root_accepts_every_covered_name_and_no_other() {
     use nyanpasu_contracts::auth::{TlsCertificateGenerator as _, TlsCertificateRequest};
     use rustls::pki_types::ServerName;
 
     use super::RcgenCertificateGenerator;
 
+    let forever = TlsCertificateRequest {
+        not_before_ms: NOT_BEFORE_MS - 86_400_000,
+        not_after_ms: i64::MAX / 1_000_000,
+    };
+    let authority = RcgenCertificateGenerator
+        .generate_authority(forever)
+        .await
+        .unwrap();
     let identity = RcgenCertificateGenerator
-        .generate(TlsCertificateRequest {
-            addresses: vec!["192.168.77.5".parse().unwrap(), "fd00::5".parse().unwrap()],
-            not_before_ms: 1_700_000_000_000 - 86_400_000,
-            not_after_ms: i64::MAX / 1_000_000,
-        })
+        .issue(&authority, forever)
         .await
         .unwrap();
 
-    for covered in ["127.0.0.1", "::1", "192.168.77.5", "fd00::5", "localhost"] {
-        let name = ServerName::try_from(covered).unwrap().to_owned();
+    for address in identity.addresses() {
+        let name = ServerName::from(*address);
         handshake(&identity, name)
             .await
-            .unwrap_or_else(|error| panic!("{covered}: {error}"));
+            .unwrap_or_else(|error| panic!("{address}: {error}"));
     }
     for host in identity.dns_names() {
         let name = ServerName::try_from(host.clone()).unwrap();
@@ -200,7 +261,7 @@ async fn a_generated_certificate_is_valid_for_every_name_it_covers_and_no_other(
             .await
             .unwrap_or_else(|error| panic!("{host}: {error}"));
     }
-    for foreign in ["10.9.9.9", "evil.example"] {
+    for foreign in ["203.0.113.250", "evil.example"] {
         let name = ServerName::try_from(foreign).unwrap().to_owned();
         assert!(handshake(&identity, name).await.is_err(), "{foreign}");
     }

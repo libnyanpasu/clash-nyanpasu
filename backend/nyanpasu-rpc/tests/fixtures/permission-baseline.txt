@@ -40,6 +40,7 @@ command | discard_app_update_package | system:write |  | mutation | desktop | ap
 command | download_app_update | system:write |  | mutation | desktop | app_update |
 command | enable_sync | settings:write |  | mutation | desktop |  |
 command | enhance_profiles | profile:write |  | mutation | desktop,http |  | elevation,os_integration,presentation
+command | export_remote_access_authority | remote:write |  | mutation | desktop | dialog |
 command | fetch_latest_core_versions | system:read |  | query | desktop,http |  |
 command | flush_system_dns_cache | system:write |  | mutation | desktop | elevation |
 command | get_all_storage_items | settings:read | sensitive | query | desktop,http |  |
@@ -84,6 +85,7 @@ command | get_profiles_listing | profile:read |  | query | desktop,http,local | 
 command | get_proxies | proxy:read |  | query | desktop,http,local |  | presentation
 command | get_proxy_group_icons | proxy:read | sensitive | query | desktop,http |  | presentation
 command | get_release_channel | settings:read |  | query | desktop |  |
+command | get_remote_access_certificate | remote:read |  | query | desktop |  |
 command | get_runtime_config | profile:read | sensitive | query | desktop,http |  |
 command | get_runtime_exists | profile:read |  | query | desktop,http |  |
 command | get_runtime_yaml | profile:read | sensitive | query | desktop,http |  |
@@ -112,6 +114,7 @@ command | is_appimage | system:read |  | query | desktop,http |  |
 command | is_portable | system:read |  | query | desktop,http |  |
 command | is_tray_icon_set | system:read |  | query | desktop,http |  |
 command | is_widget_icon_set | system:read |  | query | desktop,http |  |
+command | list_local_networks | remote:read |  | query | desktop |  |
 command | list_log_files | logs:read |  | query | desktop,http,local |  |
 command | list_remote_access_tokens | remote:read |  | query | desktop,local |  |
 command | list_remote_browser_sessions | remote:read |  | query | desktop,local |  |
@@ -125,6 +128,7 @@ command | open_core_dir | system:write |  | mutation | desktop | opener |
 command | open_log_session | logs:read |  | mutation | desktop,http,local |  |
 command | open_logs_dir | system:write |  | mutation | desktop | opener |
 command | open_native_file_dialog | system:write |  | mutation | desktop | dialog |
+command | open_remote_access_certificate | remote:write |  | mutation | desktop | opener |
 command | open_that | system:write |  | mutation | desktop | opener |
 command | open_web_url | system:write |  | mutation | desktop | opener |
 command | patch_app_config | settings:write |  | mutation | desktop,http,local |  | os_integration,presentation,elevation

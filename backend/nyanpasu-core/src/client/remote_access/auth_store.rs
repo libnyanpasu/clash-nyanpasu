@@ -1,9 +1,9 @@
 //! Credential hashing and minting, and the plain JSON secret record.
 
-use std::{collections::HashSet, net::IpAddr};
+use std::collections::HashSet;
 
 use nyanpasu_contracts::auth::{
-    EntropySource, Grant, SecretHash, SecretStore, SecretString, TlsIdentity, TokenId, TokenName,
+    EntropySource, Grant, SecretHash, SecretStore, SecretString, TlsAuthority, TokenId, TokenName,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -36,20 +36,17 @@ struct StoredToken {
     expires_at_ms: Option<i64>,
 }
 
-/// The self-signed certificate and its private key. Absent until the HTTPS listener first needs
-/// one, so records written before TLS existed still decode.
+/// The local root and its private key. Absent until HTTPS is first turned on, so records written
+/// before it existed still decode. The listener's short-lived certificates are never stored: the
+/// root issues a new one after a restart.
 #[derive(Serialize, Deserialize)]
-struct StoredTls {
+struct StoredAuthority {
     certificate_hex: String,
     private_key_hex: String,
-    dns_names: Vec<String>,
-    /// The IP addresses the certificate covers; a record without them covers none.
-    #[serde(default)]
-    addresses: Vec<IpAddr>,
     not_after_ms: i64,
 }
 
-impl Drop for StoredTls {
+impl Drop for StoredAuthority {
     fn drop(&mut self) {
         self.private_key_hex.zeroize();
     }
@@ -60,13 +57,13 @@ struct StoredRecord {
     version: u32,
     tokens: Vec<StoredToken>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    tls: Option<StoredTls>,
+    authority: Option<StoredAuthority>,
 }
 
 /// What the secret record holds.
 pub(super) struct LoadedRecord {
     pub(super) tokens: Vec<TokenRecord>,
-    pub(super) tls: Option<TlsIdentity>,
+    pub(super) authority: Option<TlsAuthority>,
 }
 
 /// SHA-256 of a credential. Credentials carry 256 bits of entropy, so a fast hash is enough.
@@ -143,7 +140,7 @@ pub(super) async fn load_record(
     else {
         return Ok(LoadedRecord {
             tokens: Vec::new(),
-            tls: None,
+            authority: None,
         });
     };
     let record: StoredRecord = serde_json::from_slice(&bytes).map_err(|error| {
@@ -184,41 +181,41 @@ pub(super) async fn load_record(
             expires_at_ms: stored.expires_at_ms,
         });
     }
-    let tls = record.tls.map(decode_tls).transpose()?;
-    Ok(LoadedRecord { tokens, tls })
+    let authority = record
+        .authority
+        .as_ref()
+        .map(decode_authority)
+        .transpose()?;
+    Ok(LoadedRecord { tokens, authority })
 }
 
-fn decode_tls(mut stored: StoredTls) -> Result<TlsIdentity, RemoteAuthError> {
-    let malformed = || persistence_failed("secret record holds a malformed TLS identity");
+fn decode_authority(stored: &StoredAuthority) -> Result<TlsAuthority, RemoteAuthError> {
+    let malformed = || persistence_failed("secret record holds a malformed TLS authority");
     let certificate = hex::decode(&stored.certificate_hex).map_err(|_| malformed())?;
     let private_key = hex::decode(&stored.private_key_hex).map_err(|_| malformed())?;
     if certificate.is_empty() || private_key.is_empty() {
         return Err(malformed());
     }
-    Ok(TlsIdentity::new(
+    Ok(TlsAuthority::new(
         certificate,
         private_key,
-        std::mem::take(&mut stored.dns_names),
-        std::mem::take(&mut stored.addresses),
         stored.not_after_ms,
     ))
 }
 
-fn encode_tls(identity: &TlsIdentity) -> StoredTls {
-    StoredTls {
-        certificate_hex: hex::encode(identity.certificate_der()),
-        private_key_hex: hex::encode(identity.private_key_der()),
-        dns_names: identity.dns_names().to_vec(),
-        addresses: identity.addresses().to_vec(),
-        not_after_ms: identity.not_after_ms(),
+fn encode_authority(authority: &TlsAuthority) -> StoredAuthority {
+    StoredAuthority {
+        certificate_hex: hex::encode(authority.certificate_der()),
+        private_key_hex: hex::encode(authority.private_key_der()),
+        not_after_ms: authority.not_after_ms(),
     }
 }
 
-/// Persists `tokens` and the certificate as the whole record.
+/// Persists `tokens` and the root as the whole record.
 pub(super) async fn save_record<'a>(
     store: &dyn SecretStore,
     tokens: impl Iterator<Item = &'a TokenRecord>,
-    tls: Option<&TlsIdentity>,
+    authority: Option<&TlsAuthority>,
 ) -> Result<(), RemoteAuthError> {
     let record = StoredRecord {
         version: STORE_VERSION,
@@ -232,7 +229,7 @@ pub(super) async fn save_record<'a>(
                 expires_at_ms: token.expires_at_ms,
             })
             .collect(),
-        tls: tls.map(encode_tls),
+        authority: authority.map(encode_authority),
     };
     let bytes = Zeroizing::new(serde_json::to_vec(&record).map_err(|error| {
         persistence_failed(format!(

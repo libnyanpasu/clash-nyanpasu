@@ -44,8 +44,8 @@ impl HttpTransport {
     ///
     /// A redirect is never followed, so a bearer token cannot be carried to another
     /// origin. A token is also never sent over plain `http` to a non-loopback host.
-    /// With `pin`, the server must present exactly that certificate; without it an `https`
-    /// server is verified against the system trust store.
+    /// With `pin`, the server's certificate must be issued by the root with that fingerprint;
+    /// without it an `https` server is verified against the system trust store.
     ///
     /// # Errors
     /// Fails if the token would travel in the clear, a pin is given for a plain `http` URL, or

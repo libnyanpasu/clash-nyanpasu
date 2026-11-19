@@ -86,7 +86,6 @@ impl HttpServerControl for FakeListener {
             url: Some(format!("http://127.0.0.1:{port}/")),
             port: Some(port),
             tls: None,
-            bind_outside_certificate: false,
             fault: None,
         })
     }

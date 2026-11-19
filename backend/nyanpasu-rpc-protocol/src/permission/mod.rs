@@ -202,16 +202,22 @@ mod tests {
             [
                 "create_http_launch_url",
                 "create_remote_access_token",
+                "export_remote_access_authority",
                 "get_local_socket_status",
+                "get_remote_access_certificate",
+                "list_local_networks",
                 "list_remote_access_tokens",
                 "list_remote_browser_sessions",
+                "open_remote_access_certificate",
                 "reset_remote_access_tls",
                 "revoke_remote_access_token",
                 "revoke_remote_browser_session",
                 "set_remote_access",
             ]
         );
-        // The launch URL is a credential for a browser, so it stays with the desktop that opens it.
+        // The launch URL is a credential for a browser, so it stays with the desktop that opens it,
+        // and the network list, the certificate fields, its viewer and its export serve only the
+        // desktop settings page.
         assert_eq!(
             names(|command| command.permission.resource == Resource::Remote
                 && command.targets.contains(&RpcTarget::Local)),

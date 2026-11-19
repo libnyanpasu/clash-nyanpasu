@@ -28,9 +28,9 @@ import { writeClipboardText } from '@/utils/clipboard'
 import { useRemoteAccessTokens } from '@nyanpasu/query'
 import { ASSIGNABLE_ROLES, ROLE_PERMISSIONS } from '@nyanpasu/rpc'
 import type { CreatedRemoteAccessToken, Grant } from '@nyanpasu/rpc/types'
+import GrantReach from './grant-reach'
 import PermissionGrid from './permission-grid'
 import { ROLE_LABELS } from './permission-labels'
-import SensitiveReach from './sensitive-reach'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -60,6 +60,14 @@ function expiryLabel(id: ExpiryId) {
 type GrantChoice = (typeof ASSIGNABLE_ROLES)[number] | 'custom'
 
 const DEFAULT_CHOICE: GrantChoice = 'viewer'
+
+/** What each choice is for; the grid below it shows exactly what it grants. */
+const GRANT_DESCRIPTIONS = {
+  viewer: m.settings_remote_access_role_viewer_description,
+  operator: m.settings_remote_access_role_operator_description,
+  admin: m.settings_remote_access_role_admin_description,
+  custom: m.settings_remote_access_role_custom_description,
+} satisfies Record<GrantChoice, () => string>
 
 /** The form, then the one-time token; closing is blocked until the token is confirmed saved. */
 function CreateTokenDialog() {
@@ -122,7 +130,7 @@ function CreateTokenDialog() {
       onExitComplete={reset}
     >
       <Card
-        className="w-[28rem] max-w-full"
+        className="flex max-h-[calc(100dvh-4rem)] w-[28rem] max-w-full flex-col"
         data-slot="remote-access-create-token-dialog"
       >
         {created ? (
@@ -182,7 +190,7 @@ function CreateTokenDialog() {
               </ModalTitle>
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="min-h-0 overflow-y-auto">
               <form
                 className="flex flex-col gap-4"
                 onSubmit={(event) => {
@@ -224,17 +232,20 @@ function CreateTokenDialog() {
                     </SegmentedButtonItem>
                   </SegmentedButton>
 
-                  <p className="text-on-surface-variant text-sm">
-                    {choice === 'custom'
-                      ? m.settings_remote_access_role_custom_description()
-                      : m.settings_remote_access_role_description()}
+                  <p
+                    className="text-on-surface-variant text-sm"
+                    data-slot="remote-access-token-grant-description"
+                  >
+                    {GRANT_DESCRIPTIONS[choice]()}
                   </p>
 
-                  {choice === 'custom' && (
+                  {choice === 'custom' ? (
                     <PermissionGrid value={custom} onChange={setCustom} />
+                  ) : (
+                    <PermissionGrid value={held} />
                   )}
 
-                  <SensitiveReach held={held} />
+                  <GrantReach held={held} />
                 </fieldset>
 
                 <DropdownMenu align="start">

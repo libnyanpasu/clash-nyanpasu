@@ -4,35 +4,49 @@
 //! preferences patch: it widens who can reach the application, so it is written only
 //! through a dedicated command that is not exposed over HTTP.
 
-use std::net::IpAddr;
+use std::net::Ipv4Addr;
 
+use ipnet::Ipv4Net;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use specta::Type;
 
 use super::{Access, Permissions, Resource, validate_anonymous_permissions};
 
-/// How the HTTP listener decides who may call it.
+/// Whether an HTTP caller must present a credential.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
-pub enum HttpAccessStrategy {
-    /// Loopback only; every request must carry a valid credential.
+pub enum HttpAuthentication {
+    /// Every request must carry a valid credential, also one from a loopback peer: a reverse
+    /// proxy makes every request look local.
     #[default]
-    LocalAuthenticated,
-    /// Loopback only; a request without a credential is an anonymous caller holding capability
-    /// discovery plus [`HttpAccessConfig::anonymous_permissions`]. Every local process of every
-    /// OS user can reach it, because loopback TCP is not user-scoped.
-    LocalOpen,
-    /// Listens on the LAN over HTTPS only. Every request must carry a valid credential, also
-    /// one from a loopback peer: a reverse proxy makes every request look local.
-    LanAuthenticated,
+    Required,
+    /// A request without a credential is an anonymous caller holding capability discovery plus
+    /// [`HttpAccessConfig::anonymous_permissions`]. Only [`HttpListen::Local`] allows it, and even
+    /// then every local process of every OS user can reach it, because loopback TCP is not
+    /// user-scoped.
+    Optional,
+}
+
+/// Which peers the HTTP listener can be reached from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum HttpListen {
+    /// `127.0.0.1` only.
+    #[default]
+    Local,
+    /// Every IPv4 interface, accepting connections from loopback and from
+    /// [`HttpAccessConfig::lan_allow`] only.
+    Lan,
+    /// Every IPv4 interface, accepting connections from anywhere.
+    Any,
 }
 
 /// Whether the listener speaks plain HTTP or HTTPS with the generated self-signed certificate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpTls {
-    /// Plain HTTP. Only the loopback strategies may use it.
+    /// Plain HTTP. Only [`HttpListen::Local`] may use it.
     #[default]
     Http,
     /// HTTPS with the application's self-signed certificate, which clients pin by fingerprint.
@@ -46,21 +60,24 @@ pub struct HttpAccessConfig {
     /// Master switch. Off by default.
     pub enabled: bool,
     /// Kept while the switch is off, so turning it on restores the earlier choice.
-    pub strategy: HttpAccessStrategy,
+    pub auth: HttpAuthentication,
+    /// Kept while the switch is off, so turning it on restores the earlier choice.
+    pub listen: HttpListen,
+    /// The networks [`HttpListen::Lan`] accepts connections from, besides loopback. Kept while
+    /// another listen scope is selected.
+    #[specta(type = Vec<String>)]
+    pub lan_allow: Vec<Ipv4Net>,
     /// `None` until the first start binds a free port and records it. Later starts
     /// reuse the recorded port, so URLs stay valid across restarts.
     pub port: Option<u16>,
     /// Serve the bundled web UI. When false only the API is served.
     pub serve_webui: bool,
-    /// What an anonymous caller holds under [`HttpAccessStrategy::LocalOpen`] beyond capability
-    /// discovery, at most the `operator` role. Empty by default; kept while another strategy is
-    /// selected.
+    /// What an anonymous caller holds under [`HttpAuthentication::Optional`] beyond capability
+    /// discovery, at most the `operator` role. Empty by default; kept while authentication is
+    /// required.
     pub anonymous_permissions: Permissions,
-    /// The address [`HttpAccessStrategy::LanAuthenticated`] listens on; `None` listens on every
-    /// IPv4 interface. The loopback strategies always listen on `127.0.0.1`.
-    pub lan_bind: Option<IpAddr>,
-    /// [`HttpAccessStrategy::LanAuthenticated`] requires [`HttpTls::SelfSigned`]; the loopback
-    /// strategies may opt into it.
+    /// Listening beyond loopback requires [`HttpTls::SelfSigned`]; [`HttpListen::Local`] may opt
+    /// into it.
     pub tls: HttpTls,
 }
 
@@ -68,13 +85,23 @@ impl Default for HttpAccessConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            strategy: HttpAccessStrategy::default(),
+            auth: HttpAuthentication::default(),
+            listen: HttpListen::default(),
+            lan_allow: Vec::new(),
             port: None,
             serve_webui: true,
             anonymous_permissions: Permissions::NONE,
-            lan_bind: None,
             tls: HttpTls::default(),
         }
+    }
+}
+
+impl HttpAccessConfig {
+    /// Whether a request without a credential is an anonymous caller. Requires the loopback
+    /// listener as well, so a value that skipped validation never opens the network.
+    #[must_use]
+    pub fn admits_anonymous(&self) -> bool {
+        self.auth == HttpAuthentication::Optional && self.listen == HttpListen::Local
     }
 }
 
@@ -84,6 +111,18 @@ impl Default for HttpAccessConfig {
 pub struct LocalSocketAccessConfig {
     /// Master switch. Off by default.
     pub enabled: bool,
+}
+
+/// An IPv4 network this computer is attached to, offered as a LAN network to allow.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
+pub struct LocalNetwork {
+    /// The interface's name as the OS shows it, such as `Ethernet` or `Tailscale`.
+    pub interface: String,
+    /// This computer's address on the network.
+    pub address: Ipv4Addr,
+    /// The network in CIDR notation, `192.168.1.0/24`.
+    #[specta(type = String)]
+    pub network: Ipv4Net,
 }
 
 /// The persisted `remote_access` section.
@@ -112,9 +151,15 @@ pub enum RemoteAccessError {
     /// The section is changed only by the dedicated remote-access command, never by a
     /// general application patch.
     UseDedicatedCommand,
-    /// Credentials would cross the LAN in the clear.
-    #[snafu(display("the lan_authenticated strategy requires tls: self_signed"))]
-    LanRequiresTls,
+    /// Only loopback callers may skip the credential.
+    #[snafu(display("auth: optional requires listen: local"))]
+    OptionalAuthenticationBeyondLocal,
+    /// Credentials would cross the network in the clear.
+    #[snafu(display("listening beyond loopback requires tls: self_signed"))]
+    NetworkRequiresTls,
+    /// A LAN listener that allows no network is reachable from loopback only.
+    #[snafu(display("listen: lan requires at least one network in lan_allow"))]
+    LanAllowEmpty,
 }
 
 impl RemoteAccessConfig {
@@ -123,15 +168,22 @@ impl RemoteAccessConfig {
     /// # Errors
     /// Returns the first invalid field.
     pub fn validate(&self) -> Result<(), RemoteAccessError> {
-        if self.http.port == Some(0) {
+        let http = &self.http;
+        if http.port == Some(0) {
             return Err(RemoteAccessError::PortZero);
         }
-        if self.http.strategy == HttpAccessStrategy::LanAuthenticated
-            && self.http.tls != HttpTls::SelfSigned
-        {
-            return Err(RemoteAccessError::LanRequiresTls);
+        if http.listen != HttpListen::Local {
+            if http.auth == HttpAuthentication::Optional {
+                return Err(RemoteAccessError::OptionalAuthenticationBeyondLocal);
+            }
+            if http.tls != HttpTls::SelfSigned {
+                return Err(RemoteAccessError::NetworkRequiresTls);
+            }
         }
-        validate_anonymous_permissions(&self.http.anonymous_permissions).map_err(
+        if http.listen == HttpListen::Lan && http.lan_allow.is_empty() {
+            return Err(RemoteAccessError::LanAllowEmpty);
+        }
+        validate_anonymous_permissions(&http.anonymous_permissions).map_err(
             |super::PermissionError::AnonymousBeyondOperator { held }| {
                 RemoteAccessError::AnonymousBeyondOperator {
                     resource: held.resource,
@@ -147,10 +199,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_fresh_install_is_off_and_keeps_todays_strategy() {
+    fn a_fresh_install_is_off_local_and_authenticated() {
         let config = RemoteAccessConfig::default();
         assert!(!config.http.enabled);
-        assert_eq!(config.http.strategy, HttpAccessStrategy::LocalAuthenticated);
+        assert_eq!(config.http.auth, HttpAuthentication::Required);
+        assert_eq!(config.http.listen, HttpListen::Local);
+        assert!(config.http.lan_allow.is_empty());
         assert_eq!(config.http.port, None);
         assert!(config.http.serve_webui);
         assert_eq!(config.http.anonymous_permissions, Permissions::NONE);
@@ -186,33 +240,44 @@ mod tests {
     }
 
     #[test]
-    fn every_strategy_is_stored_and_unknown_ones_are_not() {
+    fn every_choice_is_stored_and_unknown_ones_are_not() {
         let open: RemoteAccessConfig =
-            serde_json::from_str(r#"{"http":{"strategy":"local_open"}}"#).unwrap();
-        assert_eq!(open.http.strategy, HttpAccessStrategy::LocalOpen);
+            serde_json::from_str(r#"{"http":{"auth":"optional"}}"#).unwrap();
+        assert_eq!(open.http.auth, HttpAuthentication::Optional);
         assert_eq!(open.http.anonymous_permissions, Permissions::NONE);
-        let lan: RemoteAccessConfig =
-            serde_json::from_str(r#"{"http":{"strategy":"lan_authenticated"}}"#).unwrap();
-        assert_eq!(lan.http.strategy, HttpAccessStrategy::LanAuthenticated);
-        let unknown = r#"{"http":{"strategy":"internet_open"}}"#;
-        assert!(serde_json::from_str::<RemoteAccessConfig>(unknown).is_err());
+        let any: RemoteAccessConfig = serde_json::from_str(r#"{"http":{"listen":"any"}}"#).unwrap();
+        assert_eq!(any.http.listen, HttpListen::Any);
+        for unknown in [
+            r#"{"http":{"auth":"none"}}"#,
+            r#"{"http":{"listen":"internet"}}"#,
+            r#"{"http":{"lan_allow":["192.168.1.0/33"]}}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<RemoteAccessConfig>(unknown).is_err(),
+                "{unknown}"
+            );
+        }
     }
 
     #[test]
-    fn a_fresh_install_listens_on_plain_http_without_a_lan_address() {
-        let http = RemoteAccessConfig::default().http;
-        assert_eq!(http.tls, HttpTls::Http);
-        assert_eq!(http.lan_bind, None);
+    fn a_fresh_install_listens_on_plain_http() {
+        assert_eq!(RemoteAccessConfig::default().http.tls, HttpTls::Http);
     }
 
     #[test]
     fn lan_settings_round_trip_through_serde() {
         let mut config = RemoteAccessConfig::default();
-        config.http.strategy = HttpAccessStrategy::LanAuthenticated;
+        config.http.listen = HttpListen::Lan;
         config.http.tls = HttpTls::SelfSigned;
-        config.http.lan_bind = Some("192.168.1.20".parse().unwrap());
+        config.http.lan_allow = vec![
+            "192.168.1.0/24".parse().unwrap(),
+            "100.64.0.0/10".parse().unwrap(),
+        ];
         let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains(r#""lan_bind":"192.168.1.20""#), "{json}");
+        assert!(
+            json.contains(r#""lan_allow":["192.168.1.0/24","100.64.0.0/10"]"#),
+            "{json}"
+        );
         assert!(json.contains(r#""tls":"self_signed""#), "{json}");
         assert_eq!(
             serde_json::from_str::<RemoteAccessConfig>(&json).unwrap(),
@@ -226,18 +291,51 @@ mod tests {
     }
 
     #[test]
-    fn the_lan_strategy_requires_tls_before_commit() {
+    fn listening_beyond_loopback_requires_tls_and_a_credential() {
         let mut config = RemoteAccessConfig::default();
-        config.http.strategy = HttpAccessStrategy::LanAuthenticated;
-        assert_eq!(config.validate(), Err(RemoteAccessError::LanRequiresTls));
+        config.http.lan_allow = vec!["192.168.1.0/24".parse().unwrap()];
+        for listen in [HttpListen::Lan, HttpListen::Any] {
+            config.http.listen = listen;
+            config.http.tls = HttpTls::Http;
+            assert_eq!(
+                config.validate(),
+                Err(RemoteAccessError::NetworkRequiresTls)
+            );
 
-        config.http.tls = HttpTls::SelfSigned;
-        assert_eq!(config.validate(), Ok(()));
+            config.http.tls = HttpTls::SelfSigned;
+            assert_eq!(config.validate(), Ok(()));
 
-        // The loopback strategies may use either scheme.
-        config.http.strategy = HttpAccessStrategy::LocalAuthenticated;
+            config.http.auth = HttpAuthentication::Optional;
+            assert_eq!(
+                config.validate(),
+                Err(RemoteAccessError::OptionalAuthenticationBeyondLocal)
+            );
+            assert!(!config.http.admits_anonymous());
+            config.http.auth = HttpAuthentication::Required;
+        }
+
+        // The loopback listener may skip the credential and use either scheme.
+        config.http.listen = HttpListen::Local;
+        config.http.auth = HttpAuthentication::Optional;
         assert_eq!(config.validate(), Ok(()));
+        assert!(config.http.admits_anonymous());
         config.http.tls = HttpTls::Http;
+        assert_eq!(config.validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_lan_listener_allows_at_least_one_network() {
+        let mut config = RemoteAccessConfig::default();
+        config.http.listen = HttpListen::Lan;
+        config.http.tls = HttpTls::SelfSigned;
+        assert_eq!(config.validate(), Err(RemoteAccessError::LanAllowEmpty));
+
+        config.http.lan_allow = vec!["10.147.17.0/24".parse().unwrap()];
+        assert_eq!(config.validate(), Ok(()));
+
+        // The list is kept, and not required, under another scope.
+        config.http.listen = HttpListen::Any;
+        config.http.lan_allow.clear();
         assert_eq!(config.validate(), Ok(()));
     }
 

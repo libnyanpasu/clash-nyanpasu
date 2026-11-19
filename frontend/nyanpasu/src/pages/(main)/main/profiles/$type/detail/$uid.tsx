@@ -37,7 +37,16 @@ export const Route = createFileRoute('/(main)/main/profiles/$type/detail/$uid')(
       panel: z.enum(DETAIL_PANELS).optional().catch(undefined),
     }),
     // The detail column and the panel scroll on their own.
-    staticData: { layout: 'fill' },
+    staticData: {
+      layout: 'fill',
+      crumb: {
+        title: ({ params }) => params.uid,
+        parent: ({ params }) => ({
+          to: '/main/profiles/$type',
+          params: { type: params.type },
+        }),
+      },
+    },
   },
 )
 

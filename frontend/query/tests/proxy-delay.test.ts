@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import type {
   Proxies_Serialize,
   Proxy_Serialize,
-  ProxyGroup,
+  ProxyGroup_Serialize,
 } from '@nyanpasu/rpc/types'
 import {
   collectDelayKeys,
@@ -42,7 +42,7 @@ const group = (
   now: string | null,
   all: string[],
   delayKey = DEFAULT_DELAY_KEY,
-): ProxyGroup => ({
+): ProxyGroup_Serialize => ({
   name,
   type: 'Selector',
   all,
@@ -55,8 +55,8 @@ const group = (
   capabilities: { select: true, clearFixed: false },
 })
 const snapshot = (
-  global: ProxyGroup | null,
-  groups: ProxyGroup[],
+  global: ProxyGroup_Serialize | null,
+  groups: ProxyGroup_Serialize[],
   nodes: Record<string, Proxy_Serialize>,
 ): Proxies_Serialize => ({ global, groups, nodes })
 

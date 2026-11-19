@@ -13,7 +13,6 @@ import {
   useDraggable,
   useDroppable,
 } from '@dnd-kit/react'
-import { unwrapQueryOptions } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import { useQuery } from '@tanstack/react-query'
 import { SettingsLabel } from '../../../_modules/settings-card'
@@ -124,9 +123,7 @@ const StateSlot = ({
   const store = useIconSetStore()
 
   const isIconSetQuery = store.isSetQuery(mode)
-  const isIconSet = useQuery(
-    unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
-  )
+  const isIconSet = useQuery(isIconSetQuery)
 
   const { ref, isDropTarget } = useDroppable({
     id: mode,

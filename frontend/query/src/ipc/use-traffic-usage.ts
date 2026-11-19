@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   Dimension,
   Metric,
@@ -65,7 +64,7 @@ export function useTrafficUsageByKeys(
   return useQuery({
     queryKey: ['traffic-usage-by-keys', query, dimension, digest],
     queryFn: async () =>
-      unwrapResult(await api.queryTrafficUsageByKeys(query, dimension, keys)),
+      await api.queryTrafficUsageByKeys(query, dimension, keys),
     enabled: keys.length > 0,
     // New keys (another filter or config) keep showing the previous answer
     // until theirs arrives.
@@ -91,14 +90,12 @@ export function useTrafficUsagePages(
     queryKey: ['traffic-usage-pages', query, dimension, metric],
     initialPageParam: null as UsageCursor | null,
     queryFn: async ({ pageParam }) =>
-      unwrapResult(
-        await api.queryTrafficUsage(
-          query,
-          dimension,
-          metric,
-          pageParam,
-          PAGE_SIZE,
-        ),
+      await api.queryTrafficUsage(
+        query,
+        dimension,
+        metric,
+        pageParam,
+        PAGE_SIZE,
       ),
     getNextPageParam: (page) => page.next ?? undefined,
     retry: false,

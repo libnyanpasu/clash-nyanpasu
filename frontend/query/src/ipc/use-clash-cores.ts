@@ -1,5 +1,4 @@
 import { kebabCase } from 'es-toolkit'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ClashCore_Deserialize,
   ClashCore_Serialize,
@@ -37,9 +36,9 @@ export const useClashCores = () => {
     .getCoreAgentSkillsSummary('mihomo')
     .queryKey.slice(0, 1)
   const fetchLatestCoreVersions = api.queries.fetchLatestCoreVersions()
-  const updateCoreCommand = api.mutations.updateCore
-  const changeClashCoreCommand = api.mutations.changeClashCore
-  const restartSidecarCommand = api.mutations.restartSidecar
+  const updateCoreCommand = api.mutations.updateCore()
+  const changeClashCoreCommand = api.mutations.changeClashCore()
+  const restartSidecarCommand = api.mutations.restartSidecar()
 
   const query = useQuery({
     queryKey: coreQueryKey,
@@ -52,11 +51,9 @@ export const useClashCores = () => {
           const result = await acc
           try {
             const currentVersion =
-              unwrapResult(
-                await invokeQuery(
-                  api.queries.getCoreVersion(key as ClashCore_Deserialize),
-                ),
-              ) ?? 'N/A'
+              (await invokeQuery(
+                api.queries.getCoreVersion(key as ClashCore_Deserialize),
+              )) ?? 'N/A'
 
             result[key as ClashCore_Serialize] = {
               name: ClashCores[key as ClashCore_Serialize],
@@ -80,7 +77,7 @@ export const useClashCores = () => {
   const fetchRemote = useMutation({
     mutationKey: fetchLatestCoreVersions.queryKey,
     mutationFn: async () => {
-      const results = unwrapResult(await invokeQuery(fetchLatestCoreVersions))
+      const results = await invokeQuery(fetchLatestCoreVersions)
 
       if (!results) {
         return
@@ -113,7 +110,7 @@ export const useClashCores = () => {
   const updateCore = useMutation({
     mutationKey: updateCoreCommand.mutationKey,
     mutationFn: async (core: ClashCore_Deserialize) => {
-      return unwrapResult(await invokeMutation(updateCoreCommand, [core]))
+      return await invokeMutation(updateCoreCommand, { coreType: core })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKey })
@@ -123,7 +120,7 @@ export const useClashCores = () => {
   const upsert = useMutation({
     mutationKey: changeClashCoreCommand.mutationKey,
     mutationFn: async (core: ClashCore_Deserialize) => {
-      return unwrapResult(await invokeMutation(changeClashCoreCommand, [core]))
+      return await invokeMutation(changeClashCoreCommand, { clashCore: core })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKey })
@@ -140,19 +137,15 @@ export const useClashCores = () => {
   })
 
   const restartSidecar = async () => {
-    return await invokeMutation(restartSidecarCommand, [])
+    return await invokeMutation(restartSidecarCommand)
   }
 
   const inspectUpdater = async (updaterId: number) => {
-    return unwrapResult(
-      await invokeQuery(api.queries.inspectUpdater(updaterId)),
-    )
+    return await invokeQuery(api.queries.inspectUpdater(updaterId))
   }
 
   const inspectUpdaterSummary = async (updaterId: number) => {
-    return unwrapResult(
-      await invokeQuery(api.queries.inspectUpdaterSummary(updaterId)),
-    )
+    return await invokeQuery(api.queries.inspectUpdaterSummary(updaterId))
   }
 
   // An update replaces the binary and the agent skills its archive ships after
@@ -182,7 +175,7 @@ export const useClashCoreVersion = (core?: ClashCore_Serialize | null) => {
   const options = api.queries.getCoreVersion(core as ClashCore_Deserialize)
   return useQuery({
     queryKey: options.queryKey,
-    queryFn: async () => unwrapResult(await invokeQuery(options)) ?? 'N/A',
+    queryFn: async () => (await invokeQuery(options)) ?? 'N/A',
     enabled: !!core,
     // Shares the invalidation of `useClashCores`, whose key prefixes this one.
     staleTime: Infinity,

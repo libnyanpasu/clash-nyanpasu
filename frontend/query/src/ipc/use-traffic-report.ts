@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type { ReportRequest } from '@nyanpasu/rpc/types'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -26,7 +25,7 @@ export function useTrafficReport(
 
   return useQuery({
     queryKey: ['traffic-report', request] as const,
-    queryFn: async () => unwrapResult(await api.queryTrafficReport(request)),
+    queryFn: async () => await api.queryTrafficReport(request),
     // Another request keeps showing the previous report until its own arrives,
     // but a topology only fits the columns it was asked for.
     placeholderData: (previous, previousQuery) =>
@@ -59,7 +58,7 @@ export function useTrafficReports(
   return useQueries({
     queries: requests.map((request) => ({
       queryKey: ['traffic-report', request] as const,
-      queryFn: async () => unwrapResult(await api.queryTrafficReport(request)),
+      queryFn: async () => await api.queryTrafficReport(request),
       refetchInterval,
       refetchOnWindowFocus: !paused,
       refetchOnReconnect: !paused,

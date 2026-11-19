@@ -33,9 +33,9 @@ type ProviderKind = 'proxy' | 'rule'
 type ProviderRow = {
   kind: ProviderKind
   name: string
-  count: number | null
-  type: string | null
-  vehicleType: string | null
+  count: number | null | undefined
+  type: string | null | undefined
+  vehicleType: string | null | undefined
   updatedAt: string | null | undefined
 }
 type OperationFeedback = Record<string, 'failed' | 'unconfirmed'>

@@ -1,12 +1,11 @@
 import { rpc } from '@/services/rpc'
-import { unwrapResult } from '@nyanpasu/rpc'
 import { installErrorReporting } from './install'
 import { createReporter } from './reporter'
 
 // This webview's reporter; frontend events go to the application log.
 const reporter = createReporter({
   send: async (batch) => {
-    unwrapResult(await rpc.reportFrontendEvents(batch))
+    await rpc.reportFrontendEvents(batch)
   },
   now: Date.now,
   route: () => window.location.pathname,

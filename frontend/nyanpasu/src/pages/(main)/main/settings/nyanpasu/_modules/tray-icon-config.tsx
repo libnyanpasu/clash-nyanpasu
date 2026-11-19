@@ -12,7 +12,7 @@ import { pickFile, type SelectedFile } from '@/utils/file-picker'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useMatchesPlatform } from '@nyanpasu/platform/react'
-import { invokeMutation, unwrapQueryOptions } from '@nyanpasu/query'
+import { invokeMutation } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
 import catNormal from '@root/backend/tauri/icons/tray/cat/normal.png'
 import catSystemProxy from '@root/backend/tauri/icons/tray/cat/system-proxy.png'
@@ -76,10 +76,13 @@ const setIconFromSelection = async (
   selected: SelectedFile,
 ) => {
   if (selected.type === 'path') {
-    await invokeMutation(store.setIcon, [mode, selected.path])
+    await invokeMutation(store.setIcon, { mode, path: selected.path })
   } else {
     const bytes = new Uint8Array(await selected.file.arrayBuffer())
-    await invokeMutation(store.setIconFromBytes, [mode, bytesToBase64(bytes)])
+    await invokeMutation(store.setIconFromBytes, {
+      mode,
+      bytesBase64: bytesToBase64(bytes),
+    })
   }
 }
 
@@ -232,9 +235,7 @@ const TrayIconItem = ({
   const store = useIconSetStore()
 
   const isIconSetQuery = store.isSetQuery(mode)
-  const isIconSet = useQuery(
-    unwrapQueryOptions(isIconSetQuery, isIconSetQuery.queryFn!),
-  )
+  const isIconSet = useQuery(isIconSetQuery)
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -271,7 +272,7 @@ const TrayIconItem = ({
     onBusyChange(true)
     try {
       // null means reset
-      await invokeMutation(store.setIcon, [mode, null])
+      await invokeMutation(store.setIcon, { mode, path: null })
 
       message(m.settings_nyanpasu_tray_icon_reset_success(), {
         kind: 'info',
@@ -425,7 +426,10 @@ function TrayIconConfigContent() {
           })),
         )
         for (const { mode, base64 } of icons) {
-          await invokeMutation(store.setIconFromBytes, [mode, base64])
+          await invokeMutation(store.setIconFromBytes, {
+            mode,
+            bytesBase64: base64,
+          })
         }
         setChosenMode(preset)
         message(store.messages.setSuccess(), { kind: 'info' })
@@ -473,10 +477,10 @@ function TrayIconConfigContent() {
     return updateStateIcon(
       mode,
       async () => {
-        await invokeMutation(store.setIconFromBytes, [
+        await invokeMutation(store.setIconFromBytes, {
           mode,
-          await imageBase64(item.src),
-        ])
+          bytesBase64: await imageBase64(item.src),
+        })
 
         return store.messages.setSuccess()
       },

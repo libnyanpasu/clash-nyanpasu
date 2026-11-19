@@ -8,16 +8,16 @@ import {
   stepStatus,
 } from '@/pages/(main)/main/profiles/inspect/_modules/inspect-steps'
 import type {
-  OperatorTag,
-  RuntimeInspectionNode,
+  OperatorTag_Serialize,
+  RuntimeInspectionNode_Serialize,
   StepLogLevel,
 } from '@nyanpasu/rpc/types'
 
 const node = (
   id: number,
-  tag: OperatorTag,
-  extra: Partial<RuntimeInspectionNode> = {},
-): RuntimeInspectionNode => ({
+  tag: OperatorTag_Serialize,
+  extra: Partial<RuntimeInspectionNode_Serialize> = {},
+): RuntimeInspectionNode_Serialize => ({
   id,
   tag,
   next: [],
@@ -58,7 +58,7 @@ const builtin = (id: number, step: string, extra = {}) =>
     {
       kind: 'builtin_step',
       data: { selected_profile_id: 'cfg', step },
-    } as OperatorTag,
+    } as OperatorTag_Serialize,
     extra,
   )
 
@@ -77,7 +77,7 @@ const scoped = (
       transform_kind: { type: 'overlay' },
       step_index: index,
     },
-  } as unknown as OperatorTag)
+  } as unknown as OperatorTag_Serialize)
 
 /** root, scoped, global, a built-in step that is the final node, then the core. */
 const chain = () => [
@@ -190,7 +190,7 @@ describe('buildSteps', () => {
         {
           kind: 'file_config_root',
           data: { profile_id: profile, role },
-        } as OperatorTag,
+        } as OperatorTag_Serialize,
         { changed_fields: null },
       )
     const nodes = [
@@ -255,12 +255,12 @@ describe('buildSteps', () => {
 })
 
 describe('stepStatus', () => {
-  const status = (n: RuntimeInspectionNode, finalId = 99) =>
+  const status = (n: RuntimeInspectionNode_Serialize, finalId = 99) =>
     stepStatus(n, finalId)
 
   it('reports errors and warnings over every other status', () => {
     for (const level of ['warn', 'error'] as StepLogLevel[]) {
-      const withLog = (n: RuntimeInspectionNode) => ({
+      const withLog = (n: RuntimeInspectionNode_Serialize) => ({
         ...n,
         max_log_level: level,
       })

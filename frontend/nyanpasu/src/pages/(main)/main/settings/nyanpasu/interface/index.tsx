@@ -1,11 +1,13 @@
+import { CUSTOM_CSS_PRESETS } from '@/assets/custom-css-presets'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
+import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
+import { usePlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
+import { SettingsLinkRow } from '../../_modules/settings-link-row'
 import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
-import CustomCssItems from './_modules/custom-css-items'
-import CustomCssPresets from './_modules/custom-css-presets'
 import LanguageSelector from './_modules/language-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
@@ -14,13 +16,6 @@ export const Route = createFileRoute(
   '/(main)/main/settings/nyanpasu/interface/',
 )({
   component: RouteComponent,
-  head: () => ({
-    meta: [
-      {
-        title: m.settings_user_interface_title(),
-      },
-    ],
-  }),
 })
 
 const LanguageSettings = () => {
@@ -53,22 +48,73 @@ const ThemeModeSettings = () => {
   )
 }
 
-const CustomCssSettings = () => {
-  return (
-    <div className="space-y-4" data-slot="custom-css-settings-container">
-      <CustomCssPresets />
+const CustomCssPresetsEntry = () => {
+  const customCss = useCustomCss()
+  const { clientOs } = usePlatform()
 
-      <CustomCssItems />
+  const enabled = CUSTOM_CSS_PRESETS.filter(
+    (preset) =>
+      (preset.platform !== 'macos' || clientOs === 'macos') &&
+      customCss.state.enabledPresets.includes(preset.id),
+  ).length
+
+  return (
+    <div data-slot="custom-css-presets-section">
+      <SettingsLabel>
+        {m.settings_user_interface_custom_css_presets_group()}
+      </SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsLinkRow
+          to="/main/settings/nyanpasu/interface/presets"
+          title={m.settings_user_interface_custom_css_presets_group()}
+          description={m.settings_user_interface_custom_css_presets_entry_count(
+            { count: enabled },
+          )}
+          data-slot="custom-css-presets-entry"
+        />
+      </SettingsGroup>
     </div>
+  )
+}
+
+const CustomCssItemsEntry = () => {
+  const customCss = useCustomCss()
+
+  return (
+    <div data-slot="custom-css-items-section">
+      <SettingsLabel>
+        {m.settings_user_interface_custom_css_group()}
+      </SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsLinkRow
+          to="/main/settings/nyanpasu/interface/custom-css"
+          title={m.settings_user_interface_custom_css_group()}
+          description={m.settings_user_interface_custom_css_entry_count({
+            count: customCss.state.items.length,
+          })}
+          data-slot="custom-css-items-entry"
+        />
+      </SettingsGroup>
+    </div>
+  )
+}
+
+const CustomCssEntries = () => {
+  return (
+    <RequireCapability permission="settings:read">
+      <CustomCssPresetsEntry />
+
+      <CustomCssItemsEntry />
+    </RequireCapability>
   )
 }
 
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_user_interface_title()}
-      </PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">
@@ -76,9 +122,7 @@ function RouteComponent() {
 
           <ThemeModeSettings />
 
-          <RequireCapability permission="settings:read">
-            <CustomCssSettings />
-          </RequireCapability>
+          <CustomCssEntries />
         </div>
       </ReadOnlyScope>
     </>

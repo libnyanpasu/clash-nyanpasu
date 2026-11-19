@@ -24,18 +24,17 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { useLockFn } from '@nyanpasu/hooks'
-import { SettingsLabel } from '../../../../_modules/settings-card'
+import CustomCssNameDialog from '../../_modules/custom-css-name-dialog'
 import {
   SettingsList,
   SettingsListActions,
   SettingsListContent,
   SettingsListItem,
-} from '../../../../_modules/settings-list'
+} from '../../../../../_modules/settings-list'
 import {
   sortableItemVariants,
   useSortableTransition,
-} from '../../../../_modules/sortable-item'
-import CustomCssNameDialog from './custom-css-name-dialog'
+} from '../../../../../_modules/sortable-item'
 
 const LARGE_CSS_CHARS = 100_000
 
@@ -209,12 +208,6 @@ function CustomCssItemsContent() {
 
   return (
     <SettingsList data-slot="custom-css-items">
-      <div data-slot="custom-css-items-header">
-        <SettingsLabel>
-          {m.settings_user_interface_custom_css_group()}
-        </SettingsLabel>
-      </div>
-
       <DragDropProvider
         sensors={WHOLE_ITEM_DRAG_SENSORS}
         onDragEnd={(event) => {

@@ -1,4 +1,5 @@
 import z from 'zod'
+import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { ProfileType } from '../_modules/consts'
 import { type CreateKind } from '../_modules/create-profile-schema'
@@ -12,6 +13,24 @@ export enum Action {
 
 export const Route = createFileRoute('/(main)/main/profiles/$type/')({
   component: RouteComponent,
+  staticData: {
+    crumb: {
+      title: ({ params }) => {
+        switch (params.type) {
+          case ProfileType.Profile:
+            return m.profile_profile_label()
+          case ProfileType.JavaScript:
+            return m.profile_javascript_label()
+          case ProfileType.Lua:
+            return m.profile_lua_label()
+          case ProfileType.Merge:
+            return m.profile_merge_label()
+          default:
+            return params.type
+        }
+      },
+    },
+  },
   validateSearch: z.object({
     action: z.enum(Action).optional().nullable(),
   }),

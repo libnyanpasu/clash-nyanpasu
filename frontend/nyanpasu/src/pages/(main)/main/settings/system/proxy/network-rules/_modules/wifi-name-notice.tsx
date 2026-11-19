@@ -9,7 +9,7 @@ import { usePlatform } from '@nyanpasu/platform/react'
 import { useNetworkAutomationStatus } from '@nyanpasu/query'
 import type { NetworkAutomationStatus, WifiName } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { openExternal } from '../../../_modules/open-external'
+import { openExternal } from '../../../../_modules/open-external'
 
 /** The system pane where the user lets this app use location. */
 const LOCATION_SETTINGS_URL = {

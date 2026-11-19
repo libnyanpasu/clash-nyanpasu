@@ -10,6 +10,7 @@ import SyncStatusCard from './_modules/sync-status-card'
 
 export const Route = createFileRoute('/(main)/main/settings/sync/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_sync() } },
 })
 
 function SyncMasonryItem({ children }: { children: ReactNode }) {
@@ -23,7 +24,7 @@ function SyncMasonryItem({ children }: { children: ReactNode }) {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_sync()}</PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

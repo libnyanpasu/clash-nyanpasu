@@ -4,7 +4,6 @@ import {
   useEffect,
   type PropsWithChildren,
 } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ConfigurationStatusSummary,
   EffectKind,
@@ -128,16 +127,14 @@ export function ConfigurationStatusProvider({
 
   const retry = useMutation({
     mutationFn: async (kind: EffectKind | undefined) =>
-      unwrapResult(
-        await invokeMutation(
-          {
-            mutationFn: () =>
-              kind
-                ? api.retryConfigurationEffect(kind)
-                : api.retryConfigurationRuntime(),
-          },
-          undefined,
-        ),
+      await invokeMutation(
+        {
+          mutationFn: () =>
+            kind
+              ? api.retryConfigurationEffect(kind)
+              : api.retryConfigurationRuntime(),
+        },
+        undefined,
       ),
     onSuccess: () =>
       queryClient.invalidateQueries({

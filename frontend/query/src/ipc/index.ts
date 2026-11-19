@@ -52,7 +52,6 @@ export {
   invokeQuery,
   isNonRetryableRpcFailure,
   shouldRetryRpcQuery,
-  unwrapQueryOptions,
 } from './query-options'
 export type {
   ClashDelayOptions,

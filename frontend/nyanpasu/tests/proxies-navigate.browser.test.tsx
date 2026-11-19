@@ -15,7 +15,7 @@ import { ask, message } from '@/utils/notification'
 import type {
   Proxies_Serialize,
   Proxy_Serialize,
-  ProxyGroup,
+  ProxyGroup_Serialize,
   ProxyGroupLayout,
 } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
@@ -63,7 +63,7 @@ const group = (
   type: string,
   now: string | null,
   fixed: string | null = null,
-): ProxyGroup => ({
+): ProxyGroup_Serialize => ({
   name,
   type,
   all: now ? [now] : [],

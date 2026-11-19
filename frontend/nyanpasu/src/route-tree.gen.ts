@@ -48,7 +48,9 @@ import { Route as mainMainProvidersRulesKeyRouteImport } from './pages/(main)/ma
 import { Route as mainMainProxiesGroupNameRouteImport } from './pages/(main)/main/proxies/group/$name'
 import { Route as mainMainSettingsAboutIndexRouteImport } from './pages/(main)/main/settings/about/index'
 import { Route as mainMainSettingsDebugIndexRouteImport } from './pages/(main)/main/settings/debug/index'
+import { Route as mainMainSettingsNyanpasuInterfaceRouteRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/route'
 import { Route as mainMainSettingsSyncIndexRouteImport } from './pages/(main)/main/settings/sync/index'
+import { Route as mainMainSettingsSystemProxyRouteRouteImport } from './pages/(main)/main/settings/system/proxy/route'
 import { Route as mainMainTopologyDimensionIndexRouteImport } from './pages/(main)/main/topology/$dimension/index'
 import { Route as mainMainTopologyFlowIndexRouteImport } from './pages/(main)/main/topology/flow/index'
 import { Route as mainMainTopologyMapIndexRouteImport } from './pages/(main)/main/topology/map/index'
@@ -73,6 +75,10 @@ import { Route as mainMainSettingsNyanpasuUpdatesIndexRouteImport } from './page
 import { Route as mainMainSettingsNyanpasuWidgetIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/widget/index'
 import { Route as mainMainSettingsSystemProxyIndexRouteImport } from './pages/(main)/main/settings/system/proxy/index'
 import { Route as mainMainSettingsSystemServiceIndexRouteImport } from './pages/(main)/main/settings/system/service/index'
+import { Route as mainMainSettingsNyanpasuInterfaceCustomCssIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/custom-css/index'
+import { Route as mainMainSettingsNyanpasuInterfacePresetsIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/presets/index'
+import { Route as mainMainSettingsSystemProxyGuardIndexRouteImport } from './pages/(main)/main/settings/system/proxy/guard/index'
+import { Route as mainMainSettingsSystemProxyNetworkRulesIndexRouteImport } from './pages/(main)/main/settings/system/proxy/network-rules/index'
 
 const mainRouteRoute = mainRouteRouteImport.update({
   id: '/(main)',
@@ -285,10 +291,22 @@ const mainMainSettingsDebugIndexRoute =
     path: '/',
     getParentRoute: () => mainMainSettingsDebugRouteRoute,
   } as any)
+const mainMainSettingsNyanpasuInterfaceRouteRoute =
+  mainMainSettingsNyanpasuInterfaceRouteRouteImport.update({
+    id: '/nyanpasu/interface',
+    path: '/nyanpasu/interface',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsSyncIndexRoute =
   mainMainSettingsSyncIndexRouteImport.update({
     id: '/sync/',
     path: '/sync/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsSystemProxyRouteRoute =
+  mainMainSettingsSystemProxyRouteRouteImport.update({
+    id: '/system/proxy',
+    path: '/system/proxy',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
 const mainMainTopologyDimensionIndexRoute =
@@ -377,9 +395,9 @@ const mainMainSettingsClashRuntimeIndexRoute =
   } as any)
 const mainMainSettingsNyanpasuInterfaceIndexRoute =
   mainMainSettingsNyanpasuInterfaceIndexRouteImport.update({
-    id: '/nyanpasu/interface/',
-    path: '/nyanpasu/interface/',
-    getParentRoute: () => mainMainSettingsRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => mainMainSettingsNyanpasuInterfaceRouteRoute,
   } as any)
 const mainMainSettingsNyanpasuLogsIndexRoute =
   mainMainSettingsNyanpasuLogsIndexRouteImport.update({
@@ -425,15 +443,39 @@ const mainMainSettingsNyanpasuWidgetIndexRoute =
   } as any)
 const mainMainSettingsSystemProxyIndexRoute =
   mainMainSettingsSystemProxyIndexRouteImport.update({
-    id: '/system/proxy/',
-    path: '/system/proxy/',
-    getParentRoute: () => mainMainSettingsRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => mainMainSettingsSystemProxyRouteRoute,
   } as any)
 const mainMainSettingsSystemServiceIndexRoute =
   mainMainSettingsSystemServiceIndexRouteImport.update({
     id: '/system/service/',
     path: '/system/service/',
     getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute =
+  mainMainSettingsNyanpasuInterfaceCustomCssIndexRouteImport.update({
+    id: '/custom-css/',
+    path: '/custom-css/',
+    getParentRoute: () => mainMainSettingsNyanpasuInterfaceRouteRoute,
+  } as any)
+const mainMainSettingsNyanpasuInterfacePresetsIndexRoute =
+  mainMainSettingsNyanpasuInterfacePresetsIndexRouteImport.update({
+    id: '/presets/',
+    path: '/presets/',
+    getParentRoute: () => mainMainSettingsNyanpasuInterfaceRouteRoute,
+  } as any)
+const mainMainSettingsSystemProxyGuardIndexRoute =
+  mainMainSettingsSystemProxyGuardIndexRouteImport.update({
+    id: '/guard/',
+    path: '/guard/',
+    getParentRoute: () => mainMainSettingsSystemProxyRouteRoute,
+  } as any)
+const mainMainSettingsSystemProxyNetworkRulesIndexRoute =
+  mainMainSettingsSystemProxyNetworkRulesIndexRouteImport.update({
+    id: '/network-rules/',
+    path: '/network-rules/',
+    getParentRoute: () => mainMainSettingsSystemProxyRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -469,6 +511,8 @@ export interface FileRoutesByFullPath {
   '/main/settings/': typeof mainMainSettingsIndexRoute
   '/main/topology/': typeof mainMainTopologyIndexRoute
   '/tray-menu/proxies/': typeof trayMenuTrayMenuProxiesIndexRoute
+  '/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceRouteRouteWithChildren
+  '/main/settings/system/proxy': typeof mainMainSettingsSystemProxyRouteRouteWithChildren
   '/main/providers/proxies/$key': typeof mainMainProvidersProxiesKeyRoute
   '/main/providers/rules/$key': typeof mainMainProvidersRulesKeyRoute
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
@@ -501,6 +545,10 @@ export interface FileRoutesByFullPath {
   '/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
+  '/main/settings/nyanpasu/interface/custom-css/': typeof mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute
+  '/main/settings/nyanpasu/interface/presets/': typeof mainMainSettingsNyanpasuInterfacePresetsIndexRoute
+  '/main/settings/system/proxy/guard/': typeof mainMainSettingsSystemProxyGuardIndexRoute
+  '/main/settings/system/proxy/network-rules/': typeof mainMainSettingsSystemProxyNetworkRulesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof mainRouteRouteWithChildren
@@ -554,6 +602,10 @@ export interface FileRoutesByTo {
   '/main/settings/nyanpasu/widget': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/main/settings/system/proxy': typeof mainMainSettingsSystemProxyIndexRoute
   '/main/settings/system/service': typeof mainMainSettingsSystemServiceIndexRoute
+  '/main/settings/nyanpasu/interface/custom-css': typeof mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute
+  '/main/settings/nyanpasu/interface/presets': typeof mainMainSettingsNyanpasuInterfacePresetsIndexRoute
+  '/main/settings/system/proxy/guard': typeof mainMainSettingsSystemProxyGuardIndexRoute
+  '/main/settings/system/proxy/network-rules': typeof mainMainSettingsSystemProxyNetworkRulesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -589,6 +641,8 @@ export interface FileRoutesById {
   '/(main)/main/settings/': typeof mainMainSettingsIndexRoute
   '/(main)/main/topology/': typeof mainMainTopologyIndexRoute
   '/(tray-menu)/tray-menu/proxies/': typeof trayMenuTrayMenuProxiesIndexRoute
+  '/(main)/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceRouteRouteWithChildren
+  '/(main)/main/settings/system/proxy': typeof mainMainSettingsSystemProxyRouteRouteWithChildren
   '/(main)/main/providers/proxies/$key': typeof mainMainProvidersProxiesKeyRoute
   '/(main)/main/providers/rules/$key': typeof mainMainProvidersRulesKeyRoute
   '/(main)/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
@@ -621,6 +675,10 @@ export interface FileRoutesById {
   '/(main)/main/settings/nyanpasu/widget/': typeof mainMainSettingsNyanpasuWidgetIndexRoute
   '/(main)/main/settings/system/proxy/': typeof mainMainSettingsSystemProxyIndexRoute
   '/(main)/main/settings/system/service/': typeof mainMainSettingsSystemServiceIndexRoute
+  '/(main)/main/settings/nyanpasu/interface/custom-css/': typeof mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute
+  '/(main)/main/settings/nyanpasu/interface/presets/': typeof mainMainSettingsNyanpasuInterfacePresetsIndexRoute
+  '/(main)/main/settings/system/proxy/guard/': typeof mainMainSettingsSystemProxyGuardIndexRoute
+  '/(main)/main/settings/system/proxy/network-rules/': typeof mainMainSettingsSystemProxyNetworkRulesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -657,6 +715,8 @@ export interface FileRouteTypes {
     | '/main/settings/'
     | '/main/topology/'
     | '/tray-menu/proxies/'
+    | '/main/settings/nyanpasu/interface'
+    | '/main/settings/system/proxy'
     | '/main/providers/proxies/$key'
     | '/main/providers/rules/$key'
     | '/main/proxies/group/$name'
@@ -689,6 +749,10 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/widget/'
     | '/main/settings/system/proxy/'
     | '/main/settings/system/service/'
+    | '/main/settings/nyanpasu/interface/custom-css/'
+    | '/main/settings/nyanpasu/interface/presets/'
+    | '/main/settings/system/proxy/guard/'
+    | '/main/settings/system/proxy/network-rules/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -742,6 +806,10 @@ export interface FileRouteTypes {
     | '/main/settings/nyanpasu/widget'
     | '/main/settings/system/proxy'
     | '/main/settings/system/service'
+    | '/main/settings/nyanpasu/interface/custom-css'
+    | '/main/settings/nyanpasu/interface/presets'
+    | '/main/settings/system/proxy/guard'
+    | '/main/settings/system/proxy/network-rules'
   id:
     | '__root__'
     | '/(main)'
@@ -776,6 +844,8 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/'
     | '/(main)/main/topology/'
     | '/(tray-menu)/tray-menu/proxies/'
+    | '/(main)/main/settings/nyanpasu/interface'
+    | '/(main)/main/settings/system/proxy'
     | '/(main)/main/providers/proxies/$key'
     | '/(main)/main/providers/rules/$key'
     | '/(main)/main/proxies/group/$name'
@@ -808,6 +878,10 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/nyanpasu/widget/'
     | '/(main)/main/settings/system/proxy/'
     | '/(main)/main/settings/system/service/'
+    | '/(main)/main/settings/nyanpasu/interface/custom-css/'
+    | '/(main)/main/settings/nyanpasu/interface/presets/'
+    | '/(main)/main/settings/system/proxy/guard/'
+    | '/(main)/main/settings/system/proxy/network-rules/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1091,11 +1165,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsDebugIndexRouteImport
       parentRoute: typeof mainMainSettingsDebugRouteRoute
     }
+    '/(main)/main/settings/nyanpasu/interface': {
+      id: '/(main)/main/settings/nyanpasu/interface'
+      path: '/nyanpasu/interface'
+      fullPath: '/main/settings/nyanpasu/interface'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuInterfaceRouteRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/sync/': {
       id: '/(main)/main/settings/sync/'
       path: '/sync'
       fullPath: '/main/settings/sync/'
       preLoaderRoute: typeof mainMainSettingsSyncIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/system/proxy': {
+      id: '/(main)/main/settings/system/proxy'
+      path: '/system/proxy'
+      fullPath: '/main/settings/system/proxy'
+      preLoaderRoute: typeof mainMainSettingsSystemProxyRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/topology/$dimension/': {
@@ -1198,10 +1286,10 @@ declare module '@tanstack/react-router' {
     }
     '/(main)/main/settings/nyanpasu/interface/': {
       id: '/(main)/main/settings/nyanpasu/interface/'
-      path: '/nyanpasu/interface'
+      path: '/'
       fullPath: '/main/settings/nyanpasu/interface/'
       preLoaderRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
+      parentRoute: typeof mainMainSettingsNyanpasuInterfaceRouteRoute
     }
     '/(main)/main/settings/nyanpasu/logs/': {
       id: '/(main)/main/settings/nyanpasu/logs/'
@@ -1254,10 +1342,10 @@ declare module '@tanstack/react-router' {
     }
     '/(main)/main/settings/system/proxy/': {
       id: '/(main)/main/settings/system/proxy/'
-      path: '/system/proxy'
+      path: '/'
       fullPath: '/main/settings/system/proxy/'
       preLoaderRoute: typeof mainMainSettingsSystemProxyIndexRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
+      parentRoute: typeof mainMainSettingsSystemProxyRouteRoute
     }
     '/(main)/main/settings/system/service/': {
       id: '/(main)/main/settings/system/service/'
@@ -1265,6 +1353,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/settings/system/service/'
       preLoaderRoute: typeof mainMainSettingsSystemServiceIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/interface/custom-css/': {
+      id: '/(main)/main/settings/nyanpasu/interface/custom-css/'
+      path: '/custom-css'
+      fullPath: '/main/settings/nyanpasu/interface/custom-css/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuInterfaceCustomCssIndexRouteImport
+      parentRoute: typeof mainMainSettingsNyanpasuInterfaceRouteRoute
+    }
+    '/(main)/main/settings/nyanpasu/interface/presets/': {
+      id: '/(main)/main/settings/nyanpasu/interface/presets/'
+      path: '/presets'
+      fullPath: '/main/settings/nyanpasu/interface/presets/'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuInterfacePresetsIndexRouteImport
+      parentRoute: typeof mainMainSettingsNyanpasuInterfaceRouteRoute
+    }
+    '/(main)/main/settings/system/proxy/guard/': {
+      id: '/(main)/main/settings/system/proxy/guard/'
+      path: '/guard'
+      fullPath: '/main/settings/system/proxy/guard/'
+      preLoaderRoute: typeof mainMainSettingsSystemProxyGuardIndexRouteImport
+      parentRoute: typeof mainMainSettingsSystemProxyRouteRoute
+    }
+    '/(main)/main/settings/system/proxy/network-rules/': {
+      id: '/(main)/main/settings/system/proxy/network-rules/'
+      path: '/network-rules'
+      fullPath: '/main/settings/system/proxy/network-rules/'
+      preLoaderRoute: typeof mainMainSettingsSystemProxyNetworkRulesIndexRouteImport
+      parentRoute: typeof mainMainSettingsSystemProxyRouteRoute
     }
   }
 }
@@ -1407,10 +1523,54 @@ const mainMainSettingsDebugRouteRouteWithChildren =
     mainMainSettingsDebugRouteRouteChildren,
   )
 
+interface mainMainSettingsNyanpasuInterfaceRouteRouteChildren {
+  mainMainSettingsNyanpasuInterfaceIndexRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRoute
+  mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute: typeof mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute
+  mainMainSettingsNyanpasuInterfacePresetsIndexRoute: typeof mainMainSettingsNyanpasuInterfacePresetsIndexRoute
+}
+
+const mainMainSettingsNyanpasuInterfaceRouteRouteChildren: mainMainSettingsNyanpasuInterfaceRouteRouteChildren =
+  {
+    mainMainSettingsNyanpasuInterfaceIndexRoute:
+      mainMainSettingsNyanpasuInterfaceIndexRoute,
+    mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute:
+      mainMainSettingsNyanpasuInterfaceCustomCssIndexRoute,
+    mainMainSettingsNyanpasuInterfacePresetsIndexRoute:
+      mainMainSettingsNyanpasuInterfacePresetsIndexRoute,
+  }
+
+const mainMainSettingsNyanpasuInterfaceRouteRouteWithChildren =
+  mainMainSettingsNyanpasuInterfaceRouteRoute._addFileChildren(
+    mainMainSettingsNyanpasuInterfaceRouteRouteChildren,
+  )
+
+interface mainMainSettingsSystemProxyRouteRouteChildren {
+  mainMainSettingsSystemProxyIndexRoute: typeof mainMainSettingsSystemProxyIndexRoute
+  mainMainSettingsSystemProxyGuardIndexRoute: typeof mainMainSettingsSystemProxyGuardIndexRoute
+  mainMainSettingsSystemProxyNetworkRulesIndexRoute: typeof mainMainSettingsSystemProxyNetworkRulesIndexRoute
+}
+
+const mainMainSettingsSystemProxyRouteRouteChildren: mainMainSettingsSystemProxyRouteRouteChildren =
+  {
+    mainMainSettingsSystemProxyIndexRoute:
+      mainMainSettingsSystemProxyIndexRoute,
+    mainMainSettingsSystemProxyGuardIndexRoute:
+      mainMainSettingsSystemProxyGuardIndexRoute,
+    mainMainSettingsSystemProxyNetworkRulesIndexRoute:
+      mainMainSettingsSystemProxyNetworkRulesIndexRoute,
+  }
+
+const mainMainSettingsSystemProxyRouteRouteWithChildren =
+  mainMainSettingsSystemProxyRouteRoute._addFileChildren(
+    mainMainSettingsSystemProxyRouteRouteChildren,
+  )
+
 interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRouteWithChildren
   mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRouteWithChildren
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
+  mainMainSettingsNyanpasuInterfaceRouteRoute: typeof mainMainSettingsNyanpasuInterfaceRouteRouteWithChildren
+  mainMainSettingsSystemProxyRouteRoute: typeof mainMainSettingsSystemProxyRouteRouteWithChildren
   mainMainSettingsSyncIndexRoute: typeof mainMainSettingsSyncIndexRoute
   mainMainSettingsClashAiIndexRoute: typeof mainMainSettingsClashAiIndexRoute
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
@@ -1418,7 +1578,6 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsClashCoreIndexRoute: typeof mainMainSettingsClashCoreIndexRoute
   mainMainSettingsClashNetworkIndexRoute: typeof mainMainSettingsClashNetworkIndexRoute
   mainMainSettingsClashRuntimeIndexRoute: typeof mainMainSettingsClashRuntimeIndexRoute
-  mainMainSettingsNyanpasuInterfaceIndexRoute: typeof mainMainSettingsNyanpasuInterfaceIndexRoute
   mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
   mainMainSettingsNyanpasuPublicIpIndexRoute: typeof mainMainSettingsNyanpasuPublicIpIndexRoute
   mainMainSettingsNyanpasuRemoteAccessIndexRoute: typeof mainMainSettingsNyanpasuRemoteAccessIndexRoute
@@ -1426,7 +1585,6 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsNyanpasuTrayIndexRoute: typeof mainMainSettingsNyanpasuTrayIndexRoute
   mainMainSettingsNyanpasuUpdatesIndexRoute: typeof mainMainSettingsNyanpasuUpdatesIndexRoute
   mainMainSettingsNyanpasuWidgetIndexRoute: typeof mainMainSettingsNyanpasuWidgetIndexRoute
-  mainMainSettingsSystemProxyIndexRoute: typeof mainMainSettingsSystemProxyIndexRoute
   mainMainSettingsSystemServiceIndexRoute: typeof mainMainSettingsSystemServiceIndexRoute
 }
 
@@ -1434,6 +1592,10 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRouteWithChildren,
   mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRouteWithChildren,
   mainMainSettingsIndexRoute: mainMainSettingsIndexRoute,
+  mainMainSettingsNyanpasuInterfaceRouteRoute:
+    mainMainSettingsNyanpasuInterfaceRouteRouteWithChildren,
+  mainMainSettingsSystemProxyRouteRoute:
+    mainMainSettingsSystemProxyRouteRouteWithChildren,
   mainMainSettingsSyncIndexRoute: mainMainSettingsSyncIndexRoute,
   mainMainSettingsClashAiIndexRoute: mainMainSettingsClashAiIndexRoute,
   mainMainSettingsClashControlIndexRoute:
@@ -1445,8 +1607,6 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsClashNetworkIndexRoute,
   mainMainSettingsClashRuntimeIndexRoute:
     mainMainSettingsClashRuntimeIndexRoute,
-  mainMainSettingsNyanpasuInterfaceIndexRoute:
-    mainMainSettingsNyanpasuInterfaceIndexRoute,
   mainMainSettingsNyanpasuLogsIndexRoute:
     mainMainSettingsNyanpasuLogsIndexRoute,
   mainMainSettingsNyanpasuPublicIpIndexRoute:
@@ -1461,7 +1621,6 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
     mainMainSettingsNyanpasuUpdatesIndexRoute,
   mainMainSettingsNyanpasuWidgetIndexRoute:
     mainMainSettingsNyanpasuWidgetIndexRoute,
-  mainMainSettingsSystemProxyIndexRoute: mainMainSettingsSystemProxyIndexRoute,
   mainMainSettingsSystemServiceIndexRoute:
     mainMainSettingsSystemServiceIndexRoute,
 }

@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import type {
   ProfileSyncStatus,
   ProfileSyncSummary,
@@ -30,7 +29,7 @@ const useProfileUpdating = (uid: string) => {
   const api = useQueryApi()
   return (
     useIsMutating({
-      mutationKey: api.mutations.updateProfile.mutationKey,
+      mutationKey: api.mutations.updateProfile().mutationKey,
       predicate: (mutation) =>
         (mutation.state.variables as { uid?: string } | undefined)?.uid === uid,
     }) > 0
@@ -47,7 +46,7 @@ export function useProfileSyncStatus(uid: string) {
   const refreshing = useProfileUpdating(uid)
   return useQuery({
     queryKey: options.queryKey,
-    queryFn: async () => unwrapResult(await api.getProfileSyncStatus(uid)),
+    queryFn: async () => await api.getProfileSyncStatus(uid),
     refetchInterval: (query) => statusInterval(query.state.data, refreshing),
   })
 }
@@ -63,8 +62,7 @@ export function useProfileSyncStatusSummary(uid: string) {
   const refreshing = useProfileUpdating(uid)
   return useQuery({
     queryKey: options.queryKey,
-    queryFn: async () =>
-      unwrapResult(await api.getProfileSyncStatusSummary(uid)),
+    queryFn: async () => await api.getProfileSyncStatusSummary(uid),
     refetchInterval: (query) => statusInterval(query.state.data, refreshing),
   })
 }
@@ -79,7 +77,7 @@ export function useProfileSyncRuns(
     queryKey: ['profile-sync-runs', uid],
     initialPageParam: null as RunCursorDto | null,
     queryFn: async ({ pageParam }) =>
-      unwrapResult(await api.getProfileSyncRuns(uid, pageParam)),
+      await api.getProfileSyncRuns(uid, pageParam),
     getNextPageParam: (page) => page.next ?? undefined,
     refetchInterval: options.refetchInterval,
   })
@@ -98,7 +96,7 @@ export function useProfileSyncRunsSummary(
     queryKey: ['profile-sync-runs-summary', uid],
     initialPageParam: null as RunCursorDto | null,
     queryFn: async ({ pageParam }) =>
-      unwrapResult(await api.getProfileSyncRunsSummary(uid, pageParam)),
+      await api.getProfileSyncRunsSummary(uid, pageParam),
     getNextPageParam: (page) => page.next ?? undefined,
     refetchInterval: options.refetchInterval,
   })
@@ -115,7 +113,7 @@ export function useProfileSyncLogs(
     queryKey: ['profile-sync-logs', uid, run],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) =>
-      unwrapResult(await api.getProfileSyncLogs(uid, run!, pageParam)),
+      await api.getProfileSyncLogs(uid, run!, pageParam),
     getNextPageParam: (page) => page.next ?? undefined,
     enabled: run !== null,
     refetchInterval: live ? LIVE_INTERVAL : false,

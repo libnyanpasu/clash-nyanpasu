@@ -41,7 +41,6 @@ vi.mock('../src/provider/rpc-provider', () => {
 let generation: string
 let head: number
 let version: number
-const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 const cursor = (sequence: number): CoreLogCursor => ({
   generation,
   sequence,
@@ -80,7 +79,7 @@ beforeEach(() => {
   generation = 'first'
   version = 1
   head = 3
-  mocked.getCoreLogStatus.mockImplementation(async () => ok(status()))
+  mocked.getCoreLogStatus.mockImplementation(async () => status())
   mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => {
     expect(mocked.listeners.size).toBeGreaterThan(0)
     const rows =
@@ -91,22 +90,23 @@ beforeEach(() => {
           : head > (query.cursor?.sequence ?? 0)
             ? [row(head)]
             : []
-    return ok({
+    return {
       rows,
       cursor: query.direction === 'before' ? cursor(1) : cursor(head),
       more: query.direction === 'latest',
       status: status(),
-    })
+    }
   })
   mocked.clearCoreLogs.mockImplementation(async () => {
     generation = 'cleared'
     head = 0
     changed()
-    return ok(null)
+    return null
   })
-  mocked.getCoreLog.mockImplementation(async (id: CoreLogCursor) =>
-    ok({ ...row(id.sequence).record, payload: 'complete record' }),
-  )
+  mocked.getCoreLog.mockImplementation(async (id: CoreLogCursor) => ({
+    ...row(id.sequence).record,
+    payload: 'complete record',
+  }))
 })
 
 test('pause leaves capture status live, older rows load on demand, and details bypass previews', async ({
@@ -161,9 +161,12 @@ test('clearing in one mounted viewer invalidates the other viewer history', asyn
   })
   await expect.poll(() => first.result.current.data.length).toBe(1)
   await expect.poll(() => second.result.current.data.length).toBe(1)
-  mocked.queryCoreLogs.mockImplementation(async () =>
-    ok({ rows: [], cursor: null, more: false, status: status() }),
-  )
+  mocked.queryCoreLogs.mockImplementation(async () => ({
+    rows: [],
+    cursor: null,
+    more: false,
+    status: status(),
+  }))
   await first.result.current.clean.mutateAsync()
   await expect
     .poll(() => second.result.current.status?.generation)
@@ -210,7 +213,7 @@ test('coalesces a burst into one catch-up query without extra status RPCs', asyn
       status: status(),
     }
     return new Promise((resolve) => {
-      finish = () => resolve(ok(page))
+      finish = () => resolve(page)
     })
   })
   head = 4
@@ -271,7 +274,7 @@ test('an old in-flight page cannot restore records after a clear event', async (
       status: status(),
     }
     return new Promise((resolve) => {
-      finish = () => resolve(ok(page))
+      finish = () => resolve(page)
     })
   })
   head = 4
@@ -304,10 +307,7 @@ test.for(['result', 'rpc failure'])(
         }),
       )
     } else {
-      mocked.queryCoreLogs.mockResolvedValueOnce({
-        status: 'error',
-        error: { kind: 'cursor_expired' },
-      })
+      mocked.queryCoreLogs.mockRejectedValueOnce({ kind: 'cursor_expired' })
     }
     head = 20
     version++
@@ -349,18 +349,15 @@ test('clear maps public IpcError from Settings-only callers into CoreLogError', 
   onTestFinished(() => hook.unmount())
   await expect.poll(() => hook.result.current.data.length).toBe(1)
 
-  mocked.clearCoreLogs.mockResolvedValueOnce({
-    status: 'error',
-    error: {
-      kind: {
-        domain: 'public',
-        error: {
-          domain: 'core_log_read',
-          error: { kind: 'record_gone' },
-        },
+  mocked.clearCoreLogs.mockRejectedValueOnce({
+    kind: {
+      domain: 'public',
+      error: {
+        domain: 'core_log_read',
+        error: { kind: 'record_gone' },
       },
-      message: 'core log entry is gone',
     },
+    message: 'core log entry is gone',
   })
 
   await expect(hook.result.current.clean.mutateAsync()).rejects.toThrow(

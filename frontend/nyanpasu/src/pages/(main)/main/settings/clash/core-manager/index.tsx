@@ -11,14 +11,13 @@ export const Route = createFileRoute(
   '/(main)/main/settings/clash/core-manager/',
 )({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_core_manager() } },
 })
 
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_core_manager()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permission="system:read"

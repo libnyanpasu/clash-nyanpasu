@@ -118,9 +118,8 @@ function createKvStorageStore(
     try {
       const result = await api.getStorageItem(key)
       if (!isCurrent()) return
-      if (result.status === 'error') throw result.error
       const entry = peek(key) ?? EMPTY_KV_STORAGE_ENTRY
-      const merged = mergeKvStorageSnapshot(entry, result.data)
+      const merged = mergeKvStorageSnapshot(entry, result)
       // Unreadable stored JSON is a failed read, not a default to save over.
       if (merged !== entry && merged.value != null) JSON.parse(merged.value)
       update(key, () => ({ ...merged, read: { status: 'done', error: null } }))
@@ -197,16 +196,12 @@ function createKvStorageStore(
       const operation = (writeTails.get(key) ?? Promise.resolve(true)).then(
         async () => {
           try {
-            const result = await invokeMutation(api.mutations.setStorageItem, [
-              key,
-              value,
-            ])
-            if (result.status === 'error') throw result.error
+            const revision = await invokeMutation(
+              api.mutations.setStorageItem(),
+              { key, value },
+            )
             update(key, (entry) => {
-              const merged = mergeKvStorageSnapshot(entry, {
-                value,
-                revision: result.data,
-              })
+              const merged = mergeKvStorageSnapshot(entry, { value, revision })
               return merged.draft?.id === id
                 ? { ...merged, draft: null }
                 : merged

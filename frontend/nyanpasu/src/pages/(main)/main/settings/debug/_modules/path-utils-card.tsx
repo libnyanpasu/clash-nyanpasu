@@ -5,7 +5,6 @@ import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { unwrapResult } from '@nyanpasu/rpc'
 import { cn } from '@nyanpasu/utils'
 
 const PathButton = ({
@@ -50,7 +49,7 @@ export default function PathUtilsCard() {
 
   const handleCreateBackup = useLockFn(async () => {
     try {
-      const backup = unwrapResult(await rpc.createConfigBackup())
+      const backup = await rpc.createConfigBackup()
 
       await message(
         m.settings_debug_utils_create_backup_success({ name: backup.name }),

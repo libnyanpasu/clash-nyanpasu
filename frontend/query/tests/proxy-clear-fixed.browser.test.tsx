@@ -1,11 +1,14 @@
 import { expect, test } from 'vitest'
 import { renderHook } from 'vitest-browser-react'
-import type { Proxies_Serialize, ProxyGroup } from '@nyanpasu/rpc/types'
+import type {
+  Proxies_Serialize,
+  ProxyGroup_Serialize,
+} from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import { useClashProxies } from '../src/ipc/use-clash-proxies'
 import { createTestRpc, rpcWrapper } from './rpc-test-utils'
 
-const pinned: ProxyGroup = {
+const pinned: ProxyGroup_Serialize = {
   name: 'auto',
   type: 'URLTest',
   all: ['a'],

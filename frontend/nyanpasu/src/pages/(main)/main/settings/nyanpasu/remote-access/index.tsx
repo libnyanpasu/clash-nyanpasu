@@ -11,14 +11,13 @@ export const Route = createFileRoute(
   '/(main)/main/settings/nyanpasu/remote-access/',
 )({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_remote_access() } },
 })
 
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_remote_access()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permission="remote:write"

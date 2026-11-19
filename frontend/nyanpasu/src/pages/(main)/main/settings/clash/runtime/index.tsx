@@ -17,6 +17,7 @@ import FieldFilterSwitch from './_modules/field-filter-switch'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/runtime/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_runtime() } },
 })
 
 const FieldFilterSettings = () => {
@@ -58,9 +59,7 @@ const ProfileProcessingSettings = () => {
 function RouteComponent() {
   return (
     <>
-      <PageTitle backTo="/main/settings">
-        {m.settings_label_runtime()}
-      </PageTitle>
+      <PageTitle />
 
       <RequireCapability
         permissions={['settings:read', 'profile:read']}

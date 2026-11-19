@@ -10,8 +10,11 @@ import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { ProxyMode, useClashProxies, useProxyMode } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { zodSearchValidator } from '@tanstack/router-zod-adapter'
+import {
+  createFileRoute,
+  Link,
+  retainSearchParams,
+} from '@tanstack/react-router'
 import { ProfileType } from '../profiles/_modules/consts'
 import ProxiesDndProvider from './_modules/proxies-dnd-provider'
 import ProxiesLayoutProvider from './_modules/proxies-layout-provider'
@@ -23,7 +26,13 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/(main)/main/proxies')({
   component: RouteComponent,
-  validateSearch: zodSearchValidator(searchSchema),
+  search: {
+    middlewares: [retainSearchParams(['q'])],
+  },
+  staticData: {
+    crumb: { title: () => m.navbar_label_proxies(), hub: true },
+  },
+  validateSearch: searchSchema,
 })
 
 const Empty = () => {

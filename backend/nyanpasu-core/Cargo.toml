@@ -80,7 +80,7 @@ tracing-attributes = '0.1'
 nyanpasu-config = { path = '../nyanpasu-config', default-features = false, features = [
   'nesting'
 ] }
-specta = { version = '^2.0.0-rc.25', features = [
+specta = { version = '^2.0.0-rc.28', features = [
   'serde_json',
   'serde_yaml',
   'uuid',

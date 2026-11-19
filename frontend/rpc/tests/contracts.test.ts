@@ -1,17 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createIconTransport,
-  createRpcClient,
-  type Result,
-  type RpcTransport,
-} from '../src'
+import { createIconTransport, createRpcClient, type RpcTransport } from '../src'
 import type {
   AppUpdateSnapshot,
   AppUpdateSummary,
   ClashCore_Deserialize,
   ClashCore_Serialize,
   FolderId,
-  IpcError_Serialize,
   ProfileId,
   PublicDegradation_Serialize,
   RpcAppUpdateOutcome,
@@ -87,31 +81,25 @@ describe('RPC generated TypeScript contracts', () => {
       return outcome as T
     })
 
-    const unitRes: Result<
-      RpcUnitMutationOutcome_Serialize,
-      IpcError_Serialize
-    > = await client.setReleaseChannel('beta')
-    const profileRes: Result<
-      RpcProfileMutationOutcome_Serialize,
-      IpcError_Serialize
-    > = await client.createProfile(
-      {
-        metadata: { name: 'Demo' },
-        definition: {
-          type: 'config',
-          config: { type: 'composition', base: null },
+    const unitRes: RpcUnitMutationOutcome_Serialize =
+      await client.setReleaseChannel('beta')
+    const profileRes: RpcProfileMutationOutcome_Serialize =
+      await client.createProfile(
+        {
+          metadata: { name: 'Demo' },
+          definition: {
+            type: 'config',
+            config: { type: 'composition', base: null },
+          },
         },
-      },
-      null,
-    )
-    const folderRes: Result<
-      RpcFolderMutationOutcome_Serialize,
-      IpcError_Serialize
-    > = await client.createProfileFolder('Work', [])
+        null,
+      )
+    const folderRes: RpcFolderMutationOutcome_Serialize =
+      await client.createProfileFolder('Work', [])
 
-    expect(unitRes.status).toBe('ok')
-    expect(profileRes.status).toBe('ok')
-    expect(folderRes.status).toBe('ok')
+    expect(unitRes.status).toBe('committed_degraded')
+    expect(profileRes.status).toBe('committed')
+    expect(folderRes.status).toBe('committed_degraded')
     expect([
       _notAnyUnit,
       _notAnyProfile,

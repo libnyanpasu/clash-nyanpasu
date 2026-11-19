@@ -131,10 +131,23 @@
   "settings_system_proxy_proxy_guard_switch_label": "Системный прокси",
   "settings_system_proxy_proxy_guard_switch_description": "После включения, системный прокси будет автоматически обнаруживать настройки прокси и автоматически изменять их на настройки в программе",
   "settings_system_proxy_proxy_guard_interval_label": "Интервал охраны прокси",
+  "settings_system_proxy_proxy_guard_entry_interval": "Проверка каждые {interval} мин.",
   "settings_system_proxy_proxy_bypass_label": "Обход прокси",
   "settings_system_proxy_current_system_proxy_label": "Текущий системный прокси",
   "settings_system_proxy_network_automation_label": "Правила сети",
   "settings_system_proxy_network_automation_switch_label": "Следовать правилам сети",
+  "settings_system_proxy_network_automation_entry_rules": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} правило",
+        "countPlural=few": "{count} правила",
+        "countPlural=many": "{count} правил",
+        "countPlural=other": "{count} правила"
+      }
+    }
+  ],
   "settings_system_proxy_network_automation_switch_description": "При подключении к сети первое подходящее правило включает или выключает системный прокси, TUN и прозрачный прокси. Переключатель, изменённый вручную, сохраняется до перехода в другую сеть.",
   "settings_system_proxy_network_automation_current_network": "Текущая сеть",
   "settings_system_proxy_network_automation_network_reading": "Чтение сети…",
@@ -247,6 +260,18 @@
   "settings_user_interface_theme_color_chroma": "Насыщенность",
   "settings_user_interface_theme_color_tone": "Тон",
   "settings_user_interface_custom_css_group": "Пользовательский CSS",
+  "settings_user_interface_custom_css_entry_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} элемент CSS",
+        "countPlural=few": "{count} элемента CSS",
+        "countPlural=many": "{count} элементов CSS",
+        "countPlural=other": "{count} элемента CSS"
+      }
+    }
+  ],
   "settings_user_interface_custom_css_empty": "Нет пользовательского CSS",
   "settings_user_interface_custom_css_chars": "{count} символов",
   "settings_user_interface_custom_css_large_warning": "CSS содержимое велико, может влиять на производительность",
@@ -266,6 +291,18 @@
   "settings_user_interface_custom_css_reorder": "Изменить порядок: {name}",
   "settings_user_interface_custom_css_row_actions": "Действия для {name}",
   "settings_user_interface_custom_css_presets_group": "Встроенные пресеты",
+  "settings_user_interface_custom_css_presets_entry_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} пресет",
+        "countPlural=few": "{count} пресета",
+        "countPlural=many": "{count} пресетов",
+        "countPlural=other": "{count} пресета"
+      }
+    }
+  ],
   "settings_user_interface_custom_css_preset_duplicate": "Дублировать для правки",
   "settings_user_interface_custom_css_preset_copy_name": "{name} (копия)",
   "custom_css_preset_vertical_navbar_name": "Вертикальная панель навигации",

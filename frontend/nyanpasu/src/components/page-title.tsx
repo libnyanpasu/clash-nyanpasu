@@ -3,25 +3,59 @@ import { AnimatePresence, motion } from 'motion/react'
 import { ComponentProps, ReactNode, useId } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { useScrollArea } from '@nyanpasu/ui/scroll-area'
+import { m } from '@/paraglide/messages'
+import { useIsMobile } from '@nyanpasu/hooks'
 import { cn } from '@nyanpasu/utils'
 import { Link, LinkProps } from '@tanstack/react-router'
+import { useCrumbParent, useLeafCrumb } from './router/route-crumbs'
 
 export const BackButton = ({
   to,
+  params,
   label,
+  search,
+  className,
+  variant = 'raised',
+  ...props
 }: {
-  to: LinkProps['to']
+  to?: LinkProps['to']
+  params?: LinkProps['params']
   /** The accessible name of the link, since it shows only an arrow. */
   label?: string
-}) => {
+  search?: LinkProps['search']
+} & Omit<ComponentProps<typeof Button>, 'asChild' | 'children' | 'icon'>) => {
+  const parent = useCrumbParent()
+  const isMobile = useIsMobile()
+
+  const target = to ?? parent?.to
+
+  if (!target || (to === undefined && parent?.hub && !isMobile)) {
+    return null
+  }
+
+  const targetParams = to ? params : parent?.params
+  const accessibleLabel =
+    label ??
+    (parent ? m.navigation_return_to({ page: parent.title }) : m.profile_back())
+
   return (
     <Button
       icon
-      variant="raised"
-      className="flex items-center justify-center md:hidden"
+      variant={variant}
+      className={cn(
+        'flex items-center justify-center',
+        to !== undefined && 'md:hidden',
+        className,
+      )}
       asChild
+      {...props}
     >
-      <Link to={to} aria-label={label}>
+      <Link
+        to={target as LinkProps['to']}
+        params={targetParams as LinkProps['params']}
+        search={search}
+        aria-label={accessibleLabel}
+      >
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
     </Button>
@@ -48,22 +82,24 @@ const Title = (props: ComponentProps<typeof motion.p>) => {
 }
 
 export function PageTitle({
-  backTo,
+  title,
   actions,
   className,
-  children,
   ...props
 }: ComponentProps<'div'> & {
-  /** Route the mobile back button navigates to. */
-  backTo: LinkProps['to']
+  /** Overrides the crumb title for a name that only the loaded data knows. */
+  title?: ReactNode
   /** Controls at the end of the sticky bar, which stay while the page scrolls. */
   actions?: ReactNode
 }) {
   const { isPastHeader } = useScrollArea()
+  const leaf = useLeafCrumb()
 
   const id = useId()
 
   const showTopTitle = isPastHeader
+  const shownTitle =
+    title ?? (leaf ? leaf.crumb.title({ params: leaf.params }) : null)
 
   return (
     <>
@@ -79,7 +115,7 @@ export function PageTitle({
         data-slot="page-title"
         {...props}
       >
-        <BackButton to={backTo} />
+        <BackButton />
 
         <AnimatePresence initial={false}>
           {showTopTitle && (
@@ -88,7 +124,7 @@ export function PageTitle({
               layoutId={id}
               className="text-xl font-bold"
             >
-              {children}
+              {shownTitle}
             </Title>
           )}
         </AnimatePresence>
@@ -112,7 +148,7 @@ export function PageTitle({
               layoutId={id}
               className="text-3xl font-bold"
             >
-              {children}
+              {shownTitle}
             </Title>
           )}
         </AnimatePresence>

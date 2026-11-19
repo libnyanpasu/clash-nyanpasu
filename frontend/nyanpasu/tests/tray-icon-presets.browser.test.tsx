@@ -30,10 +30,10 @@ vi.mock('@/services/rpc', () => ({
   queries: {
     isTrayIconSet: (mode: string) => ({
       queryKey: ['isTrayIconSet', mode],
-      queryFn: async () => ({ status: 'ok', data: false }),
+      queryFn: async () => false,
     }),
   },
-  mutations: { setTrayIconFromBytes: {}, setTrayIcon: {} },
+  mutations: { setTrayIconFromBytes: () => ({}), setTrayIcon: () => ({}) },
 }))
 vi.mock('@nyanpasu/query', async (original) => ({
   ...(await original<typeof import('@nyanpasu/query')>()),
@@ -43,8 +43,9 @@ vi.mock('@nyanpasu/query', async (original) => ({
 
     return url ? `${url}?version=${version ?? 0}` : undefined
   },
-  invokeMutation: (_mutation: unknown, args: unknown[]) =>
-    state.upload(...args),
+  // The named input in order: the mode, then the path or bytes.
+  invokeMutation: (_mutation: unknown, input: Record<string, unknown>) =>
+    state.upload(...Object.values(input)),
 }))
 
 const PNG_SIGNATURE = '\x89PNG\r\n\x1a\n'

@@ -53,7 +53,9 @@ function NavbarButton<
   >
 
   const isActive = !!matchRoute(
-    section ? { to: section, fuzzy: true } : { ...linkProps, fuzzy: true },
+    (section
+      ? { to: section, fuzzy: true }
+      : { ...linkProps, fuzzy: true }) as Parameters<typeof matchRoute>[0],
   )
 
   return (

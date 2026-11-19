@@ -59,7 +59,6 @@ const rpc = {
 }
 const queryApi = { ...rpc, ...createQueryBindings(rpc as unknown as RpcClient) }
 const CoreLogsPage = Route.options.component as ComponentType
-const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 const cursor = (sequence: number) => ({ generation: 'session', sequence })
 const status: CoreLogStatus = {
   generation: 'session',
@@ -90,44 +89,38 @@ const rows = (start: number, count: number): CoreLogRow[] =>
 beforeEach(() => {
   vi.clearAllMocks()
   mocked.source = 'core'
-  mocked.getCoreLogStatus.mockResolvedValue(ok(status))
-  mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) =>
-    ok({
-      rows: query.direction === 'latest' ? rows(201, 20) : [],
-      cursor: cursor(201),
-      more: query.direction === 'latest',
-      status,
-    }),
-  )
+  mocked.getCoreLogStatus.mockResolvedValue(status)
+  mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => ({
+    rows: query.direction === 'latest' ? rows(201, 20) : [],
+    cursor: cursor(201),
+    more: query.direction === 'latest',
+    status,
+  }))
 })
 
 test.for(['app', 'service'] as const)(
   '%s footer selects current and archived files through the dropdown menu',
   async (source, { onTestFinished }) => {
     mocked.source = source
-    mocked.listLogFiles.mockResolvedValue(
-      ok([{ id: 'archive.log', name: 'archive.log', bytes: '100' }]),
-    )
-    mocked.openLogSession.mockResolvedValue(
-      ok({ id: 'session', lease_ms: 60000 }),
-    )
-    mocked.closeLogSession.mockResolvedValue(ok(null))
-    mocked.queryLogs.mockResolvedValue(
-      ok({
-        rows: [],
-        cursor: null,
-        head: null,
-        start: '0',
-        file: 'archive.log',
-        building: false,
-        more: false,
-        partial: false,
-        malformed: '0',
-        truncated: '0',
-        indexed_bytes: '100',
-        file_bytes: '100',
-      }),
-    )
+    mocked.listLogFiles.mockResolvedValue([
+      { id: 'archive.log', name: 'archive.log', bytes: '100' },
+    ])
+    mocked.openLogSession.mockResolvedValue({ id: 'session', lease_ms: 60000 })
+    mocked.closeLogSession.mockResolvedValue(null)
+    mocked.queryLogs.mockResolvedValue({
+      rows: [],
+      cursor: null,
+      head: null,
+      start: '0',
+      file: 'archive.log',
+      building: false,
+      more: false,
+      partial: false,
+      malformed: '0',
+      truncated: '0',
+      indexed_bytes: '100',
+      file_bytes: '100',
+    })
     const view = await render(<CoreLogsPage />, { wrapper: AllPermissions })
     onTestFinished(() => view.unmount())
     await expect.poll(() => mocked.openLogSession.mock.calls.length).toBe(1)
@@ -196,14 +189,12 @@ function pendingLatestPage() {
     (query: CoreLogQuery) =>
       new Promise((resolve) => {
         finish = () =>
-          resolve(
-            ok({
-              rows: query.direction === 'latest' ? rows(201, 20) : [],
-              cursor: cursor(201),
-              more: false,
-              status,
-            }),
-          )
+          resolve({
+            rows: query.direction === 'latest' ? rows(201, 20) : [],
+            cursor: cursor(201),
+            more: false,
+            status,
+          })
       }),
   )
   return () => finish()
@@ -290,24 +281,20 @@ test('scrolling to the top loads older records and preserves the visible row', a
     if (query.direction === 'before') {
       return new Promise((resolve) => {
         finishOlder = () =>
-          resolve(
-            ok({
-              rows: rows(181, 20),
-              cursor: cursor(181),
-              more: false,
-              status,
-            }),
-          )
+          resolve({
+            rows: rows(181, 20),
+            cursor: cursor(181),
+            more: false,
+            status,
+          })
       })
     }
-    return Promise.resolve(
-      ok({
-        rows: query.direction === 'latest' ? rows(201, 20) : [],
-        cursor: cursor(201),
-        more: query.direction === 'latest',
-        status,
-      }),
-    )
+    return Promise.resolve({
+      rows: query.direction === 'latest' ? rows(201, 20) : [],
+      cursor: cursor(201),
+      more: query.direction === 'latest',
+      status,
+    })
   })
   const { view, viewport } = await mountPage()
   onTestFinished(() => view.unmount())
@@ -383,12 +370,12 @@ test('empty filtered pages continue loading until history fills the viewport or 
   mocked.queryCoreLogs.mockImplementation(async (query: CoreLogQuery) => {
     const lastPage =
       query.direction === 'before' && query.cursor?.sequence === 180
-    return ok({
+    return {
       rows: lastPage ? rows(160, 2) : [],
       cursor: cursor(query.direction === 'latest' ? 200 : 180),
       more: !lastPage,
       status,
-    })
+    }
   })
   const { view } = await mountPage()
   onTestFinished(() => view.unmount())
@@ -452,24 +439,23 @@ const entry = {
 test('Meow Logbook filters and pages through persistent events', async ({
   onTestFinished,
 }) => {
-  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow' }))
+  mocked.getAppSettings.mockResolvedValue({ core: 'meow' })
   mocked.queryMeowLogbook.mockImplementation(
-    async ({ before, kind }: MeowLogbookQuery) =>
-      ok({
-        enabled: true,
-        entries:
-          before === 42
-            ? [
-                {
-                  ...entry,
-                  id: 41,
-                  kind: 'config.reload',
-                  message: 'Config reloaded',
-                },
-              ]
-            : [entry],
-        more: before === null && kind === null,
-      }),
+    async ({ before, kind }: MeowLogbookQuery) => ({
+      enabled: true,
+      entries:
+        before === 42
+          ? [
+              {
+                ...entry,
+                id: 41,
+                kind: 'config.reload',
+                message: 'Config reloaded',
+              },
+            ]
+          : [entry],
+      more: before === null && kind === null,
+    }),
   )
   const view = await mountLogbook()
   onTestFinished(() => view.unmount())
@@ -512,7 +498,7 @@ test.for([
 ])(
   'Logbook is hidden on $core with RPC allowed = $allowed',
   async ({ core, allowed }, { onTestFinished }) => {
-    mocked.getAppSettings.mockResolvedValue(ok({ core }))
+    mocked.getAppSettings.mockResolvedValue({ core })
     const view = await mountLogbook(allowed)
     onTestFinished(() => view.unmount())
     if (allowed)
@@ -527,9 +513,7 @@ test.for([
 test('a stale logbook source waits for the core selection, then rewrites to the core view', async ({
   onTestFinished,
 }) => {
-  let resolveSettings: (
-    value: ReturnType<typeof ok<{ core: string }>>,
-  ) => void = () => {}
+  let resolveSettings: (value: { core: string }) => void = () => {}
   mocked.getAppSettings.mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -543,7 +527,7 @@ test('a stale logbook source waits for the core selection, then rewrites to the 
   // is not bounced while the settings load.
   expect(mocked.navigate).not.toHaveBeenCalled()
 
-  resolveSettings(ok({ core: 'meow' }))
+  resolveSettings({ core: 'meow' })
   await expect
     .poll(() => mocked.queryMeowLogbook.mock.calls.length)
     .toBeGreaterThan(0)
@@ -551,7 +535,7 @@ test('a stale logbook source waits for the core selection, then rewrites to the 
   await pending.unmount()
 
   // With a settled non-Meow core the URL must stop promising the logbook.
-  mocked.getAppSettings.mockResolvedValue(ok({ core: 'mihomo' }))
+  mocked.getAppSettings.mockResolvedValue({ core: 'mihomo' })
   const stale = await mountLogbook()
   onTestFinished(() => stale.unmount())
   await expect.poll(() => mocked.navigate.mock.calls.length).toBe(1)
@@ -566,17 +550,19 @@ test('a stale logbook source waits for the core selection, then rewrites to the 
 test('Meow Alpha distinguishes an unsupported endpoint from a disabled logbook', async ({
   onTestFinished,
 }) => {
-  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow-alpha' }))
-  mocked.queryMeowLogbook.mockResolvedValue(ok(null))
+  mocked.getAppSettings.mockResolvedValue({ core: 'meow-alpha' })
+  mocked.queryMeowLogbook.mockResolvedValue(null)
   const unsupported = await mountLogbook()
   await expect
     .element(unsupported.getByText(m.logs_logbook_unsupported()))
     .toBeVisible()
   await unsupported.unmount()
 
-  mocked.queryMeowLogbook.mockResolvedValue(
-    ok({ enabled: false, entries: [], more: false }),
-  )
+  mocked.queryMeowLogbook.mockResolvedValue({
+    enabled: false,
+    entries: [],
+    more: false,
+  })
   const disabled = await mountLogbook()
   onTestFinished(() => disabled.unmount())
   await expect
@@ -585,10 +571,10 @@ test('Meow Alpha distinguishes an unsupported endpoint from a disabled logbook',
 })
 
 test('Meow Logbook can retry a failed read', async ({ onTestFinished }) => {
-  mocked.getAppSettings.mockResolvedValue(ok({ core: 'meow' }))
+  mocked.getAppSettings.mockResolvedValue({ core: 'meow' })
   mocked.queryMeowLogbook
     .mockRejectedValueOnce(new Error('controller unavailable'))
-    .mockResolvedValue(ok({ enabled: true, entries: [entry], more: false }))
+    .mockResolvedValue({ enabled: true, entries: [entry], more: false })
   const view = await mountLogbook()
   onTestFinished(() => view.unmount())
   await expect

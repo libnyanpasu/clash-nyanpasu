@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import { useMutation } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
 import { useClashSetting, useSetting } from './use-settings'
@@ -18,8 +17,8 @@ export function useLocalIpProbe(enabled = true) {
   )
 
   const mutation = useMutation({
-    mutationKey: api.mutations.probeDirectEgress.mutationKey,
-    mutationFn: async () => unwrapResult(await api.probeDirectEgress()),
+    mutationKey: api.mutations.probeDirectEgress().mutationKey,
+    mutationFn: async () => await api.probeDirectEgress(),
     retry: false,
   })
   const { mutate } = mutation

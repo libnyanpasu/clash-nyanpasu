@@ -1,5 +1,9 @@
 import { usageValue } from '@/utils/traffic-usage'
-import type { Metric, TopologyEdge, TopologyNode } from '@nyanpasu/rpc/types'
+import type {
+  Metric,
+  TopologyEdge,
+  TopologyNode_Serialize,
+} from '@nyanpasu/rpc/types'
 
 export const NODE_WIDTH = 8
 export const NODE_GAP = 10
@@ -8,7 +12,7 @@ export const ROW_HEIGHT = 22
 const MIN_NODE_HEIGHT = 2
 
 export type SankeyNode = {
-  node: TopologyNode
+  node: TopologyNode_Serialize
   x: number
   y: number
   height: number
@@ -29,7 +33,7 @@ export const edgeId = ({ source, target }: TopologyEdge) =>
   `${source}->${target}`
 
 /** The height under which the tallest column cannot show all of its nodes. */
-export function sankeyMinHeight(nodes: readonly TopologyNode[]) {
+export function sankeyMinHeight(nodes: readonly TopologyNode_Serialize[]) {
   const rows = new Map<number, number>()
 
   for (const { layer } of nodes) rows.set(layer, (rows.get(layer) ?? 0) + 1)
@@ -50,14 +54,17 @@ export function layoutSankey({
   width,
   height,
 }: {
-  nodes: readonly TopologyNode[]
+  nodes: readonly TopologyNode_Serialize[]
   edges: readonly TopologyEdge[]
   layerCount: number
   metric: Metric
   width: number
   height: number
 }) {
-  const columns = Array.from({ length: layerCount }, () => [] as TopologyNode[])
+  const columns = Array.from(
+    { length: layerCount },
+    () => [] as TopologyNode_Serialize[],
+  )
 
   for (const node of nodes) columns[node.layer]?.push(node)
 

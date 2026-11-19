@@ -14,7 +14,7 @@ import type { MeowCore } from '@nyanpasu/query'
 import type {
   Dimension,
   TrafficQuery,
-  TrafficReport,
+  TrafficReport_Serialize,
   TrafficRetention,
 } from '@nyanpasu/rpc/types'
 import type { TrafficSearch } from './search'
@@ -98,7 +98,7 @@ export const withoutTrafficView = (search: TrafficSearch) => ({
 
 export const TrafficPageContext = createContext<{
   search: TrafficSearch
-  report?: TrafficReport
+  report?: TrafficReport_Serialize
   query: TrafficQuery
   labelOf: (dimension: Dimension, key: string) => UsageLabel
   onSearchChange: (update: Partial<TrafficSearch>) => void

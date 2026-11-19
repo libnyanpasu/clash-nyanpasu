@@ -11,6 +11,7 @@ import NetworkStatisticWidgetSelector from './_modules/network-statistic-widget-
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu/widget/')({
   component: RouteComponent,
+  staticData: { crumb: { title: () => m.settings_label_widget() } },
 })
 
 function RouteComponent() {
@@ -22,7 +23,7 @@ function RouteComponent() {
 
   return (
     <>
-      <PageTitle backTo="/main/settings">{m.settings_label_widget()}</PageTitle>
+      <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
         <div className="space-y-4 px-4 pb-4">

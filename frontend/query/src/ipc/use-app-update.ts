@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { unwrapResult } from '@nyanpasu/rpc'
 import type { AppUpdateSnapshot } from '@nyanpasu/rpc/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
@@ -21,7 +20,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
     queryKey: APP_UPDATE_QUERY_KEY,
     enabled,
     queryFn: async () => {
-      const next = unwrapResult(await api.getAppUpdateState())
+      const next = await api.getAppUpdateState()
       return acceptAppUpdateSnapshot(
         queryClient.getQueryData<AppUpdateSnapshot>(APP_UPDATE_QUERY_KEY),
         next,
@@ -83,7 +82,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const check = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.checkAppUpdate())
+      return await api.checkAppUpdate()
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: APP_UPDATE_QUERY_KEY }),
@@ -91,7 +90,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const download = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.downloadAppUpdate())
+      return await api.downloadAppUpdate()
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: APP_UPDATE_QUERY_KEY }),
@@ -99,7 +98,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const cancelDownload = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.cancelAppUpdateDownload())
+      return await api.cancelAppUpdateDownload()
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: APP_UPDATE_QUERY_KEY }),
@@ -107,7 +106,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const install = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.installAppUpdate())
+      return await api.installAppUpdate()
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: APP_UPDATE_QUERY_KEY }),
@@ -115,7 +114,7 @@ export function useAppUpdate({ enabled = true }: { enabled?: boolean } = {}) {
   const discardPackage = useMutation({
     mutationFn: async () => {
       requireEnabled()
-      return unwrapResult(await api.discardAppUpdatePackage())
+      return await api.discardAppUpdatePackage()
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: APP_UPDATE_QUERY_KEY }),

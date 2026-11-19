@@ -1,4 +1,3 @@
-import { unwrapResult } from '@nyanpasu/rpc'
 import {
   type ReleaseChannel,
   type ReleaseChannelInfo,
@@ -14,13 +13,13 @@ export const useReleaseChannel = () => {
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => unwrapResult(await api.getReleaseChannel()),
+    queryFn: async () => await api.getReleaseChannel(),
   })
 
   const mutation = useMutation({
     onMutate: () => queryClient.cancelQueries({ queryKey }),
     mutationFn: async (channel: ReleaseChannel) =>
-      unwrapResult(await api.setReleaseChannel(channel)),
+      await api.setReleaseChannel(channel),
     onSuccess: (_, channel) => {
       queryClient.setQueryData<ReleaseChannelInfo>(
         queryKey,

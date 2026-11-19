@@ -5,7 +5,6 @@ import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { unwrapResult } from '@nyanpasu/rpc'
 import {
   ItemContainer,
   ItemLabel,
@@ -18,7 +17,7 @@ import {
 export default function DnsCacheButton() {
   const handleFlushDnsCache = useLockFn(async () => {
     try {
-      unwrapResult(await rpc.flushSystemDnsCache())
+      await rpc.flushSystemDnsCache()
       await message(m.settings_system_proxy_dns_cache_success(), {
         kind: 'info',
       })

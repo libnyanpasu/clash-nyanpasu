@@ -277,8 +277,8 @@ pub enum RemoteCommand {
     /// Turn the local socket on or off. Turning it off ends this connection's access.
     #[command(subcommand)]
     Socket(SwitchOnOff),
-    /// Replace the certificate of the HTTPS server. Clients that pinned the old one must pin the
-    /// new fingerprint, which `remote status` shows.
+    /// Replace the certificate authority of the HTTPS server. Clients that pinned the old one
+    /// must pin the new fingerprint, which `remote status` shows.
     ResetCertificate,
     /// Manage the access tokens that authenticate over HTTP.
     #[command(subcommand)]

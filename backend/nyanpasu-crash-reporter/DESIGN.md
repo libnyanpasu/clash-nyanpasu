@@ -46,7 +46,7 @@ the startup child reads to EOF. It never starts diagnostics collection or opens
 the application's stores. Failure classification, available backup information,
 paths and translations belong to the host, not to this renderer.
 
-The backend is selected directly to avoid the muda 0.19/0.20 Objective-C class
+The backend is selected directly to avoid the muda 0.21/0.20 Objective-C class
 collision described in `nyanpasu-widget/Cargo.toml`. The opaque window needs no GL
 driver. Slint's shared font collection is configured before creating the window:
 installed CJK families extend its Han, Hiragana, Katakana and Hangul fallback

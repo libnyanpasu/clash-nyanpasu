@@ -1,13 +1,13 @@
 use i_slint_backend_winit::{
     Backend, CustomApplicationHandler, EventResult, winit::event_loop::ActiveEventLoop,
 };
-use slint::{LogicalSize, PhysicalPosition, PlatformError, fontique_011::fontique};
+use slint::{LogicalSize, PhysicalPosition, PlatformError, fontique_012::fontique};
 
 /// Extends Slint's script fallbacks before any text is shaped. Windows can pick
 /// a Japanese Han font even for Chinese text; one family does not cover all CJK.
 pub(crate) fn configure_fonts() {
     extend_cjk_fallbacks(
-        &mut slint::fontique_011::shared_collection(),
+        &mut slint::fontique_012::shared_collection(),
         &[
             "Microsoft YaHei UI",
             "Microsoft JhengHei UI",

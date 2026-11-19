@@ -13,6 +13,7 @@ use slint::{
 use crate::{CrashReport, PanicDetails, ReporterInput, ReporterText, fill_window, ui};
 
 slint::slint! {
+    #[edition = "1.19"]
     export component GlyphProbe inherits Window {
         width: 48px;
         height: 48px;
@@ -28,9 +29,9 @@ slint::slint! {
 }
 
 fn cjk_glyphs_survive_a_sparse_system_fallback() {
-    use slint::fontique_011::fontique::{Blob, FallbackKey, GenericFamily, Script};
+    use slint::fontique_012::fontique::{Blob, FallbackKey, GenericFamily, Script};
 
-    let mut collection = slint::fontique_011::shared_collection();
+    let mut collection = slint::fontique_012::shared_collection();
     let sparse = collection.register_fonts(
         Blob::new(std::sync::Arc::new(
             include_bytes!("../tests/fonts/sparse.ttf").as_slice(),

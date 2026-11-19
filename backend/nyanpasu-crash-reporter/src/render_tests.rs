@@ -1,13 +1,15 @@
 //! Renders the window with the software renderer, without an OS window.
 
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
+use nyanpasu_slint::testing::HeadlessPlatform;
 use slint::{
-    ComponentHandle as _, PhysicalSize, PlatformError,
-    platform::{
-        Platform, WindowAdapter, WindowEvent,
-        software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
-    },
+    ComponentHandle as _, LogicalPosition, PhysicalSize, Rgba8Pixel, SharedPixelBuffer,
+    platform::{Key, PointerEventButton, WindowEvent},
 };
 
 use crate::{CrashReport, PanicDetails, ReporterInput, ReporterText, fill_window, ui};
@@ -77,19 +79,6 @@ fn cjk_glyphs_survive_a_sparse_system_fallback() {
     }
 }
 
-struct HeadlessPlatform {
-    clock: Rc<Cell<Duration>>,
-}
-
-impl Platform for HeadlessPlatform {
-    fn duration_since_start(&self) -> Duration {
-        self.clock.get()
-    }
-    fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, PlatformError> {
-        Ok(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
-    }
-}
-
 fn sample() -> CrashReport {
     CrashReport {
         app: "2.0.0-alpha+autobuild.1023 (e8fe65e31)".into(),
@@ -155,14 +144,116 @@ fn text(locale: &str) -> ReporterText {
     }
 }
 
+/// Snapshots the window once its transitions have finished.
+fn settled(window: &slint::Window, clock: &Cell<Duration>) -> SharedPixelBuffer<Rgba8Pixel> {
+    window.take_snapshot().unwrap();
+    clock.set(clock.get() + Duration::from_secs(1));
+    slint::platform::update_timers_and_animations();
+    window.take_snapshot().unwrap()
+}
+
+fn ctrl(window: &slint::Window, key: char) {
+    let control = slint::SharedString::from(Key::Control);
+    window.dispatch_event(WindowEvent::KeyPressed {
+        text: control.clone(),
+    });
+    window.dispatch_event(WindowEvent::KeyPressed { text: key.into() });
+    window.dispatch_event(WindowEvent::KeyReleased { text: key.into() });
+    window.dispatch_event(WindowEvent::KeyReleased { text: control });
+}
+
+/// The report pane: hovering reveals its copy button, each pane opens at its
+/// top, the text selects and copies exactly, and Escape still closes.
+fn report_pane_scrolls_selects_and_copies(
+    clock: &Cell<Duration>,
+    clipboard: &RefCell<Option<String>>,
+) {
+    let window = ui::ReporterWindow::new().unwrap();
+    fill_window(&window, &ReporterInput::Crash(sample()), &text("en"));
+    // Long enough to scroll, as a real environment is.
+    window.set_environment_text(
+        (0..100)
+            .map(|line| format!("{line}\n"))
+            .collect::<String>()
+            .into(),
+    );
+    let closed = Rc::new(Cell::new(false));
+    window.on_close_report({
+        let closed = closed.clone();
+        move || closed.set(true)
+    });
+    window.show().unwrap();
+    window
+        .window()
+        .dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1. });
+    window.window().set_size(PhysicalSize::new(720, 620));
+    let away = settled(window.window(), clock);
+
+    // Inside the report, which fills the window below the pane switch.
+    let inside = LogicalPosition::new(300., 420.);
+    window
+        .window()
+        .dispatch_event(WindowEvent::PointerMoved { position: inside });
+    let top = settled(window.window(), clock);
+    assert!(
+        away.as_bytes() != top.as_bytes(),
+        "hovering the report reveals its copy button"
+    );
+
+    window
+        .window()
+        .dispatch_event(WindowEvent::PointerScrolled {
+            position: inside,
+            delta_x: 0.,
+            delta_y: -3. * 60.,
+        });
+    assert!(
+        top.as_bytes() != settled(window.window(), clock).as_bytes(),
+        "the wheel scrolls the backtrace"
+    );
+    window.set_pane(1);
+    settled(window.window(), clock);
+    window.set_pane(0);
+    assert!(
+        top.as_bytes() == settled(window.window(), clock).as_bytes(),
+        "the backtrace reopens at its top"
+    );
+
+    let button = PointerEventButton::Left;
+    window.window().dispatch_event(WindowEvent::PointerPressed {
+        position: inside,
+        button,
+    });
+    window
+        .window()
+        .dispatch_event(WindowEvent::PointerReleased {
+            position: inside,
+            button,
+        });
+    ctrl(window.window(), 'a');
+    ctrl(window.window(), 'c');
+    assert_eq!(
+        clipboard.borrow().as_deref(),
+        Some(sample().text().as_str())
+    );
+
+    window.window().dispatch_event(WindowEvent::KeyPressed {
+        text: Key::Escape.into(),
+    });
+    window.window().dispatch_event(WindowEvent::KeyReleased {
+        text: Key::Escape.into(),
+    });
+    assert!(closed.get(), "Escape closes from inside the report");
+    window.hide().unwrap();
+}
+
 /// One test: Slint's platform is per process and components stay on their thread.
 #[test]
 fn window_renders_in_both_schemes_and_scales() {
-    let clock = Rc::new(Cell::new(Duration::ZERO));
-    slint::platform::set_platform(Box::new(HeadlessPlatform {
-        clock: clock.clone(),
-    }))
-    .unwrap();
+    let platform = HeadlessPlatform::default();
+    let clock = platform.clock();
+    let clipboard = platform.clipboard();
+    slint::platform::set_platform(Box::new(platform)).unwrap();
     crate::platform::configure_fonts();
     let window = ui::ReporterWindow::new().unwrap();
     for locale in ["en", "zh-cn", "zh-tw", "ja", "ko", "ru"] {
@@ -316,6 +407,7 @@ fn window_renders_in_both_schemes_and_scales() {
     }
     window.set_monospace_font("Nyanpasu Missing Test Font".into());
     window.window().take_snapshot().unwrap();
+    report_pane_scrolls_selects_and_copies(&clock, &clipboard);
     crate::startup_failure_render_tests::render_and_exercise_actions(&clock);
     cjk_glyphs_survive_a_sparse_system_fallback();
 }

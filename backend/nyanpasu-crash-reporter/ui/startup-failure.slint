@@ -1,4 +1,5 @@
-import { Button, TextEdit, Palette } from "std-widgets.slint";
+import { Button, Palette } from "std-widgets.slint";
+import { LogView } from "@nyanpasu-slint";
 
 export component StartupFailureWindow inherits Window {
     title: root.heading;
@@ -22,6 +23,8 @@ export component StartupFailureWindow inherits Window {
     in property <string> details-label;
     in property <string> details;
     in property <string> monospace-font;
+    // Lines a wheel notch scrolls the details: `nyanpasu_slint::wheel_lines()`.
+    in property <int> wheel-lines: 3;
     in property <string> containing-label;
     in property <string> backups-label;
     in property <string> logs-label;
@@ -37,8 +40,6 @@ export component StartupFailureWindow inherits Window {
     callback open-logs;
     callback copy-details;
     callback exit;
-    property <bool> details-laid-out;
-    changed details => { details-edit.set-selection-offsets(0, 0); }
 
     keys := FocusScope {
         forward-focus: copy-button;
@@ -88,20 +89,13 @@ export component StartupFailureWindow inherits Window {
             VerticalLayout {
                 spacing: 8px;
                 Text { text: root.details-label; color: Palette.foreground.with-alpha(0.65); font-size: 12px; }
-                details-edit := TextEdit {
-                    vertical-stretch: 1;
+                LogView {
                     text: root.details;
-                    read-only: true;
-                    wrap: no-wrap;
                     font-family: root.monospace-font;
-                    font-size: 12px;
-                    changed height => {
-                        if !root.details-laid-out && self.height > 0 {
-                            root.details-laid-out = true;
-                            self.content-x = 0;
-                            self.content-y = 0;
-                        }
-                    }
+                    selectable: true;
+                    wrap: false;
+                    follow-end: false;
+                    wheel-lines: root.wheel-lines;
                 }
             }
             HorizontalLayout {

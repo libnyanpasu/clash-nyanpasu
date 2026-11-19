@@ -165,13 +165,10 @@ impl NyanpasuClient {
     }
 
     async fn meow_api(&self) -> Result<Option<crate::actor_v2::api::ApiClient>> {
-        match self
-            .core_status()
-            .snapshot
-            .and_then(|status| status.applied_kind)
-        {
-            Some(kind) if kind != CoreKind::Meow => Ok(None),
-            _ => Ok(Some(self.inner.core_api.api_client().await?)),
+        if meow_reads_served(self.inner.reconciler.applied_core_kind()) {
+            Ok(Some(self.inner.core_api.api_client().await?))
+        } else {
+            Ok(None)
         }
     }
 
@@ -372,6 +369,14 @@ fn config_item(config: clash_api::RuntimeConfig) -> Result<ClashConfig> {
     })
 }
 
+/// Meow-only reads must not reach another core. Only a provable applied kind
+/// decides: the status's kind, or a confirmed apply that still runs. With
+/// nothing provable (a service-mode core with no confirmed apply, or a core
+/// still starting) the reads stay off rather than hit whatever is running.
+fn meow_reads_served(applied_kind: Option<CoreKind>) -> bool {
+    applied_kind == Some(CoreKind::Meow)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ClashReadError, rule_provider_item};
@@ -388,6 +393,22 @@ mod tests {
             assert!(!rendered.contains("sentinel"), "{rendered}");
         }
         assert!(std::error::Error::source(&error).is_none());
+    }
+
+    /// Only a confirmed Meow kind serves the Meow-only reads; meow-alpha runs
+    /// the same kind, while an unknown kind (service mode, still starting) or
+    /// another core must not receive them.
+    #[test]
+    fn meow_reads_follow_the_applied_kind() {
+        use nyanpasu_core_manager::CoreKind;
+
+        assert!(super::meow_reads_served(Some(CoreKind::Meow)));
+        for kind in [CoreKind::Mihomo, CoreKind::ClashRust] {
+            assert!(!super::meow_reads_served(Some(kind)), "{kind:?}");
+        }
+        // A service-mode core with no confirmed apply, or a still starting
+        // core, proves nothing.
+        assert!(!super::meow_reads_served(None));
     }
 
     #[test]

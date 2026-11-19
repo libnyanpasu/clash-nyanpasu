@@ -19,7 +19,12 @@ import { keepReturn } from '@/components/router/cross-navigation'
 import { useMockTrafficNow } from '@/hooks/use-mock-traffic'
 import { m } from '@/paraglide/messages'
 import { usageAmount } from '@/utils/traffic-usage'
-import { useLocalIpProbe, useSetting, useTrafficReport } from '@nyanpasu/query'
+import {
+  isMeowCore,
+  useLocalIpProbe,
+  useSetting,
+  useTrafficReport,
+} from '@nyanpasu/query'
 import { type ReportRequest } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import {
@@ -158,8 +163,7 @@ export default function TrafficLayout({
     canCall('get_meow_statistics') &&
     canCall('query_meow_traffic_ledger')
   const { value: core } = useSetting('core', { enabled: canReadMeow })
-  const meowCore =
-    canReadMeow && (core === 'meow' || core === 'meow-alpha') ? core : undefined
+  const meowCore = canReadMeow && isMeowCore(core) ? core : undefined
   const meowView = view === 'meow'
   const labelOf = useUsageLabelOf()
   const { range, scope, filters, layers, metric, limit } = search

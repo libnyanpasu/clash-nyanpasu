@@ -10,6 +10,7 @@ import PublicRounded from '~icons/material-symbols/public-rounded'
 import { createContext, useContext } from 'react'
 import { m } from '@/paraglide/messages'
 import { dimensionName, type UsageLabel } from '@/utils/traffic-usage'
+import type { MeowCore } from '@nyanpasu/query'
 import type {
   Dimension,
   TrafficQuery,
@@ -106,7 +107,7 @@ export const TrafficPageContext = createContext<{
   paused: boolean
   onPausedChange: (paused: boolean) => void
   onViewConnections?: () => void
-  meowCore?: 'meow' | 'meow-alpha'
+  meowCore?: MeowCore
 } | null>(null)
 
 export function useTrafficPage() {

@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@nyanpasu/ui/select'
 import { m } from '@/paraglide/messages'
-import { useMeowLogbook } from '@nyanpasu/query'
+import { useMeowLogbook, type MeowCore } from '@nyanpasu/query'
 import type { MeowLogbookEntry } from '@nyanpasu/rpc/types'
 import { Button } from '@nyanpasu/ui'
 import { useDataPageBottomInset } from '../../_modules/data-page'
@@ -30,7 +30,7 @@ const eventCategories = [
   'logbook',
 ]
 
-export default function MeowLogbook({ core }: { core: 'meow' | 'meow-alpha' }) {
+export default function MeowLogbook({ core }: { core: MeowCore }) {
   const [kind, setKind] = useState('all')
   const [history, setHistory] = useState<number[]>([])
   const before = history.at(-1) ?? null

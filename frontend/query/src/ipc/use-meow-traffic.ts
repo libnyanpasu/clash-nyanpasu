@@ -1,9 +1,8 @@
 import type { MeowTrafficLedgerQuery } from '@nyanpasu/rpc/types'
 import { useQuery } from '@tanstack/react-query'
 import { useQueryApi } from '../provider/rpc-provider'
+import type { MeowCore } from './meow-core'
 import { unwrapQueryOptions } from './query-options'
-
-type MeowCore = 'meow' | 'meow-alpha'
 
 export function useMeowStatistics(core: MeowCore) {
   const api = useQueryApi()

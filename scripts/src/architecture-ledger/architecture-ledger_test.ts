@@ -36,7 +36,11 @@ import {
 } from './snapshot.ts'
 
 function assertFalse(value: unknown, message?: string) {
-  assert.ok(!value, message)
+  if (message === undefined) {
+    assert.ok(!value)
+  } else {
+    assert.ok(!value, message)
+  }
 }
 
 function emptyStable(overrides: Partial<StableSnapshot> = {}): StableSnapshot {

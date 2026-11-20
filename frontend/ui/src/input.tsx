@@ -54,8 +54,10 @@ export const inputVariants = cva(
         false: '',
       },
       haveLabel: {
-        // the label sits where the placeholder would render
-        true: 'placeholder:text-transparent',
+        // The resting label sits where the placeholder renders, so the
+        // placeholder shows only once focus floats the label. `!important`
+        // beats normalize.css's unlayered `::-webkit-input-placeholder` color.
+        true: 'not-focus:placeholder:text-transparent!',
         false: '',
       },
     },
@@ -65,6 +67,11 @@ export const inputVariants = cva(
         haveValue: true,
         haveLabel: true,
         className: 'mt-3!',
+      },
+      {
+        variant: 'filled',
+        haveLabel: true,
+        className: 'focus:mt-3!',
       },
     ],
     defaultVariants: {
@@ -92,11 +99,13 @@ export const inputLabelVariants = cva(
         filled: [
           'group-data-[state=open]:top-2 group-data-[state=open]:dark:text-surface',
           'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
+          'peer-focus:top-2 peer-focus:text-xs',
         ],
         outlined: [
           'group-data-[state=open]:-top-2',
           'group-data-[state=open]:text-sm',
           'group-data-[state=open]:text-primary',
+          'peer-focus:-top-2 peer-focus:text-sm',
 
           'dark:group-data-[state=open]:text-inverse-primary',
           'dark:group-data-[state=closed]:text-primary-container',
@@ -214,7 +223,10 @@ export const inputLabelLegendVariants = cva('', {
     {
       variant: 'outlined',
       haveValue: false,
-      className: ['group-data-[state=closed]:hidden', 'group-not-focus:hidden'],
+      className: [
+        'group-data-[state=closed]:hidden',
+        'group-not-focus-within:hidden',
+      ],
     },
   ],
   defaultVariants: {

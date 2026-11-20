@@ -1,4 +1,5 @@
-import { Button, TextEdit, Palette, ProgressIndicator } from "std-widgets.slint";
+import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
+import { Fluent, LogView } from "@nyanpasu-slint";
 export { Palette } from "std-widgets.slint";
 export { StartupFailureWindow } from "startup-failure.slint";
 
@@ -101,8 +102,11 @@ export component ReporterWindow inherits Window {
     in-out property <string> environment-text;
     // 0 shows the backtrace, 1 the environment; a manual report has only the latter.
     in-out property <int> pane;
-    property <string> shown-text: root.is-crash && root.pane == 0 ? root.backtrace-text : root.environment-text;
+    property <bool> shows-backtrace: root.is-crash && root.pane == 0;
+    property <string> shown-text: root.shows-backtrace ? root.backtrace-text : root.environment-text;
     in property <string> monospace-font;
+    // Lines a wheel notch scrolls the report: `nyanpasu_slint::wheel_lines()`.
+    in property <int> wheel-lines: 3;
     in property <string> status;
     in property <bool> is-crash: true;
     in property <bool> finished;
@@ -115,15 +119,6 @@ export component ReporterWindow inherits Window {
     callback copy-section(string);
     callback report-issue;
     callback close-report;
-
-    // Whether the report has been scrolled to its top once it has a height.
-    property <bool> report-laid-out;
-
-    // Setting the text moves the cursor to its end, and the TextEdit scrolls
-    // to the cursor; each pane reads from the top.
-    changed shown-text => {
-        report-edit.set-selection-offsets(0, 0);
-    }
 
     keys := FocusScope {
         forward-focus: issue-button;
@@ -231,31 +226,32 @@ export component ReporterWindow inherits Window {
                     }
                     Rectangle { horizontal-stretch: 1; }
                 }
-                // Sees the pointer before the TextEdit and passes every event
+                // Sees the pointer before the report and passes every event
                 // on, so hovering the report reveals its copy button.
                 report-hover := TouchArea {
                     vertical-stretch: 1;
-                    report-edit := TextEdit {
-                        width: 100%;
-                        height: 100%;
-                        // Until the first layout the TextEdit scrolls to the cursor
-                        // against a negative visible height, which leaves even a
-                        // cursor at the start scrolled down a few lines.
-                        changed height => {
-                            if (!root.report-laid-out && self.height > 0) {
-                                root.report-laid-out = true;
-                                self.content-x = 0;
-                                self.content-y = 0;
-                            }
-                        }
-                        text: root.shown-text;
-                        read-only: true;
-                        wrap: no-wrap;
-                        font-size: 12px;
+                    // A view per pane, so that each pane opens at its top-left
+                    // corner instead of where the other one was scrolled to;
+                    // within a pane the scroll position stays as text arrives.
+                    if root.shows-backtrace: LogView {
+                        text: root.backtrace-text;
                         font-family: root.monospace-font;
+                        selectable: true;
+                        wrap: false;
+                        follow-end: false;
+                        wheel-lines: root.wheel-lines;
+                    }
+                    if !root.shows-backtrace: LogView {
+                        text: root.environment-text;
+                        font-family: root.monospace-font;
+                        selectable: true;
+                        wrap: false;
+                        follow-end: false;
+                        wheel-lines: root.wheel-lines;
                     }
                     // Fluent's button fill is translucent: an opaque backing in
-                    // the TextEdit's colour keeps long lines from showing through.
+                    // the report card's colour keeps long lines from showing
+                    // through.
                     Rectangle {
                         x: section-copy.x;
                         y: section-copy.y;
@@ -263,15 +259,19 @@ export component ReporterWindow inherits Window {
                         height: section-copy.height;
                         visible: section-copy.visible;
                         border-radius: 4px;
-                        background: Palette.alternate-background;
+                        background: Palette.background;
+                        Rectangle {
+                            border-radius: 4px;
+                            background: Fluent.card;
+                        }
                     }
                     // Clear of the vertical scroll bar; shown while the pointer
-                    // or the keyboard is in the report.
+                    // is over the report or the keyboard is on the button.
                     section-copy := Button {
                         x: parent.width - self.width - 20px;
                         y: 8px;
                         text: ReporterStrings.copy-section;
-                        visible: report-hover.has-hover || report-edit.has-focus || self.has-focus;
+                        visible: report-hover.has-hover || self.has-focus;
                         clicked => { root.copy-section(root.shown-text); }
                     }
                 }

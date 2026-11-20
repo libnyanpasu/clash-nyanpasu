@@ -16,15 +16,20 @@ dialogs for pre-builder environment failures and as a fallback if Slint fails.
   stays disabled. Copy and Close work throughout collection. Each click copies
   the current full report through arboard, preserving scroll and the X11 clipboard
   owner's lifetime. The three-second copied timer is retained.
-- `src/platform.rs`: software winit backend, centring, monospace-family resolution,
-  and selected-file reveal on Windows/macOS (directory opening on Linux).
+- `src/platform.rs`: software winit backend and the CJK fallback chains. Centring,
+  monospace-family resolution and the system's wheel lines come from
+  [`nyanpasu-slint`](https://github.com/libnyanpasu/nyanpasu-slint), shared with
+  the installer.
 - `ui/reporter.slint`: Fluent palette, conditional crash details, progress/done row,
-  read-only monospace TextEdit and keyboard handling. The first-layout reset and
-  explicit selection reset are retained. Appending saves `content-y` and restores
-  it in the deferred text-change callback, after the cursor reset.
+  the report in `nyanpasu-slint`'s selectable, unwrapped monospace `LogView`, and
+  keyboard handling. Each pane gets its own view, so a pane opens at its top-left
+  corner rather than where the other one was scrolled; within a pane the
+  position stays as the environment arrives.
 - `src/render_tests.rs`: headless software snapshots in each locale, both themes,
-  scales 1/2 and the minimum size, plus crash/manual progress at 40%, finished,
-  failed-row and append-scroll checks. PNG output is environment-gated.
+  scales 1/2 and the minimum size, plus crash/manual progress at 40%, finished and
+  failed-row checks, and the report's hover copy button, wheel scrolling, pane
+  reset, exact Ctrl+A/Ctrl+C copy and Escape from inside it. PNG output is
+  environment-gated.
 - `src/startup_failure.rs` and `ui/startup-failure.slint`: host-supplied heading,
   description, recovery, version, path and copyable details. Optional containing,
   backups and logs folder actions stay in the window; only Exit/Escape or the
@@ -38,22 +43,22 @@ dialogs for pre-builder environment failures and as a fallback if Slint fails.
   light/dark PNGs for migration, user config, runtime directory and internal
   failures. Paths are deliberately mixed Latin/CJK, independent of OS language.
 
-The startup TextEdit retains the crash window's two layout safeguards: reset
-selection when assigning text, and reset scroll after the first nonzero layout.
-Setting scroll before layout alone lets the initial cursor move it to the end.
-The host sends one JSON document then closes stdin explicitly before waiting;
+The startup details use the same `LogView`. Unlike Slint's read-only `TextEdit`,
+it has no cursor that scrolls to the end of new text, so neither window resets
+its selection or scroll position, and a wheel notch repaints once instead of
+animating for some 28 frames. The host sends one JSON document then closes stdin explicitly before waiting;
 the startup child reads to EOF. It never starts diagnostics collection or opens
 the application's stores. Failure classification, available backup information,
 paths and translations belong to the host, not to this renderer.
 
-The backend is selected directly to avoid the muda 0.19/0.20 Objective-C class
+The backend is selected directly to avoid the muda 0.21/0.20 Objective-C class
 collision described in `nyanpasu-widget/Cargo.toml`. The opaque window needs no GL
 driver. Slint's shared font collection is configured before creating the window:
 installed CJK families extend its Han, Hiragana, Katakana and Hangul fallback
 chains. This preserves the system's first choice while covering characters that
-its chosen family lacks, including mixed-language report text. Monospace-family
-resolution uses the same Fontique version through Slint's public versioned API;
-the exact Slint pin must be updated together with that API when upgrading.
+its chosen family lacks, including mixed-language report text. The fallback code
+uses Slint's public versioned Fontique API; the exact Slint pin, shared with
+`nyanpasu-slint`, must be updated together with that API when upgrading.
 The Fluent palette follows the system theme.
 
 Collection policy lives in `nyanpasu-diagnose`; the reporter never opens the app's

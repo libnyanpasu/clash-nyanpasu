@@ -52,7 +52,7 @@ pub fn show_startup_failure(
         let opening = opening.clone();
         move |event_loop| {
             if let Some(window) = opening.take().and_then(|weak| weak.upgrade()) {
-                platform::centre(
+                nyanpasu_slint::centre(
                     window.window(),
                     slint::LogicalSize::new(
                         window.get_opening_width(),
@@ -108,7 +108,8 @@ pub(crate) fn fill_window(
     window.set_path_label(text.path.as_str().into());
     window.set_details_label(text.details.as_str().into());
     window.set_details(input.details.as_str().into());
-    window.set_monospace_font(platform::monospace_font().into());
+    window.set_monospace_font(nyanpasu_slint::monospace_font().into());
+    window.set_wheel_lines(nyanpasu_slint::wheel_lines());
     window.set_containing_label(text.open_containing.as_str().into());
     window.set_backups_label(text.open_backups.as_str().into());
     window.set_logs_label(text.open_logs.as_str().into());

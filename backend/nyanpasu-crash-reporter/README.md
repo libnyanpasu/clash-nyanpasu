@@ -3,6 +3,9 @@
 A Fluent Slint window for crash and manual issue reports: selectable report text,
 diagnostic progress, clipboard copy, a prefilled GitHub issue, and archive reveal.
 It uses the software renderer on every platform and has no Tauri dependency.
+The report and the startup-failure details are
+[`nyanpasu-slint`](https://github.com/libnyanpasu/nyanpasu-slint)'s `LogView`,
+which it shares with the installer.
 
 `show_report(ReporterInput, &ReporterText, Receiver<Event>)` runs once on the main
 thread. The host supplies localized strings and feeds `nyanpasu-diagnose` events.

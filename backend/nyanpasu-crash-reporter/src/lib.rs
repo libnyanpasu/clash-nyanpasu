@@ -84,7 +84,7 @@ pub fn show_report(
                     window.get_opening_width(),
                     window.get_opening_height(),
                 );
-                platform::centre(window.window(), size, event_loop);
+                nyanpasu_slint::centre(window.window(), size, event_loop);
             }
         }
     })
@@ -248,7 +248,8 @@ fn fill_window(window: &ui::ReporterWindow, input: &ReporterInput, text: &Report
     window.set_archive_path("".into());
     window.set_progress(0.);
     window.set_progress_label(text.collecting.as_str().into());
-    window.set_monospace_font(platform::monospace_font().into());
+    window.set_monospace_font(nyanpasu_slint::monospace_font().into());
+    window.set_wheel_lines(nyanpasu_slint::wheel_lines());
 
     let strings = window.global::<ui::ReporterStrings>();
     strings.set_heading(

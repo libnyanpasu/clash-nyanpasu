@@ -178,7 +178,7 @@ renderer writes premultiplied ARGB and never a colour channel above its alpha,
 so CoreGraphics clamping such pixels (softbuffer issue #356) does not apply.
 Tauri only uses softbuffer on Windows, so the patch reaches nothing else.
 softbuffer's master branch has an `AlphaMode` API (PR #321), but it is
-unreleased and changes the 0.4 API that Slint 1.18.1 uses.
+unreleased and changes the 0.4 API that Slint 1.19.0 uses.
 
 The software renderer's colours are colour-managed, femtovg's are not. On a
 Display P3 screen the small widget's `#eaddff` captures as (232, 221, 252) in

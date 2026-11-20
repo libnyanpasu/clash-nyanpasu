@@ -13,6 +13,6 @@
   },
   "dependencies": {
     "clsx": "2.1.1",
-    "tailwind-merge": "3.7.0"
+    "tailwind-merge": "3.7.1"
   }
 }

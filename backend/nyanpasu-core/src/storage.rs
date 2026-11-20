@@ -588,7 +588,7 @@ mod tests {
             "failed to save hotkeys",
             &[
                 "failed to open the storage table",
-                "clash-nyanpasu is of type Table<u64, u64>",
+                "clash-nyanpasu has key type u64 and value type u64, but was opened with key type &[u8] and value type &[u8]",
             ],
         );
     }
@@ -605,7 +605,7 @@ mod tests {
             "failed to remove hotkeys",
             &[
                 "failed to open the storage table",
-                "clash-nyanpasu is of type Table<u64, u64>",
+                "clash-nyanpasu has key type u64 and value type u64, but was opened with key type &[u8] and value type &[u8]",
             ],
         );
     }

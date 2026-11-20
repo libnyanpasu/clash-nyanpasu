@@ -298,7 +298,7 @@ windows-sys = { version = '0.61', features = [
   'Win32_UI_WindowsAndMessaging',
 ] }
 atomicwrites = '0.4.4'
-redb = '4.0.0'
+redb = '5.0.0'
 tauri = { version = '2.4', features = ['test'] }
 struct-patch = '0.14'
 zip = '9.0.0'

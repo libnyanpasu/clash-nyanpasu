@@ -106,8 +106,8 @@ use std::{
 };
 
 use redb::{
-    AccessGuard, Builder, CommitError, CompactionError, Database, DatabaseError, Key,
-    ReadOnlyTable, ReadTransaction, ReadableDatabase, ReadableTable, StorageBackend, Table,
+    AccessGuard, Builder, CommitError, CompactionError, CompactionMode, Database, DatabaseError,
+    Key, ReadOnlyTable, ReadTransaction, ReadableDatabase, ReadableTable, StorageBackend, Table,
     TableDefinition, TableError, TableHandle, TransactionError, Value, WriteTransaction,
 };
 use snafu::{ResultExt, Snafu, ensure};
@@ -460,7 +460,7 @@ impl RedbStorage {
     /// non-durable commits durable, and takes time that grows with the file.
     pub fn compact(&mut self) -> Result<Compaction> {
         self.instance.admit()?;
-        match self.db.compact() {
+        match self.db.compact(CompactionMode::Balanced) {
             Ok(true) => Ok(Compaction::Compacted),
             Ok(false) => Ok(Compaction::Unchanged),
             Err(CompactionError::TransactionInProgress) => Ok(Compaction::Deferred),
@@ -917,7 +917,7 @@ fn scan_entries<B>(
     f: impl FnMut(&[u8], &[u8]) -> ControlFlow<B>,
 ) -> Result<Option<B>> {
     table
-        .range::<&[u8]>(bounds.as_range())
+        .range(bounds.as_range())
         .and_then(|entries| match direction {
             Direction::Forward => visit(entries, instance, ns, f),
             Direction::Backward => visit(entries.rev(), instance, ns, f),

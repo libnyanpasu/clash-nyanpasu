@@ -56,7 +56,7 @@ nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-meta
 clash-api = { workspace = true }
 futures-util = '0.3'
 axum = { version = '0.8', features = ['ws'], optional = true }
-redb = '4.0.0'
+redb = '5.0.0'
 chrono = { version = '0.4', features = ['serde'] }
 time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 uuid = '1.7.0'

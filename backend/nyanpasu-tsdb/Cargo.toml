@@ -21,7 +21,7 @@ crc32fast = '1'
 postcard = { version = '1.1', default-features = false, features = ['use-std'] }
 # 4.4 is the version whose commit, close and I/O-failure semantics the design
 # was checked against (design §3.2, §7.5).
-redb = { version = '4.4.0', optional = true }
+redb = { version = '5.0.0', optional = true }
 rustc-hash = '2'
 serde = { version = '1', features = ['derive'] }
 snafu.workspace = true

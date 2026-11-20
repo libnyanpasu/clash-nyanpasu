@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
-use redb::StorageBackend;
+use redb::{BackendError, StorageBackend};
 
 /// A simulated disk. Clones share it.
 #[derive(Clone, Default)]
@@ -202,16 +202,16 @@ fn out_of_range() -> io::Error {
 
 // Offsets and lengths fit in `usize` on the 64-bit targets the crate supports.
 impl StorageBackend for FaultBackend {
-    fn close(&self) -> io::Result<()> {
-        self.step("disk.close")
+    fn close(&self) -> Result<(), BackendError> {
+        Ok(self.step("disk.close")?)
     }
 
-    fn len(&self) -> io::Result<u64> {
+    fn len(&self) -> Result<u64, BackendError> {
         self.step("disk.len")?;
         Ok(self.disk()?.current.len() as u64)
     }
 
-    fn read(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
+    fn read(&self, offset: u64, out: &mut [u8]) -> Result<(), BackendError> {
         self.step("disk.read")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
@@ -225,19 +225,19 @@ impl StorageBackend for FaultBackend {
         Ok(())
     }
 
-    fn set_len(&self, len: u64) -> io::Result<()> {
+    fn set_len(&self, len: u64) -> Result<(), BackendError> {
         self.step("disk.set_len")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
         if matches!(disk.fault, Some(Fault::Truncate)) && len < disk.current.len() as u64 {
             disk.fault = None;
-            return Err(injected());
+            return Err(injected().into());
         }
         disk.current.resize(len as usize, 0);
         Ok(())
     }
 
-    fn sync_data(&self) -> io::Result<()> {
+    fn sync_data(&self) -> Result<(), BackendError> {
         self.step("disk.sync.before")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;
@@ -248,16 +248,16 @@ impl StorageBackend for FaultBackend {
             if applied {
                 disk.durable = disk.current.clone();
             }
-            return Err(injected());
+            return Err(injected().into());
         }
         disk.stats.syncs += 1;
         disk.durable = disk.current.clone();
         disk.header_written = false;
         drop(disk);
-        self.step("disk.sync.after")
+        Ok(self.step("disk.sync.after")?)
     }
 
-    fn write(&self, offset: u64, data: &[u8]) -> io::Result<()> {
+    fn write(&self, offset: u64, data: &[u8]) -> Result<(), BackendError> {
         self.step("disk.write")?;
         let mut disk = self.disk()?;
         disk.take_io_fault()?;

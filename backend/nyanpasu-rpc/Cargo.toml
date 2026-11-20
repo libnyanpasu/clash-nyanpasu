@@ -135,7 +135,7 @@ rcgen = { version = '0.14', default-features = false, features = [
 whoami = '2.0.0'
 atomicwrites = '0.4'
 redb = '4.0.0'
-jiff = '0.2'
+jiff = '1.0'
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 

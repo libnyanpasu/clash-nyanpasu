@@ -33,29 +33,34 @@ impl Platform {
     }
 }
 
+/// The observer reads on a blocking thread, so the async API is driven to
+/// completion here.
 fn network_manager_ssid(interface: &str) -> zbus::Result<Option<String>> {
-    use zbus::{
-        blocking::{Connection, Proxy},
-        zvariant::OwnedObjectPath,
-    };
+    zbus::block_on(network_manager_ssid_async(interface))
+}
+
+async fn network_manager_ssid_async(interface: &str) -> zbus::Result<Option<String>> {
+    use zbus::{Connection, OwnedObjectPath, Proxy};
 
     const SERVICE: &str = "org.freedesktop.NetworkManager";
 
-    let connection = Connection::system()?;
+    let connection = Connection::system().await?;
     let manager = Proxy::new(
         &connection,
         SERVICE,
         "/org/freedesktop/NetworkManager",
         SERVICE,
-    )?;
-    let device: OwnedObjectPath = manager.call("GetDeviceByIpIface", &(interface,))?;
+    )
+    .await?;
+    let device: OwnedObjectPath = manager.call("GetDeviceByIpIface", &(interface,)).await?;
     let wireless = Proxy::new(
         &connection,
         SERVICE,
         device,
         "org.freedesktop.NetworkManager.Device.Wireless",
-    )?;
-    let access_point: OwnedObjectPath = wireless.get_property("ActiveAccessPoint")?;
+    )
+    .await?;
+    let access_point: OwnedObjectPath = wireless.get_property("ActiveAccessPoint").await?;
     // NetworkManager answers the root path when no access point is active.
     if access_point.as_str() == "/" {
         return Ok(None);
@@ -65,8 +70,9 @@ fn network_manager_ssid(interface: &str) -> zbus::Result<Option<String>> {
         SERVICE,
         access_point,
         "org.freedesktop.NetworkManager.AccessPoint",
-    )?;
-    let ssid: Vec<u8> = access_point.get_property("Ssid")?;
+    )
+    .await?;
+    let ssid: Vec<u8> = access_point.get_property("Ssid").await?;
 
     // An SSID is arbitrary octets; one that is not UTF-8 is matched by its
     // lossy rendering, which is also what the rule editor shows.

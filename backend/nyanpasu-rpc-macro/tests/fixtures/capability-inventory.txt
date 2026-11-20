@@ -9,6 +9,8 @@ cancel_app_update_download | desktop | app_update | - | mutation | system:write
 change_clash_core | desktop,http,local | - | elevation,os_integration,presentation | mutation | system:write
 check_app_update | desktop | app_update | - | mutation | system:write
 clash_api_delete_connections | desktop,http,local | - | - | mutation | proxy:write
+clash_api_flush_dns_cache | desktop,http | - | - | mutation | proxy:write
+clash_api_flush_fake_ip_cache | desktop,http | - | - | mutation | proxy:write
 clash_api_get_configs | desktop,http | - | - | query | settings:read
 clash_api_get_group_delay | desktop,http,local | - | presentation | query | proxy:write
 clash_api_get_providers_proxies | desktop,http | - | presentation | query | proxy:read
@@ -18,6 +20,7 @@ clash_api_get_rules | desktop,http | - | - | query | proxy:read
 clash_api_get_settings | desktop,http | - | - | query | settings:read
 clash_api_get_version | desktop,http,local | - | - | query | system:read
 clash_api_healthcheck_proxy_provider | desktop,http | - | presentation | mutation | proxy:write
+clash_api_query_dns | desktop,http | - | - | query | proxy:read
 clash_api_update_providers_rules | desktop,http | - | - | mutation | profile:write
 clear_clash_ws_history | desktop,http | - | - | mutation | traffic:write
 clear_core_logs | desktop,http | - | - | mutation | logs:write

@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use clash_api::{Delay, DelayQuery, ExpectedStatus, IndexMap, ProviderName, ProxyName};
+use clash_api::{
+    Delay, DelayQuery, DnsQuery, DnsRecordType, DnsResponse, ExpectedStatus, IndexMap,
+    ProviderName, ProxyName,
+};
 use nyanpasu_config::application::NyanpasuAppConfig;
 use nyanpasu_core_manager::CoreKind;
 
@@ -319,6 +322,41 @@ impl NyanpasuClient {
             .await;
         self.request_proxy_refresh();
         Ok(delays?)
+    }
+
+    /// Resolves `name` through the running core's own resolver, as its `dns`
+    /// configures it. `record_type` is a miekg/dns type name such as `AAAA`.
+    pub async fn query_core_dns(&self, name: String, record_type: String) -> Result<DnsResponse> {
+        let query = DnsQuery::new(name, DnsRecordType::new(record_type)?)?;
+        Ok(self
+            .inner
+            .core_api
+            .api_client()
+            .await?
+            .dns_query(&query)
+            .await?)
+    }
+
+    /// Clears the running core's fake-IP mappings.
+    pub async fn flush_core_fake_ip_cache(&self) -> Result<()> {
+        self.inner
+            .core_api
+            .api_client()
+            .await?
+            .flush_fake_ip_cache()
+            .await?;
+        Ok(())
+    }
+
+    /// Clears the running core's DNS answer cache.
+    pub async fn flush_core_dns_cache(&self) -> Result<()> {
+        self.inner
+            .core_api
+            .api_client()
+            .await?
+            .flush_dns_cache()
+            .await?;
+        Ok(())
     }
 
     pub async fn close_clash_connections(&self, id: Option<String>) -> Result<()> {

@@ -5,6 +5,15 @@ import type { ConfigFeatures } from '@nyanpasu/rpc/types'
 import MipsCongestionControllerSelector from '../src/pages/(main)/main/settings/clash/network/_modules/mips-congestion-controller-selector'
 import TunStackSelector from '../src/pages/(main)/main/settings/clash/network/_modules/tun-stack-selector'
 
+/** These tests are about the TUN stack; the DNS features do not matter. */
+const NO_DNS: ConfigFeatures['dns'] = {
+  keys: { kind: 'ignored' },
+  enhanced_mode: { kind: 'ignored' },
+  fake_ip_filter_mode: { kind: 'ignored' },
+  list_values: false,
+  fallback_filter_geosite: false,
+}
+
 const MIHOMO: ConfigFeatures = {
   tun: {
     stack: { kind: 'values', value: ['system', 'gvisor', 'mixed', 'mips'] },
@@ -13,6 +22,7 @@ const MIHOMO: ConfigFeatures = {
       value: ['cubic', 'reno', 'bbr', 'bbr3'],
     },
   },
+  dns: NO_DNS,
 }
 
 const backend = vi.hoisted(() => ({
@@ -54,6 +64,7 @@ test('lists only the stacks the core reads and saves the selected one', async ({
         stack: { kind: 'values', value: ['system', 'gvisor'] },
         congestion_controller: { kind: 'ignored' },
       },
+      dns: NO_DNS,
     },
     { tun_stack: 'gvisor', enable_tun_mode: false },
     onTestFinished,
@@ -86,6 +97,7 @@ test('hides the stack for a core that does not read it', async ({
         stack: { kind: 'ignored' },
         congestion_controller: { kind: 'ignored' },
       },
+      dns: NO_DNS,
     },
     { tun_stack: 'mixed' },
     onTestFinished,

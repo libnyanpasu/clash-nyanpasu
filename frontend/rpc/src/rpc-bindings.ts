@@ -239,6 +239,17 @@ export function createRpcClient(
         undefined,
         options,
       ),
+    /**  Resolves `name` through the running core's resolver. */
+    clashApiQueryDns: (
+      name: string,
+      recordType: string,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<DnsResponse_Serialize>(
+        'clash_api_query_dns',
+        { name, recordType },
+        options,
+      ),
     fetchLatestCoreVersions: (options?: InvokeOptions) =>
       __RPC_INVOKE<ManifestVersionLatest_Serialize>(
         'fetch_latest_core_versions',
@@ -972,6 +983,10 @@ export function createRpcClient(
     ) => __RPC_INVOKE<null>('change_clash_core', { clashCore }, options),
     clashApiDeleteConnections: (id: string | null, options?: InvokeOptions) =>
       __RPC_INVOKE<null>('clash_api_delete_connections', { id }, options),
+    clashApiFlushFakeIpCache: (options?: InvokeOptions) =>
+      __RPC_INVOKE<null>('clash_api_flush_fake_ip_cache', undefined, options),
+    clashApiFlushDnsCache: (options?: InvokeOptions) =>
+      __RPC_INVOKE<null>('clash_api_flush_dns_cache', undefined, options),
     clashApiUpdateProvidersRules: (name: string, options?: InvokeOptions) =>
       __RPC_INVOKE<null>('clash_api_update_providers_rules', { name }, options),
     invokeUwpTool: (options?: InvokeOptions) =>
@@ -1834,6 +1849,27 @@ export const HTTP_COMMANDS = [
     namespace: 'proxy.delay',
     permission: { resource: 'proxy', access: 'write' },
     effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_query_dns',
+    namespace: 'proxy.dns',
+    permission: { resource: 'proxy', access: 'read' },
+    effect: 'query',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_flush_fake_ip_cache',
+    namespace: 'proxy.dns',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'clash_api_flush_dns_cache',
+    namespace: 'proxy.dns',
+    permission: { resource: 'proxy', access: 'write' },
+    effect: 'mutation',
     sensitive: false,
   },
   {
@@ -3075,6 +3111,20 @@ export type ClashConfig_Deserialize = {
   tun_stack: TunStack
   /**  The options of the mips stack, kept while another stack is selected. */
   tun_mips?: MipsConfig_Deserialize
+  /**  Whether Nyanpasu writes the runtime `dns` table. */
+  dns_control?: ControlSource
+  /**
+   *  The `dns` table, kept while the profiles control DNS. Read it through
+   *  [`ClashConfig::managed_dns`]. A patch replaces it whole.
+   */
+  dns?: DnsSettings_Deserialize
+  /**  Whether Nyanpasu writes the runtime `hosts` table. */
+  hosts_control?: ControlSource
+  /**
+   *  The `hosts` table, kept while the profiles control it. Read it through
+   *  [`ClashConfig::managed_hosts`].
+   */
+  hosts?: { [key in string]: OneOrMany }
 }
 
 /**  Clash Related Config */
@@ -3115,6 +3165,20 @@ export type ClashConfig_Serialize = {
   tun_stack: TunStack
   /**  The options of the mips stack, kept while another stack is selected. */
   tun_mips: MipsConfig_Serialize
+  /**  Whether Nyanpasu writes the runtime `dns` table. */
+  dns_control: ControlSource
+  /**
+   *  The `dns` table, kept while the profiles control DNS. Read it through
+   *  [`ClashConfig::managed_dns`]. A patch replaces it whole.
+   */
+  dns: DnsSettings_Serialize
+  /**  Whether Nyanpasu writes the runtime `hosts` table. */
+  hosts_control: ControlSource
+  /**
+   *  The `hosts` table, kept while the profiles control it. Read it through
+   *  [`ClashConfig::managed_hosts`].
+   */
+  hosts: { [key in string]: OneOrMany }
 }
 
 /**
@@ -3397,6 +3461,9 @@ export type ClashSettings_Deserialize = {
   break_connection: BreakConnectionStrategy
   tun_stack: TunStack
   tun_mips: MipsConfig_Deserialize
+  dns_control: ControlSource
+  hosts_control: ControlSource
+  hosts: { [key in string]: OneOrMany }
 }
 
 /**
@@ -3422,11 +3489,14 @@ export type ClashSettings_Serialize = {
   break_connection: BreakConnectionStrategy
   tun_stack: TunStack
   tun_mips: MipsConfig_Serialize
+  dns_control: ControlSource
+  hosts_control: ControlSource
+  hosts: { [key in string]: OneOrMany }
 }
 
 /**
  *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
- *  capture, the web UI templates and the field filter.
+ *  capture, the DNS and hosts tables, the web UI templates and the field filter.
  *
  *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
  *  the ordinary overrides, which are other classes. Overrides are written through the per-class
@@ -3437,7 +3507,7 @@ export type ClashSystemPatch =
 
 /**
  *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
- *  capture, the web UI templates and the field filter.
+ *  capture, the DNS and hosts tables, the web UI templates and the field filter.
  *
  *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
  *  the ordinary overrides, which are other classes. Overrides are written through the per-class
@@ -3459,11 +3529,15 @@ export type ClashSystemPatch_Deserialize = {
   transparent_proxy?: TransparentProxyConfigPatch_Deserialize
   tun_stack?: TunStack | null
   tun_mips?: MipsConfigPatch_Deserialize
+  dns_control?: ControlSource | null
+  dns?: DnsSettings_Deserialize | null
+  hosts_control?: ControlSource | null
+  hosts?: { [key in string]: OneOrMany } | null
 }
 
 /**
  *  A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
- *  capture, the web UI templates and the field filter.
+ *  capture, the DNS and hosts tables, the web UI templates and the field filter.
  *
  *  The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
  *  the ordinary overrides, which are other classes. Overrides are written through the per-class
@@ -3485,6 +3559,10 @@ export type ClashSystemPatch_Serialize = {
   transparent_proxy: TransparentProxyConfigPatch_Serialize
   tun_stack?: TunStack
   tun_mips: MipsConfigPatch_Serialize
+  dns_control?: ControlSource
+  dns?: DnsSettings_Serialize
+  hosts_control?: ControlSource
+  hosts?: { [key in string]: OneOrMany }
 }
 
 export type ClashVersion = ClashVersion_Serialize | ClashVersion_Deserialize
@@ -3853,6 +3931,7 @@ export type ConfigExecutionRole =
 /**  What the selected core reads, by config domain. */
 export type ConfigFeatures = {
   tun: TunFeatures
+  dns: DnsFeatures
 }
 
 /**
@@ -4148,6 +4227,13 @@ export type Connection_Serialize = {
    */
   _extra: { [key in string]: JsonValue | null }
 }
+
+/**  Who decides one runtime config table. */
+export type ControlSource =
+  /**  The profiles and transforms decide the table. */
+  | 'profile'
+  /**  Nyanpasu writes the whole table over whatever the profiles produced. */
+  | 'nyanpasu'
 
 /**  How the core's controller is reached. A socket path or URL is a location, not a status. */
 export type ControllerKind = 'NamedPipe' | 'UnixSocket' | 'Http'
@@ -5308,7 +5394,165 @@ export type DirectEgress_Serialize =
 
 export type Direction = 'latest' | 'before' | 'after'
 
+/**
+ *  What the selected core reads under `dns`, and in the `hosts` table that
+ *  `dns.use-hosts` consults. Nyanpasu writes neither table for a core whose
+ *  `keys` is [`FieldSupport::Ignored`].
+ */
+export type DnsFeatures = {
+  /**  The typed `dns` keys the core reads. */
+  keys: FieldSupport<DnsKey>
+  enhanced_mode: FieldSupport<EnhancedMode>
+  fake_ip_filter_mode: FieldSupport<FakeIpFilterMode>
+  /**
+   *  Whether a `dns.nameserver-policy` or `hosts` value may be a list, and
+   *  a `hosts` value a domain alias. Otherwise each is one address.
+   */
+  list_values: boolean
+  /**  Whether the core reads `dns.fallback-filter.geosite`. */
+  fallback_filter_geosite: boolean
+}
+
+/**  The typed keys of [`DnsSettings`], spelled as in the runtime config. */
+export type DnsKey =
+  | 'enable'
+  | 'listen'
+  | 'ipv6'
+  | 'enhanced-mode'
+  | 'fake-ip-range'
+  | 'fake-ip-range6'
+  | 'fake-ip-filter-mode'
+  | 'fake-ip-filter'
+  | 'use-hosts'
+  | 'use-system-hosts'
+  | 'respect-rules'
+  | 'prefer-h3'
+  | 'default-nameserver'
+  | 'nameserver'
+  | 'fallback'
+  | 'proxy-server-nameserver'
+  | 'direct-nameserver'
+  | 'direct-nameserver-follow-policy'
+  | 'nameserver-policy'
+  | 'fallback-filter'
+
 export type DnsMode = 'normal' | 'fake-ip' | 'redir-host' | 'hosts' | 'Unknown'
+
+export type DnsQuestion = {
+  Name: string
+  Qtype: number
+  Qclass: number
+}
+
+export type DnsRecord = {
+  name: string
+  type: number
+  TTL: number
+  data: string
+}
+
+export type DnsResponse = DnsResponse_Serialize | DnsResponse_Deserialize
+
+export type DnsResponse_Deserialize = {
+  Status: number
+  Question: DnsQuestion[]
+  TC: boolean
+  RD: boolean
+  RA: boolean
+  AD: boolean
+  CD: boolean
+  Answer?: DnsRecord[] | null
+  Authority?: DnsRecord[] | null
+  Additional?: DnsRecord[] | null
+}
+
+export type DnsResponse_Serialize = {
+  Status: number
+  Question: DnsQuestion[]
+  TC: boolean
+  RD: boolean
+  RA: boolean
+  AD: boolean
+  CD: boolean
+  Answer: DnsRecord[] | null
+  Authority: DnsRecord[] | null
+  Additional: DnsRecord[] | null
+}
+
+/**
+ *  The `dns` table Nyanpasu writes while it controls DNS. Field names are the
+ *  runtime config keys. Upstream addresses are kept as written: the core
+ *  checks their syntax.
+ */
+export type DnsSettings = DnsSettings_Serialize | DnsSettings_Deserialize
+
+/**
+ *  The `dns` table Nyanpasu writes while it controls DNS. Field names are the
+ *  runtime config keys. Upstream addresses are kept as written: the core
+ *  checks their syntax.
+ */
+export type DnsSettings_Deserialize = {
+  enable?: boolean
+  listen?: string | null
+  ipv6?: boolean
+  'enhanced-mode'?: EnhancedMode
+  'fake-ip-range'?: string | null
+  'fake-ip-range6'?: string | null
+  'fake-ip-filter-mode'?: FakeIpFilterMode
+  'fake-ip-filter'?: string[]
+  'use-hosts'?: boolean
+  'use-system-hosts'?: boolean
+  'respect-rules'?: boolean
+  'prefer-h3'?: boolean
+  'default-nameserver'?: string[]
+  nameserver?: string[]
+  fallback?: string[]
+  'proxy-server-nameserver'?: string[]
+  'direct-nameserver'?: string[]
+  'direct-nameserver-follow-policy'?: boolean
+  /**  Ordered: the first matching key wins. */
+  'nameserver-policy'?: { [key in string]: OneOrMany }
+  'fallback-filter'?: FallbackFilter_Deserialize
+  /**
+   *  Keys without a typed field, such as `cache-algorithm`, written as they
+   *  are after the typed ones. A key that has a typed field is ignored.
+   */
+  extra?: { [key in string]: any }
+}
+
+/**
+ *  The `dns` table Nyanpasu writes while it controls DNS. Field names are the
+ *  runtime config keys. Upstream addresses are kept as written: the core
+ *  checks their syntax.
+ */
+export type DnsSettings_Serialize = {
+  enable: boolean
+  listen: string | null
+  ipv6: boolean
+  'enhanced-mode': EnhancedMode
+  'fake-ip-range': string | null
+  'fake-ip-range6': string | null
+  'fake-ip-filter-mode': FakeIpFilterMode
+  'fake-ip-filter': string[]
+  'use-hosts': boolean
+  'use-system-hosts': boolean
+  'respect-rules': boolean
+  'prefer-h3': boolean
+  'default-nameserver': string[]
+  nameserver: string[]
+  fallback: string[]
+  'proxy-server-nameserver': string[]
+  'direct-nameserver': string[]
+  'direct-nameserver-follow-policy': boolean
+  /**  Ordered: the first matching key wins. */
+  'nameserver-policy': { [key in string]: OneOrMany }
+  'fallback-filter': FallbackFilter_Serialize
+  /**
+   *  Keys without a typed field, such as `cache-algorithm`, written as they
+   *  are after the typed ones. A key that has a typed field is ignored.
+   */
+  extra: { [key in string]: any }
+}
 
 /**  Safe download state without raw HTTP/OS error diagnostics. */
 export type DownloadProgressState =
@@ -5509,6 +5753,11 @@ export type EndpointConnectivitySummary =
   /**  Unreachable; the transport error stays with protected callers. */
   | { kind: 'degraded'; desired: ExecutionHost }
 
+/**  mihomo `dns.enhanced-mode`. */
+export type EnhancedMode =
+  /**  Every core's default when the key is absent. */
+  'normal' | 'fake-ip' | 'redir-host'
+
 /**
  *  A filesystem path as it appears in an error. The lossy conversion keeps it
  *  serializable when the path is not valid UTF-8.
@@ -5558,6 +5807,40 @@ export type ExternalMode = 'symlink' | 'mirror'
 
 /**  An absolute path outside the managed profile directory. */
 export type ExternalProfilePath = string
+
+/**  mihomo `dns.fake-ip-filter-mode`. */
+export type FakeIpFilterMode =
+  | 'blacklist'
+  | 'whitelist'
+  /**
+   *  The filter entries are rules (`DOMAIN-SUFFIX,lan,real-ip`), not
+   *  domains.
+   */
+  | 'rule'
+
+/**  mihomo `dns.fallback-filter`. */
+export type FallbackFilter =
+  FallbackFilter_Serialize | FallbackFilter_Deserialize
+
+/**  mihomo `dns.fallback-filter`. */
+export type FallbackFilter_Deserialize = {
+  geoip?: boolean
+  'geoip-code'?: string
+  ipcidr?: string[]
+  domain?: string[]
+  /**  Read by mihomo only. */
+  geosite?: string[]
+}
+
+/**  mihomo `dns.fallback-filter`. */
+export type FallbackFilter_Serialize = {
+  geoip: boolean
+  'geoip-code': string
+  ipcidr: string[]
+  domain: string[]
+  /**  Read by mihomo only. */
+  geosite: string[]
+}
 
 /**  Whether a core reads one config key, and which values it accepts there. */
 export type FieldSupport<T> =
@@ -7560,6 +7843,9 @@ export type NyanpasuAppConfig_Serialize = {
    */
   enable_macos_colored_icons: boolean
 }
+
+/**  A `nameserver-policy` or `hosts` value: one entry or a list of them. */
+export type OneOrMany = string | string[]
 
 export type OpenLogs = OpenLogs_Serialize | OpenLogs_Deserialize
 
@@ -10443,7 +10729,7 @@ export type Resource =
   | 'profile'
   /**
    *  The running routing state: proxy groups and nodes, selection, latency tests, the proxy
-   *  mode, providers, rules and closing connections.
+   *  mode, providers, rules, the core's resolver and closing connections.
    */
   | 'proxy'
   /**

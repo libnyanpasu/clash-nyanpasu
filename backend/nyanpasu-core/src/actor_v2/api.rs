@@ -401,6 +401,21 @@ impl ApiClient {
     pub async fn close_all_connections(&self) -> Result<(), ApiError> {
         self.execute(self.client.close_all_connections()).await
     }
+
+    pub async fn dns_query(
+        &self,
+        query: &clash_api::DnsQuery,
+    ) -> Result<clash_api::DnsResponse, ApiError> {
+        self.execute(self.client.dns_query(query)).await
+    }
+
+    pub async fn flush_fake_ip_cache(&self) -> Result<(), ApiError> {
+        self.execute(self.client.flush_fake_ip_cache()).await
+    }
+
+    pub async fn flush_dns_cache(&self) -> Result<(), ApiError> {
+        self.execute(self.client.flush_dns_cache()).await
+    }
 }
 
 /// An owned subscription bound to the same capability for its entire lifetime.

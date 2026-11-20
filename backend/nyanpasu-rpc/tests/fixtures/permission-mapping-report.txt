@@ -6,6 +6,7 @@ command | clash_api_get_providers_rules | read | proxy:read | 2 write includes r
 command | clash_api_get_rules | read | proxy:read | 2 write includes read
 command | clash_api_get_settings | read | settings:read | 2 write includes read
 command | clash_api_get_version | read | system:read | 2 write includes read
+command | clash_api_query_dns | read | proxy:read | 2 write includes read
 command | close_log_session | read | logs:read | 2 write includes read
 command | fetch_latest_core_versions | read | system:read | 2 write includes read
 command | get_all_storage_items | sensitive_read | settings:read | 1 sensitive read no longer guarded

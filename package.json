@@ -144,7 +144,7 @@
     "@tanstack/react-query": "5.108.1",
     "@tauri-apps/api": "2.12.5",
     "clsx": "2.1.1",
-    "tailwind-merge": "3.7.0",
+    "tailwind-merge": "3.7.1",
     "react-use": "17.6.1"
   },
   "packageManager": "pnpm@12.21.0",

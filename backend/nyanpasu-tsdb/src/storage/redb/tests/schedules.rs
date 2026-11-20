@@ -312,23 +312,23 @@ struct SyncFile {
 }
 
 impl redb::StorageBackend for SyncFile {
-    fn len(&self) -> std::io::Result<u64> {
+    fn len(&self) -> Result<u64, redb::BackendError> {
         self.inner.len()
     }
-    fn read(&self, offset: u64, out: &mut [u8]) -> std::io::Result<()> {
+    fn read(&self, offset: u64, out: &mut [u8]) -> Result<(), redb::BackendError> {
         self.inner.read(offset, out)
     }
-    fn set_len(&self, len: u64) -> std::io::Result<()> {
+    fn set_len(&self, len: u64) -> Result<(), redb::BackendError> {
         self.inner.set_len(len)
     }
-    fn write(&self, offset: u64, bytes: &[u8]) -> std::io::Result<()> {
+    fn write(&self, offset: u64, bytes: &[u8]) -> Result<(), redb::BackendError> {
         self.inner.write(offset, bytes)
     }
-    fn sync_data(&self) -> std::io::Result<()> {
+    fn sync_data(&self) -> Result<(), redb::BackendError> {
         self.schedule.io("close.sync")?;
         self.inner.sync_data()
     }
-    fn close(&self) -> std::io::Result<()> {
+    fn close(&self) -> Result<(), redb::BackendError> {
         self.inner.close()
     }
     fn try_lock_range(
@@ -384,7 +384,7 @@ fn closing_file() -> (
     let file = tempfile::NamedTempFile::new().unwrap();
     let schedule = FaultSchedule::default();
     let backend = SyncFile {
-        inner: redb::backends::FileBackend::new(file.reopen().unwrap()).unwrap(),
+        inner: redb::backends::FileBackend::new(file.reopen().unwrap()),
         schedule: schedule.clone(),
     };
     let mut db = crate::Tsdb::open(
@@ -437,10 +437,7 @@ fn close_retains_the_file_through_allocator_and_header_syncs() {
         }
         // Record every probe before releasing, but assert only after joining the parked worker.
         let locks_free = shared.gate_available() && shared.registry.publication_available();
-        let peer = file
-            .reopen()
-            .map_err(DatabaseError::from)
-            .and_then(redb::backends::FileBackend::new);
+        let peer = file.reopen().map(redb::backends::FileBackend::new);
         let lock = peer.as_ref().ok().map(|peer| {
             peer.try_lock_range(std::ops::Bound::Unbounded, std::ops::Bound::Unbounded)
         });

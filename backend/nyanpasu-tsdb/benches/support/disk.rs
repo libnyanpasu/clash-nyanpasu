@@ -3,7 +3,6 @@
 use redb::{BackendError, StorageBackend, backends::FileBackend};
 use std::{
     fs::{File, OpenOptions},
-    io,
     ops::Bound,
     path::Path,
     sync::{
@@ -49,7 +48,7 @@ impl Counting {
             .open(path)
             .unwrap();
         Self {
-            inner: FileBackend::new(file).unwrap(),
+            inner: FileBackend::new(file),
             counts,
         }
     }
@@ -64,8 +63,7 @@ impl Counting {
                     .write(true)
                     .open(temp.path())
                     .unwrap(),
-            )
-            .unwrap(),
+            ),
             counts: counts.clone(),
         };
         disk.set_len(64).unwrap();
@@ -81,28 +79,28 @@ impl Counting {
     }
 }
 impl StorageBackend for Counting {
-    fn len(&self) -> io::Result<u64> {
+    fn len(&self) -> Result<u64, BackendError> {
         self.inner.len()
     }
-    fn read(&self, offset: u64, out: &mut [u8]) -> io::Result<()> {
+    fn read(&self, offset: u64, out: &mut [u8]) -> Result<(), BackendError> {
         self.inner.read(offset, out)
     }
-    fn set_len(&self, len: u64) -> io::Result<()> {
+    fn set_len(&self, len: u64) -> Result<(), BackendError> {
         self.inner.set_len(len)
     }
-    fn write(&self, offset: u64, bytes: &[u8]) -> io::Result<()> {
+    fn write(&self, offset: u64, bytes: &[u8]) -> Result<(), BackendError> {
         self.inner.write(offset, bytes)?;
         self.counts
             .bytes
             .fetch_add(bytes.len() as u64, Ordering::Relaxed);
         Ok(())
     }
-    fn sync_data(&self) -> io::Result<()> {
+    fn sync_data(&self) -> Result<(), BackendError> {
         self.inner.sync_data()?;
         self.counts.syncs.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
-    fn close(&self) -> io::Result<()> {
+    fn close(&self) -> Result<(), BackendError> {
         self.inner.close()?;
         self.counts.closes.fetch_add(1, Ordering::Relaxed);
         Ok(())

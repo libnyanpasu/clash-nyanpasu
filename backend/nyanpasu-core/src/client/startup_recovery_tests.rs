@@ -5,7 +5,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use nyanpasu_migration::Runner;
 use nyanpasu_paths::PathResolver;
-use redb::ReadableDatabase as _;
+use redb::{ReadableDatabase as _, ReadableTable as _};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::new_typed_config_clients;

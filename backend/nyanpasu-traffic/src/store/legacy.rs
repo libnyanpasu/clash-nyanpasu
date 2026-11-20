@@ -10,7 +10,7 @@ use nyanpasu_tsdb::{
     SeriesPoint, Timestamp, Value, WriteError,
     storage::{Durability, Storage},
 };
-use redb::{ReadableDatabase, TableDefinition};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -312,10 +312,7 @@ impl<S: Storage> TrafficDb<S> {
                         let lower = after
                             .as_ref()
                             .map_or(Bound::Unbounded, |(_, _, id)| Bound::Excluded(id.as_str()));
-                        for entry in table
-                            .range::<&str>((lower, Bound::Unbounded))
-                            .map_err(storage)?
-                        {
+                        for entry in table.range((lower, Bound::Unbounded)).map_err(storage)? {
                             let (id, value) = entry.map_err(storage)?;
                             let conn: Active<'_> =
                                 serde_json::from_slice(value.value()).map_err(storage)?;
@@ -350,10 +347,7 @@ impl<S: Storage> TrafficDb<S> {
                     let lower = after.as_ref().map_or(Bound::Unbounded, |(b, t, _)| {
                         Bound::Excluded((*b as u32, *t))
                     });
-                    for entry in table
-                        .range::<(u32, u64)>((lower, Bound::Unbounded))
-                        .map_err(storage)?
-                    {
+                    for entry in table.range((lower, Bound::Unbounded)).map_err(storage)? {
                         let (key, value) = entry.map_err(storage)?;
                         let (bucket, tuple) = key.value();
                         let value = value.value();
@@ -381,10 +375,7 @@ impl<S: Storage> TrafficDb<S> {
                     let lower = after.as_ref().map_or(Bound::Unbounded, |(at, _, id)| {
                         Bound::Excluded((*at, id.as_str()))
                     });
-                    for entry in table
-                        .range::<(u64, &str)>((lower, Bound::Unbounded))
-                        .map_err(storage)?
-                    {
+                    for entry in table.range((lower, Bound::Unbounded)).map_err(storage)? {
                         let (key, value) = entry.map_err(storage)?;
                         let conn: Closed<'_> =
                             serde_json::from_slice(value.value()).map_err(storage)?;

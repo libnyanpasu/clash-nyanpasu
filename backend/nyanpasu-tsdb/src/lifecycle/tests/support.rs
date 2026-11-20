@@ -351,23 +351,23 @@ impl std::fmt::Debug for SyncDisk {
 
 #[cfg(feature = "redb")]
 impl redb::StorageBackend for SyncDisk {
-    fn len(&self) -> std::io::Result<u64> {
+    fn len(&self) -> Result<u64, redb::BackendError> {
         self.inner.len()
     }
-    fn read(&self, offset: u64, out: &mut [u8]) -> std::io::Result<()> {
+    fn read(&self, offset: u64, out: &mut [u8]) -> Result<(), redb::BackendError> {
         self.inner.read(offset, out)
     }
-    fn set_len(&self, len: u64) -> std::io::Result<()> {
+    fn set_len(&self, len: u64) -> Result<(), redb::BackendError> {
         self.inner.set_len(len)
     }
-    fn sync_data(&self) -> std::io::Result<()> {
+    fn sync_data(&self) -> Result<(), redb::BackendError> {
         self.hook.run();
         self.inner.sync_data()
     }
-    fn write(&self, offset: u64, data: &[u8]) -> std::io::Result<()> {
+    fn write(&self, offset: u64, data: &[u8]) -> Result<(), redb::BackendError> {
         self.inner.write(offset, data)
     }
-    fn close(&self) -> std::io::Result<()> {
+    fn close(&self) -> Result<(), redb::BackendError> {
         self.inner.close()
     }
 }

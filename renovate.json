@@ -5,9 +5,9 @@
     "default:automergeMinor",
     "default:prHourlyLimitNone",
     "default:preserveSemverRanges",
-    "default:rebaseStalePrs",
     "group:monorepos"
   ],
+  "rebaseWhen": "conflicted",
   "packageRules": [
     {
       "matchManagers": ["npm"],

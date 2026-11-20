@@ -60,7 +60,7 @@ whoami = '2.0.0'
 zeroize = '1.8'
 
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = { version = '5', optional = true }
+zbus = { version = '6', optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dispatch2 = { version = '0.3', default-features = false, features = ['std'], optional = true }

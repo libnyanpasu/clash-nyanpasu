@@ -63,6 +63,7 @@ import { Route as mainMainSettingsClashAiIndexRouteImport } from './pages/(main)
 import { Route as mainMainSettingsClashControlIndexRouteImport } from './pages/(main)/main/settings/clash/control/index'
 import { Route as mainMainSettingsClashCoreManagerIndexRouteImport } from './pages/(main)/main/settings/clash/core-manager/index'
 import { Route as mainMainSettingsClashCoreIndexRouteImport } from './pages/(main)/main/settings/clash/core/index'
+import { Route as mainMainSettingsClashDnsIndexRouteImport } from './pages/(main)/main/settings/clash/dns/index'
 import { Route as mainMainSettingsClashNetworkIndexRouteImport } from './pages/(main)/main/settings/clash/network/index'
 import { Route as mainMainSettingsClashRuntimeIndexRouteImport } from './pages/(main)/main/settings/clash/runtime/index'
 import { Route as mainMainSettingsNyanpasuInterfaceIndexRouteImport } from './pages/(main)/main/settings/nyanpasu/interface/index'
@@ -381,6 +382,12 @@ const mainMainSettingsClashCoreIndexRoute =
     path: '/clash/core/',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
+const mainMainSettingsClashDnsIndexRoute =
+  mainMainSettingsClashDnsIndexRouteImport.update({
+    id: '/clash/dns/',
+    path: '/clash/dns/',
+    getParentRoute: () => mainMainSettingsRouteRoute,
+  } as any)
 const mainMainSettingsClashNetworkIndexRoute =
   mainMainSettingsClashNetworkIndexRouteImport.update({
     id: '/clash/network/',
@@ -533,6 +540,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
   '/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
+  '/main/settings/clash/dns/': typeof mainMainSettingsClashDnsIndexRoute
   '/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
   '/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
@@ -590,6 +598,7 @@ export interface FileRoutesByTo {
   '/main/settings/clash/control': typeof mainMainSettingsClashControlIndexRoute
   '/main/settings/clash/core-manager': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/main/settings/clash/core': typeof mainMainSettingsClashCoreIndexRoute
+  '/main/settings/clash/dns': typeof mainMainSettingsClashDnsIndexRoute
   '/main/settings/clash/network': typeof mainMainSettingsClashNetworkIndexRoute
   '/main/settings/clash/runtime': typeof mainMainSettingsClashRuntimeIndexRoute
   '/main/settings/nyanpasu/interface': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
@@ -663,6 +672,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/clash/control/': typeof mainMainSettingsClashControlIndexRoute
   '/(main)/main/settings/clash/core-manager/': typeof mainMainSettingsClashCoreManagerIndexRoute
   '/(main)/main/settings/clash/core/': typeof mainMainSettingsClashCoreIndexRoute
+  '/(main)/main/settings/clash/dns/': typeof mainMainSettingsClashDnsIndexRoute
   '/(main)/main/settings/clash/network/': typeof mainMainSettingsClashNetworkIndexRoute
   '/(main)/main/settings/clash/runtime/': typeof mainMainSettingsClashRuntimeIndexRoute
   '/(main)/main/settings/nyanpasu/interface/': typeof mainMainSettingsNyanpasuInterfaceIndexRoute
@@ -737,6 +747,7 @@ export interface FileRouteTypes {
     | '/main/settings/clash/control/'
     | '/main/settings/clash/core-manager/'
     | '/main/settings/clash/core/'
+    | '/main/settings/clash/dns/'
     | '/main/settings/clash/network/'
     | '/main/settings/clash/runtime/'
     | '/main/settings/nyanpasu/interface/'
@@ -794,6 +805,7 @@ export interface FileRouteTypes {
     | '/main/settings/clash/control'
     | '/main/settings/clash/core-manager'
     | '/main/settings/clash/core'
+    | '/main/settings/clash/dns'
     | '/main/settings/clash/network'
     | '/main/settings/clash/runtime'
     | '/main/settings/nyanpasu/interface'
@@ -866,6 +878,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/clash/control/'
     | '/(main)/main/settings/clash/core-manager/'
     | '/(main)/main/settings/clash/core/'
+    | '/(main)/main/settings/clash/dns/'
     | '/(main)/main/settings/clash/network/'
     | '/(main)/main/settings/clash/runtime/'
     | '/(main)/main/settings/nyanpasu/interface/'
@@ -1270,6 +1283,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsClashCoreIndexRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
+    '/(main)/main/settings/clash/dns/': {
+      id: '/(main)/main/settings/clash/dns/'
+      path: '/clash/dns'
+      fullPath: '/main/settings/clash/dns/'
+      preLoaderRoute: typeof mainMainSettingsClashDnsIndexRouteImport
+      parentRoute: typeof mainMainSettingsRouteRoute
+    }
     '/(main)/main/settings/clash/network/': {
       id: '/(main)/main/settings/clash/network/'
       path: '/clash/network'
@@ -1576,6 +1596,7 @@ interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsClashControlIndexRoute: typeof mainMainSettingsClashControlIndexRoute
   mainMainSettingsClashCoreManagerIndexRoute: typeof mainMainSettingsClashCoreManagerIndexRoute
   mainMainSettingsClashCoreIndexRoute: typeof mainMainSettingsClashCoreIndexRoute
+  mainMainSettingsClashDnsIndexRoute: typeof mainMainSettingsClashDnsIndexRoute
   mainMainSettingsClashNetworkIndexRoute: typeof mainMainSettingsClashNetworkIndexRoute
   mainMainSettingsClashRuntimeIndexRoute: typeof mainMainSettingsClashRuntimeIndexRoute
   mainMainSettingsNyanpasuLogsIndexRoute: typeof mainMainSettingsNyanpasuLogsIndexRoute
@@ -1603,6 +1624,7 @@ const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsClashCoreManagerIndexRoute:
     mainMainSettingsClashCoreManagerIndexRoute,
   mainMainSettingsClashCoreIndexRoute: mainMainSettingsClashCoreIndexRoute,
+  mainMainSettingsClashDnsIndexRoute: mainMainSettingsClashDnsIndexRoute,
   mainMainSettingsClashNetworkIndexRoute:
     mainMainSettingsClashNetworkIndexRoute,
   mainMainSettingsClashRuntimeIndexRoute:

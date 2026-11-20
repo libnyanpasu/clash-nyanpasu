@@ -1321,10 +1321,13 @@ fn full_http_exposure_is_preserved_across_shared_split() {
     // remaining declarations and guards, not only names. R12 removes the three
     // icon reads in favor of the special byte entries. Remote access renames the debug
     // HTTP status read to get_http_server_status, which no longer returns a credential.
+    // The DNS settings add the core DNS query and its two cache flushes.
     const BEFORE: &[&str] = &[
         "activate_profile",
         "change_clash_core",
         "clash_api_delete_connections",
+        "clash_api_flush_dns_cache",
+        "clash_api_flush_fake_ip_cache",
         "clash_api_get_configs",
         "clash_api_get_group_delay",
         "clash_api_get_providers_proxies",
@@ -1334,6 +1337,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "clash_api_get_settings",
         "clash_api_get_version",
         "clash_api_healthcheck_proxy_provider",
+        "clash_api_query_dns",
         "clash_api_update_providers_rules",
         "clear_clash_ws_history",
         "clear_core_logs",

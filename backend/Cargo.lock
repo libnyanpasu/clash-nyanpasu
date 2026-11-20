@@ -7052,6 +7052,7 @@ dependencies = [
  "slab",
  "snafu 0.9.2",
  "specta",
+ "specta-typescript",
  "struct-patch",
  "strum",
  "thiserror 2.0.21",

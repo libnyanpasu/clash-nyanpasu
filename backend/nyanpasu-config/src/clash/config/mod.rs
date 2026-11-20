@@ -1,4 +1,5 @@
 pub mod clash_strategy;
+pub mod dns;
 pub mod overrides;
 mod requests;
 mod settings_view;
@@ -13,6 +14,8 @@ use specta::Type;
 use struct_patch::Patch;
 
 use clash_strategy::*;
+use dns::{ControlSource, DnsSettings, OneOrMany};
+use indexmap::IndexMap;
 use overrides::*;
 use tun_stack::*;
 
@@ -108,6 +111,24 @@ pub struct ClashConfig {
     #[serde(default)]
     #[patch(nesting)]
     pub tun_mips: MipsConfig,
+
+    /// Whether Nyanpasu writes the runtime `dns` table.
+    #[serde(default)]
+    pub dns_control: ControlSource,
+
+    /// The `dns` table, kept while the profiles control DNS. Read it through
+    /// [`ClashConfig::managed_dns`]. A patch replaces it whole.
+    #[serde(default)]
+    pub dns: DnsSettings,
+
+    /// Whether Nyanpasu writes the runtime `hosts` table.
+    #[serde(default)]
+    pub hosts_control: ControlSource,
+
+    /// The `hosts` table, kept while the profiles control it. Read it through
+    /// [`ClashConfig::managed_hosts`].
+    #[serde(default)]
+    pub hosts: IndexMap<String, OneOrMany>,
 }
 
 impl ClashConfig {
@@ -120,6 +141,25 @@ impl ClashConfig {
             TunStack::Gvisor => SelectedTunStack::Gvisor,
             TunStack::Mixed => SelectedTunStack::Mixed,
             TunStack::Mips => SelectedTunStack::Mips(&self.tun_mips),
+        }
+    }
+
+    /// The `dns` table Nyanpasu writes, or `None` while the profiles control
+    /// DNS. Read the DNS settings through this, so settings kept for later
+    /// have no effect.
+    pub fn managed_dns(&self) -> Option<&DnsSettings> {
+        match self.dns_control {
+            ControlSource::Profile => None,
+            ControlSource::Nyanpasu => Some(&self.dns),
+        }
+    }
+
+    /// The `hosts` table Nyanpasu writes, or `None` while the profiles control
+    /// it.
+    pub fn managed_hosts(&self) -> Option<&IndexMap<String, OneOrMany>> {
+        match self.hosts_control {
+            ControlSource::Profile => None,
+            ControlSource::Nyanpasu => Some(&self.hosts),
         }
     }
 }
@@ -153,6 +193,10 @@ impl Default for ClashConfig {
             break_connection: BreakConnectionStrategy::default(),
             tun_stack: TunStack::default(),
             tun_mips: MipsConfig::default(),
+            dns_control: ControlSource::default(),
+            dns: DnsSettings::default(),
+            hosts_control: ControlSource::default(),
+            hosts: IndexMap::new(),
         }
     }
 }

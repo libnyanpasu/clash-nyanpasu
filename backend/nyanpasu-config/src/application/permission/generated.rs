@@ -29,7 +29,7 @@ pub enum Resource {
     /// Stored profile definitions, subscriptions, chains and the proxy group layout.
     Profile,
     /// The running routing state: proxy groups and nodes, selection, latency tests, the proxy
-    /// mode, providers, rules and closing connections.
+    /// mode, providers, rules, the core's resolver and closing connections.
     Proxy,
     /// Remote-access administration: the HTTP and local socket settings, access tokens and browser
     /// sessions.

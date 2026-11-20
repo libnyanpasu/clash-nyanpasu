@@ -338,7 +338,8 @@ export const useClashSetting = <K extends keyof ClashSettings>(
 /**
  * The full persistent clash config (`ClashConfig`, `sensitive_read`), written
  * through the control-plane request (`system` scope): controller, ports, TUN,
- * transparent capture, web UI templates and the field filter. It is the editor
+ * transparent capture, the DNS and hosts tables, web UI templates and the
+ * field filter. It is the editor
  * of the control plane, so it keeps the web UI templates the safe view omits.
  */
 export const useClashSystemSettings = (options?: { enabled?: boolean }) => {

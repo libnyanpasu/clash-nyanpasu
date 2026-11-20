@@ -1,10 +1,11 @@
 //! The Clash settings as request contracts, one per privilege class.
 //!
 //! [`ClashConfigPatch`] can write every field of [`super::ClashConfig`]. The control plane (the
-//! controller, the listeners and the ports, TUN and transparent capture) changes what the host
-//! exposes, so it is the `system` class; the remaining fields are ordinary settings. See
+//! controller, the listeners and the ports, TUN, transparent capture and the DNS and hosts tables)
+//! changes what the host exposes or how it resolves names, so it is the `system` class; the remaining fields are ordinary settings. See
 //! [`crate::request`] for the shared mechanism.
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
 
@@ -14,6 +15,7 @@ use super::{
         BreakConnectionStrategyPatch, ExternalControllerStrategyPatch, PortStrategy,
         PortStrategyPatch,
     },
+    dns::{ControlSource, DnsSettings, OneOrMany},
     overrides::TunOverridesPatch,
     tun_stack::{MipsConfigPatch, TunStack},
 };
@@ -30,7 +32,7 @@ pub struct ClashSettingsPatch {
 }
 
 /// A patch of the Clash control plane: the controller, the listening ports, TUN, transparent
-/// capture, the web UI templates and the field filter.
+/// capture, the DNS and hosts tables, the web UI templates and the field filter.
 ///
 /// The whole `overrides` record is in no Clash request: replacing it also writes the proxy mode and
 /// the ordinary overrides, which are other classes. Overrides are written through the per-class
@@ -62,6 +64,10 @@ pub struct ClashSystemPatch {
     pub transparent_proxy: TransparentProxyConfigPatch,
     pub tun_stack: Option<TunStack>,
     pub tun_mips: MipsConfigPatch,
+    pub dns_control: Option<ControlSource>,
+    pub dns: Option<DnsSettings>,
+    pub hosts_control: Option<ControlSource>,
+    pub hosts: Option<IndexMap<String, OneOrMany>>,
 }
 
 impl TryFrom<ClashConfigPatch> for ClashSettingsPatch {
@@ -92,6 +98,10 @@ impl TryFrom<ClashConfigPatch> for ClashSettingsPatch {
             break_connection,
             tun_stack,
             tun_mips,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts,
         } = patch;
 
         reject_present!(
@@ -106,7 +116,11 @@ impl TryFrom<ClashConfigPatch> for ClashSettingsPatch {
             http_port,
             redir_port,
             tproxy_port,
-            tun_stack;
+            tun_stack,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts;
             nested: tun, external_controller, mixed_port, transparent_proxy, tun_mips,
         )?;
 
@@ -158,6 +172,10 @@ impl TryFrom<ClashConfigPatch> for ClashSystemPatch {
             break_connection,
             tun_stack,
             tun_mips,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts,
         } = patch;
 
         reject_present!(
@@ -183,6 +201,10 @@ impl TryFrom<ClashConfigPatch> for ClashSystemPatch {
             transparent_proxy,
             tun_stack,
             tun_mips,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts,
         })
     }
 }
@@ -206,6 +228,10 @@ impl From<ClashSystemPatch> for ClashConfigPatch {
             transparent_proxy,
             tun_stack,
             tun_mips,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts,
         } = system;
 
         Self {
@@ -224,6 +250,10 @@ impl From<ClashSystemPatch> for ClashConfigPatch {
             transparent_proxy,
             tun_stack,
             tun_mips,
+            dns_control,
+            dns,
+            hosts_control,
+            hosts,
             ..Self::default()
         }
     }
@@ -288,6 +318,10 @@ mod tests {
             "transparent_proxy",
             "tun_stack",
             "tun_mips",
+            "dns_control",
+            "dns",
+            "hosts_control",
+            "hosts",
         ]
         .into_iter()
         .map(|field| (field, config[field].clone()))
@@ -303,6 +337,8 @@ mod tests {
             ("tun", json!({"auto-route": {"kind": "unmanaged"}})),
             ("transparent_proxy", json!({"local": true})),
             ("mixed_port", json!({"start_port": 7890})),
+            ("dns_control", json!("nyanpasu")),
+            ("hosts", json!({"a.lan": "10.0.0.1"})),
         ]);
         fields
     }

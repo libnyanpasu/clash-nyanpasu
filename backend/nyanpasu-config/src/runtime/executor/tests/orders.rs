@@ -9,7 +9,7 @@ use crate::{
     profile::{Profiles, ScriptRuntime},
     runtime::{
         executor::{
-            BuiltinTransform, ExecutionTarget, GuardInputs, ResolvedPortBindings,
+            BuiltinTransform, DnsParams, ExecutionTarget, GuardInputs, ResolvedPortBindings,
             RuntimePipelineError, RuntimePipelineInputs, StepLogLevel, TunFlavor, TunParams,
             TunStackWrite, execute,
         },
@@ -48,6 +48,7 @@ pub fn base_inputs<'a>(
             },
             windows_fake_ip_filter: false,
         },
+        dns: DnsParams::default(),
         expand_include_all: true,
         builtin_transforms,
     }

@@ -7,6 +7,8 @@ command | cancel_app_update_download | system | mutation | desktop | app_update 
 command | change_clash_core | system | mutation | desktop,http,local |  | elevation,os_integration,presentation
 command | check_app_update | system | mutation | desktop | app_update |
 command | clash_api_delete_connections | proxy | mutation | desktop,http,local |  |
+command | clash_api_flush_dns_cache | proxy | mutation | desktop,http |  |
+command | clash_api_flush_fake_ip_cache | proxy | mutation | desktop,http |  |
 command | clash_api_get_configs | sensitive_read | query | desktop,http |  |
 command | clash_api_get_group_delay | proxy | query | desktop,http,local |  | presentation
 command | clash_api_get_providers_proxies | read | query | desktop,http |  | presentation
@@ -16,6 +18,7 @@ command | clash_api_get_rules | read | query | desktop,http |  |
 command | clash_api_get_settings | read | query | desktop,http |  |
 command | clash_api_get_version | read | query | desktop,http,local |  |
 command | clash_api_healthcheck_proxy_provider | proxy | mutation | desktop,http |  | presentation
+command | clash_api_query_dns | read | query | desktop,http |  |
 command | clash_api_update_providers_rules | profile | mutation | desktop,http |  |
 command | clear_clash_ws_history | settings | mutation | desktop,http |  |
 command | clear_core_logs | settings | mutation | desktop,http |  |

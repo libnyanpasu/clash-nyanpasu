@@ -558,6 +558,7 @@ function main(config) {
                     },
                     windows_fake_ip_filter: false,
                 },
+                dns: Default::default(),
                 builtin_transforms: &builtins,
             };
             let result = execute(&inputs, &NoContent, &runner);

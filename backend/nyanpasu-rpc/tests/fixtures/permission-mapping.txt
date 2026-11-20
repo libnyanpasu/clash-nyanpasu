@@ -7,6 +7,8 @@ command | cancel_app_update_download | system:write | system.update |  |  | desk
 command | change_clash_core | system:write | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
 command | check_app_update | system:write | system.update |  |  | desktop | tauri/src/ipc.rs
 command | clash_api_delete_connections | proxy:write | proxy.connections |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_flush_dns_cache | proxy:write | proxy.dns |  |  | desktop,http | nyanpasu-rpc/src/commands/proxy/dns.rs
+command | clash_api_flush_fake_ip_cache | proxy:write | proxy.dns |  |  | desktop,http | nyanpasu-rpc/src/commands/proxy/dns.rs
 command | clash_api_get_configs | settings:read | settings.clash | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
 command | clash_api_get_group_delay | proxy:write | proxy.delay |  | write | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
 command | clash_api_get_providers_proxies | proxy:read | proxy.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
@@ -16,6 +18,7 @@ command | clash_api_get_rules | proxy:read | proxy.rules |  |  | desktop,http | 
 command | clash_api_get_settings | settings:read | settings.clash |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
 command | clash_api_get_version | system:read | system.core |  |  | desktop,http,local | nyanpasu-rpc/src/commands/clash.rs
 command | clash_api_healthcheck_proxy_provider | proxy:write | proxy.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
+command | clash_api_query_dns | proxy:read | proxy.dns |  |  | desktop,http | nyanpasu-rpc/src/commands/proxy/dns.rs
 command | clash_api_update_providers_rules | profile:write | profile.providers |  |  | desktop,http | nyanpasu-rpc/src/commands/clash.rs
 command | clear_clash_ws_history | traffic:write | traffic.connections |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
 command | clear_core_logs | logs:write | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs

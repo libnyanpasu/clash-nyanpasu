@@ -42,15 +42,15 @@ pub async fn patch_verge_config(patch: IVerge) -> Result<()> {
 
 A setting whose privilege class differs from ordinary preferences uses a dedicated command, with transport exposure declared on that command. Each command requires one permission, so each `patch_*` command has a concrete request type that writes only fields of the resource it writes; reject fields of another resource while decoding the request type, and split the domain when another such field or a policy group would grow the exception list.
 
-| Request type (`nyanpasu-config`) | Command                     | Permission       | Writes                                                                                        |
-| -------------------------------- | --------------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings:write` | ordinary application preferences                                                              |
-| `SystemSettingsPatch`            | `patch_system_settings`     | `system:write`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                     |
-| `ClashSettingsPatch`             | `patch_clash_config`        | `settings:write` | `expand_include_all`, `break_connection`                                                      |
-| `ClashSystemPatch`               | `patch_clash_system_config` | `system:write`   | TUN, ports, controller and control channel, transparent proxy, web UI templates, field filter |
-| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings:write` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                        |
-| `ClashAccessPatch`               | `patch_runtime_access`      | `system:write`   | `allow-lan`, `secret`                                                                         |
-| `Mode`                           | `set_proxy_mode`            | `proxy:write`    | the proxy mode                                                                                |
+| Request type (`nyanpasu-config`) | Command                     | Permission       | Writes                                                                                                              |
+| -------------------------------- | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `ApplicationPreferencesPatch`    | `patch_app_config`          | `settings:write` | ordinary application preferences                                                                                    |
+| `SystemSettingsPatch`            | `patch_system_settings`     | `system:write`   | autostart, system proxy, proxy guard, bypass list, PAC URL, network rules                                           |
+| `ClashSettingsPatch`             | `patch_clash_config`        | `settings:write` | `expand_include_all`, `break_connection`                                                                            |
+| `ClashSystemPatch`               | `patch_clash_system_config` | `system:write`   | TUN, ports, controller and control channel, transparent proxy, DNS and hosts tables, web UI templates, field filter |
+| `ClashOverridesSettingsPatch`    | `patch_runtime_overrides`   | `settings:write` | `log-level`, `ipv6`, `unified-delay`, `tcp-concurrent`                                                              |
+| `ClashAccessPatch`               | `patch_runtime_access`      | `system:write`   | `allow-lan`, `secret`                                                                                               |
+| `Mode`                           | `set_proxy_mode`            | `proxy:write`    | the proxy mode                                                                                                      |
 
 The network rules (`network_automation`) are a `system` setting rather than an ordinary
 preference: applying a rule writes the system proxy, TUN and transparent proxy switches, so a

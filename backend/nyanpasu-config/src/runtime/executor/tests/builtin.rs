@@ -7,9 +7,13 @@ use crate::{
     },
     runtime::{
         executor::{
-            GuardInputs, ResolvedPortBindings, StepLogEntry, TunFlavor, TunParams, TunStackWrite,
+            DnsParams, GuardInputs, ResolvedPortBindings, StepLogEntry, TunFlavor, TunParams,
+            TunStackWrite,
             builtin::{filter_fields, known_fields, stage1_fields},
-            plan::{cache_ownership, guard_ownership, managed_settings_logs, tun_ownership},
+            plan::{
+                cache_ownership, dns_ownership, guard_ownership, hosts_ownership,
+                managed_settings_logs, tun_ownership,
+            },
         },
         post_process::{apply_defaults, apply_settings},
         value::ConfigValue,
@@ -29,6 +33,7 @@ fn apply_guard(config: &ConfigValue, guard: &GuardInputs<'_>) -> ConfigValue {
 /// settings and defaults steps do.
 fn apply_tun_and_cache(config: &ConfigValue, tun: &TunParams) -> ConfigValue {
     let mut ownership = tun_ownership(tun);
+    ownership.extend(dns_ownership(tun, &DnsParams::default()));
     ownership.push(cache_ownership());
     let config = apply_settings(config, &ownership).0;
     apply_defaults(&config, &ownership).0
@@ -53,6 +58,11 @@ pub fn unmanaged_overrides() -> ClashGuardOverrides {
 
 fn auto_route(auto_route: ManageableField<bool>) -> TunOverrides {
     TunOverrides { auto_route }
+}
+
+/// The managed settings logs of `tun` alone.
+fn tun_logs(tun: &TunParams) -> Vec<StepLogEntry> {
+    managed_settings_logs(tun, &DnsParams::default(), &value(json!({})))
 }
 
 fn tun_off() -> TunParams {
@@ -399,7 +409,7 @@ fn only_an_applied_downgrade_is_logged() {
         ..tun_off()
     };
     assert_eq!(
-        managed_settings_logs(&params),
+        tun_logs(&params),
         vec![StepLogEntry::warn(
             "the selected core does not support the TUN stack `mixed`; `gvisor` is used instead"
         )]
@@ -409,12 +419,12 @@ fn only_an_applied_downgrade_is_logged() {
         flavor: downgraded,
         ..tun_off()
     };
-    assert!(managed_settings_logs(&params).is_empty());
+    assert!(tun_logs(&params).is_empty());
     let params = TunParams {
         enable: true,
         ..tun_off()
     };
-    assert!(managed_settings_logs(&params).is_empty());
+    assert!(tun_logs(&params).is_empty());
 }
 
 #[test]
@@ -677,4 +687,127 @@ fn disabled_transform_engine_is_a_structured_pipeline_failure() {
             "{error:?}"
         );
     }
+}
+
+/// `tun`, `dns` and `hosts` with Nyanpasu's DNS settings, written as the
+/// managed settings and defaults steps do.
+fn apply_tun_and_dns(config: &ConfigValue, tun: &TunParams, dns: &DnsParams) -> ConfigValue {
+    let mut ownership = tun_ownership(tun);
+    ownership.extend(dns_ownership(tun, dns));
+    ownership.extend(hosts_ownership(dns));
+    let config = apply_settings(config, &ownership).0;
+    apply_defaults(&config, &ownership).0
+}
+
+fn managed_dns(table: serde_json::Value) -> DnsParams {
+    DnsParams {
+        dns: Some(value(table)),
+        ..DnsParams::default()
+    }
+}
+
+/// Spec §4.1: Nyanpasu's table replaces the profiles' whole, keys they had
+/// and Nyanpasu does not included.
+#[test]
+fn managed_dns_replaces_the_profile_table_whole() {
+    let profile = value(json!({
+        "dns": { "enable": true, "nameserver": ["1.1.1.1"], "nameserver-policy": { "+.lan": "system" } },
+    }));
+    let dns = managed_dns(json!({ "enable": false, "nameserver": ["223.5.5.5"] }));
+
+    let result = apply_tun_and_dns(&profile, &tun_off(), &dns);
+
+    assert_eq!(
+        result.to_json()["dns"],
+        json!({ "enable": false, "nameserver": ["223.5.5.5"] })
+    );
+}
+
+/// TUN still needs the core to answer DNS, but adds none of its fake-IP
+/// defaults to a table the user wrote.
+#[test]
+fn tun_turns_managed_dns_on_without_filling_defaults() {
+    let tun = TunParams {
+        enable: true,
+        ..tun_off()
+    };
+    let dns = managed_dns(json!({ "enable": false, "enhanced-mode": "redir-host" }));
+
+    let result = apply_tun_and_dns(&value(json!({})), &tun, &dns);
+
+    assert_eq!(
+        result.to_json()["dns"],
+        json!({ "enable": true, "enhanced-mode": "redir-host" })
+    );
+    assert_eq!(
+        managed_settings_logs(&tun, &dns, &value(json!({}))),
+        vec![StepLogEntry::warn(
+            "TUN mode answers DNS through the core, so `dns.enable` is written as true"
+        )]
+    );
+}
+
+#[test]
+fn profile_dns_is_untouched_while_tun_is_off() {
+    let profile = value(json!({ "dns": { "enable": false, "listen": ":53" } }));
+
+    let result = apply_tun_and_dns(&profile, &tun_off(), &DnsParams::default());
+
+    assert_eq!(result, profile);
+}
+
+#[test]
+fn managed_hosts_replace_or_remove_the_profile_table() {
+    let profile = value(json!({ "hosts": { "a.lan": "10.0.0.1" } }));
+    let replace = DnsParams {
+        hosts: Some(value(json!({ "b.lan": "10.0.0.2" }))),
+        ..DnsParams::default()
+    };
+    assert_eq!(
+        apply_tun_and_dns(&profile, &tun_off(), &replace).to_json(),
+        json!({ "hosts": { "b.lan": "10.0.0.2" } })
+    );
+
+    let remove = DnsParams {
+        hosts: Some(value(json!({}))),
+        ..DnsParams::default()
+    };
+    assert_eq!(
+        apply_tun_and_dns(&profile, &tun_off(), &remove).to_json(),
+        json!({})
+    );
+    assert_eq!(
+        apply_tun_and_dns(&profile, &tun_off(), &DnsParams::default()),
+        profile
+    );
+}
+
+/// Spec §4.3: replacing a profile's own resolvers is reported, not refused;
+/// what rendering left out is reported too.
+#[test]
+fn replaced_profile_resolvers_and_render_warnings_are_logged() {
+    let profile = value(json!({
+        "dns": {
+            "nameserver-policy": { "geosite:cn": "223.5.5.5" },
+            "proxy-server-nameserver": [],
+            "proxy-server-nameserver-policy": { "+.example.com": "1.1.1.1" },
+        },
+    }));
+    let dns = DnsParams {
+        dns: Some(value(json!({ "enable": true }))),
+        hosts: None,
+        warnings: vec!["left out".to_owned()],
+    };
+
+    assert_eq!(
+        managed_settings_logs(&tun_off(), &dns, &profile),
+        vec![
+            StepLogEntry::warn("left out"),
+            StepLogEntry::warn(
+                "Nyanpasu's DNS settings replace the profile's `dns`, including its \
+                 `nameserver-policy`, `proxy-server-nameserver-policy`"
+            ),
+        ]
+    );
+    assert!(managed_settings_logs(&tun_off(), &DnsParams::default(), &profile).is_empty());
 }

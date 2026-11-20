@@ -109,6 +109,12 @@ pub const CLASH_SCOPES: &[(&str, FieldScope)] = &[
     ("break_connection", Portable),
     ("tun_stack", Device),
     ("tun_mips", Device),
+    // `dns.listen` binds a port of this machine, and a nameserver URL may carry
+    // a private resolver token; the hosts table goes with the control choice.
+    ("dns_control", Device),
+    ("dns", Device),
+    ("hosts_control", Device),
+    ("hosts", Device),
 ];
 
 /// The scope of `field` in `table`, or `None` when this build does not know it.

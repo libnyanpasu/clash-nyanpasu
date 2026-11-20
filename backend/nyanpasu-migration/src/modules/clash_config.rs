@@ -36,11 +36,13 @@ static MANAGEABLE_GUARD_FIELDS: MigrateManageableGuardFields = MigrateManageable
 static TUN_OVERRIDES: MigrateTunOverrides = MigrateTunOverrides;
 static TUN_MIPS: MigrateTunMips = MigrateTunMips;
 static SCRIPT_MODE: MigrateScriptMode = MigrateScriptMode;
-static STEPS: [&dyn MigrationStep; 4] = [
+static DNS_CONTROL: MigrateDnsControl = MigrateDnsControl;
+static STEPS: [&dyn MigrationStep; 5] = [
     &MANAGEABLE_GUARD_FIELDS,
     &TUN_OVERRIDES,
     &TUN_MIPS,
     &SCRIPT_MODE,
+    &DNS_CONTROL,
 ];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
@@ -52,7 +54,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 4;
+    const SCHEMA_REVISION: u64 = 5;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -120,6 +122,9 @@ pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError
     }
     if revision < SCRIPT_MODE.revision() {
         normalize_script_mode(&mut payload);
+    }
+    if revision < DNS_CONTROL.revision() {
+        add_dns_control(&mut payload);
     }
     yaml_serde::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
         path: path.to_path_buf(),
@@ -400,6 +405,66 @@ pub(crate) fn normalize_override_mode(overrides: &mut Mapping) {
         && mode.as_str() == Some("script")
     {
         *mode = "rule".into();
+    }
+}
+
+const DNS_CONTROL_KEYS: [&str; 2] = ["dns_control", "hosts_control"];
+
+/// Records that the profiles keep controlling `dns` and `hosts`, as they did
+/// before Nyanpasu had DNS settings; the settings themselves load at their
+/// defaults. The revision exists so that a build from before the settings
+/// refuses the file instead of dropping them when it writes the file back.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateDnsControl;
+
+impl MigrationStep for MigrateDnsControl {
+    fn id(&self) -> &'static str {
+        "clash_config/dns_control"
+    }
+
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+
+    fn revision(&self) -> u64 {
+        5
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateDnsControl"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            add_dns_control(&mut payload);
+            write::write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
+    }
+}
+
+/// Leaves an existing choice alone: `typed_config` may have written the file
+/// at head before this step runs on it.
+fn add_dns_control(payload: &mut Mapping) {
+    for key in DNS_CONTROL_KEYS {
+        if !payload.contains_key(key) {
+            payload.insert(key.into(), "profile".into());
+        }
     }
 }
 

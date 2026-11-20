@@ -218,6 +218,11 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['clashApiGetProvidersProxies', ...args],
         queryFn: () => commands.clashApiGetProvidersProxies(...args),
       }),
+    clashApiQueryDns: (...args: Parameters<typeof commands.clashApiQueryDns>) =>
+      queryOptions({
+        queryKey: ['clashApiQueryDns', ...args],
+        queryFn: () => commands.clashApiQueryDns(...args),
+      }),
     fetchLatestCoreVersions: (
       ...args: Parameters<typeof commands.fetchLatestCoreVersions>
     ) =>
@@ -718,6 +723,9 @@ export function createQueryBindings(rpc: RpcClient) {
     clashApiGetProvidersProxies: (
       ...args: Partial<Parameters<typeof commands.clashApiGetProvidersProxies>>
     ) => ['clashApiGetProvidersProxies', ...args],
+    clashApiQueryDns: (
+      ...args: Partial<Parameters<typeof commands.clashApiQueryDns>>
+    ) => ['clashApiQueryDns', ...args],
     fetchLatestCoreVersions: (
       ...args: Partial<Parameters<typeof commands.fetchLatestCoreVersions>>
     ) => ['fetchLatestCoreVersions', ...args],
@@ -1222,6 +1230,16 @@ export function createQueryBindings(rpc: RpcClient) {
         mutationFn: (input: {
           id: Parameters<typeof commands.clashApiDeleteConnections>[0]
         }) => commands.clashApiDeleteConnections(input.id),
+      }),
+    clashApiFlushFakeIpCache: () =>
+      mutationOptions({
+        mutationKey: ['clashApiFlushFakeIpCache'],
+        mutationFn: () => commands.clashApiFlushFakeIpCache(),
+      }),
+    clashApiFlushDnsCache: () =>
+      mutationOptions({
+        mutationKey: ['clashApiFlushDnsCache'],
+        mutationFn: () => commands.clashApiFlushDnsCache(),
       }),
     clashApiUpdateProvidersRules: () =>
       mutationOptions({
@@ -1759,6 +1777,8 @@ export function createQueryBindings(rpc: RpcClient) {
     setProxyMode: () => ['setProxyMode'],
     changeClashCore: () => ['changeClashCore'],
     clashApiDeleteConnections: () => ['clashApiDeleteConnections'],
+    clashApiFlushFakeIpCache: () => ['clashApiFlushFakeIpCache'],
+    clashApiFlushDnsCache: () => ['clashApiFlushDnsCache'],
     clashApiUpdateProvidersRules: () => ['clashApiUpdateProvidersRules'],
     invokeUwpTool: () => ['invokeUwpTool'],
     updateCore: () => ['updateCore'],

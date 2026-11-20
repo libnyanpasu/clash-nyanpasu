@@ -4,6 +4,7 @@ import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
 import DataObjectRounded from '~icons/material-symbols/data-object-rounded'
 import DeployedCodeRounded from '~icons/material-symbols/deployed-code-rounded'
 import DesktopWindowsRounded from '~icons/material-symbols/desktop-windows-rounded'
+import DnsRounded from '~icons/material-symbols/dns-rounded'
 import KeyboardRounded from '~icons/material-symbols/keyboard-rounded'
 import LanRounded from '~icons/material-symbols/lan-rounded'
 import LicenseRounded from '~icons/material-symbols/license-rounded'
@@ -156,6 +157,16 @@ export default function SettingsNavigate() {
             icon={<LanRounded />}
             label={m.settings_label_network()}
             description={m.settings_label_network_description()}
+          />
+        )}
+
+        {canReadSettings && (
+          <SettingsNavigationItem
+            to="/main/settings/clash/dns"
+            color="green"
+            icon={<DnsRounded />}
+            label={m.settings_label_dns()}
+            description={m.settings_label_dns_description()}
           />
         )}
 

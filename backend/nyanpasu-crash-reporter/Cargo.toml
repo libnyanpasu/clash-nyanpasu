@@ -17,7 +17,7 @@ slint = { version = '=1.18.1', default-features = false, features = [
 # Use the backend directly: Slint's selector enables muda 0.19, whose
 # Objective-C classes clash with Tauri's muda 0.20 on macOS. Internal Slint
 # crates only stay compatible within a release, hence the exact pin.
-i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+i-slint-backend-winit = { version = '=1.19.0', default-features = false, features = [
   'renderer-software',
 ] }
 # The version and features Slint's winit backend already links.
@@ -32,7 +32,7 @@ url = '2'
 
 # The opaque window needs no GL renderer on Linux either.
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-i-slint-backend-winit = { version = '=1.18.1', default-features = false, features = [
+i-slint-backend-winit = { version = '=1.19.0', default-features = false, features = [
   'x11',
   'wayland',
 ] }

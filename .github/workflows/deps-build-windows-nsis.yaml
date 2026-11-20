@@ -285,7 +285,7 @@ jobs:
             }
           }
 
-          $version = '157.0.4341.60'
+          $version = '158.0.4370.33'
           $uri = "https://github.com/libnyanpasu/webview2-runtime-archive/releases/download/$version/Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
           $outfile = "Microsoft.WebView2.FixedVersionRuntime.$arch.cab"
           echo "Downloading $uri to $outfile"

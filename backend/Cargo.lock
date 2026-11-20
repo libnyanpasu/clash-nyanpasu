@@ -2029,7 +2029,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "winreg 0.56.0",
  "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
- "zip 9.6.0",
+ "zip 9.8.1",
  "zip-extensions",
 ]
 
@@ -7240,7 +7240,7 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "windows-registry 0.6.1",
- "zip 9.6.0",
+ "zip 9.8.1",
 ]
 
 [[package]]
@@ -7657,7 +7657,7 @@ dependencies = [
  "uuid",
  "whoami",
  "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
- "zip 9.6.0",
+ "zip 9.8.1",
 ]
 
 [[package]]
@@ -7955,7 +7955,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
- "zip 9.6.0",
+ "zip 9.8.1",
 ]
 
 [[package]]
@@ -12661,7 +12661,7 @@ dependencies = [
  "tokio",
  "url",
  "windows-sys 0.61.2",
- "zip 9.6.0",
+ "zip 9.8.1",
 ]
 
 [[package]]
@@ -15899,9 +15899,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.6.0"
+version = "9.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80cc68510ea7553c30a69c732de5278e94183f68765af6c642dbccefd6ec777e"
+checksum = "a9534624d547e3f516ecde0ed9a70d37788f01d340efcfdd03bf3ea8e163c1d0"
 dependencies = [
  "aes",
  "bzip2",
@@ -15915,13 +15915,13 @@ dependencies = [
  "libc",
  "lzma-rust2 0.25.0",
  "memchr",
- "nix 0.32.0",
+ "nix 0.31.3",
  "pbkdf2",
  "ppmd-rust",
  "sha1 0.11.0",
  "time",
  "typed-path 0.13.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "zeroize",
  "zopfli",
  "zstd",

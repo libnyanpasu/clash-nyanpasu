@@ -80,7 +80,7 @@ nyanpasu-panics = { path = '../nyanpasu-panics' }
 nyanpasu-owner-support = { path = '../nyanpasu-owner-support', default-features = false }
 clap = { version = '4.5.4', features = ['derive'] }
 tracing-subscriber = { version = '0.3', features = ['env-filter', 'json'] }
-flexi_logger = { version = '0.31', default-features = false }
+flexi_logger = { version = '0.32', default-features = false }
 
 [build-dependencies]
 chrono = '0.4'

@@ -8,7 +8,7 @@ authors.workspace = true
 
 [dependencies]
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
-slint = { version = '=1.18.1', default-features = false, features = [
+slint = { version = '=1.19.0', default-features = false, features = [
   'std',
   'compat-1-2',
   'renderer-software',

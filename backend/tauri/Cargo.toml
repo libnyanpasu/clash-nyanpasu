@@ -195,7 +195,7 @@ tracing-subscriber = { version = '0.3', features = [
 tracing-error = '0.2'
 tracing-log = { version = '0.2' }
 tracing-appender = { version = '0.2', features = ['parking_lot'] }
-flexi_logger = { version = '0.31', default-features = false }
+flexi_logger = { version = '0.32', default-features = false }
 tracing-chrome = { version = '0.7', optional = true }
 dhat = { version = '0.3', optional = true }
 test-log = { workspace = true }

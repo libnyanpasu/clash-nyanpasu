@@ -1,0 +1,3851 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MCP 入口：经 Streamable HTTP 提供，渐进披露，按 agent 授权</title>
+    <meta
+      name="description"
+      content="clash-nyanpasu MCP 入口设计 r9：挂在远程访问监听上的 /bridge/mcp，四个元工具，按凭证的共享模式与 Agent 投影；含规划与三轮评审过程、裁定表、架构图与任务卡。"
+    />
+    <style>
+      /* 版式：左侧粘性目录 + 单栏正文；沿用 RPC 契约报告的中性色与状态色。 */
+      :root {
+        --bg: #f7f7f5;
+        --surface: #fff;
+        --surface-2: #f0efeb;
+        --text: #1d1d1b;
+        --muted: #5f5e59;
+        --border: #dcdad3;
+        --accent: #3b5bdb;
+        --accent-soft: #e7ecfd;
+        --ok: #2b8a3e;
+        --ok-soft: #e3f4e6;
+        --partial: #b35c00;
+        --partial-soft: #fdf0dc;
+        --missing: #c92a2a;
+        --missing-soft: #fde4e4;
+        --neutral: #5f5e59;
+        --neutral-soft: #ecebe6;
+        --code-bg: #f0efeb;
+        --shadow: 0 1px 2px rgb(0 0 0 / 5%);
+        --sans:
+          system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+          'Microsoft YaHei', sans-serif;
+        --mono:
+          ui-monospace, 'Cascadia Code', 'JetBrains Mono', consolas, monospace;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --bg: #161615;
+          --surface: #1f1f1d;
+          --surface-2: #272724;
+          --text: #ecebe6;
+          --muted: #a8a69e;
+          --border: #3a3935;
+          --accent: #8ea4f5;
+          --accent-soft: #252c47;
+          --ok: #69c27a;
+          --ok-soft: #1f3324;
+          --partial: #f0a54a;
+          --partial-soft: #3a2b16;
+          --missing: #f27c7c;
+          --missing-soft: #3d2020;
+          --neutral: #a8a69e;
+          --neutral-soft: #2c2c29;
+          --code-bg: #2a2a27;
+          --shadow: none;
+
+          color-scheme: dark;
+        }
+      }
+
+      :root[data-theme='dark'] {
+        --bg: #161615;
+        --surface: #1f1f1d;
+        --surface-2: #272724;
+        --text: #ecebe6;
+        --muted: #a8a69e;
+        --border: #3a3935;
+        --accent: #8ea4f5;
+        --accent-soft: #252c47;
+        --ok: #69c27a;
+        --ok-soft: #1f3324;
+        --partial: #f0a54a;
+        --partial-soft: #3a2b16;
+        --missing: #f27c7c;
+        --missing-soft: #3d2020;
+        --neutral: #a8a69e;
+        --neutral-soft: #2c2c29;
+        --code-bg: #2a2a27;
+        --shadow: none;
+
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        font: 15px/1.7 var(--sans);
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 232px minmax(0, 1fr);
+        gap: 40px;
+        max-width: 1240px;
+        padding-block: 32px 80px;
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        margin: 0 auto;
+      }
+
+      nav.toc {
+        position: sticky;
+        top: calc(24px + env(safe-area-inset-top, 0px));
+        align-self: start;
+        max-height: calc(100vh - 48px);
+        overflow-y: auto;
+        font-size: 13px;
+      }
+
+      nav.toc .toc-title {
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+
+      nav.toc ol {
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      nav.toc li {
+        margin: 2px 0;
+      }
+
+      nav.toc li.toc-part {
+        padding: 0 8px;
+        margin-top: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+
+      nav.toc a {
+        display: block;
+        padding: 3px 8px;
+        color: var(--muted);
+        text-decoration: none;
+        border-radius: 6px;
+      }
+
+      nav.toc a:hover {
+        color: var(--text);
+        background: var(--surface-2);
+      }
+
+      nav.toc a:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      main {
+        min-width: 0;
+      }
+
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      h1 {
+        margin: 6px 0 12px;
+        font-size: 30px;
+        line-height: 1.25;
+        text-wrap: balance;
+      }
+
+      h2 {
+        padding-top: 8px;
+        margin: 48px 0 14px;
+        font-size: 21px;
+        text-wrap: balance;
+        scroll-margin-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+
+      h2.part {
+        padding-top: 14px;
+        margin-top: 64px;
+        font-size: 24px;
+        border-top: 3px solid var(--text);
+      }
+
+      h3 {
+        margin: 26px 0 8px;
+        font-size: 16px;
+        scroll-margin-top: 16px;
+      }
+
+      h4 {
+        margin: 18px 0 6px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      p {
+        max-width: 78ch;
+        margin: 8px 0;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      a {
+        color: var(--accent);
+        text-underline-offset: 2px;
+      }
+
+      code {
+        padding: 1px 5px;
+        font-family: var(--mono);
+        font-size: 0.86em;
+        overflow-wrap: anywhere;
+        background: var(--code-bg);
+        border-radius: 4px;
+      }
+
+      pre {
+        padding: 12px 14px;
+        margin: 10px 0;
+        overflow-x: auto;
+        font-size: 13px;
+        line-height: 1.55;
+        background: var(--code-bg);
+        border-radius: 8px;
+      }
+
+      pre code {
+        padding: 0;
+        word-break: normal;
+        background: none;
+      }
+
+      .verdict {
+        padding: 16px 18px;
+        margin: 18px 0;
+        background: var(--accent-soft);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      .verdict strong.lead {
+        font-size: 16px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 18px 0 6px;
+      }
+
+      .stat {
+        padding: 12px 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+      }
+
+      .stat .num {
+        font-size: 26px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+
+      .stat .lbl {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .stat.missing .num {
+        color: var(--missing);
+      }
+
+      .stat.partial .num {
+        color: var(--partial);
+      }
+
+      .stat.neutral .num {
+        color: var(--neutral);
+      }
+
+      .stat.ok .num {
+        color: var(--ok);
+      }
+
+      .card {
+        padding: 16px 18px;
+        margin: 14px 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+      }
+
+      .card h3 {
+        margin-top: 0;
+      }
+
+      .table-wrap {
+        margin: 12px 0;
+        overflow-x: auto;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      table {
+        width: 100%;
+        font-size: 13.5px;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 9px 12px;
+        vertical-align: top;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        white-space: nowrap;
+        background: var(--surface-2);
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      td.ev {
+        min-width: 200px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+
+      td.num,
+      th.num {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 1px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        border-radius: 999px;
+      }
+
+      .b-ok {
+        color: var(--ok);
+        background: var(--ok-soft);
+      }
+
+      .b-partial {
+        color: var(--partial);
+        background: var(--partial-soft);
+      }
+
+      .b-missing {
+        color: var(--missing);
+        background: var(--missing-soft);
+      }
+
+      .b-neutral {
+        color: var(--neutral);
+        background: var(--neutral-soft);
+      }
+
+      .b-accent {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .gap-head {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: baseline;
+      }
+
+      .gap-head .rank {
+        font-size: 13px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
+
+      .gap-head h3 {
+        margin: 0;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 88px minmax(0, 1fr);
+        gap: 4px 12px;
+        margin: 8px 0 0;
+        font-size: 14px;
+      }
+
+      .kv dt {
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      .kv dd {
+        margin: 0;
+      }
+
+      ul.tight,
+      ol.tight {
+        padding-left: 20px;
+        margin: 6px 0;
+      }
+
+      ul.tight li,
+      ol.tight li {
+        margin: 3px 0;
+      }
+
+      ul.check {
+        padding-left: 0;
+        margin: 6px 0;
+        list-style: none;
+      }
+
+      ul.check li {
+        position: relative;
+        padding-left: 24px;
+        margin: 3px 0;
+      }
+
+      ul.check li::before {
+        position: absolute;
+        top: 0.45em;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        content: '';
+        border: 1.5px solid var(--muted);
+        border-radius: 3px;
+      }
+
+      .task-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        margin: 4px 0 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .task-meta b {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      figure {
+        margin: 16px 0;
+      }
+
+      figure .dg-wrap {
+        padding: 10px;
+        overflow-x: auto;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      figcaption {
+        max-width: 78ch;
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      svg.dg {
+        display: block;
+        width: 100%;
+        min-width: 760px;
+        height: auto;
+      }
+
+      svg.dg text {
+        font: 12px var(--sans);
+        fill: var(--text);
+      }
+
+      svg.dg text.hd {
+        font-weight: 600;
+      }
+
+      svg.dg text.note {
+        font-size: 11.5px;
+        fill: var(--muted);
+      }
+
+      svg.dg text.hot-text {
+        font-weight: 600;
+        fill: var(--missing);
+      }
+
+      svg.dg text.ok-text {
+        font-weight: 600;
+        fill: var(--ok);
+      }
+
+      svg.dg .ln {
+        fill: none;
+        stroke: var(--text);
+        stroke-width: 1.2;
+      }
+
+      svg.dg .ret {
+        stroke-dasharray: 5 4;
+      }
+
+      svg.dg .hot {
+        stroke: var(--missing);
+        stroke-width: 1.6;
+      }
+
+      svg.dg .good {
+        stroke: var(--ok);
+        stroke-width: 1.6;
+      }
+
+      svg.dg .life {
+        fill: none;
+        stroke: var(--border);
+        stroke-width: 1.2;
+        stroke-dasharray: 3 5;
+      }
+
+      svg.dg .box {
+        fill: var(--surface-2);
+        stroke: var(--border);
+      }
+
+      svg.dg .self {
+        fill: var(--surface);
+        stroke: var(--muted);
+        stroke-width: 1;
+      }
+
+      svg.dg .fill {
+        fill: var(--text);
+      }
+
+      svg.dg .fill-hot {
+        fill: var(--missing);
+      }
+
+      svg.dg .fill-good {
+        fill: var(--ok);
+      }
+
+      .cols2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .cols2 > * {
+        min-width: 0;
+      }
+
+      .small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      @media (width <= 920px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 16px;
+        }
+
+        nav.toc {
+          position: static;
+          max-height: none;
+          padding: 12px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+        }
+
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .cols2 {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        h1 {
+          font-size: 24px;
+        }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        html {
+          scroll-behavior: smooth;
+        }
+      }
+
+      pre.shiki span {
+        color: var(--shiki-light);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) pre.shiki span {
+          color: var(--shiki-dark);
+        }
+      }
+
+      :root[data-theme='dark'] pre.shiki span {
+        color: var(--shiki-dark);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="toc" aria-label="目录">
+        <div class="toc-title">目录</div>
+        <ol>
+          <li class="toc-part">第一部分 · 概览与审查</li>
+          <li><a href="#scope">目标与范围</a></li>
+          <li><a href="#current">现状</a></li>
+          <li><a href="#facts">已核实的事实</a></li>
+          <li><a href="#review">规划过程</a></li>
+          <li><a href="#decisions">裁定</a></li>
+          <li><a href="#limits">局限与未验证项</a></li>
+          <li class="toc-part">第二部分 · 设计</li>
+          <li><a href="#d-layers">1. 层次与请求管线</a></li>
+          <li><a href="#d-crates">2. 包与模块</a></li>
+          <li><a href="#d-identity">3. 身份、受众与记录 v2</a></li>
+          <li><a href="#d-narrow">4. 收窄</a></li>
+          <li><a href="#d-tools">5. 渐进披露与暴露面</a></li>
+          <li><a href="#d-schema">6. 入参 schema</a></li>
+          <li><a href="#d-modes">7. 共享模式</a></li>
+          <li><a href="#d-agent">8. Agent 投影与文本脱敏</a></li>
+          <li><a href="#d-confirm">9. 确认</a></li>
+          <li><a href="#d-errors">10. 错误码与审计</a></li>
+          <li><a href="#d-page">11. AI 集成页</a></li>
+          <li><a href="#d-code">12. 示例代码</a></li>
+          <li class="toc-part">第三部分 · 任务与扩展</li>
+          <li><a href="#t-graph">卡的依赖</a></li>
+          <li><a href="#t-cards">任务卡</a></li>
+          <li><a href="#t-ext">扩展</a></li>
+          <li><a href="#t-risks">风险</a></li>
+        </ol>
+      </nav>
+      <main>
+        <header>
+          <div class="eyebrow">clash-nyanpasu · Unified RPC · MCP</div>
+          <h1>
+            MCP 入口：由应用经 Streamable HTTP 提供，渐进披露，按 agent 授权
+          </h1>
+          <div class="meta">
+            <span>2026-11-21</span>
+            <span
+              >代码基准：<code>9107b62bb</code>（<code>renovate/zbus-6.x</code>；与本地
+              <code>main</code> 的合并基 <code>3f73c81b1</code>）</span
+            >
+            <span
+              >设计：Claude（Fable）起草；codex gpt-6.2-astra
+              独立提案一份、评审三轮；team-lead 自核一轮</span
+            >
+            <span>设计稿 r9，尚未实施；18 项已裁定，无待裁定</span>
+          </div>
+        </header>
+        <div class="verdict">
+          <strong class="lead">结论：</strong>应用在现有的远程访问 HTTP
+          监听上提供 <code>POST /bridge/mcp</code>（rmcp 3.11.0，无状态）。MCP
+          调用与 <code>/bridge/rpc</code> 走同一个 registry 与
+          <code>Authority</code>；凭证是只在这个入口有效的 token；交给 agent
+          的每个应答先投影（<code>Agent</code>
+          一档）再按凭证的共享模式交付。不做 OAuth。首版暴露 23 条命令，其中 4
+          条带敏感标记。<strong>没有编译或运行任何代码</strong>：四项前置试验（M0）里有两项是硬性条件。
+        </div>
+        <div class="stats">
+          <div class="stat ok">
+            <div class="num">18</div>
+            <div class="lbl">已裁定（D-1 – D-18）</div>
+          </div>
+          <div class="stat neutral">
+            <div class="num">23</div>
+            <div class="lbl">首版命令（4 条敏感）</div>
+          </div>
+          <div class="stat partial">
+            <div class="num">61</div>
+            <div class="lbl">三轮评审的发现（32 + 19 + 10）</div>
+          </div>
+          <div class="stat missing">
+            <div class="num">0</div>
+            <div class="lbl">已编译或运行验证的部分</div>
+          </div>
+        </div>
+        <p class="small">
+          正文是
+          <a href="../spec/2026-11-20-mcp-entry/design.md">design.md</a>、<a
+            href="../spec/2026-11-20-mcp-entry/tasks.md"
+            >tasks.md</a
+          >、<a href="../spec/2026-11-20-mcp-entry/research.md">research.md</a>
+          的汇编；有出入时以那三份为准。对应
+          issue：#6493（本设计）、#6489、#6491、#6492，父 #6495。
+        </p>
+        <h2 class="part" id="part-1">第一部分 · 概览与审查</h2>
+        <h2 id="scope">目标与范围</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>目标</th>
+                <th>做法</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>入口随应用更新</td>
+                <td>挂在远程访问的 HTTP 监听上，不在 CLI 里</td>
+              </tr>
+              <tr>
+                <td>不另建授权路径</td>
+                <td>
+                  同一个 registry、<code>Authority</code>、审计；新的目标
+                  <code>RpcTarget::Mcp</code>
+                </td>
+              </tr>
+              <tr>
+                <td>暴露面显式、默认关闭</td>
+                <td>
+                  按命名空间或命令写 <code>expose = [..., mcp]</code>；首版 23
+                  条
+                </td>
+              </tr>
+              <tr>
+                <td>agent 逐级发现</td>
+                <td>
+                  四个固定的元工具；目录从生成表推出，入参 schema 由
+                  <code>schemars</code> 派生
+                </td>
+              </tr>
+              <tr>
+                <td>每个 agent 一条凭证</td>
+                <td>只在 MCP 入口有效；缺省只读且只能查询，由服务端约束</td>
+              </tr>
+              <tr>
+                <td>交出去的内容受控</td>
+                <td>
+                  先投影（去掉识别性的字段、抹掉凭据），再按共享模式交付、询问或拒绝
+                </td>
+              </tr>
+              <tr>
+                <td>有地方管</td>
+                <td>设置里的“AI 集成”页</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>不做的</h3>
+        <ul class="tight">
+          <li>OAuth；MCP 征询作为确认；“允许后发送完整版本”。</li>
+          <li>
+            经 MCP 的事件、流、字节路由；prompts、sampling、roots、tasks、Skills
+            扩展；输出 schema。
+          </li>
+          <li>
+            其他调用者（<code>Token</code>、<code>Session</code>、<code>Anonymous</code>）的数据共享规则；取代
+            C-2 的通用部分。
+          </li>
+          <li>
+            本地 socket 握手的收窄（留在 #6492）；#5946 的按等级导出脱敏。
+          </li>
+          <li>CLI 里的 MCP 服务器；CLI 写入各 agent 的配置文件。</li>
+        </ul>
+        <h2 id="current">现状</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>事项</th>
+                <th>现状</th>
+                <th>对本设计的含义</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>stdio MCP（<code>nyanpasu-cli mcp</code>）</td>
+                <td>
+                  已在 <code>fb9bfa77e</code> 删除。理由记在
+                  <code>nyanpasu-cli/src/lib.rs:21-24</code>
+                </td>
+                <td>
+                  两条教训：服务器放在会被应用更新替换的 CLI 里，agent
+                  被绑死；服务端分不出 MCP 连接，限制只能在客户端做
+                </td>
+              </tr>
+              <tr>
+                <td>旧实现的做法</td>
+                <td>
+                  手写的工具表（删除时 27 项）；<code>effective_scopes</code> 取
+                  <code>read</code> 加 <code>--scope</code> 再求交；兜底的
+                  <code>call_method</code>
+                </td>
+                <td>
+                  保留“缺省只读”“注解只由 effect
+                  推出”；手抄表与客户端一侧的限制不保留
+                </td>
+              </tr>
+              <tr>
+                <td>权限模型</td>
+                <td>
+                  <code>资源 × 级别</code>；<code>Authority::admit</code> 只看
+                  <code>Permissions</code>；<code>sensitive</code> 不参与准入
+                </td>
+                <td>不变。数据共享与脱敏都在 <code>Authority</code> 内侧</td>
+              </tr>
+              <tr>
+                <td>⑥ 数据共享、⑦ 脱敏</td>
+                <td>
+                  只有位置：接缝在 <code>registry.rs:575</code> 与
+                  <code>RpcCallMeta::resource</code>；⑦ 用过渡规则
+                  C-2（<code>redaction.rs:7-21</code>）
+                </td>
+                <td>本设计落实 ⑥，并给 ⑦ 加上 <code>Mcp</code> 所需的一档</td>
+              </tr>
+              <tr>
+                <td><code>Principal</code></td>
+                <td>五种；<code>Mcp</code> 只保留了名字</td>
+                <td>新增 <code>Principal::Mcp</code></td>
+              </tr>
+              <tr>
+                <td>敏感读</td>
+                <td>
+                  持有领域 <code>read</code> 就能读到订阅 URL、Clash
+                  secret、配置原文
+                </td>
+                <td>这是需要 ⑥ 的原因</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="facts">已核实的事实</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>事实</th>
+                <th>来源</th>
+                <th>可信度</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>F-1</td>
+                <td>
+                  MCP 规范的当前修订是 2026-07-28：无会话、无
+                  <code>initialize</code> 握手，服务端到客户端的请求改为 MRTR
+                </td>
+                <td>
+                  规范 versioning 页；<code
+                    >rmcp-3.11.0/src/model.rs:169-209</code
+                  >
+                </td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-2</td>
+                <td>
+                  rmcp 的 <code>StreamableHttpService</code> 是
+                  <code>tower_service::Service</code>；<code
+                    >with_legacy_session_mode(false)</code
+                  >
+                  配 <code>NeverSessionManager::default()</code> 时无状态
+                </td>
+                <td><code>tower.rs:336-352</code>、<code>:1473-1495</code></td>
+                <td><span class="badge b-partial">源码，未编译</span></td>
+              </tr>
+              <tr>
+                <td>F-3</td>
+                <td>
+                  rmcp 把请求的 <code>http::request::Parts</code> 放进
+                  <code>RequestContext::extensions</code>
+                </td>
+                <td><code>tower.rs:1410-1470</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-4</td>
+                <td>
+                  rmcp 默认只放行回环 <code>Host</code>，默认不校验
+                  <code>Origin</code>
+                </td>
+                <td><code>tower.rs:251-272</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-5</td>
+                <td>rmcp 对业务错误回 HTTP 200；握手时代的请求一律 200</td>
+                <td><code>tower.rs:789-805</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-6</td>
+                <td>rmcp 在 DEBUG 输出完整的请求与结果，TRACE 输出消息体</td>
+                <td><code>service.rs:1628</code>、<code>:1681</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-9</td>
+                <td>
+                  规范里授权是可选的；实现授权就必须是 OAuth 2.1；静态 Bearer
+                  不在规范内，也不被禁止
+                </td>
+                <td>规范 authorization 页</td>
+                <td>
+                  <span class="badge b-ok">原文</span>
+                  <span class="badge b-partial">“不被禁止”是解读</span>
+                </td>
+              </tr>
+              <tr>
+                <td>F-10</td>
+                <td>
+                  Claude Code、Codex CLI、Cursor、VS Code、Windsurf
+                  都能在配置里写静态请求头；Claude Desktop 的远程连接器由
+                  Anthropic 云端发起
+                </td>
+                <td>各客户端文档（子代理抓取）</td>
+                <td><span class="badge b-partial">未逐页复核</span></td>
+              </tr>
+              <tr>
+                <td>F-13</td>
+                <td>
+                  Claude Code 的允许规则只按工具名匹配；Codex 的
+                  <code>writes</code> 审批看 <code>readOnlyHint</code>
+                </td>
+                <td>各客户端文档</td>
+                <td><span class="badge b-partial">未逐页复核</span></td>
+              </tr>
+              <tr>
+                <td>F-15</td>
+                <td>
+                  命令没有 JSON Schema；<code>#[rpc]</code>
+                  宏看不到命名空间的暴露面
+                </td>
+                <td>
+                  <code>unified_command.rs:647-661</code>；<code
+                    >nyanpasu-rpc/src/lib.rs:27-29</code
+                  >
+                </td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-16</td>
+                <td>
+                  暴露面沿命名空间树继承且只能收窄，生成器只认
+                  <code>http</code>、<code>local</code>
+                </td>
+                <td><code>resource_table.rs:159-272</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-18</td>
+                <td>
+                  秘密记录带
+                  <code>version</code
+                  >，别的版本即拒绝加载；但不拒绝未知字段；加载失败即启动失败
+                </td>
+                <td>
+                  <code>auth_store.rs:55-61</code>、<code>:149-156</code>；<code
+                    >client/mod.rs:539-542</code
+                  >
+                </td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-19</td>
+                <td>
+                  axum 的 <code>nest_service</code> 多注册尾斜杠与通配两条路径
+                </td>
+                <td>
+                  <code>axum-0.8.9/src/routing/path_router.rs:256-279</code>
+                </td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+              <tr>
+                <td>F-21</td>
+                <td>
+                  外层中间件把读不出来的
+                  <code>Origin</code> 当作没有，并把它当完整 URL 解析
+                </td>
+                <td><code>http/mod.rs:873-906</code></td>
+                <td><span class="badge b-ok">高</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>客户端矩阵（摘要）</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>客户端</th>
+                <th>Streamable HTTP</th>
+                <th>静态请求头</th>
+                <th>连本机 / 局域网</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Claude Code</td>
+                <td>是</td>
+                <td>
+                  <code>claude mcp add --transport http … --header</code>；<code
+                    >.mcp.json</code
+                  >
+                  的 <code>headers</code>
+                </td>
+                <td>是</td>
+                <td>自带工具延迟加载</td>
+              </tr>
+              <tr>
+                <td>Codex CLI</td>
+                <td>是</td>
+                <td>
+                  <code>config.toml</code
+                  >：<code>bearer_token_env_var</code>、<code
+                    >http_headers</code
+                  >
+                </td>
+                <td>是</td>
+                <td><code>writes</code> 审批模式</td>
+              </tr>
+              <tr>
+                <td>Cursor</td>
+                <td>是</td>
+                <td>
+                  <code>mcp.json</code>：<code>url</code> + <code>headers</code>
+                </td>
+                <td>是</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>VS Code（Copilot）</td>
+                <td>是</td>
+                <td>
+                  <code>mcp.json</code>：<code>type: "http"</code
+                  >、<code>headers</code>、<code>inputs</code>
+                </td>
+                <td>未说明</td>
+                <td>每请求至多 128 个工具</td>
+              </tr>
+              <tr>
+                <td>Windsurf</td>
+                <td>是</td>
+                <td><code>serverUrl</code> + <code>headers</code></td>
+                <td>未核实</td>
+                <td>至多 100 个工具</td>
+              </tr>
+              <tr>
+                <td>Claude Desktop 远程连接器 / claude.ai</td>
+                <td>远程 HTTPS</td>
+                <td>有（受限的 beta）</td>
+                <td><b>否</b>：请求来自 Anthropic 云端</td>
+                <td>只写文档：<code>mcp-remote --header</code>（D-8）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>OAuth：不需要，不做</h3>
+        <ul class="tight">
+          <li>
+            <b>规范不要求。</b>“Authorization is OPTIONAL for MCP
+            implementations.” 静态 Bearer 是“不实现 MCP 授权”，偏离的只是一条
+            SHOULD。
+          </li>
+          <li>
+            <b>做了也不增加可达的客户端。</b>没有哪个目标客户端只支持 OAuth。
+          </li>
+          <li>
+            <b>连不上的是 Claude Desktop 的远程连接器与 claude.ai</b
+            >，原因是网络路径（公网 HTTPS 的 443），OAuth 解决不了。
+          </li>
+          <li>
+            <b>在局域网上反而更差。</b>Claude Code 只把 OAuth 凭证发给 HTTPS
+            或回环上的 token 端点；CIMD 的 client id 必须是
+            <code>https</code>；还要有一个授权服务器。
+          </li>
+          <li>
+            服务端的做法：<code>/bridge/mcp</code> 的 <code>401</code> 带
+            <code>WWW-Authenticate: Bearer</code>，不带
+            <code>resource_metadata</code>，不提供
+            <code>/.well-known/oauth-protected-resource</code>。
+          </li>
+        </ul>
+        <h2 id="review">规划过程</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>步骤</th>
+                <th>谁</th>
+                <th>结果</th>
+                <th>带来的结构性修正</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>r1 起草</td>
+                <td>Claude（Fable），两个只读调研子代理</td>
+                <td>十项取舍待裁定</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>独立提案</td>
+                <td>codex gpt-6.2-astra</td>
+                <td>
+                  与 r1 在入口、受众配对、无状态、不做 OAuth、四个元工具上一致
+                </td>
+                <td>
+                  采纳：记录 v2、受众不符回 401、去凭证头、过滤 rmcp 日志、覆盖
+                  <code>get_tool</code>
+                </td>
+              </tr>
+              <tr>
+                <td>r2 – r3</td>
+                <td>用户裁定 D-1 至 D-12</td>
+                <td>
+                  三态策略、交付预览到的内容、<code>RpcTarget::Mcp</code>、请求头上限、<code
+                    >schemars</code
+                  >
+                </td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>第一轮评审（r3）</td>
+                <td>codex</td>
+                <td>32 条：10 高、18 中、4 低</td>
+                <td>
+                  恰好匹配的路由与
+                  Origin；“先占名额、显式撤回、放行点”；预览与交付用同一段冻结的文本；审计保留
+                  handler 的真实结果
+                </td>
+              </tr>
+              <tr>
+                <td>r5</td>
+                <td>用户裁定 D-13、D-14</td>
+                <td>去掉五条没有标记的查询；记录升 v2</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>第二轮评审（r5）</td>
+                <td>codex</td>
+                <td>19 条新增（6 高、8 中、5 低），第一轮 14 条未尽</td>
+                <td>
+                  待确认项的整个生命周期收归一个串行所有者；执行工具的固定错误次序；审计加
+                  <code>Sharing</code> 阶段
+                </td>
+              </tr>
+              <tr>
+                <td>第三轮评审（r6，已到上限）</td>
+                <td>codex</td>
+                <td>10 条新增（2 高、8 中），17 条未尽</td>
+                <td>
+                  名额随读取结束才归还；结论留在名额里；所有者不等待别的 actor
+                </td>
+              </tr>
+              <tr>
+                <td>r7 – r8</td>
+                <td>用户裁定 D-15 至 D-18</td>
+                <td>
+                  每个应答都经共享模式；本期纳入脱敏；只有模式；文本类结果先脱敏
+                </td>
+                <td><code>Agent</code> 投影；首版回到 23 条</td>
+              </tr>
+              <tr>
+                <td>r9 自核</td>
+                <td>team-lead</td>
+                <td>四处更正</td>
+                <td>
+                  <code>uuid</code> 等是凭据，补全共享的键名单；<code
+                    >query_core_logs</code
+                  >
+                  的脱敏落在 <code>payload</code>；URL
+                  的用户信息与查询值已被抹掉；列全
+                  <code>ResponseVisibility</code> 的每一处匹配
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          三轮评审的结论都是“需要修改”。r7 至 r9 没有再送评审：r7
+          之后的结构（模式、<code>Agent</code> 投影、状态机的最后一版）只经过
+          team-lead 的抽查。
+        </p>
+        <h2 id="decisions">裁定</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>问题</th>
+                <th>裁定（均为 2026-11-21）</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>D-1</td>
+                <td>确认机制</td>
+                <td>
+                  应用内的运行时确认与预先的许可并存，按凭证选。“询问”：桌面窗口或托盘打开的待确认列表、预览、只答一次、30
+                  秒单调期限、没有界面即 <code>sharing_unavailable</code>。MCP
+                  征询不是确认机制
+                </td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-partial">已修订</span><br /><span
+                    class="small"
+                    >粒度由 D-15、D-17 取代</span
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>D-2</td>
+                <td>允许之后交付什么</td>
+                <td>
+                  只交付所有者预览到的那份投影后的内容；“一次性发送完整版本”是扩展
+                </td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-partial">已修订</span><br /><span
+                    class="small"
+                    >投影由 D-16、D-18 具体化</span
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>D-3</td>
+                <td>暴露面</td>
+                <td>
+                  新的
+                  <code>RpcTarget::Mcp</code
+                  >，按命名空间显式开放，允许命令级覆盖
+                </td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-4</td>
+                <td><code>SkillCatalog</code></td>
+                <td>本期不做，列为扩展</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-5</td>
+                <td>入口与开关</td>
+                <td>挂在远程访问的 HTTP 监听上，没有独立开关</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-6</td>
+                <td>收窄</td>
+                <td>
+                  <code>Grant</code> 加逐请求的上限头
+                  <code>Nyanpasu-Max-Role</code>：缺省
+                  <code>viewer</code> 且只能查询
+                </td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-7</td>
+                <td>入参 schema</td>
+                <td>
+                  给请求类型加 <code>schemars</code>；只要求对 MCP 暴露的命令
+                </td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-8</td>
+                <td>Claude Desktop</td>
+                <td>只写文档：<code>mcp-remote --header</code></td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-9</td>
+                <td><code>listen: any</code></td>
+                <td>照常提供 <code>/bridge/mcp</code>，没有特例</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-10</td>
+                <td>新凭证的默认</td>
+                <td>
+                  “敏感内容需询问”；CLI 签发时默认 <code>deny_sensitive</code>
+                </td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-partial">已修订</span><br /><span
+                    class="small"
+                    >按 D-15 的模式改写</span
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>D-11</td>
+                <td>准入被拒时的 HTTP 状态</td>
+                <td>工具结果里的 <code>forbidden</code>，HTTP 200</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-12</td>
+                <td>首版暴露面</td>
+                <td>逐条评审后的名单，评审只剔除。原定 28 条，现为 23 条</td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-partial">已修订</span><br /><span
+                    class="small"
+                    >经 D-13、D-15、D-16</span
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td>D-13</td>
+                <td>五条没有标记而带识别信息的查询</td>
+                <td>从首版去掉；补标记是另一项单独评审的变更</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-14</td>
+                <td>MCP 凭证存在哪里</td>
+                <td>
+                  同一份秘密记录，升到
+                  v2。接受后果：降级到旧版会启动失败，直到在新版里撤销全部 MCP
+                  凭证
+                </td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-15</td>
+                <td>共享策略管什么</td>
+                <td>每一个 MCP 应答都经共享策略；每条凭证一个模式</td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-accent">新增</span>
+                </td>
+              </tr>
+              <tr>
+                <td>D-16</td>
+                <td>是否纳入脱敏</td>
+                <td>
+                  纳入 <code>Mcp</code> 所需的部分：<code>Agent</code>
+                  投影；每条暴露的命令必须声明投影
+                </td>
+                <td>
+                  <span class="badge b-ok">已裁定</span>
+                  <span class="badge b-accent">新增</span>
+                </td>
+              </tr>
+              <tr>
+                <td>D-17</td>
+                <td>逐资源的矩阵</td>
+                <td>不留，只有模式</td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+              <tr>
+                <td>D-18</td>
+                <td>文本类的敏感结果</td>
+                <td>
+                  在
+                  <code>Agent</code>
+                  投影里先过现有的凭据级脱敏；落实时补全共享的键名单
+                </td>
+                <td><span class="badge b-ok">已裁定</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="limits">局限与未验证项</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>项</th>
+                <th>说明</th>
+                <th>在哪里解决</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>没有编译或运行</td>
+                <td>rmcp 只读了源码；设计里的代码都是示意</td>
+                <td>M0 与各卡</td>
+              </tr>
+              <tr>
+                <td>rmcp 的无状态互通</td>
+                <td>
+                  三个修订的客户端在无状态模式下能否互通、所列特性集能否在本仓库的工具链下构建
+                </td>
+                <td>M0（1），<span class="badge b-missing">硬性条件</span></td>
+              </tr>
+              <tr>
+                <td>编译期报错的机制</td>
+                <td>
+                  <code>RpcInput</code> 标记加生成表能否在缺
+                  <code>JsonSchema</code> 时给出编译错误
+                </td>
+                <td>M0（2），<span class="badge b-missing">硬性条件</span></td>
+              </tr>
+              <tr>
+                <td><code>schemars</code> 与 serde</td>
+                <td>
+                  手写 <code>Deserialize</code>、嵌套类型、<code
+                    >serde(with)</code
+                  >
+                  的 schema 是否如实；与 Specta 并存
+                </td>
+                <td>M0（3）</td>
+              </tr>
+              <tr>
+                <td><code>rpc(privacy)</code> 用在普通查询上</td>
+                <td>
+                  整个投影设计依赖宏接受普通结果类型实现
+                  <code>RpcResponseProjection</code>
+                </td>
+                <td>M0（4）</td>
+              </tr>
+              <tr>
+                <td>网页事实</td>
+                <td>
+                  规范各页、客户端文档、厂商博客由调研子代理抓取，未逐页复核；Claude
+                  Code 对 <code>401</code>/<code>403</code>
+                  的说法在两次调研里不一致
+                </td>
+                <td>E-2 的冒烟</td>
+              </tr>
+              <tr>
+                <td>评审的部分引用</td>
+                <td>
+                  第二、三轮里关于 rmcp 取消通知、日志过滤现状、<code
+                    >nyanpasu-server</code
+                  >
+                  的组装、认证客户端的等待等引用，未逐行复核
+                </td>
+                <td>对应卡里各有一项会失败的测试</td>
+              </tr>
+              <tr>
+                <td>凭据键的名单</td>
+                <td>
+                  只对照了仓库里的一份 mihomo 配置样例，没有对照上游的字段定义
+                </td>
+                <td>卡 C-2</td>
+              </tr>
+              <tr>
+                <td>r7 – r9 未经评审</td>
+                <td>三轮上限用尽之后的结构只有 team-lead 的抽查</td>
+                <td>实施前可再评一轮</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 class="part" id="part-2">第二部分 · 设计</h2>
+        <h2 id="d-layers">1. 层次与请求管线</h2>
+        <figure>
+          <div class="dg-wrap">
+            <svg
+              class="dg"
+              viewBox="0 0 1000 560"
+              role="img"
+              aria-label="MCP 请求经过的层：监听、认证中间件、rmcp 入口、统一 RPC 管线的七层，以及旁边的认证所有者与确认所有者。"
+            >
+              <defs>
+                <marker
+                  id="p1"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p1-hot"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-hot" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p1-good"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-good" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+              </defs>
+              <rect class="box" x="20" y="20" width="200" height="52" rx="7" />
+              <text class="hd" x="120" y="39" text-anchor="middle">
+                agent 客户端
+              </text>
+              <text class="note" x="120" y="56" text-anchor="middle">
+                Claude Code · Codex · Cursor …
+              </text>
+              <rect class="box" x="20" y="110" width="200" height="52" rx="7" />
+              <text class="hd" x="120" y="129" text-anchor="middle">
+                HTTP 监听（现有）
+              </text>
+              <text class="note" x="120" y="146" text-anchor="middle">
+                TLS · 局域网放行表
+              </text>
+              <rect class="box" x="20" y="200" width="200" height="84" rx="7" />
+              <text class="hd" x="120" y="219" text-anchor="middle">
+                http_auth_middleware
+              </text>
+              <text class="note" x="120" y="236" text-anchor="middle">
+                Host / Origin 校验
+              </text>
+              <text class="note" x="120" y="251" text-anchor="middle">
+                Bearer → 受众配对
+              </text>
+              <text class="note" x="120" y="266" text-anchor="middle">
+                Nyanpasu-Max-Role 取交集
+              </text>
+              <rect class="box" x="20" y="322" width="200" height="68" rx="7" />
+              <text class="hd" x="120" y="341" text-anchor="middle">
+                rmcp StreamableHttpService
+              </text>
+              <text class="note" x="120" y="358" text-anchor="middle">
+                route_service(/bridge/mcp)
+              </text>
+              <text class="note" x="120" y="373" text-anchor="middle">
+                无状态 · 三个修订
+              </text>
+              <rect class="box" x="20" y="428" width="200" height="84" rx="7" />
+              <text class="hd" x="120" y="447" text-anchor="middle">
+                McpEntry
+              </text>
+              <text class="note" x="120" y="464" text-anchor="middle">
+                四个元工具
+              </text>
+              <text class="note" x="120" y="479" text-anchor="middle">
+                起算 30 s 期限
+              </text>
+              <text class="note" x="120" y="494" text-anchor="middle">
+                看着取消与关闭信号
+              </text>
+              <path class="ln" d="M120,72 L120,110" marker-end="url(#p1)" />
+              <path class="ln" d="M120,162 L120,200" marker-end="url(#p1)" />
+              <path class="ln" d="M120,284 L120,322" marker-end="url(#p1)" />
+              <path class="ln" d="M120,390 L120,428" marker-end="url(#p1)" />
+              <text class="note" x="128" y="96" text-anchor="start">
+                POST · Authorization: Bearer
+              </text>
+              <text class="hd" x="520" y="34" text-anchor="middle">
+                统一 RPC 管线 · UnifiedRpc::call_shared（nyanpasu-rpc）
+              </text>
+              <rect class="box" x="380" y="50" width="280" height="52" rx="7" />
+              <text class="hd" x="520" y="69" text-anchor="middle">③ 审计</text>
+              <text class="note" x="520" y="86" text-anchor="middle">
+                dispatch_with_audit
+              </text>
+              <rect
+                class="box"
+                x="380"
+                y="116"
+                width="280"
+                height="52"
+                rx="7"
+              />
+              <text class="hd" x="520" y="135" text-anchor="middle">
+                ④ 解析
+              </text>
+              <text class="note" x="520" y="152" text-anchor="middle">
+                方法名 → handler + 表项
+              </text>
+              <path class="ln" d="M520,102 L520,116" marker-end="url(#p1)" />
+              <rect
+                class="box"
+                x="380"
+                y="182"
+                width="280"
+                height="52"
+                rx="7"
+              />
+              <text class="hd" x="520" y="201" text-anchor="middle">
+                ⑤ Authority::admit
+              </text>
+              <text class="note" x="520" y="218" text-anchor="middle">
+                目标 Mcp · 只看 Permissions
+              </text>
+              <path class="ln" d="M520,168 L520,182" marker-end="url(#p1)" />
+              <rect
+                class="self"
+                x="380"
+                y="248"
+                width="280"
+                height="66"
+                rx="7"
+              />
+              <text class="hd" x="520" y="267" text-anchor="middle">
+                ⑥ 数据共享
+              </text>
+              <text class="note" x="520" y="284" text-anchor="middle">
+                每个应答按凭证的模式
+              </text>
+              <text class="note" x="520" y="299" text-anchor="middle">
+                拒绝在前 · 交付或询问在后
+              </text>
+              <path class="ln" d="M520,234 L520,248" marker-end="url(#p1)" />
+              <rect
+                class="self"
+                x="380"
+                y="328"
+                width="280"
+                height="66"
+                rx="7"
+              />
+              <text class="hd" x="520" y="347" text-anchor="middle">
+                ⑦ 脱敏
+              </text>
+              <text class="note" x="520" y="364" text-anchor="middle">
+                Mcp 取 Agent 投影
+              </text>
+              <text class="note" x="520" y="379" text-anchor="middle">
+                文本类先过凭据级脱敏
+              </text>
+              <path class="ln" d="M520,314 L520,328" marker-end="url(#p1)" />
+              <rect
+                class="box"
+                x="380"
+                y="408"
+                width="280"
+                height="52"
+                rx="7"
+              />
+              <text class="hd" x="520" y="427" text-anchor="middle">
+                handler
+              </text>
+              <text class="note" x="520" y="444" text-anchor="middle">
+                → NyanpasuClient
+              </text>
+              <path class="ln" d="M520,394 L520,408" marker-end="url(#p1)" />
+              <path
+                class="ln"
+                d="M220,470 C300,470 300,76 380,76"
+                marker-end="url(#p1)"
+              />
+              <text class="note" x="232" y="494" text-anchor="start">
+                call_shared
+              </text>
+              <rect
+                class="box"
+                x="760"
+                y="110"
+                width="220"
+                height="68"
+                rx="7"
+              />
+              <text class="hd" x="870" y="129" text-anchor="middle">
+                RemoteAccessAuthActor
+              </text>
+              <text class="note" x="870" y="146" text-anchor="middle">
+                token：Grant · 受众 · 共享模式
+              </text>
+              <text class="note" x="870" y="161" text-anchor="middle">
+                记录 v2 · 放行点的答复
+              </text>
+              <rect
+                class="box"
+                x="760"
+                y="300"
+                width="220"
+                height="84"
+                rx="7"
+              />
+              <text class="hd" x="870" y="319" text-anchor="middle">
+                ShareConfirmActor（core）
+              </text>
+              <text class="note" x="870" y="336" text-anchor="middle">
+                待确认项的状态机
+              </text>
+              <text class="note" x="870" y="351" text-anchor="middle">
+                铸造 ShareId · 名额
+              </text>
+              <text class="note" x="870" y="366" text-anchor="middle">
+                只它改状态
+              </text>
+              <rect
+                class="box"
+                x="760"
+                y="440"
+                width="220"
+                height="68"
+                rx="7"
+              />
+              <text class="hd" x="870" y="459" text-anchor="middle">
+                桌面壳 SharePresenter
+              </text>
+              <text class="note" x="870" y="476" text-anchor="middle">
+                窗口提示 / 托盘通知
+              </text>
+              <text class="note" x="870" y="491" text-anchor="middle">
+                AI 集成页的待确认列表
+              </text>
+              <path
+                class="ln ret"
+                d="M220,212 C330,212 250,12 440,12 L810,12 C862,12 870,60 870,110"
+                marker-end="url(#p1)"
+              />
+              <text class="note" x="852" y="96" text-anchor="end">
+                authenticate_token(受众 = Mcp)
+              </text>
+              <path
+                class="ln hot"
+                d="M660,296 C700,296 720,330 760,336"
+                marker-end="url(#p1-hot)"
+              />
+              <text class="hot-text" x="712" y="290" text-anchor="middle">
+                询问
+              </text>
+              <path
+                class="ln ret"
+                d="M870,384 L870,440"
+                marker-end="url(#p1)"
+              />
+              <text class="note" x="880" y="416" text-anchor="start">
+                只带计数
+              </text>
+              <path
+                class="ln ret"
+                d="M760,360 C720,380 700,180 760,160"
+                marker-end="url(#p1)"
+              />
+              <text class="note" x="690" y="258" text-anchor="middle">
+                核对凭证
+              </text>
+            </svg>
+          </div>
+          <figcaption>
+            图 1 · 层次。草图里的“传输层 → rmcp 入口 → 数据共享 → 脱敏 → 客户端
+            API”落在现有管线上：⑥、⑦ 属于管线而不属于 rmcp
+            入口，凭证与入口的绑定由认证层保证。
+          </figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>步</th>
+                <th>谁</th>
+                <th>做什么</th>
+                <th>失败时</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>中间件</td>
+                <td>
+                  Host/Origin；路径恰为 <code>/bridge/mcp</code>；<code
+                    >authenticate_token(受众 = Mcp)</code
+                  >；<code>Grant ∩ Nyanpasu-Max-Role</code>；去掉
+                  <code>Authorization</code> 与 <code>Cookie</code>
+                </td>
+                <td>
+                  <code>403</code> / <code>401</code> / <code>503</code> /
+                  <code>400</code>
+                </td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>McpEntry</td>
+                <td>
+                  工具名 → effect；取 <code>AuthContext</code> 与
+                  <code>McpCap</code>
+                </td>
+                <td>协议错误（未知工具）</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td><code>call_shared</code> 准备</td>
+                <td>
+                  ③ 审计 ④ 解析 ⑤ <code>Authority::admit</code> → 工具与 effect
+                  → <code>sharing::admit</code>
+                </td>
+                <td>
+                  <code>Rejected</code>：<code>unknown_method</code> /
+                  <code>unsupported</code> / <code>forbidden</code> /
+                  <code>invalid_params</code> / <code>sharing_denied</code>
+                </td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td><code>call_shared</code> 执行</td>
+                <td>要询问时先占名额；⑦ 定投影；运行 handler</td>
+                <td>
+                  占不到名额：<code>sharing_unavailable</code>，handler 不运行
+                </td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td><code>call_shared</code> 交付</td>
+                <td>
+                  冻结成一段文本；询问或直接交付；带标记的过放行点；审计记
+                  <code>Sharing</code>
+                </td>
+                <td>
+                  <code>sharing_denied</code> / <code>sharing_timeout</code> /
+                  <code>sharing_unavailable</code>
+                </td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>McpEntry</td>
+                <td>
+                  一个文本块；错误是 <code>isError</code> 的工具结果，HTTP 200
+                </td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="d-crates">2. 包与模块</h2>
+        <figure>
+          <div class="dg-wrap">
+            <svg
+              class="dg"
+              viewBox="0 0 1000 470"
+              role="img"
+              aria-label="各 crate 里新增与改动的模块，以及依赖方向。"
+            >
+              <defs>
+                <marker
+                  id="p2"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p2-hot"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-hot" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p2-good"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-good" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+              </defs>
+              <rect class="box" x="20" y="40" width="300" height="100" rx="7" />
+              <text class="hd" x="170" y="59" text-anchor="middle">
+                nyanpasu-config
+              </text>
+              <text class="note" x="170" y="76" text-anchor="middle">
+                SharingMode（新）
+              </text>
+              <text class="note" x="170" y="91" text-anchor="middle">
+                Permissions::intersect（新）
+              </text>
+              <text class="note" x="170" y="106" text-anchor="middle">
+                redact.rs：补全凭据键的名单
+              </text>
+              <rect
+                class="box"
+                x="350"
+                y="40"
+                width="300"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="500" y="59" text-anchor="middle">
+                nyanpasu-contracts
+              </text>
+              <text class="note" x="500" y="76" text-anchor="middle">
+                Principal::Mcp · TokenAudience · Sharing（新）
+              </text>
+              <text class="note" x="500" y="91" text-anchor="middle">
+                AuthContext::sharing 与 AuthContext::mcp
+              </text>
+              <rect
+                class="box"
+                x="680"
+                y="40"
+                width="300"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="830" y="59" text-anchor="middle">
+                nyanpasu-core
+              </text>
+              <text class="note" x="830" y="76" text-anchor="middle">
+                auth_store：受众 · 共享模式 · 记录 v2
+              </text>
+              <text class="note" x="830" y="91" text-anchor="middle">
+                ShareConfirmActor 与类型化客户端（新）
+              </text>
+              <text class="note" x="830" y="106" text-anchor="middle">
+                SharePresenter 端口（新）
+              </text>
+              <rect
+                class="box"
+                x="20"
+                y="200"
+                width="300"
+                height="120"
+                rx="7"
+              />
+              <text class="hd" x="170" y="219" text-anchor="middle">
+                nyanpasu-rpc（特性 http + mcp）
+              </text>
+              <text class="note" x="170" y="236" text-anchor="middle">
+                sharing.rs（新）· registry：call_shared
+              </text>
+              <text class="note" x="170" y="251" text-anchor="middle">
+                redaction.rs · privacy.rs：Agent 一档
+              </text>
+              <text class="note" x="170" y="266" text-anchor="middle">
+                ports：ShareConfirmer（新）
+              </text>
+              <text class="note" x="170" y="281" text-anchor="middle">
+                http/：受众配对 · Origin · mcp_cap
+              </text>
+              <text class="note" x="170" y="296" text-anchor="middle">
+                mcp/：mod · catalog · tools · confirm · generated
+              </text>
+              <rect
+                class="box"
+                x="350"
+                y="200"
+                width="300"
+                height="120"
+                rx="7"
+              />
+              <text class="hd" x="500" y="219" text-anchor="middle">
+                backend/tauri 与 nyanpasu-server
+              </text>
+              <text class="note" x="500" y="236" text-anchor="middle">
+                tauri：SharePresenter 的实现 · 注入确认端口
+              </text>
+              <text class="note" x="500" y="251" text-anchor="middle">
+                两个壳：关掉 rmcp 目标的日志
+              </text>
+              <text class="note" x="500" y="266" text-anchor="middle">
+                server：打开特性 mcp，不注入呈现端口
+              </text>
+              <rect
+                class="box"
+                x="680"
+                y="200"
+                width="300"
+                height="120"
+                rx="7"
+              />
+              <text class="hd" x="830" y="219" text-anchor="middle">
+                frontend
+              </text>
+              <text class="note" x="830" y="236" text-anchor="middle">
+                settings/nyanpasu/ai-integration/
+              </text>
+              <text class="note" x="830" y="251" text-anchor="middle">
+                只经 @nyanpasu/rpc 与 @nyanpasu/query
+              </text>
+              <rect
+                class="box"
+                x="20"
+                y="360"
+                width="300"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="170" y="379" text-anchor="middle">
+                nyanpasu-rpc-wire / -protocol
+              </text>
+              <text class="note" x="170" y="396" text-anchor="middle">
+                RpcTarget::Mcp（新）
+              </text>
+              <text class="note" x="170" y="411" text-anchor="middle">
+                ResponseVisibility::Agent（新）
+              </text>
+              <rect
+                class="box"
+                x="350"
+                y="360"
+                width="300"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="500" y="379" text-anchor="middle">
+                nyanpasu-rpc-macro
+              </text>
+              <text class="note" x="500" y="396" text-anchor="middle">
+                生成器：mcp 目标的规则，写出 MCP_OPERATIONS
+              </text>
+              <text class="note" x="500" y="411" text-anchor="middle">
+                #[rpc]：为中立命令生成 RpcInput 标记
+              </text>
+              <path class="ln" d="M320,90 L350,90" marker-end="url(#p2)" />
+              <path class="ln" d="M650,90 L680,90" marker-end="url(#p2)" />
+              <path
+                class="ln"
+                d="M830,140 C830,180 200,170 170,200"
+                marker-end="url(#p2)"
+              />
+              <path class="ln" d="M320,260 L350,260" marker-end="url(#p2)" />
+              <path class="ln" d="M650,260 L680,260" marker-end="url(#p2)" />
+              <path class="ln" d="M170,360 L170,320" marker-end="url(#p2)" />
+              <path
+                class="ln ret"
+                d="M500,360 C500,340 240,340 220,320"
+                marker-end="url(#p2)"
+              />
+              <text class="note" x="500" y="22" text-anchor="middle">
+                依赖方向如箭头；rmcp 只进 nyanpasu-rpc，中立 crate 不依赖 Tauri
+              </text>
+            </svg>
+          </div>
+          <figcaption>
+            图 2 · 包与模块。MCP 适配层是 <code>nyanpasu-rpc</code> 的特性
+            <code>mcp</code>（C-1 起带 <code>schemars</code>，E-1 加
+            <code>rmcp</code>），不新建 crate。虚线：生成器写出并提交
+            <code>mcp/generated.rs</code>。
+          </figcaption>
+        </figure>
+        <h2 id="d-identity">3. 身份、受众与记录 v2</h2>
+        <pre><code>// nyanpasu-config::application::permission
+pub enum SharingMode { AllowAll, AskSensitive /* 默认 */, AskAll, DenySensitive }
+impl Permissions { pub const fn intersect(self, other: Permissions) -&gt; Permissions; }
+
+// nyanpasu-contracts::auth
+pub enum Principal { /* 现有五种 */ Mcp { id: String, name: String } }   // audit_label: "mcp:&lt;id&gt;"
+pub enum TokenAudience { RemoteAccess /* 默认 */, Mcp }
+pub enum Sharing { All, Policy(SharingMode) }
+pub struct AuthContext { pub principal: Principal, pub role: Option&lt;Role&gt;,
+                         pub permissions: Permissions, pub sharing: Sharing }</code></pre>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>规则</th>
+                <th>内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>双向配对</td>
+                <td>
+                  <code>Mcp</code> 受众的 token 只在
+                  <code>/bridge/mcp</code> 上受理；<code>/bridge/mcp</code>
+                  只受理它。在 <code>/bridge/rpc</code>、事件、流、路由与
+                  <code>/bridge/login</code> 上无效
+                </td>
+              </tr>
+              <tr>
+                <td>不泄露</td>
+                <td>
+                  受众不符与凭证无效同为
+                  <code>401</code>；受众相符之后才更新最近使用时间
+                </td>
+              </tr>
+              <tr>
+                <td>构造</td>
+                <td>
+                  <code>Principal::Mcp</code> 只能经
+                  <code>AuthContext::mcp</code> 构造；registry 分派前核对“<code
+                    >Mcp</code
+                  >
+                  当且仅当 <code>Sharing::Policy</code>”
+                </td>
+              </tr>
+              <tr>
+                <td>路径</td>
+                <td>
+                  <code>route_service</code> 恰好匹配；入口合入前由回
+                  <code>404</code> 的占位路由占住
+                </td>
+              </tr>
+              <tr>
+                <td>Origin / Host</td>
+                <td>
+                  <code>Origin</code> 存在时须是序列化 origin
+                  的形状，读不出、重复或形状不对为
+                  <code>403</code>（对整个监听收紧）
+                </td>
+              </tr>
+              <tr>
+                <td>记录 v2</td>
+                <td>
+                  有 <code>Mcp</code> 受众的 token 时写 v2，否则写
+                  v1；两个版本各有解码类型，v2 必须写明受众
+                </td>
+              </tr>
+              <tr>
+                <td><b>降级的后果（D-14）</b></td>
+                <td>
+                  记录是 v2
+                  时旧版应用<b>启动失败</b>。恢复：重新打开新版，撤销全部 MCP
+                  凭证且撤销成功返回，记录回到 v1；TLS 根与普通 token 不受影响
+                </td>
+              </tr>
+              <tr>
+                <td>撤销落盘失败</td>
+                <td>用可区分的结果带出；只对待写出的 id 的再次撤销重写记录</td>
+              </tr>
+              <tr>
+                <td>新 CLI 对旧宿主</td>
+                <td>先确认宿主支持，再核对返回的受众，然后才输出密钥</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="d-narrow">4. 收窄：<code>Nyanpasu-Max-Role</code></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>请求头</th>
+                <th>有效权限</th>
+                <th>变更入口</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>缺省</td>
+                <td><code>Grant ∩ viewer</code></td>
+                <td>
+                  关闭：<code>tools/list</code> 省略
+                  <code>mutate_operation</code>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>viewer</code> / <code>operator</code> /
+                  <code>admin</code>
+                </td>
+                <td><code>Grant ∩ 该角色</code></td>
+                <td>打开；逐条仍由 <code>Authority</code> 判定</td>
+              </tr>
+              <tr>
+                <td>其他值、空值、重复</td>
+                <td><code>400</code></td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small">
+          逐请求计算，无状态；只在
+          <code>/bridge/mcp</code> 上读。它不是硬上限——要硬性只读就签发
+          <code>viewer</code>。这是 #6492 的 HTTP/MCP 一侧；本地 socket
+          握手的收窄不在范围内。
+        </p>
+        <h2 id="d-tools">5. 渐进披露与暴露面</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>工具</th>
+                <th>输入</th>
+                <th>注解</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>list_operations</code></td>
+                <td><code>{ namespace? }</code></td>
+                <td><code>readOnlyHint</code>、封闭世界</td>
+                <td>
+                  有效权限与共享模式；此刻准入会放行的操作及各自的交付方式
+                </td>
+              </tr>
+              <tr>
+                <td><code>describe_operation</code></td>
+                <td><code>{ id }</code></td>
+                <td>同上</td>
+                <td>
+                  说明、所需权限、入参的 JSON Schema。目录里没有的
+                  <code>id</code> 一律 <code>unknown_method</code>
+                </td>
+              </tr>
+              <tr>
+                <td><code>read_operation</code></td>
+                <td><code>{ id, arguments? }</code></td>
+                <td><code>readOnlyHint</code></td>
+                <td>调用 effect 为 <code>query</code> 的操作</td>
+              </tr>
+              <tr>
+                <td><code>mutate_operation</code></td>
+                <td><code>{ id, arguments? }</code></td>
+                <td><code>destructiveHint</code></td>
+                <td>调用 effect 为 <code>mutation</code> 的操作</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>执行工具的错误次序</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>次序</th>
+                <th>情形</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>没有这个名字</td>
+                <td><code>unknown_method</code></td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>目标不含 <code>Mcp</code>、未链接、缺必需的 capability</td>
+                <td><code>unsupported</code></td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>有效权限不足</td>
+                <td><code>forbidden</code>（D-11）</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>工具与 effect 不符</td>
+                <td><code>invalid_params</code></td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td><code>mutate_operation</code> 而没有带上限头</td>
+                <td><code>forbidden</code> / <code>max_role_required</code></td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>共享模式对这一行是拒绝</td>
+                <td><code>forbidden</code> / <code>sharing_denied</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3><code>mcp</code> 目标的规则</h3>
+        <ol class="tight">
+          <li>
+            顶层模块不得写
+            <code>mcp</code>；开放的最小单位是二级命名空间或单条命令。
+          </li>
+          <li>
+            <code>mcp</code> 不受“子集”检查，按最近的显式
+            <code>expose</code> 生效。
+          </li>
+          <li>
+            对最终的行检查：含 <code>mcp</code> 必须含
+            <code>http</code>、必须声明
+            <code>privacy</code>、必须是命令、不得是带
+            <code>sensitive</code> 的变更、声明根不得是
+            <code>tauri/src/ipc.rs</code>。
+          </li>
+          <li>暴露集合由一个夹具钉住，增删都是评审过的变更。</li>
+        </ol>
+        <h3>首版：23 条，带标记的 4 条</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>范围</th>
+                <th>命令</th>
+                <th><code>Agent</code> 投影去掉什么</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>proxy.groups</code></td>
+                <td><code>get_proxies</code>、<code>mutate_proxies</code></td>
+                <td>
+                  节点的
+                  <code>interface</code
+                  >、<code>routing_mark</code>、规则集的名字与对象；节点名与组名保留
+                </td>
+              </tr>
+              <tr>
+                <td></td>
+                <td>
+                  <code>get_proxy_group_icons</code
+                  >（敏感）、<code>select_proxy</code>、<code
+                    >clear_proxy_fixed</code
+                  >
+                </td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>proxy.mode</code>、<code>proxy.delay</code></td>
+                <td>
+                  <code>set_proxy_mode</code
+                  >；<code>clash_api_get_proxy_delay</code>、<code
+                    >clash_api_get_group_delay</code
+                  >
+                </td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>traffic.usage</code></td>
+                <td><code>get_traffic_summary</code></td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>system.*</code></td>
+                <td>
+                  <code>get_core_status_summary</code
+                  >、<code>get_configuration_status_summary</code>、<code
+                    >get_service_status_summary</code
+                  >
+                </td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td></td>
+                <td><code>get_sys_proxy</code></td>
+                <td>主机与绕过列表；留是否启用与端口</td>
+              </tr>
+              <tr>
+                <td><code>profile.*</code></td>
+                <td><code>get_profiles_listing</code></td>
+                <td>
+                  名字恰等于由订阅 URL 推出的回退名时去掉 <code>name</code>
+                </td>
+              </tr>
+              <tr>
+                <td></td>
+                <td>
+                  <code>read_profile_file</code
+                  >（敏感）、<code>get_runtime_yaml</code>（敏感）
+                </td>
+                <td>凭据级脱敏（D-18）</td>
+              </tr>
+              <tr>
+                <td></td>
+                <td>
+                  <code>activate_profile</code>、<code>update_profile</code>
+                </td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><code>settings.*</code></td>
+                <td><code>get_app_settings</code></td>
+                <td>绕过列表、自定义 STUN 主机、局域网放行表</td>
+              </tr>
+              <tr>
+                <td></td>
+                <td><code>get_clash_settings</code></td>
+                <td>控制器的监听主机、透明代理的网卡名</td>
+              </tr>
+              <tr>
+                <td><code>logs.core</code></td>
+                <td>
+                  <code>query_core_logs_summary</code
+                  >；<code>query_core_logs</code>（敏感）
+                </td>
+                <td>
+                  每行的 <code>payload</code> 过 <code>redact_text</code>；<code
+                    >id</code
+                  >
+                  与游标原样
+                </td>
+              </tr>
+              <tr>
+                <td><code>proxy.connections</code></td>
+                <td><code>clash_api_delete_connections</code></td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <b>不在首版的五条（D-13）：</b
+          ><code>query_traffic_report</code
+          >、<code>query_traffic_usage</code>、<code>query_traffic_usage_by_keys</code>（结果就是按进程路径、源地址、目标主机分组的表）；<code>clash_api_get_rules</code>（规则原文）；<code>clash_api_get_providers_rules</code>（规则集的名字与元数据）。识别性的字段是它们的全部内容，投影无从下手；没有标记就会在默认模式下不经询问地交付。<code
+            >system</code
+          >
+          的写首版一条不开。
+        </p>
+        <h2 id="d-schema">6. 入参 schema：<code>schemars</code></h2>
+        <pre><code>// #[rpc] 为每条中立命令生成，不带任何约束
+pub struct __select_proxy_input;
+impl RpcInput for __select_proxy_input {
+    type Fields = (String, String);
+    const NAMES: &amp;'static [&amp;'static str] = &amp;["group", "name"];
+}
+
+// nyanpasu-rpc/src/mcp/generated.rs —— 生成器写出并提交，只含目标有 Mcp 的命令
+pub const MCP_OPERATIONS: &amp;[McpOperation] = &amp;[
+    McpOperation { name: "select_proxy", summary: "…",
+                   input_schema: fields_schema::&lt;crate::commands::proxy::groups::__select_proxy_input&gt; },
+    McpOperation { name: "read_profile_file", summary: "…",
+                   input_schema: request_schema::&lt;&lt;ReadProfileFile as Operation&gt;::Request&gt; },
+];</code></pre>
+        <ul class="tight">
+          <li>
+            宏看不到命名空间的暴露面，所以它只陈述事实；约束落在生成表引用它的那一行——缺
+            <code>JsonSchema</code> 即编译失败。
+          </li>
+          <li>
+            <code>schemars = '1'</code>，与 rmcp 同一个主版本；只有
+            <code>mcp</code> 特性打开各 crate 的派生。
+          </li>
+          <li>
+            省略 <code>arguments</code> 等同 <code>{}</code>；无参命令的 schema
+            拒绝任何属性；派生不读 <code>alias</code> 与
+            <code>serde(with)</code>，用到的字段要显式覆盖。
+          </li>
+          <li>输出 schema 本期不做。</li>
+        </ul>
+        <h2 id="d-modes">7. 共享模式（⑥）</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>模式</th>
+                <th>普通（不带标记）</th>
+                <th>敏感（带标记）</th>
+                <th>用在哪</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>allow_all</code> 全部允许</td>
+                <td><span class="badge b-ok">交付</span></td>
+                <td><span class="badge b-ok">交付</span></td>
+                <td>自己机器上完全信任的 agent</td>
+              </tr>
+              <tr>
+                <td><code>ask_sensitive</code> 敏感内容需询问（默认）</td>
+                <td><span class="badge b-ok">交付</span></td>
+                <td><span class="badge b-partial">询问</span></td>
+                <td>一般情况</td>
+              </tr>
+              <tr>
+                <td><code>ask_all</code> 全部询问</td>
+                <td><span class="badge b-partial">询问</span></td>
+                <td><span class="badge b-partial">询问</span></td>
+                <td>想逐次看 agent 拿走了什么</td>
+              </tr>
+              <tr>
+                <td><code>deny_sensitive</code> 拒绝敏感内容</td>
+                <td><span class="badge b-ok">交付</span></td>
+                <td><span class="badge b-missing">拒绝</span></td>
+                <td>无人值守、无界面的宿主</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="tight">
+          <li>
+            每条凭证一个模式，随认证取快照；改模式先落盘后生效，只影响之后认证的请求。
+          </li>
+          <li>“交付”放行的是投影后的那一份——模式省掉的是预览，不是脱敏。</li>
+          <li>错误不经确认：对 <code>Mcp</code> 是固定文案。</li>
+          <li>
+            <code>ask_all</code>
+            下变更也会被询问，那时变更已经执行；页面与错误消息里写明。
+          </li>
+          <li>无界面的宿主上两个“询问”的模式等同拒绝。</li>
+        </ul>
+        <h2 id="d-agent">8. <code>Agent</code> 投影与文本脱敏（⑦）</h2>
+        <p>
+          <code>ResponseVisibility</code> 加一档 <code>Agent</code>，只有
+          <code>Mcp</code> 调用者取它，不看 <code>write</code>、不看模式。<code
+            >Full</code
+          >
+          与 <code>Public</code>、其他传输看到的形状不变；错误对
+          <code>Agent</code> 就是 <code>Public</code> 的固定文案。
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>规则</th>
+                <th>内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>必须声明</td>
+                <td>
+                  每条对 MCP 暴露的命令写
+                  <code>rpc(privacy)</code>，结果类型实现
+                  <code>RpcResponseProjection</code>；生成器强制
+                </td>
+              </tr>
+              <tr>
+                <td>减字段</td>
+                <td>
+                  有识别性字段的类型用穷尽解构的视图；原类型加字段不归类即编译失败。只去掉，不留占位符
+                </td>
+              </tr>
+              <tr>
+                <td>去掉的</td>
+                <td>
+                  本机网络的标识（网卡名、监听地址、局域网网段）、内网的主机名与域名、订阅方的标识
+                </td>
+              </tr>
+              <tr>
+                <td>保留的</td>
+                <td>节点名、代理组名、配置的 uid——agent 要拿它们去调用</td>
+              </tr>
+              <tr>
+                <td>加一档要改的地方</td>
+                <td>
+                  <code>nyanpasu-rpc-protocol/src/error.rs:72</code
+                  >、<code>:85</code>；<code>privacy.rs:135</code>、<code>:194</code>、<code>:214</code>、<code>:323</code>；<code>nyanpasu-rpc/src/error.rs</code>；<code>http/routes.rs:297</code>、<code>:396</code>、<code>:509</code>；<code>redaction.rs</code>；<code>tauri/src/unified_rpc/icons.rs</code>。枚举不留
+                  <code>_</code> 分支
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>文本类的敏感结果（D-18）</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>命令</th>
+                <th>结果</th>
+                <th><code>Agent</code> 投影</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>read_profile_file</code></td>
+                <td><code>String</code>：YAML 或脚本</td>
+                <td>
+                  能解析成 YAML 映射：解析 → <code>redact_config</code> →
+                  重新序列化。否则逐行 <code>redact_text</code>
+                </td>
+              </tr>
+              <tr>
+                <td><code>get_runtime_yaml</code></td>
+                <td><code>String</code>：YAML</td>
+                <td>同上</td>
+              </tr>
+              <tr>
+                <td><code>query_core_logs</code></td>
+                <td>
+                  <code
+                    >CoreLogPage { rows: Vec&lt;CoreLogRow { id, record:
+                    CoreLogRecord { …, payload }, truncated }&gt;, cursor, more,
+                    status }</code
+                  >
+                </td>
+                <td>
+                  每行的 <code>payload</code> 过
+                  <code>redact_text</code
+                  >；<code>id</code>、<code>cursor</code>、<code>more</code>、<code
+                    >status</code
+                  >
+                  原样
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>键 / 内容</th>
+                <th>处理</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>凭据（现有）</td>
+                <td>
+                  <code>secret</code
+                  >、<code>password</code>、<code>token</code>、<code>private-key</code>、<code>auth-str</code>、<code
+                    >authentication</code
+                  >
+                </td>
+                <td><code>&lt;redacted&gt;</code></td>
+              </tr>
+              <tr>
+                <td>凭据（本稿补）</td>
+                <td>
+                  <code>uuid</code
+                  >、<code>psk</code>、<code>pre-shared-key</code>、<code
+                    >obfs-password</code
+                  >
+                </td>
+                <td>
+                  <code>&lt;redacted&gt;</code
+                  >；连带收紧运行时检查视图与诊断打包
+                </td>
+              </tr>
+              <tr>
+                <td>URL</td>
+                <td>用户信息、每个查询参数的值</td>
+                <td>逐行的一路里已被现有规则抹掉；路径里的密钥还在</td>
+              </tr>
+              <tr>
+                <td>分享级（不在这一级）</td>
+                <td>
+                  <code>server</code>、端口、SNI、Reality 的
+                  <code>public-key</code> 与
+                  <code>short-id</code>、<code>username</code>、URL 的主机与路径
+                </td>
+                <td>保留；留给 #5946 的 <code>Share</code> 等级（E-M10）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small">
+          <code>read_profile_file</code> 与 <code>get_runtime_yaml</code> 先解析
+          YAML 再按键脱敏，是因为逐行的规则管不到块标量里的私钥（卡 C-2
+          有这一例）。代价：<code>Agent</code> 一档里这两条的 YAML
+          没有注释，格式是重新排过的；解析不了的文本（脚本等）退回逐行的
+          <code>redact_text</code>。这一点是起草时加的，team-lead
+          自核后同意保留。与 #5946 的关系：不复用投影（它要一致的占位符，agent
+          要真名），共同的底子是 <code>nyanpasu-config/src/redact.rs</code>。
+        </p>
+        <h2 id="d-confirm">9. 确认：所有者、适配层、放行与撤销</h2>
+        <figure>
+          <div class="dg-wrap">
+            <svg
+              class="dg"
+              viewBox="0 0 1000 400"
+              role="img"
+              aria-label="待确认项的状态机：Reading、Pending、Releasing、Abandoned 与终态。"
+            >
+              <defs>
+                <marker
+                  id="p3"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p3-hot"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-hot" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p3-good"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-good" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+              </defs>
+              <rect class="box" x="30" y="180" width="150" height="60" rx="7" />
+              <text class="hd" x="105" y="199" text-anchor="middle">
+                Reading
+              </text>
+              <text class="note" x="105" y="216" text-anchor="middle">
+                已占名额，读取中
+              </text>
+              <rect
+                class="self"
+                x="300"
+                y="180"
+                width="150"
+                height="60"
+                rx="7"
+              />
+              <text class="hd" x="375" y="199" text-anchor="middle">
+                Pending
+              </text>
+              <text class="note" x="375" y="216" text-anchor="middle">
+                文本已交出，等作答
+              </text>
+              <rect
+                class="box"
+                x="560"
+                y="180"
+                width="150"
+                height="60"
+                rx="7"
+              />
+              <text class="hd" x="635" y="199" text-anchor="middle">
+                Releasing
+              </text>
+              <text class="note" x="635" y="216" text-anchor="middle">
+                已允许，核对凭证中
+              </text>
+              <rect
+                class="box"
+                x="820"
+                y="180"
+                width="160"
+                height="60"
+                rx="7"
+              />
+              <text class="hd" x="900" y="199" text-anchor="middle">终态</text>
+              <text class="note" x="900" y="216" text-anchor="middle">
+                结论写进名额 · 文本丢弃
+              </text>
+              <rect class="box" x="30" y="300" width="150" height="60" rx="7" />
+              <text class="hd" x="105" y="319" text-anchor="middle">
+                Abandoned
+              </text>
+              <text class="note" x="105" y="336" text-anchor="middle">
+                请求方已离开
+              </text>
+              <path class="ln" d="M180,210 L300,210" marker-end="url(#p3)" />
+              <text class="note" x="240" y="202" text-anchor="middle">
+                present
+              </text>
+              <path
+                class="ln good"
+                d="M450,210 L560,210"
+                marker-end="url(#p3-good)"
+              />
+              <text class="ok-text" x="505" y="202" text-anchor="middle">
+                允许且早于期限
+              </text>
+              <path
+                class="ln good"
+                d="M710,210 L820,210"
+                marker-end="url(#p3-good)"
+              />
+              <text class="note" x="765" y="202" text-anchor="middle">
+                Released / Revoked
+              </text>
+              <path
+                class="ln hot"
+                d="M375,180 C375,116 900,116 900,180"
+                marker-end="url(#p3-hot)"
+              />
+              <text class="hot-text" x="640" y="118" text-anchor="middle">
+                拒绝 · 到期 · 撤销 · 请求方离开 → Denied / Expired / Revoked
+              </text>
+              <path
+                class="ln ret"
+                d="M150,180 C150,36 950,36 950,180"
+                marker-end="url(#p3)"
+              />
+              <text class="note" x="550" y="58" text-anchor="middle">
+                撤销 · 文本超限 · 通知失败 · 读取出错 → Revoked / Unavailable
+              </text>
+              <path class="ln" d="M105,240 L105,300" marker-end="url(#p3)" />
+              <text class="note" x="112" y="274" text-anchor="start">
+                请求方离开
+              </text>
+              <path
+                class="ln ret"
+                d="M180,330 C500,362 800,332 900,240"
+                marker-end="url(#p3)"
+              />
+              <text class="note" x="540" y="372" text-anchor="middle">
+                finished：读取结束，名额此时才归还
+              </text>
+              <text class="note" x="30" y="390" text-anchor="start">
+                reserve（先登记，再核对凭证）→ Reading
+              </text>
+            </svg>
+          </div>
+          <figcaption>
+            图 3 · 确认的状态机。状态只由 core 的
+            <code>ShareConfirmActor</code> 改；它不等待别的 actor。<code
+              >ShareId</code
+            >
+            由它铸造、不复用；<code>list</code>、<code>preview</code>、<code
+              >resolve</code
+            >
+            只认 <code>Pending</code> 的项。
+          </figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>消息</th>
+                <th>来自</th>
+                <th>所有者做什么</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>reserve</code></td>
+                <td>类型化客户端，读取之前</td>
+                <td>
+                  没有呈现端口、撤销订阅已关闭、名额已满：失败。否则铸造
+                  <code>ShareId</code>，登记为
+                  <code>Reading</code>；客户端随后核对凭证，失效则撤回
+                </td>
+              </tr>
+              <tr>
+                <td><code>present</code></td>
+                <td>适配层，handler 返回之后</td>
+                <td>
+                  不在 <code>Reading</code>：丢弃文本。超过 1 MiB
+                  或通知失败：<code>Unavailable</code>。否则转
+                  <code>Pending</code>
+                </td>
+              </tr>
+              <tr>
+                <td><code>resolve</code></td>
+                <td>桌面的确认命令</td>
+                <td>
+                  不在
+                  <code>Pending</code
+                  >：<code>Gone</code>。已到期限：<code>Expired</code>。拒绝：<code>Denied</code>。允许：转
+                  <code>Releasing</code>，由客户端去核对凭证
+                </td>
+              </tr>
+              <tr>
+                <td>核对的结果</td>
+                <td>类型化客户端</td>
+                <td>
+                  有效 → <code>Released</code>（放行点）；否则
+                  <code>Revoked</code>
+                </td>
+              </tr>
+              <tr>
+                <td><code>expire</code></td>
+                <td>适配层的计时器</td>
+                <td><code>Pending</code> → <code>Expired</code></td>
+              </tr>
+              <tr>
+                <td>请求方离开</td>
+                <td>名额被丢弃或 <code>abandon</code></td>
+                <td>
+                  <code>Reading</code> →
+                  <code>Abandoned</code>，名额不归还；<code>Pending</code> /
+                  <code>Releasing</code>：移除
+                </td>
+              </tr>
+              <tr>
+                <td><code>finished</code></td>
+                <td>适配层，读取结束</td>
+                <td>归还名额</td>
+              </tr>
+              <tr>
+                <td>撤销</td>
+                <td><code>AuthRevocation</code> 广播</td>
+                <td>
+                  该凭证的项 → <code>Revoked</code>。滞后：全部
+                  <code>Revoked</code>，继续；关闭：全部
+                  <code>Revoked</code>，此后 <code>reserve</code> 一律失败
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre><code>// nyanpasu-rpc/src/mcp/confirm.rs —— ShareReservation::finish 的全部内容
+let Some(payload) = payload.filter(|_| !abandoned) else { shares.finished(&amp;ticket); return ShareOutcome::Unavailable };
+let deadline = Instant::now() + SHARE_CONFIRM_LIMIT;                  // 30 秒，单调时钟
+shares.present(&amp;ticket, payload, deadline).await;
+tokio::select! {
+    verdict = ticket.verdict() =&gt; return verdict.into(),
+    () = tokio::time::sleep_until(deadline) =&gt; shares.expire(&amp;ticket),
+}
+ticket.verdict().await.into()   // 到期之后读的仍是所有者写下的那一个结论</code></pre>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>性质</th>
+                <th>怎样保证</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>答复不会落到别的项上</td>
+                <td><code>ShareId</code> 随机、不复用，与线上的请求 id 无关</td>
+              </tr>
+              <tr>
+                <td>期限之后的“允许”不算数</td>
+                <td>适配层起算绝对期限，所有者在处理答复时比较</td>
+              </tr>
+              <tr>
+                <td>结论只有一个</td>
+                <td>每个名额带一次性的结论接收端；先处理的那个胜出</td>
+              </tr>
+              <tr>
+                <td>无关的项不被卡住</td>
+                <td>
+                  所有者不等待别的 actor；两次凭证核对由客户端在其邮箱之外做
+                </td>
+              </tr>
+              <tr>
+                <td>同时在读的结果有上界</td>
+                <td>
+                  名额在读取之前占用、读取结束才归还（每凭证 4、全局 16，文本 1
+                  MiB）
+                </td>
+              </tr>
+              <tr>
+                <td>放行点</td>
+                <td>
+                  认证所有者对“凭证此刻是否有效”的一次串行答复；之前撤销则不放行，之后的字节收不回
+                </td>
+              </tr>
+              <tr>
+                <td>界面随表而动</td>
+                <td>一项离开列表时调 <code>SharePresenter::changed</code></td>
+              </tr>
+              <tr>
+                <td>取消</td>
+                <td>
+                  读取期间只
+                  <code>abandon</code
+                  >；等结论期间丢弃名额。支持的取消方式是断开连接
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="d-errors">10. 错误码与审计</h2>
+        <div class="cols2">
+          <div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>码（<code>kind = forbidden</code>）</th>
+                    <th>何时</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>sharing_denied</code></td>
+                    <td>模式对这一档是拒绝；或所有者拒绝了这一次</td>
+                  </tr>
+                  <tr>
+                    <td><code>sharing_timeout</code></td>
+                    <td>30 秒内没有答复</td>
+                  </tr>
+                  <tr>
+                    <td><code>sharing_unavailable</code></td>
+                    <td>
+                      没有界面或通知失败；超出名额或大小；凭证在放行点之前已失效
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>max_role_required</code></td>
+                    <td>调变更而没有带上限头</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>情形</th>
+                    <th>审计的阶段</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>准入或模式拒绝</td>
+                    <td><code>Rejected</code></td>
+                  </tr>
+                  <tr>
+                    <td>占不到名额</td>
+                    <td>
+                      <code>Admitted → Finished(Failure, NotExecuted)</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>handler 出错</td>
+                    <td><code>Admitted → Finished(Failure)</code></td>
+                  </tr>
+                  <tr>
+                    <td>交付或询问</td>
+                    <td>
+                      <code
+                        >Admitted → Finished(Success) → Sharing(Released |
+                        Denied | TimedOut | Unavailable)</code
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>等结论期间被丢弃</td>
+                    <td><code>… → ObservationEnded(FutureDropped)</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <p class="small">
+          <code>Finished</code> 记的始终是 handler 的真实结果。MCP
+          这条传输没有“应答已备好”的记录：<code>Sharing { Released }</code>
+          的含义是“批准发送”，界面上写“已批准发送”。
+        </p>
+        <h2 id="d-page">11. “AI 集成”设置页</h2>
+        <figure>
+          <div class="dg-wrap">
+            <svg
+              class="dg"
+              viewBox="0 0 1000 420"
+              role="img"
+              aria-label="AI 集成页的线框：待确认列表、入口状态、凭证列表、凭证详情、连接说明。"
+            >
+              <defs>
+                <marker
+                  id="p4"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p4-hot"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-hot" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p4-good"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-good" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+              </defs>
+              <rect
+                class="self"
+                x="20"
+                y="20"
+                width="960"
+                height="380"
+                rx="7"
+              />
+              <text class="hd" x="500" y="39" text-anchor="middle"></text>
+              <text class="hd" x="40" y="46" text-anchor="start">
+                设置 › Nyanpasu › AI 集成
+              </text>
+              <rect class="box" x="40" y="60" width="920" height="70" rx="7" />
+              <text class="hd" x="500" y="79" text-anchor="middle">
+                待确认的交付（有待办时置顶）
+              </text>
+              <text class="note" x="500" y="96" text-anchor="middle">
+                agent · 操作 · 大小 · 剩余时间 ｜ 展开预览（纯文本）｜
+                [拒绝]（默认焦点） [发送预览中的内容]
+              </text>
+              <rect
+                class="box"
+                x="40"
+                y="145"
+                width="300"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="190" y="164" text-anchor="middle">
+                入口状态
+              </text>
+              <text class="note" x="190" y="181" text-anchor="middle">
+                监听是否开启 · MCP 地址
+              </text>
+              <text class="note" x="190" y="196" text-anchor="middle">
+                监听范围与证书 · 匿名授权（如有）
+              </text>
+              <text class="note" x="190" y="211" text-anchor="middle">
+                MCP_AVAILABLE · 去远程访问
+              </text>
+              <rect
+                class="box"
+                x="355"
+                y="145"
+                width="605"
+                height="100"
+                rx="7"
+              />
+              <text class="hd" x="657" y="164" text-anchor="middle">
+                agent 凭证
+              </text>
+              <text class="note" x="657" y="181" text-anchor="middle">
+                名称 · 公开 id · 授权摘要 · 共享模式 · 最近使用 · 到期 ｜ [撤销]
+              </text>
+              <text class="note" x="657" y="196" text-anchor="middle">
+                [新建凭证]：名称 → 角色或自定义映射 → 模式四选一 → 过期时间
+              </text>
+              <text class="note" x="657" y="211" text-anchor="middle">
+                签发结果：token 只显示一次 + 所选客户端的配置片段
+              </text>
+              <rect
+                class="box"
+                x="40"
+                y="260"
+                width="455"
+                height="120"
+                rx="7"
+              />
+              <text class="hd" x="267" y="279" text-anchor="middle">
+                凭证详情
+              </text>
+              <text class="note" x="267" y="296" text-anchor="middle">
+                授权范围内可能可达的操作：缺省连接 ｜ 放开上限后
+              </text>
+              <text class="note" x="267" y="311" text-anchor="middle">
+                共享模式：全部允许 · 敏感内容需询问 · 全部询问 · 拒绝敏感内容
+              </text>
+              <text class="note" x="267" y="326" text-anchor="middle">
+                按 交付 / 询问 / 拒绝 三组列出各操作
+              </text>
+              <text class="note" x="267" y="341" text-anchor="middle">
+                固定说明：交给 agent 的内容总是先去掉识别性的字段
+              </text>
+              <rect
+                class="box"
+                x="510"
+                y="260"
+                width="450"
+                height="120"
+                rx="7"
+              />
+              <text class="hd" x="735" y="279" text-anchor="middle">
+                连接说明
+              </text>
+              <text class="note" x="735" y="296" text-anchor="middle">
+                按客户端分页：Claude Code · Codex · Cursor · VS Code · Windsurf
+                · 通用
+              </text>
+              <text class="note" x="735" y="311" text-anchor="middle">
+                token 处是变量引用；写操作要加 Nyanpasu-Max-Role
+              </text>
+              <text class="note" x="735" y="326" text-anchor="middle">
+                局域网：可达地址 + 根证书导出
+              </text>
+              <text class="note" x="735" y="341" text-anchor="middle">
+                Claude Desktop：mcp-remote；云端连接器够不着本机
+              </text>
+            </svg>
+          </div>
+          <figcaption>
+            图 4 · AI 集成页的信息结构。整页在
+            <code>RequireCapability permission="remote:write"</code>
+            内；确认命令只对桌面开放。
+          </figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>命令 / 事件</th>
+                <th>新旧</th>
+                <th>命名空间</th>
+                <th>权限</th>
+                <th>目标</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>get_http_server_status</code></td>
+                <td>现有</td>
+                <td><code>system.status</code></td>
+                <td><code>system:read</code></td>
+                <td>桌面、HTTP、本地</td>
+                <td>监听状态、回环 origin、根证书指纹</td>
+              </tr>
+              <tr>
+                <td>
+                  <code>get_remote_access</code
+                  >、<code>list_local_networks</code>、<code
+                    >export_remote_access_authority</code
+                  >
+                </td>
+                <td>现有</td>
+                <td><code>remote</code></td>
+                <td><code>remote:read</code>（导出为 <code>write</code>）</td>
+                <td>见 <code>rpc.md</code></td>
+                <td>监听范围与匿名授权；局域网地址；导出根证书</td>
+              </tr>
+              <tr>
+                <td><code>list_remote_access_tokens</code></td>
+                <td>改</td>
+                <td><code>remote</code></td>
+                <td><code>remote:read</code></td>
+                <td>桌面、本地</td>
+                <td>摘要多 <code>audience</code>、<code>sharing</code></td>
+              </tr>
+              <tr>
+                <td><code>create_remote_access_token</code></td>
+                <td>改</td>
+                <td><code>remote</code></td>
+                <td><code>remote:write</code></td>
+                <td>桌面、本地</td>
+                <td>
+                  请求多 <code>audience</code>、<code>sharing</code>；缺省即普通
+                  token
+                </td>
+              </tr>
+              <tr>
+                <td><code>revoke_remote_access_token</code></td>
+                <td>改</td>
+                <td><code>remote</code></td>
+                <td><code>remote:write</code></td>
+                <td>桌面、本地</td>
+                <td>落盘失败用可区分的结果带出</td>
+              </tr>
+              <tr>
+                <td><code>set_mcp_sharing_mode(id, mode)</code></td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td><code>remote</code></td>
+                <td><code>remote:write</code></td>
+                <td>桌面、本地</td>
+                <td>先落盘后生效</td>
+              </tr>
+              <tr>
+                <td><code>list_pending_mcp_shares</code></td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td><code>remote</code></td>
+                <td><code>remote:read</code></td>
+                <td><b>仅桌面</b></td>
+                <td>只有元数据</td>
+              </tr>
+              <tr>
+                <td><code>get_pending_mcp_share(id)</code></td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td><code>remote</code></td>
+                <td><code>remote:read</code>，<code>sensitive</code></td>
+                <td><b>仅桌面</b></td>
+                <td>冻结的文本，供预览</td>
+              </tr>
+              <tr>
+                <td><code>resolve_mcp_share(id, decision)</code></td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td><code>remote</code></td>
+                <td><code>remote:write</code></td>
+                <td><b>仅桌面</b></td>
+                <td>返回这一项的终态</td>
+              </tr>
+              <tr>
+                <td>事件 <code>mcp-shares-changed</code></td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td><code>remote</code></td>
+                <td><code>remote:read</code></td>
+                <td><b>仅桌面</b></td>
+                <td>不带内容；新增与离开时都发</td>
+              </tr>
+              <tr>
+                <td>常量</td>
+                <td><span class="badge b-accent">新增</span></td>
+                <td>—</td>
+                <td>—</td>
+                <td>绑定</td>
+                <td>
+                  <code>MCP_PATH</code
+                  >、<code>MCP_COMMANDS</code>、<code>MCP_MAX_ROLE_HEADER</code>、<code
+                    >MCP_AVAILABLE</code
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="d-code">12. 关键示例代码</h2>
+        <pre><code>// 声明：整个命名空间开放，或只开一条（其余属性原样）
+nyanpasu_rpc::namespace!(expose = [http, local, mcp]);                    // commands/proxy/groups.rs
+#[nyanpasu_rpc::rpc(operation = …::ReadProfileFile, query, sensitive, privacy, expose = [http, local, mcp])]
+pub async fn read_profile_file(/* … */) -&gt; Result&lt;String&gt; { /* … */ }
+
+// ⑦ 判定
+pub fn visibility(resource: &amp;ResourceMetadata, auth: &amp;AuthContext) -&gt; ResponseVisibility {
+    match auth.sharing {
+        Sharing::Policy(_) =&gt; ResponseVisibility::Agent,
+        Sharing::All if auth.permissions.get(resource.permission.resource) == Some(Access::Write) =&gt; ResponseVisibility::Full,
+        Sharing::All =&gt; ResponseVisibility::Public,                         // C-2 不变
+    }
+}
+
+// 一个减字段的投影
+impl RpcResponseProjection for GetSysProxyResponse {
+    fn summarize_completion(&amp;self) -&gt; CompletionSummary { CompletionSummary::NotReported }
+    fn encode_for_visibility(self, visibility: ResponseVisibility) -&gt; Result&lt;Value, RpcError&gt; {
+        match visibility {
+            ResponseVisibility::Full | ResponseVisibility::Public =&gt; encode(self),
+            ResponseVisibility::Agent =&gt; {
+                let Self { enable, host: _, port, bypass: _ /* …穷尽 */ } = self;
+                encode(SysProxyAgentView { enable, port })
+            }
+        }
+    }
+}
+
+// 入口的挂载：恰好这一个路径
+.route("/bridge/rpc", post(http_call))
+.route_service(MCP_PATH, mcp::service(rpc.clone(), confirmer, shutdown))</code></pre>
+        <h2 class="part" id="part-3">第三部分 · 任务与扩展</h2>
+        <h2 id="t-graph">卡的依赖</h2>
+        <figure>
+          <div class="dg-wrap">
+            <svg
+              class="dg"
+              viewBox="0 0 1000 300"
+              role="img"
+              aria-label="任务卡的依赖：M0，A-1、A-2、B-1，C-1、C-2，D-1、D-2、D-3，F-1，E-1、E-2，G-1。"
+            >
+              <defs>
+                <marker
+                  id="p5"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p5-hot"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-hot" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+                <marker
+                  id="p5-good"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4"
+                  orient="auto"
+                >
+                  <path class="fill-good" d="M0,0 L8,4 L0,8 z" />
+                </marker>
+              </defs>
+              <rect class="box" x="10" y="120" width="104" height="50" rx="7" />
+              <text class="hd" x="62" y="139" text-anchor="middle">M0</text>
+              <text class="note" x="62" y="156" text-anchor="middle">
+                四项试验
+              </text>
+              <rect class="box" x="140" y="40" width="104" height="50" rx="7" />
+              <text class="hd" x="192" y="59" text-anchor="middle">A-1</text>
+              <text class="note" x="192" y="76" text-anchor="middle">类型</text>
+              <rect class="box" x="270" y="40" width="104" height="50" rx="7" />
+              <text class="hd" x="322" y="59" text-anchor="middle">A-2</text>
+              <text class="note" x="322" y="76" text-anchor="middle">
+                存储 · 入口
+              </text>
+              <rect class="box" x="400" y="40" width="104" height="50" rx="7" />
+              <text class="hd" x="452" y="59" text-anchor="middle">B-1</text>
+              <text class="note" x="452" y="76" text-anchor="middle">收窄</text>
+              <rect
+                class="box"
+                x="140"
+                y="200"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="192" y="219" text-anchor="middle">C-1</text>
+              <text class="note" x="192" y="236" text-anchor="middle">
+                目标 · 特性 mcp
+              </text>
+              <rect
+                class="box"
+                x="270"
+                y="240"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="322" y="259" text-anchor="middle">C-2</text>
+              <text class="note" x="322" y="276" text-anchor="middle">
+                暴露面 · 投影
+              </text>
+              <rect
+                class="box"
+                x="270"
+                y="140"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="322" y="159" text-anchor="middle">D-1</text>
+              <text class="note" x="322" y="176" text-anchor="middle">
+                sharing
+              </text>
+              <rect
+                class="box"
+                x="400"
+                y="140"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="452" y="159" text-anchor="middle">D-2</text>
+              <text class="note" x="452" y="176" text-anchor="middle">
+                确认的所有者
+              </text>
+              <rect
+                class="box"
+                x="530"
+                y="180"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="582" y="199" text-anchor="middle">D-3</text>
+              <text class="note" x="582" y="216" text-anchor="middle">
+                管线回归
+              </text>
+              <rect
+                class="box"
+                x="660"
+                y="110"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="712" y="129" text-anchor="middle">F-1</text>
+              <text class="note" x="712" y="146" text-anchor="middle">
+                页面
+              </text>
+              <rect
+                class="box"
+                x="790"
+                y="110"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="842" y="129" text-anchor="middle">E-1</text>
+              <text class="note" x="842" y="146" text-anchor="middle">
+                rmcp 入口
+              </text>
+              <rect
+                class="box"
+                x="790"
+                y="210"
+                width="104"
+                height="50"
+                rx="7"
+              />
+              <text class="hd" x="842" y="229" text-anchor="middle">E-2</text>
+              <text class="note" x="842" y="246" text-anchor="middle">
+                客户端冒烟
+              </text>
+              <rect class="box" x="890" y="20" width="104" height="50" rx="7" />
+              <text class="hd" x="942" y="39" text-anchor="middle">G-1</text>
+              <text class="note" x="942" y="56" text-anchor="middle">收尾</text>
+              <path class="ln" d="M114,135 L140,75" marker-end="url(#p5)" />
+              <path class="ln" d="M114,155 L140,215" marker-end="url(#p5)" />
+              <path class="ln" d="M244,65 L270,65" marker-end="url(#p5)" />
+              <path class="ln" d="M374,65 L400,65" marker-end="url(#p5)" />
+              <path class="ln" d="M244,215 L270,255" marker-end="url(#p5)" />
+              <path class="ln" d="M244,215 L270,175" marker-end="url(#p5)" />
+              <path class="ln" d="M192,90 L290,140" marker-end="url(#p5)" />
+              <path class="ln" d="M374,165 L400,165" marker-end="url(#p5)" />
+              <path class="ln" d="M504,165 L530,195" marker-end="url(#p5)" />
+              <path class="ln" d="M374,265 L530,220" marker-end="url(#p5)" />
+              <path class="ln" d="M634,195 L660,150" marker-end="url(#p5)" />
+              <path class="ln" d="M504,65 L680,110" marker-end="url(#p5)" />
+              <path class="ln" d="M374,80 L660,125" marker-end="url(#p5)" />
+              <path class="ln" d="M764,135 L790,135" marker-end="url(#p5)" />
+              <path class="ln" d="M842,160 L842,210" marker-end="url(#p5)" />
+              <path class="ln" d="M894,225 L940,70" marker-end="url(#p5)" />
+              <text class="note" x="842" y="284" text-anchor="middle">
+                E-1：加 dep:rmcp；MCP_AVAILABLE 置真
+              </text>
+            </svg>
+          </div>
+          <figcaption>
+            图 5 · 卡的依赖。E-1 在 D-2、D-3 与 F-1
+            之后：入口没有独立开关，一合入就可用，届时数据共享层要已经在位、所有者要已经有页面可以作答。
+          </figcaption>
+        </figure>
+        <h2 id="t-cards">任务卡</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>卡</th>
+                <th>内容</th>
+                <th>验证（节选）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>M0 试验</td>
+                <td>
+                  （1）rmcp 的构建与三个修订的无状态互通；（2）<code
+                    >RpcInput</code
+                  >
+                  标记加生成表的编译错误；（3）<code>schemars</code> 与 serde
+                  对拍；（4）<code>rpc(privacy)</code> 用在普通查询的结果类型上
+                </td>
+                <td>
+                  四项各有可重复的命令与输出；（1）（2）必须通过，不通过回到设计
+                </td>
+              </tr>
+              <tr>
+                <td>A-1 类型</td>
+                <td>
+                  <code>SharingMode</code
+                  >、<code>Permissions::intersect</code>、<code>TokenAudience</code>、<code>Sharing</code>、<code>Principal::Mcp</code>、<code>AuthContext::mcp</code>；分派前的配对核对
+                </td>
+                <td>不一致的上下文被拒，handler 计数 0；基线无新增</td>
+              </tr>
+              <tr>
+                <td>A-2 存储、认证、入口、Origin</td>
+                <td>
+                  记录 v2；认证带受众；恰好匹配的占位路由；Origin/Host
+                  收紧；<code>set_mcp_sharing_mode</code>
+                </td>
+                <td>
+                  入口矩阵（MCP 凭证在各路由上 <code>401</code>，含
+                  <code>/bridge/login</code> 的 JSON
+                  体）；用旧读取代码验证降级与恢复；撤销落盘失败的重试
+                </td>
+              </tr>
+              <tr>
+                <td>B-1 收窄</td>
+                <td>
+                  解析 <code>Nyanpasu-Max-Role</code>；<code>McpCap</code>
+                </td>
+                <td>角色 × 请求头的表驱动；非法值与重复为 <code>400</code></td>
+              </tr>
+              <tr>
+                <td>C-1 目标、规则、特性</td>
+                <td>
+                  <code>RpcTarget::Mcp</code
+                  >、<code>RpcTransport::Mcp</code>、<code>ResponseVisibility::Agent</code>（每处匹配）；生成器的
+                  <code>mcp</code> 规则；<code>RpcInput</code>；特性
+                  <code>mcp</code>（<code>schemars</code>）
+                </td>
+                <td>
+                  每条规则一个通过与一个报错的夹具；<code>Agent</code> 在各处与
+                  <code>Public</code> 逐字节相同；没有 <code>_</code> 分支
+                </td>
+              </tr>
+              <tr>
+                <td>C-2 暴露面、派生、投影</td>
+                <td>
+                  23 条逐条评审；<code>privacy</code> 与投影；补全
+                  <code>redact.rs</code> 的键名单；<code>schemars</code>
+                  派生；<code>MCP_OPERATIONS</code>、<code>MCP_COMMANDS</code>
+                </td>
+                <td>
+                  钉住的暴露集合；<code>Full</code>/<code>Public</code>
+                  输出不变，<code>Agent</code>
+                  输出里没有被投影掉的字段与十个凭据键的标记串；块标量的私钥；日志的
+                  <code>id</code> 与游标不变；schema 与解码对拍
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  D-1 <code>sharing</code>、<code>call_shared</code>、审计
+                </td>
+                <td>
+                  按模式的 <code>admit</code>、<code>freeze</code>、三段、<code
+                    >Sharing</code
+                  >
+                  阶段、<code>NotExecuted</code>
+                </td>
+                <td>
+                  四个模式 ×
+                  两档逐格；询问的各结果；读取被闸门挡住时取消；入口的资格；模式快照
+                </td>
+              </tr>
+              <tr>
+                <td>D-2 确认的所有者</td>
+                <td>
+                  状态机、<code>ShareTicket</code>、<code>SharePresenter</code>、三条仅桌面的命令与事件
+                </td>
+                <td>
+                  标识、名额随读取归还、结论的留存、不被认证所有者卡住、撤销与订阅的滞后和关闭、<code
+                    >changed</code
+                  >
+                  的通知
+                </td>
+              </tr>
+              <tr>
+                <td>D-3 管线回归</td>
+                <td>23 条真实命令接到 <code>call_shared</code> 与所有者上</td>
+                <td>
+                  带标记的四条：正对照、拒绝、询问；十九条不带标记的：四个模式下没有被投影掉的字段；普通
+                  token 的结果不变
+                </td>
+              </tr>
+              <tr>
+                <td>F-1 页面</td>
+                <td>路由与九个模块；模式四选一；待确认列表；连接说明</td>
+                <td>
+                  vitest：提交的受众与模式、三组操作的集合、预览不留缓存、按钮只对当前项可用、<code
+                    >MCP_AVAILABLE</code
+                  >
+                  的两种显示
+                </td>
+              </tr>
+              <tr>
+                <td>E-1 rmcp 入口</td>
+                <td>
+                  <code>dep:rmcp</code
+                  >；四个元工具；<code>route_service</code>；确认的适配；关掉
+                  <code>rmcp</code> 日志；<code>MCP_AVAILABLE</code> 置真
+                </td>
+                <td>
+                  三个修订各一组；错误次序逐行；共享的各情形（屏障）；传输；审计；日志与诊断包
+                </td>
+              </tr>
+              <tr>
+                <td>E-2 客户端冒烟</td>
+                <td>
+                  Claude Code、Codex CLI、Cursor、VS Code 各七步；Claude Desktop
+                  经 <code>mcp-remote</code>
+                </td>
+                <td>
+                  Claude Code 与 Codex
+                  在回环上全部成功才算通过；其余如实标为未验证
+                </td>
+              </tr>
+              <tr>
+                <td>G-1 收尾</td>
+                <td>
+                  CLI 的
+                  <code>--audience</code>、<code>--sharing</code>；guides；删除
+                  <code>TODO(mcp)</code>；升级说明；issue 回帖
+                </td>
+                <td>
+                  CLI 对旧宿主不输出密钥；<code>backend/</code> 下检索不到
+                  <code>TODO(mcp)</code>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="t-ext">扩展</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>卡</th>
+                <th>内容</th>
+                <th>前提或备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>E-M1</td>
+                <td>经 Skills 扩展（SEP-2640）提供一个专用的只读 skill 目录</td>
+                <td>有目标客户端消费该扩展</td>
+              </tr>
+              <tr>
+                <td>E-M2</td>
+                <td>一次性发送完整版本</td>
+                <td>同一次执行生成两份，所有者选中其一</td>
+              </tr>
+              <tr>
+                <td>E-M3</td>
+                <td>输出 schema 与结构化输出</td>
+                <td>许多结果类型在 submodule 里</td>
+              </tr>
+              <tr>
+                <td>E-M4</td>
+                <td>MCP 征询或进度通知作为“请到 Nyanpasu 里确认”的提示</td>
+                <td>不传内容，不代替所有者的答复</td>
+              </tr>
+              <tr>
+                <td>E-M5</td>
+                <td>CLI 签发凭证并写入某个客户端的配置文件</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>E-M6</td>
+                <td>给普通 token 配共享模式</td>
+                <td>#6489 的余下范围</td>
+              </tr>
+              <tr>
+                <td>E-M7</td>
+                <td>经 <code>subscriptions/listen</code> 提供状态事件</td>
+                <td>⑥ 要有逐条投递的规则</td>
+              </tr>
+              <tr>
+                <td>E-M8</td>
+                <td><code>list_operations</code> 的关键词检索与分页</td>
+                <td>暴露面变大之后</td>
+              </tr>
+              <tr>
+                <td>E-M9</td>
+                <td>逐资源或逐操作的交付方式</td>
+                <td>原先 D-1 的矩阵是其中一种</td>
+              </tr>
+              <tr>
+                <td>E-M10</td>
+                <td>文本类结果改用 #5946 的更高等级脱敏</td>
+                <td>与 D-18 是同一个调用点</td>
+              </tr>
+              <tr>
+                <td>后续</td>
+                <td>给 D-13 的五条查询补 <code>sensitive</code> 标记</td>
+                <td>改的是整个应用的分类，单独评审</td>
+              </tr>
+              <tr>
+                <td>后续</td>
+                <td>本地 socket 握手的收窄</td>
+                <td>属于 #6492</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h2 id="t-risks">风险</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>风险</th>
+                <th>对策</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>agent 读到自己的 token 后改调别的入口</td>
+                <td>
+                  受众与入口双向配对，含
+                  <code>/bridge/login</code>；入口矩阵测试
+                </td>
+              </tr>
+              <tr>
+                <td>敏感标记漏标，或投影漏了字段</td>
+                <td>
+                  暴露即须声明投影（生成器）；视图穷尽解构（编译器）；C-2
+                  用带标记串的真实数据过生产代码的投影
+                </td>
+              </tr>
+              <tr>
+                <td>凭据键的名单仍不全</td>
+                <td>名单收成一处；C-2 对照 mihomo 的字段表复核</td>
+              </tr>
+              <tr>
+                <td>降级后旧版启动失败</td>
+                <td>已接受（D-14）；恢复步骤写进升级说明，有测试</td>
+              </tr>
+              <tr>
+                <td>确认弹窗被刷屏；并发的读取堆积</td>
+                <td>名额在读取之前占用、读取结束才归还；默认焦点在拒绝</td>
+              </tr>
+              <tr>
+                <td>客户端的工具超时短于 30 秒</td>
+                <td>断开即撤回；<code>instructions</code> 提示可能要等待</td>
+              </tr>
+              <tr>
+                <td>rmcp 版本推进快；它的日志带请求与结果</td>
+                <td>
+                  <code>=3.11.0</code>；适配层集中在 <code>mcp/</code>；整体关掉
+                  <code>rmcp</code> 目标的输出
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  打开 HTTP 监听只为 MCP，却连带打开 WebUI 与
+                  <code>/bridge/rpc</code>
+                </td>
+                <td>
+                  <code>auth: required</code> 时都要凭证；<code
+                    >auth: optional</code
+                  >
+                  时页面显示匿名授权
+                </td>
+              </tr>
+              <tr>
+                <td>同机的 agent 改用本地 socket 或 CLI</td>
+                <td>MCP 凭证约束不了同用户的 owner 通道；页面与文档如实说明</td>
+              </tr>
+              <tr>
+                <td>设计未经编译，三轮上限之后的结构未经评审</td>
+                <td>M0 的四项试验先行；实施前可再评一轮</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

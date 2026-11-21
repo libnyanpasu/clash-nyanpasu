@@ -1985,7 +1985,7 @@ dependencies = [
  "specta-util",
  "struct-patch",
  "strum",
- "sysinfo",
+ "sysinfo 0.40.4",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -7238,7 +7238,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
- "sysinfo",
+ "sysinfo 0.40.4",
  "tempfile",
  "windows-registry 0.6.1",
  "zip 9.8.1",
@@ -7481,7 +7481,7 @@ dependencies = [
  "sha2 0.11.1",
  "snafu 0.9.2",
  "specta",
- "sysinfo",
+ "sysinfo 0.40.4",
  "sysproxy",
  "tempfile",
  "time",
@@ -7985,7 +7985,7 @@ dependencies = [
  "serde",
  "shared_child",
  "specta",
- "sysinfo",
+ "sysinfo 0.39.6",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -12185,6 +12185,21 @@ name = "sysinfo"
 version = "0.39.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2071df9448915b71c4fe6d25deaf1c22f12bd234f01540b77312bb8e41361e6"
+dependencies = [
+ "libc",
+ "memchr",
+ "ntapi",
+ "objc2-core-foundation",
+ "objc2-io-kit",
+ "objc2-open-directory",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.40.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e80749408e2d8bec0ffa303012cf4e1b3b355f4a09087b4fdf7473680f6a2de"
 dependencies = [
  "libc",
  "memchr",

@@ -117,7 +117,7 @@
     "@vitest/browser-playwright": "5.1.1",
     "knip": "6.46.1",
     "lint-staged": "17.6.1",
-    "npm-run-all2": "9.0.4",
+    "npm-run-all2": "9.1.0",
     "oxlint": "1.94.0",
     "playwright": "1.65.1",
     "postcss": "8.5.33",

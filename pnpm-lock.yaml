@@ -686,8 +686,8 @@ importers:
         specifier: 1.53.2
         version: 1.53.2
       figlet:
-        specifier: 1.12.0
-        version: 1.12.0
+        specifier: 1.13.0
+        version: 1.13.0
       globby:
         specifier: 16.2.4
         version: 16.2.4
@@ -5057,8 +5057,8 @@ packages:
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
-  figlet@1.12.0:
-    resolution: {integrity: sha512-Ith3WsUi0N/EqGt+0/F6XnWhT04sohhH2tT0Dq7GdUmWbMTIoCbg2Jq9qKggmTO62ST5kRCfB311EmIMbizGyA==}
+  figlet@1.13.0:
+    resolution: {integrity: sha512-gtv594/YXiGqBNyxnz7OcJkFwJ8VHv8nKPQpg6lKNvkAj3tBVI5rP+sapaTQ96EsBl063MNZMGwCjB80ymcnXA==}
     engines: {node: '>= 17.0.0'}
     hasBin: true
 
@@ -10225,7 +10225,7 @@ snapshots:
 
   '@types/figlet@1.12.0':
     dependencies:
-      figlet: 1.12.0
+      figlet: 1.13.0
 
   '@types/geojson@7946.0.14': {}
 
@@ -11226,7 +11226,7 @@ snapshots:
 
   fflate@0.8.3: {}
 
-  figlet@1.12.0:
+  figlet@1.13.0:
     dependencies:
       commander: 14.0.3
 

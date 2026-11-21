@@ -20,7 +20,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'actions/upload-artifact@v7.0.2'
-        - 'cargo-bins/cargo-binstall@v1.27.0'
+        - 'cargo-bins/cargo-binstall@v1.28.0'
         - 'pnpm/action-setup@v6.1.1'
         - 'swatinem/rust-cache@v2.9.3'
         - 'taiki-e/install-action@v2.90.6'
@@ -138,9 +138,9 @@ dependencies:
         commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
-    'cargo-bins/cargo-binstall@v1.27.0':
-        ref: 'v1.27.0'
-        commit: 'sha1-5885714d0a40a14b2535c6ffc051fd8e49aa9665'
+    'cargo-bins/cargo-binstall@v1.28.0':
+        ref: 'v1.28.0'
+        commit: 'sha1-4b6fa09d0d1ef9740a0c332e31b9ae336f97efa0'
         owner_id: 110581826
         repo_id: 321270638
     'getplumber/plumber@v0.7.23':

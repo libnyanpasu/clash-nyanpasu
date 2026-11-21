@@ -1,6 +1,7 @@
 import CloudDownloadRounded from '~icons/material-symbols/cloud-download-rounded'
 import LinkRounded from '~icons/material-symbols/link-rounded'
 import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
+import StacksRounded from '~icons/material-symbols/stacks-rounded'
 import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
 import { useEffect, useState, type ComponentProps } from 'react'
 import {
@@ -14,7 +15,11 @@ import { m } from '@/paraglide/messages'
 import { type FolderId } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import CreateProfileModal from './create-profile-modal'
-import type { CreateKind, CreateSource } from './create-profile-schema'
+import {
+  CONFIG_KINDS,
+  type CreateKind,
+  type CreateSource,
+} from './create-profile-schema'
 
 const SOURCE_ITEMS = [
   {
@@ -69,6 +74,9 @@ function ImportButtonContent({
   const { setOpen } = useModal()
 
   const [source, setSource] = useState<CreateSource>('remote')
+  const [composition, setComposition] = useState(false)
+
+  const isConfig = (CONFIG_KINDS as readonly CreateKind[]).includes(kind)
 
   useEffect(() => {
     if (!localImportRequested) {
@@ -77,6 +85,7 @@ function ImportButtonContent({
 
     // wait for the route transition before opening the modal
     const timeout = setTimeout(() => {
+      setComposition(false)
       setSource('local')
       setOpen(true)
     }, 150)
@@ -105,6 +114,7 @@ function ImportButtonContent({
               key={item}
               icon={<Icon className="size-6" />}
               onSelect={() => {
+                setComposition(false)
                 setSource(item)
                 setOpen(true)
               }}
@@ -112,6 +122,19 @@ function ImportButtonContent({
               {label()}
             </FabMenuItem>
           ))}
+
+          {/* Compositions are Configs; transform lists have no such kind. */}
+          {isConfig && (
+            <FabMenuItem
+              icon={<StacksRounded className="size-6" />}
+              onSelect={() => {
+                setComposition(true)
+                setOpen(true)
+              }}
+            >
+              {m.profile_kind_composition()}
+            </FabMenuItem>
+          )}
         </FabMenuContent>
 
         <ModalAnchor className="w-fit">
@@ -122,7 +145,11 @@ function ImportButtonContent({
         </ModalAnchor>
       </FabMenu>
 
-      <CreateProfileModal kind={kind} folder={folder} source={source} />
+      <CreateProfileModal
+        kind={composition ? 'composition' : kind}
+        folder={folder}
+        source={source}
+      />
     </div>
   )
 }

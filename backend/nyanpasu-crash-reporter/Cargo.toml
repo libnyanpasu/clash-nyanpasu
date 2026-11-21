@@ -10,7 +10,7 @@ authors.workspace = true
 nyanpasu-diagnose = { path = '../nyanpasu-diagnose' }
 # Fluent log view, monospace font and window centring shared with the
 # installer. It pins the same exact Slint version as below.
-nyanpasu-slint = { git = 'https://github.com/libnyanpasu/nyanpasu-slint', rev = '564279c3c400614ce18eea2ab2b830ce41b5bd6c' }
+nyanpasu-slint = { git = 'https://github.com/libnyanpasu/nyanpasu-slint', rev = '3b0c94502d325f5e5cbafc12fd723a20f57675d5' }
 slint = { version = '=1.19.0', default-features = false, features = [
   'std',
   'compat-1-2',
@@ -41,7 +41,7 @@ i-slint-backend-winit = { version = '=1.19.0', default-features = false, feature
 ] }
 
 [dev-dependencies]
-nyanpasu-slint = { git = 'https://github.com/libnyanpasu/nyanpasu-slint', rev = '564279c3c400614ce18eea2ab2b830ce41b5bd6c', features = [
+nyanpasu-slint = { git = 'https://github.com/libnyanpasu/nyanpasu-slint', rev = '3b0c94502d325f5e5cbafc12fd723a20f57675d5', features = [
   'testing',
 ] }
 png = '0.18'

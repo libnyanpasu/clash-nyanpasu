@@ -7849,7 +7849,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-slint"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-slint?rev=564279c3c400614ce18eea2ab2b830ce41b5bd6c#564279c3c400614ce18eea2ab2b830ce41b5bd6c"
+source = "git+https://github.com/libnyanpasu/nyanpasu-slint?rev=3b0c94502d325f5e5cbafc12fd723a20f57675d5#3b0c94502d325f5e5cbafc12fd723a20f57675d5"
 dependencies = [
  "fontique",
  "i-slint-backend-winit",

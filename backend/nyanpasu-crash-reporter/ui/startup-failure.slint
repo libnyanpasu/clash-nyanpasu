@@ -25,6 +25,8 @@ export component StartupFailureWindow inherits Window {
     in property <string> monospace-font;
     // Lines a wheel notch scrolls the details: `nyanpasu_slint::wheel_lines()`.
     in property <int> wheel-lines: 3;
+    // Characters a sideways notch scrolls them: `nyanpasu_slint::wheel_chars()`.
+    in property <int> wheel-chars: 3;
     in property <string> containing-label;
     in property <string> backups-label;
     in property <string> logs-label;
@@ -96,6 +98,7 @@ export component StartupFailureWindow inherits Window {
                     wrap: false;
                     follow-end: false;
                     wheel-lines: root.wheel-lines;
+                    wheel-chars: root.wheel-chars;
                 }
             }
             HorizontalLayout {

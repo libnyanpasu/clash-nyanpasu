@@ -110,6 +110,7 @@ pub(crate) fn fill_window(
     window.set_details(input.details.as_str().into());
     window.set_monospace_font(nyanpasu_slint::monospace_font().into());
     window.set_wheel_lines(nyanpasu_slint::wheel_lines());
+    window.set_wheel_chars(nyanpasu_slint::wheel_chars());
     window.set_containing_label(text.open_containing.as_str().into());
     window.set_backups_label(text.open_backups.as_str().into());
     window.set_logs_label(text.open_logs.as_str().into());

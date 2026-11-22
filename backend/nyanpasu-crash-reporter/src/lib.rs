@@ -250,6 +250,7 @@ fn fill_window(window: &ui::ReporterWindow, input: &ReporterInput, text: &Report
     window.set_progress_label(text.collecting.as_str().into());
     window.set_monospace_font(nyanpasu_slint::monospace_font().into());
     window.set_wheel_lines(nyanpasu_slint::wheel_lines());
+    window.set_wheel_chars(nyanpasu_slint::wheel_chars());
 
     let strings = window.global::<ui::ReporterStrings>();
     strings.set_heading(

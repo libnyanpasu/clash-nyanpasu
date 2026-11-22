@@ -107,6 +107,8 @@ export component ReporterWindow inherits Window {
     in property <string> monospace-font;
     // Lines a wheel notch scrolls the report: `nyanpasu_slint::wheel_lines()`.
     in property <int> wheel-lines: 3;
+    // Characters a sideways notch scrolls it: `nyanpasu_slint::wheel_chars()`.
+    in property <int> wheel-chars: 3;
     in property <string> status;
     in property <bool> is-crash: true;
     in property <bool> finished;
@@ -240,6 +242,7 @@ export component ReporterWindow inherits Window {
                         wrap: false;
                         follow-end: false;
                         wheel-lines: root.wheel-lines;
+                        wheel-chars: root.wheel-chars;
                     }
                     if !root.shows-backtrace: LogView {
                         text: root.environment-text;
@@ -248,6 +251,7 @@ export component ReporterWindow inherits Window {
                         wrap: false;
                         follow-end: false;
                         wheel-lines: root.wheel-lines;
+                        wheel-chars: root.wheel-chars;
                     }
                     // Fluent's button fill is translucent: an opaque backing in
                     // the report card's colour keeps long lines from showing

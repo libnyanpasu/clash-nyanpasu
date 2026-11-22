@@ -28,7 +28,14 @@ body:
           required: true
         - label: 我同意遵守项目的[行为准则](https://github.com/libnyanpasu/clash-nyanpasu/blob/main/CODE_OF_CONDUCT_zh.md)。
           required: true
-        - label: 我会尝试提交一个 PR 以解决这个 issue。
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: 参与贡献
+      description: 可选项。如果你有兴趣亲自参与开发，请勾选下方选项，方便维护者与你同步设计思路。
+      options:
+        - label: 我愿意尝试为此 issue 提交一个 PR (Pull request)。
           required: false
 
   - type: textarea

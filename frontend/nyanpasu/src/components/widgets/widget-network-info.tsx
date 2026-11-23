@@ -294,6 +294,7 @@ export const networkInfoWidget = defineWidget({
   id: WidgetId.NetworkInfo,
   category: 'network',
   title: m.dashboard_widget_network_info_title,
+  description: m.dashboard_widget_network_info_description,
   icon: PublicRounded,
   size: { minW: 3, minH: 2, defaultW: 4, defaultH: 2 },
   defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.NetworkInfo],

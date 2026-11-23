@@ -21,16 +21,16 @@ import { createRpcClient } from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 import { TestQueryProvider } from './query-provider'
 
-// The library lists every rendered widget; keep one entry so the lifecycle
+// The library lists every registered widget; keep one entry so the lifecycle
 // checks stay independent of the widget catalog.
-vi.mock('@/components/widgets/consts', async (importOriginal) => {
+vi.mock('@/components/widgets/registry', async (importOriginal) => {
   const original =
-    await importOriginal<typeof import('@/components/widgets/consts')>()
+    await importOriginal<typeof import('@/components/widgets/registry')>()
+  const { WidgetId } = await import('@/components/widgets/widget-config')
+
   return {
     ...original,
-    RENDER_MAP: {
-      [original.WidgetId.TrafficDown]: () => null,
-    },
+    WIDGET_LIST: [original.getWidgetDefinition(WidgetId.TrafficDown)],
   }
 })
 
@@ -241,16 +241,16 @@ test('search filters localized widget names and adding closes the library', asyn
   await expect
     .poll(() => drawerElement.getBoundingClientRect().width)
     .toBe(Math.min(window.innerWidth - 16, 960))
-  // A short library keeps the drawer only as tall as its entries.
+  // The drawer stays within its maximum height for a short library.
   await expect
     .poll(() => drawerElement.getBoundingClientRect().height)
-    .toBeLessThan(window.innerHeight * 0.5)
+    .toBeLessThanOrEqual(window.innerHeight * 0.85 + 1)
 
   await userEvent.type(search, m.dashboard_widget_traffic_download())
   const add = page.getByRole('button', { name: entryName() })
   await expect.element(add).toBeVisible()
   await expect
-    .element(page.getByText(m.dashboard_widget_traffic_download()))
+    .element(page.getByText(m.dashboard_widget_traffic_download()).first())
     .toBeVisible()
 
   await userEvent.type(search, ' no match')

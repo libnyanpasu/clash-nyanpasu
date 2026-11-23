@@ -19,8 +19,7 @@ export interface WidgetDefinition<T extends WidgetId = WidgetId> {
   id: T
   category: WidgetCategoryId
   title: () => string
-  /** Added by the library phase once the widget descriptions land. */
-  description?: () => string
+  description: () => string
   icon: ComponentType<{ className?: string }>
   size: WidgetSizeSpec
   permission?: Permission

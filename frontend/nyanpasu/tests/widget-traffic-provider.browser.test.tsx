@@ -6,7 +6,8 @@ import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
-import { RENDER_MAP, type DashboardItem } from '@/components/widgets/consts'
+import { type DashboardItem } from '@/components/widgets/consts'
+import { LegacyWidgetRenderer } from '@/components/widgets/legacy-widgets'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetId } from '@/components/widgets/widget-config'
 import { DashboardTrafficProvider } from '@/components/widgets/widget-traffic-provider'
@@ -170,10 +171,9 @@ function Scene({
         >
           <DashboardTrafficProvider items={dashboardItems}>
             <TooltipProvider>
-              {dashboardItems.map(({ id, type }) => {
-                const Widget = RENDER_MAP[type]
-                return <Widget key={id} id={id} />
-              })}
+              {dashboardItems.map(({ id, type }) => (
+                <LegacyWidgetRenderer key={id} id={id} type={type} />
+              ))}
             </TooltipProvider>
           </DashboardTrafficProvider>
         </DndGridProvider>

@@ -1,16 +1,11 @@
 import { createRoot } from 'react-dom/client'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import '@/assets/styles/tailwind.css'
-import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
-import {
-  RENDER_MAP,
-  WidgetId,
-  type DashboardItem,
-} from '@/components/widgets/consts'
-import { DashboardProvider } from '@/components/widgets/provider'
-import { DndContext } from '@dnd-kit/core'
-import { KvStorageProvider, RpcProvider } from '@nyanpasu/query/provider'
+import { WidgetId } from '@/components/widgets/consts'
+import { WidgetOverlayHost, WidgetPreviewHost } from '@/components/widgets/core'
+import '@/components/widgets/registry'
+import { RpcProvider } from '@nyanpasu/query/provider'
 import { createRpcClient } from '@nyanpasu/rpc'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AllPermissions } from './all-permissions'
@@ -45,14 +40,6 @@ test.each(['library', 'overlay'] as const)(
           : value
       },
     })
-    const items: DashboardItem[] = types.map((type, index) => ({
-      id: type,
-      type,
-      x: (index % 4) * 4,
-      y: Math.floor(index / 4) * 4,
-      w: 4,
-      h: 4,
-    }))
     const container = document.createElement('div')
     container.style.width = '1216px'
     container.style.height = '1280px'
@@ -66,53 +53,21 @@ test.each(['library', 'overlay'] as const)(
       <AllPermissions>
         <RpcProvider rpc={rpc}>
           <QueryClientProvider client={new QueryClient()}>
-            <KvStorageProvider>
-              <TooltipProvider>
-                <DashboardProvider>
-                  <DndContext>
-                    <DndGridProvider
-                      value={{
-                        displayItems: items,
-                        getItemRect: (item) => ({
-                          left: item.x * 76,
-                          top: item.y * 80,
-                          width: item.w * 76,
-                          height: item.h * 80 - 16,
-                        }),
-                        dropInfoMap: {},
-                        activeItemId: null,
-                        resizingItemId: null,
-                        disabled: false,
-                        sourceOnly: kind === 'library',
-                        isOverlay: kind === 'overlay',
-                        dragIdPrefix: kind === 'library' ? 'sheet:' : '',
-                        constraintsMapRef: { current: {} },
-                        onResizeStart: () => {},
-                        onResizeMove: () => {},
-                        onResizeEnd: () => {},
-                      }}
-                    >
-                      {items.map((item) => {
-                        const Widget = RENDER_MAP[item.type]
-                        return (
-                          <div
-                            key={item.id}
-                            data-preview={item.type}
-                            style={
-                              kind === 'overlay'
-                                ? { width: 304, height: 304 }
-                                : undefined
-                            }
-                          >
-                            <Widget id={item.id} />
-                          </div>
-                        )
-                      })}
-                    </DndGridProvider>
-                  </DndContext>
-                </DashboardProvider>
-              </TooltipProvider>
-            </KvStorageProvider>
+            <TooltipProvider>
+              {types.map((type) => (
+                <div
+                  key={type}
+                  data-preview={type}
+                  style={{ width: 304, height: 304 }}
+                >
+                  {kind === 'library' ? (
+                    <WidgetPreviewHost type={type} />
+                  ) : (
+                    <WidgetOverlayHost type={type} span={{ w: 4, h: 4 }} />
+                  )}
+                </div>
+              ))}
+            </TooltipProvider>
           </QueryClientProvider>
         </RpcProvider>
       </AllPermissions>,

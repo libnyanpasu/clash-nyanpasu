@@ -601,6 +601,7 @@ export const subscriptionScheduleWidget = defineWidget({
   id: WidgetId.SubscriptionSchedule,
   category: 'subscription',
   title: m.dashboard_widget_subscription_schedule_title,
+  description: m.dashboard_widget_subscription_schedule_description,
   icon: EventRepeatRounded,
   size: { minW: 3, minH: 2, defaultW: 4, defaultH: 3 },
   defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionSchedule],

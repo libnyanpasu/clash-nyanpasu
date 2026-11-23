@@ -1,22 +1,8 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
-import AppsRounded from '~icons/material-symbols/apps-rounded'
-import ArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
-import ArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
-import CallSplitRounded from '~icons/material-symbols/call-split-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
-import CloudSyncRounded from '~icons/material-symbols/cloud-sync-rounded'
-import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
-import DnsRounded from '~icons/material-symbols/dns-rounded'
 import DoneRounded from '~icons/material-symbols/done-rounded'
-import EventRepeatRounded from '~icons/material-symbols/event-repeat-rounded'
-import MemoryOutlineRounded from '~icons/material-symbols/memory-outline-rounded'
-import NetworkCheckRounded from '~icons/material-symbols/network-check-rounded'
-import PublicRounded from '~icons/material-symbols/public-rounded'
-import RouteRounded from '~icons/material-symbols/route-rounded'
-import RuleFolderRounded from '~icons/material-symbols/rule-folder-rounded'
-import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { cva } from 'class-variance-authority'
-import { useState, type ComponentType } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import { DndGridSource } from '@nyanpasu/ui/dnd-grid'
 import {
@@ -30,59 +16,31 @@ import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
 import { SearchField } from '@nyanpasu/ui/search-field'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
-import {
-  RENDER_MAP,
-  WIDGET_MIN_SIZE_MAP,
-  WIDGET_RECOMMENDED_SIZE_MAP,
-  WidgetId,
-} from '@/components/widgets/consts'
+import { WidgetPreview, type WidgetDefinition } from '@/components/widgets/core'
 import { useDashboardContext } from '@/components/widgets/provider'
+import {
+  WIDGET_CATEGORIES,
+  WIDGET_LIST,
+  type WidgetCategoryFilter,
+} from '@/components/widgets/registry'
+import { WidgetId } from '@/components/widgets/widget-config'
 import { m } from '@/paraglide/messages'
+import { cn } from '@nyanpasu/utils'
 
-const WIDGET_TITLE_MAP: Record<WidgetId, () => string> = {
-  [WidgetId.TrafficDown]: m.dashboard_widget_traffic_download,
-  [WidgetId.TrafficUp]: m.dashboard_widget_traffic_upload,
-  [WidgetId.Connections]: m.dashboard_widget_connections,
-  [WidgetId.Memory]: m.dashboard_widget_memory,
-  [WidgetId.ProxyShortcuts]: m.dashboard_widget_proxy_status,
-  [WidgetId.CoreShortcuts]: m.dashboard_widget_core_status,
-  [WidgetId.SubscriptionQuota]: m.dashboard_widget_subscription_quota_title,
-  [WidgetId.SubscriptionSchedule]:
-    m.dashboard_widget_subscription_schedule_title,
-  [WidgetId.ProxyMode]: m.dashboard_widget_proxy_mode_title,
-  [WidgetId.RecentTraffic]: m.dashboard_widget_recent_traffic_title,
-  [WidgetId.OriginTraffic]: m.dashboard_widget_origin_traffic_title,
-  [WidgetId.ExitTraffic]: m.dashboard_widget_exit_traffic_title,
-  [WidgetId.TargetTraffic]: m.dashboard_widget_target_traffic_title,
-  [WidgetId.RuleTraffic]: m.dashboard_widget_rule_traffic_title,
-  [WidgetId.ActiveConnections]: m.dashboard_widget_active_connections_title,
-  [WidgetId.ProviderUpdates]: m.dashboard_widget_provider_updates_title,
-  [WidgetId.NetworkInfo]: m.dashboard_widget_network_info_title,
-}
-
-// The icon each widget shows beside its own title.
-const WIDGET_ICON_MAP: Record<
-  WidgetId,
-  ComponentType<{ className?: string }>
-> = {
-  [WidgetId.TrafficDown]: ArrowDownwardRounded,
-  [WidgetId.TrafficUp]: ArrowUpwardRounded,
-  [WidgetId.Connections]: SettingsEthernetRounded,
-  [WidgetId.Memory]: MemoryOutlineRounded,
-  [WidgetId.ProxyShortcuts]: SettingsEthernetRounded,
-  [WidgetId.CoreShortcuts]: MemoryOutlineRounded,
-  [WidgetId.SubscriptionQuota]: DataUsageRounded,
-  [WidgetId.SubscriptionSchedule]: EventRepeatRounded,
-  [WidgetId.ProxyMode]: RouteRounded,
-  [WidgetId.RecentTraffic]: DataUsageRounded,
-  [WidgetId.OriginTraffic]: AppsRounded,
-  [WidgetId.ExitTraffic]: CallSplitRounded,
-  [WidgetId.TargetTraffic]: DnsRounded,
-  [WidgetId.RuleTraffic]: RuleFolderRounded,
-  [WidgetId.ActiveConnections]: NetworkCheckRounded,
-  [WidgetId.ProviderUpdates]: CloudSyncRounded,
-  [WidgetId.NetworkInfo]: PublicRounded,
-}
+const categoryItemVariants = cva(
+  [
+    'flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-sm font-medium',
+    'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
+  ],
+  {
+    variants: {
+      active: {
+        true: 'bg-secondary-container text-on-secondary-container',
+        false: 'text-on-surface-variant hover:bg-on-surface/8',
+      },
+    },
+  },
+)
 
 const widgetEntryAddVariants = cva('size-9 shrink-0 shadow-none', {
   variants: {
@@ -93,60 +51,71 @@ const widgetEntryAddVariants = cva('size-9 shrink-0 shadow-none', {
   },
 })
 
-// The size a widget takes when it is added, as placeWidget prefers it.
-function widgetSize(id: WidgetId) {
-  const { minW, minH } = WIDGET_MIN_SIZE_MAP[id]
-  return WIDGET_RECOMMENDED_SIZE_MAP[id] ?? { w: minW, h: minH }
-}
-
-function WidgetEntry({
-  id,
+function WidgetPreviewCard({
+  definition,
   placed,
   onAdd,
   onDragStart,
 }: {
-  id: WidgetId
+  definition: WidgetDefinition
   placed: boolean
   onAdd: (id: WidgetId) => void
   onDragStart: () => void
 }) {
-  const title = WIDGET_TITLE_MAP[id]()
-  const Icon = WIDGET_ICON_MAP[id]
-  const { w, h } = widgetSize(id)
+  const title = definition.title()
+  const Icon = definition.icon
+  const { defaultW, defaultH } = definition.size
 
   return (
     <DndGridSource
-      itemId={id}
+      itemId={definition.id}
       dragIdPrefix="sheet:"
-      w={w}
-      h={h}
+      w={defaultW}
+      h={defaultH}
       onSourceDragStart={onDragStart}
-      className="bg-surface-variant/40 flex min-w-0 items-center gap-3 rounded-2xl py-2 pr-2 pl-4"
       data-slot="widget-sheet-entry"
       data-placed={placed || undefined}
+      className={cn(
+        'bg-surface-variant/25 border-outline-variant/40 flex min-w-0 flex-col overflow-hidden rounded-3xl border',
+        'hover:border-outline-variant transition-colors',
+      )}
     >
-      <Icon className="text-on-surface-variant size-5 shrink-0" />
+      <div className="bg-surface-variant/35 relative h-40 w-full shrink-0 overflow-hidden p-3">
+        <WidgetPreview definition={definition} />
 
-      <TextMarquee className="min-w-0 flex-1 text-sm">{title}</TextMarquee>
+        <span className="bg-surface/80 text-on-surface-variant absolute top-2.5 right-2.5 rounded-full px-2 py-0.5 text-xs tabular-nums backdrop-blur-sm">
+          {defaultW}×{defaultH}
+        </span>
+      </div>
 
-      <span className="text-on-surface-variant text-xs tabular-nums">
-        {w}×{h}
-      </span>
+      <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+        <Icon
+          className="text-on-surface-variant size-5 shrink-0"
+          aria-hidden="true"
+        />
 
-      <Button
-        variant="raised"
-        icon
-        className={widgetEntryAddVariants({ placed })}
-        aria-label={m.dashboard_widget_library_add_entry({ name: title })}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => onAdd(id)}
-      >
-        {placed ? (
-          <DoneRounded className="size-5" />
-        ) : (
-          <AddRounded className="size-5" />
-        )}
-      </Button>
+        <div className="min-w-0 flex-1">
+          <TextMarquee className="text-sm font-medium">{title}</TextMarquee>
+          <p className="text-on-surface-variant truncate text-xs">
+            {definition.description()}
+          </p>
+        </div>
+
+        <Button
+          variant="raised"
+          icon
+          className={widgetEntryAddVariants({ placed })}
+          aria-label={m.dashboard_widget_library_add_entry({ name: title })}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onAdd(definition.id)}
+        >
+          {placed ? (
+            <DoneRounded className="size-5" />
+          ) : (
+            <AddRounded className="size-5" />
+          )}
+        </Button>
+      </div>
     </DndGridSource>
   )
 }
@@ -159,13 +128,48 @@ export function WidgetSheet({
   onAdd: (id: WidgetId) => void
 }) {
   const { openSheet, setOpenSheet } = useDashboardContext()
-
+  const [category, setCategory] = useState<WidgetCategoryFilter>('all')
   const [search, setSearch] = useState('')
 
   const query = search.trim().toLocaleLowerCase()
-  const filteredIds = (Object.keys(RENDER_MAP) as WidgetId[]).filter(
-    (id) =>
-      !query || WIDGET_TITLE_MAP[id]().toLocaleLowerCase().includes(query),
+
+  // Filter before counting so the sidebar reports matches under the query.
+  const searchMatched = useMemo(
+    () =>
+      WIDGET_LIST.filter((definition) => {
+        if (!query) return true
+
+        return (
+          definition.title().toLocaleLowerCase().includes(query) ||
+          definition.description().toLocaleLowerCase().includes(query)
+        )
+      }),
+    [query],
+  )
+
+  const countsByCategory = useMemo(() => {
+    const counts = new Map<WidgetCategoryFilter, number>([
+      ['all', searchMatched.length],
+    ])
+
+    for (const definition of searchMatched) {
+      counts.set(
+        definition.category,
+        (counts.get(definition.category) ?? 0) + 1,
+      )
+    }
+
+    return counts
+  }, [searchMatched])
+
+  const visibleWidgets = useMemo(
+    () =>
+      category === 'all'
+        ? searchMatched
+        : searchMatched.filter(
+            (definition) => definition.category === category,
+          ),
+    [category, searchMatched],
   )
 
   // Close the library so the new widget appears on the dashboard in view.
@@ -182,7 +186,7 @@ export function WidgetSheet({
       >
         <DrawerHandle />
 
-        <div className="shrink-0 px-4 pt-2 pb-3">
+        <div className="border-outline-variant/40 shrink-0 border-b px-4 pt-2 pb-3">
           <div className="flex items-center justify-between gap-4">
             <DrawerTitle className="text-lg font-semibold">
               {m.dashboard_add_widget()}
@@ -207,32 +211,101 @@ export function WidgetSheet({
             placeholder={m.dashboard_widget_library_search()}
             clearLabel={m.dashboard_widget_library_search_clear()}
           />
+
+          <nav
+            aria-label={m.dashboard_widget_category_nav()}
+            data-slot="widget-sheet-categories-mobile"
+            className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-0.5 md:hidden"
+          >
+            {WIDGET_CATEGORIES.map((entry) => {
+              const Icon = entry.icon
+
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-pressed={category === entry.id}
+                  onClick={() => setCategory(entry.id)}
+                  className={cn(
+                    categoryItemVariants({ active: category === entry.id }),
+                    'w-auto shrink-0 px-3 py-1.5 text-xs',
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span>{entry.label()}</span>
+                  <span className="tabular-nums opacity-70">
+                    {countsByCategory.get(entry.id) ?? 0}
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
         </div>
 
-        <ScrollArea className="min-h-0 flex-1">
-          <div
-            className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2 px-4 pb-4"
-            data-slot="widget-sheet-library"
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <aside
+            aria-label={m.dashboard_widget_category_nav()}
+            data-slot="widget-sheet-sidebar"
+            className="border-outline-variant/40 hidden w-48 shrink-0 flex-col gap-1 border-r p-3 md:flex"
           >
-            {filteredIds.map((id) => (
-              <WidgetEntry
-                key={id}
-                id={id}
-                placed={placedTypes.has(id)}
-                onAdd={handleAdd}
-                onDragStart={() => setOpenSheet(false)}
-              />
-            ))}
+            {WIDGET_CATEGORIES.map((entry) => {
+              const Icon = entry.icon
 
-            {filteredIds.length === 0 && (
-              <EmptyState
-                tone="normal"
-                className="col-span-full"
-                message={m.dashboard_widget_library_no_results()}
-              />
-            )}
-          </div>
-        </ScrollArea>
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-current={category === entry.id ? 'page' : undefined}
+                  onClick={() => setCategory(entry.id)}
+                  className={categoryItemVariants({
+                    active: category === entry.id,
+                  })}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {entry.label()}
+                  </span>
+                  <span className="text-xs tabular-nums opacity-70">
+                    {countsByCategory.get(entry.id) ?? 0}
+                  </span>
+                </button>
+              )
+            })}
+          </aside>
+
+          <ScrollArea className="min-h-0 flex-1">
+            <div
+              data-slot="widget-sheet-library"
+              className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2"
+            >
+              {visibleWidgets.map((definition) => (
+                <WidgetPreviewCard
+                  key={definition.id}
+                  definition={definition}
+                  placed={placedTypes.has(definition.id)}
+                  onAdd={handleAdd}
+                  onDragStart={() => setOpenSheet(false)}
+                />
+              ))}
+
+              {visibleWidgets.length === 0 && (
+                <EmptyState
+                  tone="normal"
+                  className="col-span-full"
+                  message={m.dashboard_widget_library_no_results()}
+                >
+                  {category !== 'all' && searchMatched.length > 0 && (
+                    <Button variant="raised" onClick={() => setCategory('all')}>
+                      {m.dashboard_widget_library_show_all_results({
+                        count: String(searchMatched.length),
+                      })}
+                    </Button>
+                  )}
+                </EmptyState>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
       </DrawerContent>
     </Drawer>
   )

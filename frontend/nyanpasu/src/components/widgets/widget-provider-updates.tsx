@@ -476,6 +476,7 @@ export const providerUpdatesWidget = defineWidget({
   id: WidgetId.ProviderUpdates,
   category: 'subscription',
   title: m.dashboard_widget_provider_updates_title,
+  description: m.dashboard_widget_provider_updates_description,
   icon: CloudSyncRounded,
   size: { minW: 3, minH: 2, defaultW: 4, defaultH: 3 },
   defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ProviderUpdates],

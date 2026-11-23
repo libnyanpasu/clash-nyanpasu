@@ -78,6 +78,12 @@ provides an `isTauri()` API.
   smallest shared scope: feature module or `@nyanpasu/constants`. Pure helpers
   belong in `@nyanpasu/utils`; reusable React hooks belong in `@nyanpasu/hooks`.
   Update the related callers together. Shared packages must not import the app.
+- Use [es-toolkit](https://es-toolkit.dev) for general-purpose helpers such as
+  `debounce`, `throttle`, `isEqual`, `groupBy`, or `clamp` instead of writing your
+  own or adding another utility library. Import from `es-toolkit`; use
+  `es-toolkit/compat` only when you need lodash-compatible behavior. A package
+  that uses it declares the dependency itself, at the version the other frontend
+  packages pin.
 - Keep one-use implementation details local. Similar literals with different
   meanings do not need a common constant, and speculative reuse is insufficient.
 - Distinguish native Tauri execution, OS identity, and viewport size. Define what

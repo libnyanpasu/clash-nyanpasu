@@ -45,6 +45,7 @@ export function Widget({
         <div
           ref={containerRef}
           data-slot="widget-root"
+          data-widget-root="true"
           data-widget-type={type}
           data-widget-mode={mode}
           data-scaling={scaling}

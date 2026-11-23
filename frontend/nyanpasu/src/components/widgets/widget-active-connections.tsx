@@ -5,8 +5,6 @@ import { motion, useReducedMotion } from 'motion/react'
 import { memo, useDeferredValue, useMemo } from 'react'
 import { ActionSwapText } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent } from '@nyanpasu/ui/card'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
@@ -15,15 +13,29 @@ import { formatBytes } from '@/utils/format-bytes'
 import { useClashConnectionDetails, useClashWSStatus } from '@nyanpasu/query'
 import type { ClashConnection_Serialize } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
-import { WidgetComponentProps } from './consts'
-import { useWidgetConfig } from './provider'
-import { useWidgetHeight } from './use-widget-height'
-import { WidgetId } from './widget-config'
-import WidgetItem from './widget-item'
-import { WidgetTitle } from './widget-ui'
-
-const CONNECTION_ROW_HEIGHT = 60
-const CONNECTION_REMAINDER_HEIGHT = 24
+import {
+  defineWidget,
+  useWidgetConfig,
+  useWidgetConfigActions,
+  useWidgetInteractive,
+  useWidgetListCapacity,
+  Widget,
+  WidgetContent,
+  WidgetControls,
+  WidgetHeader,
+  WidgetTitle,
+} from './core'
+import {
+  DEFAULT_WIDGET_CONFIGS,
+  WIDGET_CONFIG_NUMBER_RANGES,
+  WidgetId,
+} from './widget-config'
+import {
+  ConfigChoice,
+  ConfigStepper,
+  ConfigToggle,
+} from './widget-config-fields'
+import { ConfigGroup } from './widget-config-row'
 
 function connectionTarget(connection: ClashConnection_Serialize) {
   return (
@@ -39,84 +51,84 @@ function processBasename(path: string | null | undefined) {
   return path.split(/[\\/]/).at(-1) || path
 }
 
-function ActiveConnectionsPreview({ id, onCloseClick }: WidgetComponentProps) {
+const PREVIEW_CONNECTIONS = [
+  {
+    host: 'video.example.com',
+    download: 1_572_864,
+    upload: 65_536,
+  },
+  { host: 'api.example.com', download: 458_752, upload: 32_768 },
+]
+
+function ActiveConnectionsPreview() {
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.ActiveConnections}
-      minW={4}
-      minH={2}
-      onCloseClick={onCloseClick}
+    <Widget
+      scaling="list"
+      data-widget-kind="active-connections"
+      data-slot="widget-active-connections-card"
     >
-      <Card className="size-full" data-slot="widget-active-connections-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
-          <div className="flex shrink-0 items-center gap-2">
-            <WidgetTitle className="flex-1" icon={NetworkCheckRounded}>
-              {m.dashboard_widget_active_connections_title()}
-            </WidgetTitle>
-            <span
-              className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-xs tabular-nums"
-              data-slot="widget-active-connections-count"
-            >
-              2
-            </span>
-          </div>
-          <ul
-            className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
-            data-slot="widget-active-connections-list"
+      <WidgetHeader>
+        <WidgetTitle />
+
+        <WidgetControls>
+          <span
+            className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
+            data-slot="widget-active-connections-count"
           >
-            {[
-              {
-                host: 'video.example.com',
-                download: 1_572_864,
-                upload: 65_536,
-              },
-              { host: 'api.example.com', download: 458_752, upload: 32_768 },
-            ].map((connection) => (
-              <li
-                className="bg-surface-variant/30 flex min-w-0 shrink-0 items-center gap-3 rounded-2xl px-3 py-2 text-xs"
-                data-slot="widget-active-connections-row"
-                key={connection.host}
-              >
-                <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
-                  <PublicRounded className="size-5" aria-hidden="true" />
+            2
+          </span>
+        </WidgetControls>
+      </WidgetHeader>
+
+      <WidgetContent className="gap-[var(--w-gap-sm)]">
+        <ul
+          className="flex min-h-0 flex-1 flex-col gap-[var(--w-gap-sm)] overflow-hidden"
+          data-slot="widget-active-connections-list"
+        >
+          {PREVIEW_CONNECTIONS.map((connection) => (
+            <li
+              className="bg-surface-variant/30 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
+              data-slot="widget-active-connections-row"
+              key={connection.host}
+            >
+              <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                <PublicRounded className="size-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div
+                  className="min-w-0 truncate text-[length:var(--w-text-body)] font-medium"
+                  data-slot="widget-active-connections-label"
+                >
+                  {connection.host}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="min-w-0 truncate text-sm font-medium"
-                    data-slot="widget-active-connections-label"
-                  >
-                    {connection.host}
-                  </div>
-                  <div className="text-on-surface-variant flex gap-4 tabular-nums">
-                    <span className="whitespace-nowrap">
-                      ↓ {formatBytes(connection.download)}/s
-                    </span>
-                    <span className="whitespace-nowrap">
-                      ↑ {formatBytes(connection.upload)}/s
-                    </span>
-                  </div>
+                <div className="text-on-surface-variant flex gap-4 tabular-nums">
+                  <span className="whitespace-nowrap">
+                    ↓ {formatBytes(connection.download)}/s
+                  </span>
+                  <span className="whitespace-nowrap">
+                    ↑ {formatBytes(connection.upload)}/s
+                  </span>
                 </div>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    </WidgetItem>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </WidgetContent>
+    </Widget>
   )
 }
 
-const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
-  id,
-  onCloseClick,
-  canAct,
-}: WidgetComponentProps & { canAct: boolean }) {
-  const config = useWidgetConfig(id, WidgetId.ActiveConnections)
+const ActiveConnectionsLive = memo(function ActiveConnectionsLive() {
+  const config = useWidgetConfig(WidgetId.ActiveConnections)
+  const interactive = useWidgetInteractive()
   const reducedMotion = useReducedMotion()
   const { data, status, connectorState, retry } = useClashConnectionDetails()
   const { isLoading: isClashStatusLoading } = useClashWSStatus()
   const details = useDeferredValue(data)
-  const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
+  const { listRef, capacity } = useWidgetListCapacity({
+    baseGap: 8,
+    reserveHeight: 24,
+  })
 
   const connections = useMemo(() => {
     const direction = config.sort
@@ -138,181 +150,229 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive({
       })
       .slice(0, config.topN)
   }, [config.sort, config.topN, details])
-  const rowHeight = CONNECTION_ROW_HEIGHT
-  const capacity =
-    listHeight == null
-      ? 1
-      : Math.max(1, Math.floor((listHeight + 8) / rowHeight))
   const totalCount = details?.connections.length ?? 0
-  const visibleCount =
-    totalCount > Math.min(capacity, connections.length) && listHeight != null
-      ? Math.max(
-          1,
-          Math.floor(
-            (listHeight - CONNECTION_REMAINDER_HEIGHT + 8) / rowHeight,
-          ),
-        )
-      : capacity
-  const hiddenCount = totalCount - Math.min(visibleCount, connections.length)
-
+  const hiddenCount = totalCount - Math.min(capacity, connections.length)
   const retryDisabled =
-    !canAct || connectorState !== 'connected' || status === 'connecting'
+    !interactive || connectorState !== 'connected' || status === 'connecting'
 
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.ActiveConnections}
-      minW={4}
-      minH={2}
-      onCloseClick={onCloseClick}
+    <Widget
+      scaling="list"
+      data-widget-kind="active-connections"
+      data-slot="widget-active-connections-card"
     >
-      <Card className="size-full" data-slot="widget-active-connections-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden">
-          <div className="flex shrink-0 items-center justify-between gap-2">
-            <WidgetTitle className="flex-1" icon={NetworkCheckRounded}>
-              {m.dashboard_widget_active_connections_title()}
-            </WidgetTitle>
-            {details && connectorState === 'connected' && (
-              <span
-                className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-xs tabular-nums"
-                data-slot="widget-active-connections-count"
-              >
-                {totalCount}
-              </span>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="basic"
-                  className="size-7 shrink-0"
-                  icon
-                  aria-label={m.dashboard_widget_active_connections_open()}
-                  asChild
-                >
-                  <Link
-                    aria-disabled={!canAct}
-                    tabIndex={canAct ? 0 : -1}
-                    className={!canAct ? 'pointer-events-none opacity-50' : ''}
-                    onClick={(event) => {
-                      if (!canAct) event.preventDefault()
-                    }}
-                    to="/main/connections"
-                  >
-                    <OpenInNewRounded className="size-4" />
-                  </Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {m.dashboard_widget_active_connections_open()}
-              </TooltipContent>
-            </Tooltip>
-          </div>
+      <WidgetHeader>
+        <WidgetTitle />
 
-          {connectorState !== 'connected' ? (
-            <p className="text-on-surface-variant text-sm" role="status">
-              {isClashStatusLoading || connectorState === 'connecting'
-                ? m.dashboard_widget_active_connections_connecting()
-                : m.dashboard_widget_active_connections_disconnected()}
-            </p>
-          ) : status === 'error' ? (
-            <div className="flex min-h-0 flex-1 flex-col justify-center gap-2">
-              <p className="text-error text-sm" role="status">
-                {m.dashboard_widget_active_connections_stream_error()}
-              </p>
-              <Button
-                className="h-8 self-start px-3"
-                disabled={retryDisabled}
-                onClick={retry}
-              >
-                {m.dashboard_widget_active_connections_retry()}
-              </Button>
-            </div>
-          ) : !details ? (
-            <p className="text-on-surface-variant text-sm" role="status">
-              {m.dashboard_widget_active_connections_waiting()}
-            </p>
-          ) : connections.length === 0 ? (
-            <EmptyState
-              size="compact"
-              tone="normal"
-              className="flex-1 overflow-hidden"
-              message={m.dashboard_widget_active_connections_empty()}
-            />
-          ) : (
-            <div
-              ref={listRef}
-              className="flex min-h-0 flex-1 flex-col overflow-hidden"
-              data-slot="widget-active-connections-list"
+        <WidgetControls>
+          {details && connectorState === 'connected' && (
+            <span
+              className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
+              data-slot="widget-active-connections-count"
             >
-              <ul className="flex flex-col gap-2">
-                {connections.slice(0, visibleCount).map((connection) => {
-                  const process = config.showProcess
-                    ? processBasename(connection.metadata?.process)
-                    : null
-                  const target = config.hideTargets
-                    ? null
-                    : connectionTarget(connection)
-
-                  return (
-                    <motion.li
-                      layout="position"
-                      initial={false}
-                      transition={{
-                        duration: reducedMotion ? 0 : 0.22,
-                        ease: 'easeOut',
-                      }}
-                      className="bg-surface-variant/30 flex min-w-0 shrink-0 items-center gap-3 rounded-2xl px-3 py-2 text-xs"
-                      data-slot="widget-active-connections-row"
-                      key={connection.id}
-                    >
-                      <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
-                        <PublicRounded className="size-5" aria-hidden="true" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className="min-w-0 text-sm font-medium"
-                          data-slot="widget-active-connections-label"
-                        >
-                          <TextMarquee className="w-full" speed={30}>
-                            {[target, process].filter(Boolean).join(' · ') ||
-                              m.dashboard_widget_active_connections_hidden_target()}
-                          </TextMarquee>
-                        </div>
-                        <div className="text-on-surface-variant flex gap-4 tabular-nums">
-                          <ActionSwapText
-                            className="whitespace-nowrap"
-                            value={`↓ ${formatBytes(connection.downloadSpeed)}/s`}
-                          />
-                          <ActionSwapText
-                            className="whitespace-nowrap"
-                            value={`↑ ${formatBytes(connection.uploadSpeed)}/s`}
-                          />
-                        </div>
-                      </div>
-                    </motion.li>
-                  )
-                })}
-              </ul>
-              {hiddenCount > 0 && (
-                <p
-                  className="text-on-surface-variant mt-auto shrink-0 pt-1 text-xs"
-                  data-slot="widget-active-connections-remainder"
-                >
-                  {m.dashboard_widget_active_connections_remaining({
-                    count: hiddenCount,
-                  })}
-                </p>
-              )}
-            </div>
+              {totalCount}
+            </span>
           )}
-        </CardContent>
-      </Card>
-    </WidgetItem>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="basic"
+                className="size-7 shrink-0"
+                icon
+                aria-label={m.dashboard_widget_active_connections_open()}
+                asChild
+              >
+                <Link
+                  aria-disabled={!interactive}
+                  tabIndex={interactive ? 0 : -1}
+                  className={
+                    !interactive ? 'pointer-events-none opacity-50' : ''
+                  }
+                  onClick={(event) => {
+                    if (!interactive) event.preventDefault()
+                  }}
+                  to="/main/connections"
+                >
+                  <OpenInNewRounded className="size-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {m.dashboard_widget_active_connections_open()}
+            </TooltipContent>
+          </Tooltip>
+        </WidgetControls>
+      </WidgetHeader>
+
+      <WidgetContent className="gap-[var(--w-gap-sm)]">
+        {connectorState !== 'connected' ? (
+          <p
+            className="text-on-surface-variant text-[length:var(--w-text-body)]"
+            role="status"
+          >
+            {isClashStatusLoading || connectorState === 'connecting'
+              ? m.dashboard_widget_active_connections_connecting()
+              : m.dashboard_widget_active_connections_disconnected()}
+          </p>
+        ) : status === 'error' ? (
+          <div className="flex min-h-0 flex-1 flex-col justify-center gap-2">
+            <p
+              className="text-error text-[length:var(--w-text-body)]"
+              role="status"
+            >
+              {m.dashboard_widget_active_connections_stream_error()}
+            </p>
+            <Button
+              className="h-8 self-start px-3"
+              disabled={retryDisabled}
+              onClick={retry}
+            >
+              {m.dashboard_widget_active_connections_retry()}
+            </Button>
+          </div>
+        ) : !details ? (
+          <p
+            className="text-on-surface-variant text-[length:var(--w-text-body)]"
+            role="status"
+          >
+            {m.dashboard_widget_active_connections_waiting()}
+          </p>
+        ) : connections.length === 0 ? (
+          <EmptyState
+            size="compact"
+            tone="normal"
+            className="flex-1 overflow-hidden"
+            message={m.dashboard_widget_active_connections_empty()}
+          />
+        ) : (
+          <div
+            ref={listRef}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            data-slot="widget-active-connections-list"
+          >
+            <ul className="flex flex-col gap-[var(--w-gap-sm)]">
+              {connections.slice(0, capacity).map((connection) => {
+                const process = config.showProcess
+                  ? processBasename(connection.metadata?.process)
+                  : null
+                const target = config.hideTargets
+                  ? null
+                  : connectionTarget(connection)
+
+                return (
+                  <motion.li
+                    layout="position"
+                    initial={false}
+                    transition={{
+                      duration: reducedMotion ? 0 : 0.22,
+                      ease: 'easeOut',
+                    }}
+                    className="bg-surface-variant/30 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
+                    data-slot="widget-active-connections-row"
+                    key={connection.id}
+                  >
+                    <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                      <PublicRounded className="size-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="min-w-0 text-[length:var(--w-text-body)] font-medium"
+                        data-slot="widget-active-connections-label"
+                      >
+                        <TextMarquee className="w-full" speed={30}>
+                          {[target, process].filter(Boolean).join(' · ') ||
+                            m.dashboard_widget_active_connections_hidden_target()}
+                        </TextMarquee>
+                      </div>
+                      <div className="text-on-surface-variant flex gap-4 tabular-nums">
+                        <ActionSwapText
+                          className="whitespace-nowrap"
+                          value={`↓ ${formatBytes(connection.downloadSpeed)}/s`}
+                        />
+                        <ActionSwapText
+                          className="whitespace-nowrap"
+                          value={`↑ ${formatBytes(connection.uploadSpeed)}/s`}
+                        />
+                      </div>
+                    </div>
+                  </motion.li>
+                )
+              })}
+            </ul>
+            {hiddenCount > 0 && (
+              <p
+                className="text-on-surface-variant mt-auto shrink-0 pt-1 text-[length:var(--w-text-meta)]"
+                data-slot="widget-active-connections-remainder"
+              >
+                {m.dashboard_widget_active_connections_remaining({
+                  count: hiddenCount,
+                })}
+              </p>
+            )}
+          </div>
+        )}
+      </WidgetContent>
+    </Widget>
   )
 })
 
-export function ActiveConnectionsWidget(props: WidgetComponentProps) {
-  const { disabled, isOverlay, sourceOnly } = useDndGridContext()
-  if (sourceOnly || isOverlay) return <ActiveConnectionsPreview {...props} />
-  return <ActiveConnectionsLive {...props} canAct={disabled && !isOverlay} />
+function ActiveConnectionsConfigForm() {
+  const { config, disabled, updateConfig } = useWidgetConfigActions(
+    WidgetId.ActiveConnections,
+  )
+
+  return (
+    <>
+      <ConfigGroup>
+        <ConfigChoice
+          label={m.dashboard_widget_config_sort()}
+          value={config.sort}
+          options={[
+            {
+              value: 'download',
+              label: m.dashboard_widget_config_download(),
+            },
+            { value: 'upload', label: m.dashboard_widget_config_upload() },
+            { value: 'total', label: m.dashboard_widget_config_total() },
+          ]}
+          disabled={disabled}
+          onChange={(sort) => updateConfig({ sort })}
+        />
+        <ConfigStepper
+          label={m.dashboard_widget_config_top()}
+          value={config.topN}
+          range={WIDGET_CONFIG_NUMBER_RANGES.topN}
+          disabled={disabled}
+          onChange={(topN) => updateConfig({ topN })}
+        />
+      </ConfigGroup>
+
+      <ConfigGroup>
+        <ConfigToggle
+          label={m.dashboard_widget_config_process()}
+          checked={config.showProcess}
+          disabled={disabled}
+          onChange={(showProcess) => updateConfig({ showProcess })}
+        />
+        <ConfigToggle
+          label={m.dashboard_widget_config_hide_targets()}
+          checked={config.hideTargets}
+          disabled={disabled}
+          onChange={(hideTargets) => updateConfig({ hideTargets })}
+        />
+      </ConfigGroup>
+    </>
+  )
 }
+
+export const activeConnectionsWidget = defineWidget({
+  id: WidgetId.ActiveConnections,
+  category: 'realtime',
+  title: m.dashboard_widget_active_connections_title,
+  icon: NetworkCheckRounded,
+  size: { minW: 4, minH: 2, defaultW: 6, defaultH: 3 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ActiveConnections],
+  Component: ActiveConnectionsLive,
+  Preview: ActiveConnectionsPreview,
+  ConfigForm: ActiveConnectionsConfigForm,
+})

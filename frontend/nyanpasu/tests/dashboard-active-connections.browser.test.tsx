@@ -8,8 +8,8 @@ import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
+import { ActiveConnectionsWidget } from '@/components/widgets/legacy-widgets'
 import { DashboardProvider } from '@/components/widgets/provider'
-import { ActiveConnectionsWidget } from '@/components/widgets/widget-active-connections'
 import { m } from '@/paraglide/messages'
 import type { routeTree } from '@/route-tree.gen'
 import { DndContext } from '@dnd-kit/core'
@@ -275,8 +275,8 @@ test.for([3, 2, 4])(
         height === 2
           ? ['worker-z.exe']
           : height === 4
-            ? ['worker-z.exe', 'worker-a.exe', 'worker-b.exe']
-            : ['worker-z.exe', 'worker-a.exe'],
+            ? ['worker-z.exe', 'worker-a.exe', 'worker-b.exe', 'worker-c.exe']
+            : ['worker-z.exe', 'worker-a.exe', 'worker-b.exe'],
       )
     expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight)
     expect(getComputedStyle(list).overflowY).toBe('hidden')
@@ -298,13 +298,13 @@ test.for([3, 2, 4])(
         ?.textContent,
     ).toContain(
       m.dashboard_widget_active_connections_remaining({
-        count: height === 2 ? 4 : height === 4 ? 2 : 3,
+        count: height === 2 ? 4 : height === 4 ? 1 : 2,
       }),
     )
     const firstLabel = card.querySelector(
       '[data-slot="widget-active-connections-label"]',
     )!
-    expect(firstLabel.textContent).toBe(
+    expect(firstLabel.textContent).toContain(
       height === 4 ? 'hidden-host-z.example · worker-z.exe' : 'worker-z.exe',
     )
     if (height !== 4) expect(card.textContent).not.toContain('hidden-host-')

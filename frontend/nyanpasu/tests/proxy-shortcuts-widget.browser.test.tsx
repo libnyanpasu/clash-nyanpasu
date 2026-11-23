@@ -9,9 +9,9 @@ import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import type { DashboardItem } from '@/components/widgets/consts'
+import { ProxyShortcutsWidget } from '@/components/widgets/legacy-widgets'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetId } from '@/components/widgets/widget-config'
-import { ProxyShortcutsWidget } from '@/components/widgets/widget-shortcut'
 import { DndContext } from '@dnd-kit/core'
 import {
   createIconTransport,

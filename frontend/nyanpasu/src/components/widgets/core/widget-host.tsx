@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react'
 import type { ReactNode } from 'react'
 import { DndGridItem, type DndGridItemType } from '@nyanpasu/ui/dnd-grid'
 import { cn } from '@nyanpasu/utils'
@@ -9,6 +10,7 @@ import {
   type WidgetRenderMode,
   type WidgetSpan,
 } from './widget-context'
+import { WidgetRemoveControl } from './widget-controls'
 
 function resolveDefinition(
   definition: WidgetDefinition | undefined,
@@ -53,8 +55,9 @@ export type WidgetGridHostProps = {
   updateConfig?: (patch: Partial<WidgetConfig>) => void
   resetConfig?: () => void
   enterEditMode?: () => void
+  onRemove?: (id: string) => void
   className?: string
-  /** Host chrome, such as remove and config controls, renders inside the instance context. */
+  /** Extra chrome, such as the config control, renders inside the instance context. */
   children?: ReactNode
 }
 
@@ -69,6 +72,7 @@ export function WidgetGridHost({
   updateConfig,
   resetConfig,
   enterEditMode,
+  onRemove,
   className,
   children,
 }: WidgetGridHostProps) {
@@ -100,6 +104,16 @@ export function WidgetGridHost({
         <WidgetModeRenderer definition={resolved} mode="live" />
 
         {children}
+
+        <AnimatePresence>
+          {isEditing && onRemove && (
+            <WidgetRemoveControl
+              key="remove-control"
+              id={item.id}
+              onRemove={onRemove}
+            />
+          )}
+        </AnimatePresence>
       </WidgetInstanceProvider>
     </DndGridItem>
   )

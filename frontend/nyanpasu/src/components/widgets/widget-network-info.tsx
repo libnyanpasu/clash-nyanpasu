@@ -2,8 +2,6 @@ import PublicRounded from '~icons/material-symbols/public-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import type { ReactNode } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent } from '@nyanpasu/ui/card'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -12,11 +10,20 @@ import { regionName } from '@/utils/traffic-usage'
 import { useClashSetting, useLocalIpProbe, useSetting } from '@nyanpasu/query'
 import type { EgressAddress, EgressSource } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
-import type { WidgetComponentProps } from './consts'
-import { useWidgetConfig } from './provider'
-import { WidgetId } from './widget-config'
-import WidgetItem from './widget-item'
-import { WidgetHeader, WidgetTitle } from './widget-ui'
+import {
+  defineWidget,
+  useWidgetConfig,
+  useWidgetConfigActions,
+  useWidgetInteractive,
+  Widget,
+  WidgetContent,
+  WidgetControls,
+  WidgetHeader,
+  WidgetTitle,
+} from './core'
+import { DEFAULT_WIDGET_CONFIGS, WidgetId } from './widget-config'
+import { ConfigToggle } from './widget-config-fields'
+import { ConfigGroup } from './widget-config-row'
 
 type Family = 'ipv4' | 'ipv6'
 
@@ -76,17 +83,21 @@ function EgressRow({
 
   return (
     <li
-      className="bg-surface-variant/20 flex min-w-0 items-center gap-3 rounded-xl px-3 py-2"
+      className="bg-surface-variant/20 flex min-w-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-[var(--w-gap-sm)] py-2"
       data-slot="widget-network-info-row"
       data-family={family}
     >
-      <span className="bg-secondary-container/60 text-on-secondary-container shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium">
+      <span className="bg-secondary-container/60 text-on-secondary-container shrink-0 rounded-md px-1.5 py-0.5 text-[length:var(--w-text-meta)] font-medium">
         {FAMILY_LABELS[family]}
       </span>
 
       <div className="min-w-0 flex-1">
         <TextMarquee
-          className={egress ? 'font-mono text-sm font-medium' : 'text-sm'}
+          className={
+            egress
+              ? 'font-mono text-[length:var(--w-text-body)] font-medium'
+              : 'text-[length:var(--w-text-body)]'
+          }
         >
           {egress
             ? hideAddress
@@ -96,7 +107,7 @@ function EgressRow({
         </TextMarquee>
 
         {details && (
-          <TextMarquee className="text-on-surface-variant text-xs">
+          <TextMarquee className="text-on-surface-variant text-[length:var(--w-text-meta)]">
             {details}
           </TextMarquee>
         )}
@@ -116,7 +127,7 @@ function EgressRows({
 }) {
   return (
     <ul
-      className="flex min-h-0 flex-col gap-1 overflow-hidden"
+      className="flex min-h-0 flex-col gap-[var(--w-gap-xs)] overflow-hidden"
       data-slot="widget-network-info-rows"
     >
       <EgressRow family="ipv4" egress={ipv4} hideAddress={hideAddresses} />
@@ -125,57 +136,43 @@ function EgressRows({
   )
 }
 
-function NetworkInfoCard({
-  id,
-  onCloseClick,
+function NetworkInfoView({
   action,
   children,
-}: WidgetComponentProps & {
+}: {
   action?: ReactNode
   children: ReactNode
 }) {
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.NetworkInfo}
-      minW={3}
-      minH={2}
-      onCloseClick={onCloseClick}
-    >
-      <Card className="flex size-full flex-col" data-slot="network-info-card">
-        <WidgetHeader className="flex-row items-center">
-          <WidgetTitle className="flex-1" icon={PublicRounded}>
-            {m.dashboard_widget_network_info_title()}
-          </WidgetTitle>
+    <Widget scaling="list" data-widget-kind="network-info">
+      <WidgetHeader>
+        <WidgetTitle />
 
-          {action}
-        </WidgetHeader>
+        <WidgetControls>{action}</WidgetControls>
+      </WidgetHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
-          {children}
-        </CardContent>
-      </Card>
-    </WidgetItem>
+      <WidgetContent className="justify-start gap-[var(--w-gap-xs)]">
+        {children}
+      </WidgetContent>
+    </Widget>
   )
 }
 
-function NetworkInfoPreview(props: WidgetComponentProps) {
+function NetworkInfoPreview() {
   return (
-    <NetworkInfoCard {...props}>
+    <NetworkInfoView>
       <EgressRows
         ipv4={PREVIEW_EGRESS.ipv4}
         ipv6={PREVIEW_EGRESS.ipv6}
         hideAddresses={false}
       />
-    </NetworkInfoCard>
+    </NetworkInfoView>
   )
 }
 
-function NetworkInfoLive({
-  canAct,
-  ...props
-}: WidgetComponentProps & { canAct: boolean }) {
-  const config = useWidgetConfig(props.id, WidgetId.NetworkInfo)
+function NetworkInfoLive() {
+  const config = useWidgetConfig(WidgetId.NetworkInfo)
+  const interactive = useWidgetInteractive()
   const { value: allowed } = useSetting('enable_local_ip_probe')
   const { value: tunEnabled } = useClashSetting('enable_tun_mode')
   const { value: transparentProxy } = useClashSetting('transparent_proxy')
@@ -195,7 +192,10 @@ function NetworkInfoLive({
   const probed = egress?.kind === 'probed' ? egress : null
 
   const notice = off ? (
-    <p className="text-on-surface-variant text-sm" role="status">
+    <p
+      className="text-on-surface-variant text-[length:var(--w-text-body)]"
+      role="status"
+    >
       <span>{m.dashboard_widget_network_info_disabled()}</span>{' '}
       <Link
         to="/main/settings/nyanpasu/public-ip"
@@ -205,19 +205,28 @@ function NetworkInfoLive({
       </Link>
     </p>
   ) : tun ? (
-    <p className="text-on-surface-variant text-sm" role="status">
+    <p
+      className="text-on-surface-variant text-[length:var(--w-text-body)]"
+      role="status"
+    >
       {m.dashboard_widget_network_info_tun()}
     </p>
   ) : transparent ? (
-    <p className="text-on-surface-variant text-sm" role="status">
+    <p
+      className="text-on-surface-variant text-[length:var(--w-text-body)]"
+      role="status"
+    >
       {m.dashboard_widget_network_info_transparent_proxy()}
     </p>
   ) : probe.isError ? (
-    <p className="text-error text-sm" role="alert">
+    <p className="text-error text-[length:var(--w-text-body)]" role="alert">
       {m.dashboard_widget_network_info_failed()}
     </p>
   ) : !probed ? (
-    <p className="text-on-surface-variant text-sm" role="status">
+    <p
+      className="text-on-surface-variant text-[length:var(--w-text-body)]"
+      role="status"
+    >
       {m.dashboard_widget_network_info_probing()}
     </p>
   ) : null
@@ -225,8 +234,7 @@ function NetworkInfoLive({
   const refreshLabel = m.dashboard_widget_network_info_refresh()
 
   return (
-    <NetworkInfoCard
-      {...props}
+    <NetworkInfoView
       action={
         <Tooltip>
           <TooltipTrigger asChild>
@@ -235,7 +243,9 @@ function NetworkInfoLive({
               icon
               className="size-7 shrink-0"
               aria-label={refreshLabel}
-              disabled={!canAct || off || tun || transparent || probe.isPending}
+              disabled={
+                !interactive || off || tun || transparent || probe.isPending
+              }
               loading={probe.isPending}
               onClick={() => probe.mutate()}
               data-slot="network-info-refresh"
@@ -255,7 +265,24 @@ function NetworkInfoLive({
             hideAddresses={config.hideAddresses}
           />
         ))}
-    </NetworkInfoCard>
+    </NetworkInfoView>
+  )
+}
+
+function NetworkInfoConfigForm() {
+  const { config, disabled, updateConfig } = useWidgetConfigActions(
+    WidgetId.NetworkInfo,
+  )
+
+  return (
+    <ConfigGroup>
+      <ConfigToggle
+        label={m.dashboard_widget_network_info_config_hide_addresses()}
+        checked={config.hideAddresses}
+        disabled={disabled}
+        onChange={(hideAddresses) => updateConfig({ hideAddresses })}
+      />
+    </ConfigGroup>
   )
 }
 
@@ -263,8 +290,14 @@ function NetworkInfoLive({
  * The public addresses the core's DIRECT outbound leaves from, with the
  * country the core's own database places them in and what answered.
  */
-export function NetworkInfoWidget(props: WidgetComponentProps) {
-  const { disabled, isOverlay, sourceOnly } = useDndGridContext()
-  if (sourceOnly || isOverlay) return <NetworkInfoPreview {...props} />
-  return <NetworkInfoLive {...props} canAct={disabled} />
-}
+export const networkInfoWidget = defineWidget({
+  id: WidgetId.NetworkInfo,
+  category: 'network',
+  title: m.dashboard_widget_network_info_title,
+  icon: PublicRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 2 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.NetworkInfo],
+  Component: NetworkInfoLive,
+  Preview: NetworkInfoPreview,
+  ConfigForm: NetworkInfoConfigForm,
+})

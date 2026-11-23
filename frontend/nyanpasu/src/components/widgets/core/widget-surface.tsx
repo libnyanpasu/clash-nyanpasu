@@ -85,6 +85,22 @@ export function useWidgetSize() {
   return { ...rect, scale, density, aspect }
 }
 
+/** Resolves the container-query row token to pixels without a new API. */
+function measureRowHeight(listElement: HTMLElement): number {
+  const probe = document.createElement('div')
+  probe.style.position = 'absolute'
+  probe.style.visibility = 'hidden'
+  probe.style.pointerEvents = 'none'
+  probe.style.width = '1px'
+  probe.style.height = 'var(--w-row-height)'
+  listElement.append(probe)
+  // clientHeight is layout pixels and ignores the preview stage's transform.
+  const height = probe.clientHeight
+  probe.remove()
+
+  return height > 0 ? height : 48
+}
+
 export interface WidgetListCapacityOptions {
   baseRowHeight?: number
   baseGap?: number
@@ -123,12 +139,7 @@ export function useWidgetListCapacity({
         return
       }
 
-      const cssRowHeight = Number.parseFloat(
-        getComputedStyle(listElement).getPropertyValue('--w-row-height'),
-      )
-      const rowHeight =
-        baseRowHeight ??
-        (Number.isFinite(cssRowHeight) && cssRowHeight > 0 ? cssRowHeight : 48)
+      const rowHeight = baseRowHeight ?? measureRowHeight(listElement)
       const fit = Math.floor((available + baseGap) / (rowHeight + baseGap))
 
       setCapacity(Math.max(minItems, fit))

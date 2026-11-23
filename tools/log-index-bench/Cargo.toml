@@ -6,7 +6,7 @@ edition = '2024'
 [dependencies]
 gxhash = '=3.5.0'
 nyanpasu-logging = { path = '../../backend/nyanpasu-runtime/crates/nyanpasu-logging' }
-anyhow = { version = '=1.0.104', features = [] }
+anyhow = { version = '=1.0.105', features = [] }
 bumpalo = { version = '=3.20.4', features = [] }
 camino = { version = '=1.2.6', features = ['serde1'] }
 chrono = { version = '=0.4.45', features = ['serde'] }

@@ -28,7 +28,14 @@ body:
           required: true
         - label: I agree to follow the [Code of Conduct](https://github.com/libnyanpasu/clash-nyanpasu/blob/main/CODE_OF_CONDUCT.md).
           required: true
-        - label: I want to submit a pull request to resolve this issue.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Optional. Let us know if you’d like to help implement this yourself.
+      options:
+        - label: I am willing to submit a pull request for this issue.
           required: false
 
   - type: textarea

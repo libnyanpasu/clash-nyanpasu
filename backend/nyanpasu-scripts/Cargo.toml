@@ -44,12 +44,12 @@ mlua = { version = '0.12', optional = true, features = [
   'vendored',
   'error-send'
 ] }
-oxc_allocator = { version = '0.159', optional = true }
-oxc_ast = { version = '0.159', optional = true }
-oxc_ast_visit = { version = '0.159', optional = true }
-oxc_parser = { version = '0.159', optional = true }
-oxc_span = { version = '0.159', optional = true }
-oxc_syntax = { version = '0.159', optional = true }
+oxc_allocator = { version = '0.160', optional = true }
+oxc_ast = { version = '0.160', optional = true }
+oxc_ast_visit = { version = '0.160', optional = true }
+oxc_parser = { version = '0.160', optional = true }
+oxc_span = { version = '0.160', optional = true }
+oxc_syntax = { version = '0.160', optional = true }
 serde_json = { version = '1', features = ['preserve_order'] }
 yaml_serde = { workspace = true }
 thiserror = { workspace = true }

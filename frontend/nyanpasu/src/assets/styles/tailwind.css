@@ -201,6 +201,56 @@
   --fallback-bg: --value(--color-*);
 }
 
+@layer base {
+  [class*='rounded'] {
+    corner-shape: superellipse(2);
+  }
+}
+
+@utility rounded-full {
+  corner-shape: round;
+}
+
+@utility rounded-none {
+  corner-shape: round;
+}
+
+@utility rounded-t-full {
+  corner-top-left-shape: round;
+  corner-top-right-shape: round;
+}
+
+@utility rounded-r-full {
+  corner-top-right-shape: round;
+  corner-bottom-right-shape: round;
+}
+
+@utility rounded-b-full {
+  corner-bottom-right-shape: round;
+  corner-bottom-left-shape: round;
+}
+
+@utility rounded-l-full {
+  corner-top-left-shape: round;
+  corner-bottom-left-shape: round;
+}
+
+@utility rounded-tl-full {
+  corner-top-left-shape: round;
+}
+
+@utility rounded-tr-full {
+  corner-top-right-shape: round;
+}
+
+@utility rounded-br-full {
+  corner-bottom-right-shape: round;
+}
+
+@utility rounded-bl-full {
+  corner-bottom-left-shape: round;
+}
+
 @layer components {
   svg.logo-colorized #element {
     fill: var(--color-primary);

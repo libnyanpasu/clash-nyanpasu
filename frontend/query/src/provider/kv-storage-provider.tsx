@@ -167,9 +167,11 @@ function createKvStorageStore(
       })
     },
 
-    /** Reads `key` unless this client has read it or is reading it. */
+    /** Reads `key` unless this client has read it or this store is reading it. */
     ensureRead: (key: string) => {
-      if ((peek(key)?.read.status ?? 'idle') === 'idle') read(key)
+      // A store replaced before its listeners were registered leaves its reads
+      // waiting forever, so another store's `reading` is not one to wait for.
+      if (peek(key)?.read.status !== 'done' && !reads.has(key)) read(key)
     },
 
     refresh: (key: string) => reads.get(key) ?? read(key),

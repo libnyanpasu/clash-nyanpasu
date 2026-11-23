@@ -285,6 +285,50 @@ test('the first read waits for the listeners, so a later change is heard', async
   await expect.poll(() => hook.result.current[0]).toBe('new')
 })
 
+test('a provider mounted again reads keys whose first read it never finished', async ({
+  onTestFinished,
+}) => {
+  backend.values.set('config', '"stored"')
+  // The first provider is gone before its listeners are registered.
+  const listenGates: Promise<void>[] = [
+    new Promise(() => {}),
+    new Promise(() => {}),
+  ]
+  const testRpc = createTestRpc(
+    {
+      get_storage_item: async (params) => ({
+        value: backend.values.get(params?.key as string) ?? null,
+        revision: backend.revision,
+      }),
+    },
+    { beforeListen: () => listenGates.shift() },
+  )
+  const client = new QueryClient()
+  const Wrapper = rpcWrapper(testRpc.rpc, client)
+  let generation = 0
+  const Root = ({ children }: PropsWithChildren) => (
+    <Wrapper>
+      <KvStorageProvider key={generation}>{children}</KvStorageProvider>
+    </Wrapper>
+  )
+  const hook = await renderHook(() => useKvStorage('config', ''), {
+    wrapper: Root,
+  })
+  onTestFinished(async () => {
+    await hook.unmount()
+    testRpc.rpc.dispose()
+    client.clear()
+  })
+  await settle()
+  expect(hook.result.current[2].isLoading).toBe(true)
+
+  generation += 1
+  await hook.rerender()
+
+  await expect.poll(() => hook.result.current[2].isLoading).toBe(false)
+  expect(hook.result.current[0]).toBe('stored')
+})
+
 test('read failure blocks consumers until explicit refresh succeeds', async ({
   onTestFinished,
 }) => {

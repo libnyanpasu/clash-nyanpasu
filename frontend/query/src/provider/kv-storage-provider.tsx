@@ -131,10 +131,13 @@ function createKvStorageStore(
   }
 
   const read = (key: string) => {
-    update(key, (entry) => ({
-      ...entry,
-      read: { status: 'reading', error: entry.read.error },
-    }))
+    // A key already read keeps showing its value while it is read again, as a
+    // resync does: its answer replaces the value through the revision merge.
+    update(key, (entry) =>
+      entry.read.status === 'done' && entry.read.error === null
+        ? entry
+        : { ...entry, read: { status: 'reading', error: entry.read.error } },
+    )
     const isCurrent = () => reads.get(key) === promise
     const promise: Promise<void> = settleRead(key, isCurrent).finally(() => {
       if (isCurrent()) reads.delete(key)

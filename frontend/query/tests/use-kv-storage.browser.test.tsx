@@ -578,6 +578,30 @@ test("a transport resync rereads storage without the query client's refetch", as
   expect(reads()).toBe(2)
 })
 
+test('a resync keeps a read key loaded until its answer arrives', async ({
+  onTestFinished,
+}) => {
+  backend.values.set('config', '"before"')
+  const { hook, testRpc } = await mountStorage(
+    () => useKvStorage('config', ''),
+    onTestFinished,
+  )
+  await expect.poll(() => hook.result.current[2].isLoading).toBe(false)
+
+  const reread = gate()
+  backend.readGates = [reread.promise]
+  backend.values.set('config', '"after"')
+  backend.revision = 2
+  await testRpc.rpc.events.storageResyncEvent.emit({})
+  await expect.poll(() => backend.readGates.length).toBe(0)
+  expect(hook.result.current[2].isLoading).toBe(false)
+  expect(hook.result.current[0]).toBe('before')
+
+  reread.release()
+  await expect.poll(() => hook.result.current[0]).toBe('after')
+  expect(hook.result.current[2].isLoading).toBe(false)
+})
+
 test('a read that a resync replaced does not settle the key', async ({
   onTestFinished,
 }) => {

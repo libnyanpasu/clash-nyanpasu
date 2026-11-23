@@ -1,21 +1,14 @@
 import ErrorOutlineRounded from '~icons/material-symbols/error-outline-rounded'
 import PublicRounded from '~icons/material-symbols/public-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
-import VisibilityOffRounded from '~icons/material-symbols/visibility-off-rounded'
-import VisibilityRounded from '~icons/material-symbols/visibility-rounded'
 import { useReducedMotion } from 'motion/react'
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
 import { Card, CardContent } from '@nyanpasu/ui/card'
 import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { CircularProgress } from '@nyanpasu/ui/progress'
+import { Spoiler } from '@nyanpasu/ui/spoiler-text'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -30,7 +23,7 @@ import type {
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import type { WidgetComponentProps } from './consts'
-import { useDashboardContext, useWidgetConfig } from './provider'
+import { useWidgetConfig } from './provider'
 import { WidgetId } from './widget-config'
 import WidgetItem from './widget-item'
 import { WidgetHeader, WidgetMetric, WidgetTitle } from './widget-ui'
@@ -38,8 +31,6 @@ import { WidgetHeader, WidgetMetric, WidgetTitle } from './widget-ui'
 type Family = 'ipv4' | 'ipv6'
 
 const FAMILIES: readonly Family[] = ['ipv4', 'ipv6']
-
-const FAMILY_LABELS: Record<Family, string> = { ipv4: 'IPv4', ipv6: 'IPv6' }
 
 const PREVIEW_EGRESS: Record<Family, EgressAddress<string>> = {
   ipv4: {
@@ -97,9 +88,6 @@ function countryFlag(code: string | null | undefined): string | null {
       .map((char) => 127397 + char.charCodeAt(0)),
   )
 }
-
-/** Keeps the address's shape while hiding its digits, for a shared screen. */
-const maskAddress = (address: string) => address.replace(/[0-9a-f]/gi, '•')
 
 function RefreshButton({
   disabled,
@@ -170,19 +158,14 @@ function EgressDetails({
   ipv4,
   ipv6,
   hideAddresses,
-  canAct = true,
-  onToggleHide,
 }: {
   method: EgressMethod
   ipv4: EgressAddress<string> | null
   ipv6: EgressAddress<string> | null
   hideAddresses: boolean
-  canAct?: boolean
-  onToggleHide?: () => void
 }) {
   const reducedMotion = useReducedMotion()
   const [familyIndex, setFamilyIndex] = useState(0)
-  const swapRef = useRef<HTMLDivElement>(null)
 
   const activeFamily = FAMILIES[familyIndex % FAMILIES.length]
   const activeEgress = activeFamily === 'ipv4' ? ipv4 : ipv6
@@ -196,54 +179,31 @@ function EgressDetails({
     .join(' · ')
 
   const addressText = activeEgress
-    ? hideAddresses
-      ? maskAddress(activeEgress.address)
-      : activeEgress.address
-    : m.dashboard_widget_network_info_no_address()
+    ? activeEgress.address
+    : activeFamily === 'ipv4'
+      ? m.dashboard_widget_network_info_no_ipv4()
+      : m.dashboard_widget_network_info_no_ipv6()
 
-  const hideLabel = m.dashboard_widget_network_info_config_hide_addresses()
+  const revealLabel = m.dashboard_widget_network_info_reveal_address()
 
   useEffect(() => {
     if (reducedMotion) return
 
-    const root = swapRef.current
-    if (!root) return
-    let interval: number
-
-    const schedule = () => {
-      window.clearInterval(interval)
-      const marquee = Array.from(
-        root.querySelectorAll('[data-slot="text-marquee"]'),
-      ).at(-1)
-      const content = marquee?.querySelector<HTMLElement>(
-        '[data-slot="text-marquee-content-item"], [data-slot="text-marquee-content"]',
-      )
-      // Leave enough time for one complete scroll, including its initial pause.
-      const duration = Math.max(
-        6000,
-        (((content?.scrollWidth ?? 0) + 32) / 30) * 1000 + 2000,
-      )
-      interval = window.setInterval(() => {
-        if (!document.hidden) {
-          setFamilyIndex((current) => (current + 1) % FAMILIES.length)
-        }
-      }, duration)
-    }
-
-    const observer = new ResizeObserver(schedule)
-    observer.observe(root)
-    schedule()
+    // Leave enough time to read the address before the next family.
+    const duration = Math.max(
+      6000,
+      Math.ceil(addressText.length / 30) * 1000 + 4000,
+    )
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        setFamilyIndex((current) => (current + 1) % FAMILIES.length)
+      }
+    }, duration)
 
     return () => {
-      observer.disconnect()
       window.clearInterval(interval)
     }
   }, [reducedMotion, activeFamily, addressText])
-
-  const toggleFamily = () => {
-    if (!canAct) return
-    setFamilyIndex((current) => (current + 1) % FAMILIES.length)
-  }
 
   return (
     <div
@@ -266,87 +226,30 @@ function EgressDetails({
           </TextMarquee>
         </div>
 
-        <div
-          ref={swapRef}
-          className="flex min-w-0 items-center gap-1.5"
-          data-slot="widget-network-info-rows"
-        >
-          <button
-            type="button"
-            disabled={!canAct}
-            onClick={toggleFamily}
-            aria-label={FAMILY_LABELS[activeFamily]}
-            className={cn(
-              'flex min-w-0 flex-1 items-center gap-2 text-left',
-              'cursor-pointer rounded-lg outline-none',
-              'focus-visible:outline-primary focus-visible:outline-2',
-              'disabled:cursor-default',
-            )}
-            data-slot="widget-network-info-row"
-            data-family={activeFamily}
+        <div className="flex min-w-0" data-slot="widget-network-info-rows">
+          <ActionSwap
+            contentKey={addressText}
+            className="min-h-5 min-w-0 flex-1 [&>div]:min-w-0"
+            data-slot="network-info-address-swap"
           >
-            <ActionSwap
-              contentKey={activeFamily}
-              className="shrink-0"
-              data-slot="network-info-family-swap"
-            >
-              <span
-                className={cn(
-                  'inline-flex rounded-md px-1.5 py-0.5 text-[11px] leading-none font-semibold',
-                  'bg-secondary-container/75 text-on-secondary-container',
-                )}
-              >
-                {FAMILY_LABELS[activeFamily]}
-              </span>
-            </ActionSwap>
-
-            <ActionSwap
-              contentKey={`${activeFamily}:${addressText}`}
-              className="min-w-0 flex-1 grid-cols-[minmax(0,1fr)] [&>div]:min-w-0"
-              data-slot="network-info-address-swap"
-            >
-              <TextMarquee
-                className={cn(
-                  'w-full text-sm leading-tight',
-                  activeEgress
-                    ? hideAddresses
-                      ? cn(
-                          'bg-surface-variant/75 text-on-surface-variant/40',
-                          'rounded-full px-2.5 py-0.5 font-mono font-medium select-none',
-                        )
-                      : 'text-on-surface font-mono font-medium'
-                    : 'text-on-surface-variant',
-                )}
-                speed={30}
+            {activeEgress ? (
+              <Spoiler
+                key={`${addressText}:${hideAddresses ? 'hidden' : 'shown'}`}
+                className="font-mono text-sm leading-tight font-medium select-all"
+                defaultRevealed={!hideAddresses}
+                label={revealLabel}
               >
                 {addressText}
-              </TextMarquee>
-            </ActionSwap>
-          </button>
-
-          {onToggleHide && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="basic"
-                  icon
-                  className="text-primary size-7 shrink-0"
-                  aria-label={hideLabel}
-                  aria-pressed={hideAddresses}
-                  disabled={!canAct}
-                  onClick={onToggleHide}
-                  data-slot="network-info-hide-toggle"
-                >
-                  {hideAddresses ? (
-                    <VisibilityOffRounded className="size-4" />
-                  ) : (
-                    <VisibilityRounded className="size-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{hideLabel}</TooltipContent>
-            </Tooltip>
-          )}
+              </Spoiler>
+            ) : (
+              <p
+                className="text-on-surface-variant min-w-0 truncate text-sm leading-tight"
+                data-slot="network-info-address"
+              >
+                {addressText}
+              </p>
+            )}
+          </ActionSwap>
         </div>
       </div>
     </div>
@@ -508,8 +411,7 @@ function NetworkInfoPreview(props: WidgetComponentProps) {
         method="direct"
         ipv4={PREVIEW_EGRESS.ipv4}
         ipv6={PREVIEW_EGRESS.ipv6}
-        hideAddresses={false}
-        canAct={false}
+        hideAddresses
       />
     </NetworkInfoCard>
   )
@@ -520,7 +422,6 @@ function NetworkInfoLive({
   ...props
 }: WidgetComponentProps & { canAct: boolean }) {
   const config = useWidgetConfig(props.id, WidgetId.NetworkInfo)
-  const { saveConfig } = useDashboardContext()
   const { value: allowed } = useSetting('enable_local_ip_probe')
   const probe = useRouteEgressProbe()
 
@@ -587,13 +488,6 @@ function NetworkInfoLive({
       ipv4={probed.ipv4}
       ipv6={probed.ipv6}
       hideAddresses={config.hideAddresses}
-      canAct={canAct}
-      onToggleHide={() =>
-        saveConfig(props.id, {
-          ...config,
-          hideAddresses: !config.hideAddresses,
-        })
-      }
     />
   )
 

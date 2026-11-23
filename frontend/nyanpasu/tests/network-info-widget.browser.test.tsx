@@ -1,7 +1,7 @@
 import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { act, useState } from 'react'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page } from 'vitest/browser'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
@@ -226,12 +226,13 @@ async function mount(
   return { ...harness, controls, router }
 }
 
-test('each family shows its address, country, route and what answered', async ({
+test('shows the current address, country, route and what answered', async ({
   onTestFinished,
 }) => {
   const { probes, controls } = await mount(onTestFinished, {
     allowed: true,
     tun: false,
+    hideAddresses: false,
   })
 
   await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
@@ -245,10 +246,10 @@ test('each family shows its address, country, route and what answered', async ({
     )
     .toBeInTheDocument()
 
-  await page.getByRole('button', { name: 'IPv4' }).click()
-  await expect
-    .element(page.getByText(m.dashboard_widget_network_info_no_address()))
-    .toBeInTheDocument()
+  expect(
+    document.querySelector('[data-slot="network-info-address-swap"]'),
+  ).not.toBeNull()
+
   expect(probes()).toBe(1)
 
   const refresh = page.getByRole('button', {
@@ -301,6 +302,7 @@ test.for<[EgressMethod, Partial<Backend>]>([
     const { probes } = await mount(onTestFinished, {
       allowed: true,
       tun: false,
+      hideAddresses: false,
       ...route,
       probeImpl: async () => probed(method),
     })
@@ -320,17 +322,60 @@ test.for<[EgressMethod, Partial<Backend>]>([
   },
 )
 
-test('hidden addresses keep their shape but not their digits', async ({
+test('addresses are hidden by default and can be revealed without changing the preference', async ({
   onTestFinished,
 }) => {
+  const { calls } = await mount(onTestFinished, {
+    allowed: true,
+    tun: false,
+  })
+
+  const revealLabel = m.dashboard_widget_network_info_reveal_address()
+
+  const spoiler = page.getByRole('button', { name: revealLabel })
+  await expect.element(spoiler).toBeInTheDocument()
+  const spoilerElement = spoiler.element()
+  const spoilerText = spoilerElement.querySelector(
+    '[data-slot="spoiler-text-content"]',
+  )
+  expect(spoilerElement).toHaveAttribute('data-revealed', 'false')
+  expect(spoilerText).toHaveAttribute('aria-hidden', 'true')
+  expect(getComputedStyle(spoilerText!).opacity).toBe('0')
+
+  await spoiler.click()
+
+  await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
+  expect(spoilerElement).toHaveAttribute('data-revealed', 'true')
+  expect(spoilerText).not.toHaveAttribute('aria-hidden')
+  expect(calls.filter((call) => call === 'set_storage_item')).toHaveLength(0)
+})
+
+test('missing IPv6 and IPv4 each name the family that found nothing', async ({
+  onTestFinished,
+}) => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  const intervals = vi.spyOn(window, 'setInterval')
+  onTestFinished(() => {
+    intervals.mockRestore()
+    vi.useRealTimers()
+  })
+
   await mount(onTestFinished, {
     allowed: true,
     tun: false,
-    hideAddresses: true,
+    probeImpl: async () => ({ ...PROBED, ipv4: null, ipv6: null }),
   })
 
-  await expect.element(page.getByText('•••.•.•••.•')).toBeInTheDocument()
-  await expect.element(page.getByText('203.0.113.7')).not.toBeInTheDocument()
+  await expect
+    .element(page.getByText(m.dashboard_widget_network_info_no_ipv4()))
+    .toBeInTheDocument()
+
+  const delay = Number(intervals.mock.calls.at(-1)?.[1])
+  expect(delay).toBeGreaterThanOrEqual(6000)
+  await vi.advanceTimersByTimeAsync(delay + 1)
+  await expect
+    .element(page.getByText(m.dashboard_widget_network_info_no_ipv6()))
+    .toBeInTheDocument()
 })
 
 test('shows loading state while probing and resolves to egress details', async ({
@@ -340,6 +385,7 @@ test('shows loading state while probing and resolves to egress details', async (
   await mount(onTestFinished, {
     allowed: true,
     tun: false,
+    hideAddresses: false,
     probeImpl: () =>
       new Promise<RouteEgress>((resolve) => {
         resolveProbe = resolve
@@ -362,6 +408,7 @@ test('shows error state when probing fails and allows retrying', async ({
   const { probes } = await mount(onTestFinished, {
     allowed: true,
     tun: false,
+    hideAddresses: false,
     probeImpl: async () => {
       if (shouldFail) throw new Error('probe failed')
       return PROBED

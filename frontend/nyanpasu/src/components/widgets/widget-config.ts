@@ -163,7 +163,7 @@ export const DEFAULT_WIDGET_CONFIGS: WidgetConfigs = {
   },
   [WidgetId.NetworkInfo]: {
     type: WidgetId.NetworkInfo,
-    hideAddresses: false,
+    hideAddresses: true,
   },
   [WidgetId.TrafficDown]: {
     type: WidgetId.TrafficDown,

@@ -1321,7 +1321,8 @@ fn full_http_exposure_is_preserved_across_shared_split() {
     // remaining declarations and guards, not only names. R12 removes the three
     // icon reads in favor of the special byte entries. Remote access renames the debug
     // HTTP status read to get_http_server_status, which no longer returns a credential.
-    // The DNS settings add the core DNS query and its two cache flushes.
+    // The DNS settings add the core DNS query and its two cache flushes. The route
+    // egress probe adds the proxy-aware sibling of the direct probe.
     const BEFORE: &[&str] = &[
         "activate_profile",
         "change_clash_core",
@@ -1413,6 +1414,7 @@ fn full_http_exposure_is_preserved_across_shared_split() {
         "patch_runtime_overrides",
         "patch_system_settings",
         "probe_direct_egress",
+        "probe_route_egress",
         "query_core_logs",
         "query_core_logs_summary",
         "query_logs",

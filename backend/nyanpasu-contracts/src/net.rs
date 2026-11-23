@@ -31,6 +31,35 @@ pub enum DirectEgress {
     },
 }
 
+/// How the probe's own requests leave the machine, in the order the app picks
+/// one when several apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum EgressMethod {
+    /// The requests are sent to the OS proxy, so its exit is what answers.
+    SystemProxy,
+    /// TUN captures the requests and the core routes them by rule.
+    Tun,
+    /// Local transparent capture routes the requests by rule.
+    TransparentProxy,
+    /// Plain sockets over the machine's own route; no proxy is in the way.
+    Direct,
+}
+
+/// The public address the app's requests leave from, over the route its
+/// settings give them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RouteEgress {
+    Disabled,
+    /// `None` for a family no source gave an address over.
+    Probed {
+        method: EgressMethod,
+        ipv4: Option<EgressAddress<Ipv4Addr>>,
+        ipv6: Option<EgressAddress<Ipv6Addr>>,
+    },
+}
+
 /// Fetches a text document; the adapter owns proxies and network deadlines.
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
@@ -92,12 +121,22 @@ pub enum StunTransport {
     Tcp,
 }
 
+/// An HTTP proxy the probe's requests go through instead of the plain route.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeProxy {
+    pub host: String,
+    pub port: u16,
+}
+
 /// Where a probe asks, in order: STUN servers, then accepted HTTP providers.
 #[derive(Clone)]
 pub struct ProbeSources {
     pub stun: Vec<StunServer>,
     pub lookups: Vec<IpLookupProvider>,
     pub permission: Arc<dyn ProbePermission>,
+    /// `None` asks over plain sockets. With a proxy, only the requests an HTTP
+    /// proxy can carry are sent: STUN over TCP and the HTTP lookups.
+    pub proxy: Option<ProbeProxy>,
 }
 
 impl ProbeSources {
@@ -112,6 +151,14 @@ impl ProbeSources {
                 .collect(),
             lookups: config.ip_lookup_providers.clone(),
             permission,
+            proxy: None,
+        }
+    }
+
+    pub fn through_proxy(self, proxy: ProbeProxy) -> Self {
+        Self {
+            proxy: Some(proxy),
+            ..self
         }
     }
 }
@@ -174,7 +221,8 @@ impl StunServerTest {
     }
 }
 
-/// Asks network services, past every proxy, which address a request came from.
+/// Asks network services which address a request came from: over plain
+/// sockets, or through the proxy `ProbeSources` names.
 #[cfg_attr(any(test, feature = "test-support"), mockall::automock)]
 #[async_trait::async_trait]
 pub trait DirectEgressProbe: Send + Sync + 'static {

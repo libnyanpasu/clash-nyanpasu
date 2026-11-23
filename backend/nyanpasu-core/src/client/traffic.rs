@@ -101,7 +101,7 @@ impl LocalSourceCache {
     }
 }
 
-fn captures_local_traffic(config: &nyanpasu_config::clash::config::ClashConfig) -> bool {
+pub(super) fn captures_local_traffic(config: &nyanpasu_config::clash::config::ClashConfig) -> bool {
     config.transparent_proxy.local
         && config.transparent_proxy.mode
             != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
@@ -130,29 +130,26 @@ mod transparent_capture_tests {
 /// a server or provider that has since left the user's list.
 impl nyanpasu_contracts::net::ProbePermission for LocalSourceCache {
     fn allows_stun(&self, server: &StunServer) -> bool {
-        self.blocked().is_none()
-            && self
-                .application
-                .load()
-                .state
-                .stun_servers
-                .iter()
-                .any(|current| {
-                    current.enabled
-                        && current.port == server.port
-                        && current.host.eq_ignore_ascii_case(&server.host)
-                })
+        self.blocked().is_none() && lists_stun(&self.application.load().state, server)
     }
 
     fn allows_lookup(&self, provider: IpLookupProvider) -> bool {
-        self.blocked().is_none()
-            && self
-                .application
-                .load()
-                .state
-                .ip_lookup_providers
-                .contains(&provider)
+        self.blocked().is_none() && lists_lookup(&self.application.load().state, provider)
     }
+}
+
+/// Whether the user still keeps this STUN server enabled.
+pub(super) fn lists_stun(config: &NyanpasuAppConfig, server: &StunServer) -> bool {
+    config.stun_servers.iter().any(|current| {
+        current.enabled
+            && current.port == server.port
+            && current.host.eq_ignore_ascii_case(&server.host)
+    })
+}
+
+/// Whether the user still accepts this lookup provider.
+pub(super) fn lists_lookup(config: &NyanpasuAppConfig, provider: IpLookupProvider) -> bool {
+    config.ip_lookup_providers.contains(&provider)
 }
 
 impl LocalSourceLocation for LocalSourceCache {

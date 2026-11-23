@@ -171,6 +171,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::traffic::connections::unsubscribe_clash_connection_details,
             // Side-effecting commands
             commands::settings::network::probe_direct_egress,
+            commands::settings::network::probe_route_egress,
             ipc::settings::network::test_stun_server,
             commands::logs::core::clear_core_logs,
             commands::logs::app::open_log_session,

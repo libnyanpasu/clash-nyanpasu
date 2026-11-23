@@ -166,6 +166,15 @@ pub(crate) async fn test_client_with_direct_egress(
     dir: &TempDir,
     direct_egress: Arc<dyn DirectEgressProbe>,
 ) -> NyanpasuClient {
+    test_client_with_egress_ports(dir, direct_egress, Arc::new(MockOsProxyPort::new())).await
+}
+
+#[cfg(test)]
+pub(crate) async fn test_client_with_egress_ports(
+    dir: &TempDir,
+    direct_egress: Arc<dyn DirectEgressProbe>,
+    os_proxy: Arc<dyn OsProxyPort>,
+) -> NyanpasuClient {
     let clash_mutations = crate::state::mutation::MutationCoordinator::pending();
     let (application, session_state, clash_config) =
         test_typed_config_clients(dir, clash_mutations.clone()).await;
@@ -178,7 +187,7 @@ pub(crate) async fn test_client_with_direct_egress(
         Arc::new(NoopSystemDnsCache),
         direct_egress,
         Arc::new(nyanpasu_observers::geo::NoopCountryIndexSource),
-        Arc::new(MockOsProxyPort::new()),
+        os_proxy,
     )
     .await
 }

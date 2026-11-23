@@ -147,6 +147,7 @@ patch_runtime_overrides | desktop,http | - | elevation,os_integration,presentati
 patch_system_settings | desktop,http,local | - | os_integration,presentation,elevation | mutation | system:write
 probe_direct_egress | desktop,http | - | - | mutation | settings:write
 probe_profile_url | desktop | - | - | query | profile:read
+probe_route_egress | desktop,http | - | - | mutation | settings:write
 query_core_logs | desktop,http,local | - | - | query | logs:read
 query_core_logs_summary | desktop,http | - | - | query | logs:read
 query_logs | desktop,http,local | - | - | mutation | logs:read

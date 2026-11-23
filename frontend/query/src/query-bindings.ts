@@ -1044,6 +1044,11 @@ export function createQueryBindings(rpc: RpcClient) {
         mutationKey: ['probeDirectEgress'],
         mutationFn: () => commands.probeDirectEgress(),
       }),
+    probeRouteEgress: () =>
+      mutationOptions({
+        mutationKey: ['probeRouteEgress'],
+        mutationFn: () => commands.probeRouteEgress(),
+      }),
     testStunServer: () =>
       mutationOptions({
         mutationKey: ['testStunServer'],
@@ -1747,6 +1752,7 @@ export function createQueryBindings(rpc: RpcClient) {
       'unsubscribeClashConnectionDetails',
     ],
     probeDirectEgress: () => ['probeDirectEgress'],
+    probeRouteEgress: () => ['probeRouteEgress'],
     testStunServer: () => ['testStunServer'],
     clearCoreLogs: () => ['clearCoreLogs'],
     openLogSession: () => ['openLogSession'],

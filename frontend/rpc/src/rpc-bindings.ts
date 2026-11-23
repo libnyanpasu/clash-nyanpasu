@@ -792,6 +792,12 @@ export function createRpcClient(
         undefined,
         options,
       ),
+    probeRouteEgress: (options?: InvokeOptions) =>
+      __RPC_INVOKE<RouteEgress_Serialize>(
+        'probe_route_egress',
+        undefined,
+        options,
+      ),
     /**  Desktop-only: the host is whatever the caller types, like a URL probe. */
     testStunServer: (host: string, port: number, options?: InvokeOptions) =>
       __RPC_INVOKE<StunServerTest>('test_stun_server', { host, port }, options),
@@ -2014,6 +2020,13 @@ export const HTTP_COMMANDS = [
   },
   {
     name: 'probe_direct_egress',
+    namespace: 'settings.network',
+    permission: { resource: 'settings', access: 'write' },
+    effect: 'mutation',
+    sensitive: false,
+  },
+  {
+    name: 'probe_route_egress',
     namespace: 'settings.network',
     permission: { resource: 'settings', access: 'write' },
     effect: 'mutation',
@@ -5718,6 +5731,20 @@ export type EgressAddress_Serialize<A> = {
    */
   country: string | null
 }
+
+/**
+ *  How the probe's own requests leave the machine, in the order the app picks
+ *  one when several apply.
+ */
+export type EgressMethod =
+  /**  The requests are sent to the OS proxy, so its exit is what answers. */
+  | 'system_proxy'
+  /**  TUN captures the requests and the core routes them by rule. */
+  | 'tun'
+  /**  Local transparent capture routes the requests by rule. */
+  | 'transparent_proxy'
+  /**  Plain sockets over the machine's own route; no proxy is in the way. */
+  | 'direct'
 
 /**  What answered a probe. */
 export type EgressSource =
@@ -10778,6 +10805,40 @@ export type Role =
   | 'admin'
   /**  The desktop window and the same-user local socket; never assignable. */
   | 'owner'
+
+/**
+ *  The public address the app's requests leave from, over the route its
+ *  settings give them.
+ */
+export type RouteEgress = RouteEgress_Serialize | RouteEgress_Deserialize
+
+/**
+ *  The public address the app's requests leave from, over the route its
+ *  settings give them.
+ */
+export type RouteEgress_Deserialize =
+  | { kind: 'disabled' }
+  /**  `None` for a family no source gave an address over. */
+  | {
+      kind: 'probed'
+      method: EgressMethod
+      ipv4?: EgressAddress_Deserialize<string> | null
+      ipv6?: EgressAddress_Deserialize<string> | null
+    }
+
+/**
+ *  The public address the app's requests leave from, over the route its
+ *  settings give them.
+ */
+export type RouteEgress_Serialize =
+  | { kind: 'disabled' }
+  /**  `None` for a family no source gave an address over. */
+  | {
+      kind: 'probed'
+      method: EgressMethod
+      ipv4: EgressAddress_Serialize<string> | null
+      ipv6: EgressAddress_Serialize<string> | null
+    }
 
 /**
  *  Canonical command reply union for app-update state-changing commands.

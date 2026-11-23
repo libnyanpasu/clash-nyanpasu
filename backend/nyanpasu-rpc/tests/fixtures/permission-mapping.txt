@@ -145,6 +145,7 @@ command | patch_runtime_overrides | settings:write | settings.clash |  |  | desk
 command | patch_system_settings | system:write | system.proxy |  |  | desktop,http,local | nyanpasu-rpc/src/commands/runtime.rs
 command | probe_direct_egress | settings:write | settings.network |  |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | probe_profile_url | profile:read | profile.content | sensitive |  | desktop | tauri/src/ipc.rs
+command | probe_route_egress | settings:write | settings.network |  |  | desktop,http | nyanpasu-rpc/src/commands/settings/network.rs
 command | query_core_logs | logs:read | logs.core | sensitive |  | desktop,http,local | nyanpasu-rpc/src/commands/traffic.rs
 command | query_core_logs_summary | logs:read | logs.core |  |  | desktop,http | nyanpasu-rpc/src/commands/traffic.rs
 command | query_logs | logs:read | logs.app | sensitive | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs

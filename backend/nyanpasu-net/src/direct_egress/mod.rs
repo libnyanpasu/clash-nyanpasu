@@ -1,5 +1,7 @@
-//! Direct-route egress probe, isolated from system and self proxies: STUN
-//! servers first, then the accepted HTTP lookup services. The STUN codec is pure.
+//! Egress probe: STUN servers first, then the accepted HTTP lookup services.
+//! It uses plain sockets, so the machine's own route (and TUN or transparent
+//! capture, if any) decides where requests leave from, unless the sources name
+//! an HTTP proxy. The STUN codec is pure.
 mod stun;
 
 use std::{
@@ -9,8 +11,8 @@ use std::{
 
 use nyanpasu_config::application::StunServerCapabilities;
 use nyanpasu_contracts::net::{
-    DirectEgressProbe, EgressAnswer, EgressSource, ProbeSources, StunAttempt, StunServerTest,
-    StunTransport,
+    DirectEgressProbe, EgressAnswer, EgressSource, ProbeProxy, ProbeSources, StunAttempt,
+    StunServerTest, StunTransport,
 };
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -55,12 +57,17 @@ impl Family {
 }
 
 /// UDP when the server answers over it, since that is what STUN is built for.
-fn transport_for(capabilities: StunServerCapabilities, family: Family) -> Option<StunTransport> {
+/// An HTTP proxy tunnels only TCP, so through one the server must answer over TCP.
+fn transport_for(
+    capabilities: StunServerCapabilities,
+    family: Family,
+    proxy: Option<&ProbeProxy>,
+) -> Option<StunTransport> {
     let supports = |families: nyanpasu_config::application::StunFamilies| match family {
         Family::Ipv4 => families.ipv4,
         Family::Ipv6 => families.ipv6,
     };
-    if supports(capabilities.udp) {
+    if proxy.is_none() && supports(capabilities.udp) {
         Some(StunTransport::Udp)
     } else if supports(capabilities.tcp) {
         Some(StunTransport::Tcp)
@@ -113,7 +120,9 @@ fn is_public(ip: IpAddr) -> bool {
 impl NetworkDirectEgressProbe {
     async fn probe(&self, sources: &ProbeSources, family: Family) -> Option<EgressAnswer<IpAddr>> {
         for target in &sources.stun {
-            let Some(transport) = transport_for(target.capabilities, family) else {
+            let Some(transport) =
+                transport_for(target.capabilities, family, sources.proxy.as_ref())
+            else {
                 continue;
             };
             if !sources.permission.allows_stun(target) {
@@ -125,6 +134,7 @@ impl NetworkDirectEgressProbe {
                 transport,
                 family,
                 self.destinations,
+                sources.proxy.as_ref(),
             )
             .await
                 && family.matches(address)
@@ -147,7 +157,10 @@ impl NetworkDirectEgressProbe {
                 Family::Ipv4 => provider.ipv4_url(),
                 Family::Ipv6 => provider.ipv6_url(),
             };
-            if let Some(address) = echo(url).await.filter(|address| family.matches(*address)) {
+            if let Some(address) = echo(url, sources.proxy.as_ref())
+                .await
+                .filter(|address| family.matches(*address))
+            {
                 return Some(EgressAnswer {
                     address,
                     source: EgressSource::Lookup {
@@ -186,28 +199,32 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
                 port,
                 StunTransport::Udp,
                 Family::Ipv4,
-                self.destinations
+                self.destinations,
+                None,
             ),
             ask_stun(
                 host,
                 port,
                 StunTransport::Udp,
                 Family::Ipv6,
-                self.destinations
+                self.destinations,
+                None,
             ),
             ask_stun(
                 host,
                 port,
                 StunTransport::Tcp,
                 Family::Ipv4,
-                self.destinations
+                self.destinations,
+                None,
             ),
             ask_stun(
                 host,
                 port,
                 StunTransport::Tcp,
                 Family::Ipv6,
-                self.destinations
+                self.destinations,
+                None,
             ),
         );
         StunServerTest::new(udp_ipv4, udp_ipv6, tcp_ipv4, tcp_ipv6)
@@ -216,13 +233,14 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
 
 /// One Binding request to the first address of `family` that `host` resolves
 /// to among the `destinations`. The socket is a plain OS socket, so no proxy
-/// setting applies.
+/// setting applies unless `proxy` names one; it then tunnels the TCP exchange.
 async fn ask_stun(
     host: &str,
     port: u16,
     transport: StunTransport,
     family: Family,
     destinations: fn(IpAddr) -> bool,
+    proxy: Option<&ProbeProxy>,
 ) -> StunAttempt {
     // Resolution counts against the deadline, so a resolver that never
     // answers cannot hold up the next server.
@@ -255,7 +273,7 @@ async fn ask_stun(
     let exchange = async {
         match transport {
             StunTransport::Udp => exchange_udp(server, family, id).await,
-            StunTransport::Tcp => exchange_tcp(server, id).await,
+            StunTransport::Tcp => exchange_tcp(server, id, proxy).await,
         }
     };
     match tokio::time::timeout_at(deadline, exchange).await {
@@ -277,6 +295,8 @@ enum ExchangeError {
     Io { source: std::io::Error },
     #[snafu(context(false), display("the response is malformed"))]
     Decode { source: stun::DecodeError },
+    #[snafu(display("the proxy did not open a tunnel"))]
+    Tunnel,
 }
 
 /// Sends the request again after each retransmission delay until a response
@@ -311,10 +331,49 @@ async fn exchange_udp(
     }
 }
 
+/// Longest response head read from a proxy before the tunnel counts as refused.
+const MAX_PROXY_HEAD_LEN: usize = 1024;
+
+/// Asks an HTTP proxy for a tunnel to `server`; the stream is the tunnel once
+/// the proxy has answered 200. The head is read a byte at a time so nothing the
+/// server sends afterwards is consumed.
+async fn connect_through(
+    proxy: &ProbeProxy,
+    server: SocketAddr,
+) -> Result<TcpStream, ExchangeError> {
+    let mut stream = TcpStream::connect((proxy.host.as_str(), proxy.port)).await?;
+    stream
+        .write_all(format!("CONNECT {server} HTTP/1.1\r\nHost: {server}\r\n\r\n").as_bytes())
+        .await?;
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        if head.len() == MAX_PROXY_HEAD_LEN {
+            return Err(ExchangeError::Tunnel);
+        }
+        head.push(stream.read_u8().await?);
+    }
+    let status = head
+        .split(|byte| *byte == b' ')
+        .nth(1)
+        .ok_or(ExchangeError::Tunnel)?;
+    if status == b"200" {
+        Ok(stream)
+    } else {
+        Err(ExchangeError::Tunnel)
+    }
+}
+
 /// TCP carries one message after another, so the header's length says where
 /// the response ends.
-async fn exchange_tcp(server: SocketAddr, id: TransactionId) -> Result<SocketAddr, ExchangeError> {
-    let mut stream = TcpStream::connect(server).await?;
+async fn exchange_tcp(
+    server: SocketAddr,
+    id: TransactionId,
+    proxy: Option<&ProbeProxy>,
+) -> Result<SocketAddr, ExchangeError> {
+    let mut stream = match proxy {
+        Some(proxy) => connect_through(proxy, server).await?,
+        None => TcpStream::connect(server).await?,
+    };
     stream.write_all(&stun::binding_request(id)).await?;
     let mut header = [0; HEADER_LEN];
     stream.read_exact(&mut header).await?;
@@ -325,8 +384,8 @@ async fn exchange_tcp(server: SocketAddr, id: TransactionId) -> Result<SocketAdd
 }
 
 /// The address a plain-text echo answers with. `None` for anything else.
-async fn echo(url: &str) -> Option<IpAddr> {
-    match fetch(url).await {
+async fn echo(url: &str, proxy: Option<&ProbeProxy>) -> Option<IpAddr> {
+    match fetch(url, proxy).await {
         Ok(body) => {
             let address = body.trim().parse().ok();
             if address.is_none() {
@@ -344,11 +403,17 @@ async fn echo(url: &str) -> Option<IpAddr> {
     }
 }
 
-async fn fetch(url: &str) -> reqwest::Result<String> {
-    reqwest::Client::builder()
-        // The system proxy and the core's ports would both route the request by rule.
-        .no_proxy()
-        .timeout(ECHO_TIMEOUT)
+async fn fetch(url: &str, proxy: Option<&ProbeProxy>) -> reqwest::Result<String> {
+    // Only the proxy the sources name may route the request: the system proxy
+    // and the core's ports would both route it by rule behind the caller's back.
+    let mut builder = reqwest::Client::builder().no_proxy().timeout(ECHO_TIMEOUT);
+    if let Some(proxy) = proxy {
+        builder = builder.proxy(reqwest::Proxy::all(format!(
+            "http://{}:{}",
+            proxy.host, proxy.port
+        ))?);
+    }
+    builder
         .build()?
         .get(url)
         .send()
@@ -463,7 +528,67 @@ mod tests {
             stun,
             lookups: Vec::new(),
             permission: Arc::new(permission),
+            proxy: None,
         }
+    }
+
+    /// An HTTP proxy that tunnels every CONNECT to where it asks, and records
+    /// those targets.
+    async fn tunnelling_proxy() -> (ProbeProxy, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy = ProbeProxy {
+            host: LOCALHOST.into(),
+            port: listener.local_addr().unwrap().port(),
+        };
+        let tunnelled = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let record = tunnelled.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut client, _) = listener.accept().await.unwrap();
+                let record = record.clone();
+                tokio::spawn(async move {
+                    let target = read_connect_target(&mut client).await;
+                    record.lock().unwrap().push(target.clone());
+                    let mut upstream = TcpStream::connect(&target).await.unwrap();
+                    client
+                        .write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                        .await
+                        .unwrap();
+                    let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+                });
+            }
+        });
+        (proxy, tunnelled)
+    }
+
+    /// An HTTP proxy that refuses every CONNECT with `status`.
+    async fn refusing_proxy(status: &'static str) -> ProbeProxy {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy = ProbeProxy {
+            host: LOCALHOST.into(),
+            port: listener.local_addr().unwrap().port(),
+        };
+        tokio::spawn(async move {
+            loop {
+                let (mut client, _) = listener.accept().await.unwrap();
+                read_connect_target(&mut client).await;
+                client
+                    .write_all(format!("HTTP/1.1 {status}\r\n\r\n").as_bytes())
+                    .await
+                    .unwrap();
+            }
+        });
+        proxy
+    }
+
+    async fn read_connect_target(client: &mut TcpStream) -> String {
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            head.push(client.read_u8().await.unwrap());
+        }
+        let head = String::from_utf8(head).unwrap();
+        assert!(head.starts_with("CONNECT "), "{head}");
+        head.split(' ').nth(1).unwrap().to_owned()
     }
 
     fn closed_port() -> u16 {
@@ -475,7 +600,15 @@ mod tests {
     async fn a_udp_server_names_the_address_the_request_came_from() {
         let port = udp_stun_server(0).await;
 
-        let attempt = ask_stun(LOCALHOST, port, StunTransport::Udp, Family::Ipv4, ANYWHERE).await;
+        let attempt = ask_stun(
+            LOCALHOST,
+            port,
+            StunTransport::Udp,
+            Family::Ipv4,
+            ANYWHERE,
+            None,
+        )
+        .await;
 
         assert!(matches!(
             attempt,
@@ -487,7 +620,15 @@ mod tests {
     async fn a_lost_udp_request_is_sent_again() {
         let port = udp_stun_server(1).await;
 
-        let attempt = ask_stun(LOCALHOST, port, StunTransport::Udp, Family::Ipv4, ANYWHERE).await;
+        let attempt = ask_stun(
+            LOCALHOST,
+            port,
+            StunTransport::Udp,
+            Family::Ipv4,
+            ANYWHERE,
+            None,
+        )
+        .await;
 
         assert!(
             matches!(attempt, StunAttempt::Answered { .. }),
@@ -499,7 +640,15 @@ mod tests {
     async fn a_tcp_server_names_the_address_the_request_came_from() {
         let port = tcp_stun_server().await;
 
-        let attempt = ask_stun(LOCALHOST, port, StunTransport::Tcp, Family::Ipv4, ANYWHERE).await;
+        let attempt = ask_stun(
+            LOCALHOST,
+            port,
+            StunTransport::Tcp,
+            Family::Ipv4,
+            ANYWHERE,
+            None,
+        )
+        .await;
 
         assert!(matches!(
             attempt,
@@ -509,7 +658,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_host_without_an_address_of_the_family_is_not_asked() {
-        let attempt = ask_stun(LOCALHOST, 3478, StunTransport::Udp, Family::Ipv6, ANYWHERE).await;
+        let attempt = ask_stun(
+            LOCALHOST,
+            3478,
+            StunTransport::Udp,
+            Family::Ipv6,
+            ANYWHERE,
+            None,
+        )
+        .await;
 
         assert_eq!(attempt, StunAttempt::NoAddress);
     }
@@ -522,6 +679,7 @@ mod tests {
             StunTransport::Udp,
             Family::Ipv4,
             ANYWHERE,
+            None,
         )
         .await;
 
@@ -609,13 +767,31 @@ mod tests {
     #[tokio::test]
     async fn an_echo_reads_the_address_it_answers() {
         assert_eq!(
-            echo(&answering("203.0.113.7\n").await).await,
+            echo(&answering("203.0.113.7\n").await, None).await,
             Some(Ipv4Addr::new(203, 0, 113, 7).into())
         );
         assert_eq!(
-            echo(&answering("2001:db8::7").await).await,
+            echo(&answering("2001:db8::7").await, None).await,
             Some("2001:db8::7".parse().unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn an_echo_goes_through_the_proxy_it_is_given() {
+        // Nothing listens at the echo's own address; only the proxy can answer.
+        let proxy = ProbeProxy {
+            host: LOCALHOST.into(),
+            port: reqwest::Url::parse(&answering("198.51.100.9").await)
+                .unwrap()
+                .port()
+                .unwrap(),
+        };
+
+        assert_eq!(
+            echo("http://echo.invalid/", Some(&proxy)).await,
+            Some(Ipv4Addr::new(198, 51, 100, 9).into())
+        );
+        assert_eq!(echo("http://echo.invalid/", None).await, None);
     }
 
     #[tokio::test]
@@ -626,8 +802,11 @@ mod tests {
         ))
         .await;
 
-        assert_eq!(echo(&answering("<html>sign in</html>").await).await, None);
-        assert_eq!(echo(&failing).await, None);
+        assert_eq!(
+            echo(&answering("<html>sign in</html>").await, None).await,
+            None
+        );
+        assert_eq!(echo(&failing, None).await, None);
     }
 
     #[tokio::test]
@@ -636,7 +815,72 @@ mod tests {
         let closed = format!("http://{}/", listener.local_addr().unwrap());
         drop(listener);
 
-        assert_eq!(echo(&closed).await, None);
+        assert_eq!(echo(&closed, None).await, None);
+    }
+
+    #[tokio::test]
+    async fn through_a_proxy_stun_is_tunnelled_over_tcp() {
+        let tcp = tcp_stun_server().await;
+        let (proxy, tunnelled) = tunnelling_proxy().await;
+
+        let attempt = ask_stun(
+            LOCALHOST,
+            tcp,
+            StunTransport::Tcp,
+            Family::Ipv4,
+            ANYWHERE,
+            Some(&proxy),
+        )
+        .await;
+
+        assert!(
+            matches!(attempt, StunAttempt::Answered { .. }),
+            "{attempt:?}"
+        );
+        assert_eq!(*tunnelled.lock().unwrap(), [format!("{LOCALHOST}:{tcp}")]);
+    }
+
+    #[tokio::test]
+    async fn a_proxy_that_refuses_the_tunnel_is_no_answer() {
+        let tcp = tcp_stun_server().await;
+        let proxy = refusing_proxy("403 Forbidden").await;
+
+        let attempt = ask_stun(
+            LOCALHOST,
+            tcp,
+            StunTransport::Tcp,
+            Family::Ipv4,
+            ANYWHERE,
+            Some(&proxy),
+        )
+        .await;
+
+        assert_eq!(attempt, StunAttempt::NoAnswer);
+    }
+
+    #[tokio::test]
+    async fn through_a_proxy_the_probe_asks_only_servers_that_answer_over_tcp() {
+        let udp = udp_stun_server(0).await;
+        let tcp = tcp_stun_server().await;
+        let (proxy, tunnelled) = tunnelling_proxy().await;
+        let sources = sources(
+            vec![target(udp, true, false), target(tcp, true, true)],
+            AllowingPorts(vec![udp, tcp]),
+        )
+        .through_proxy(proxy);
+
+        assert_eq!(
+            LOOPBACK_PROBE.ipv4(&sources).await,
+            Some(EgressAnswer {
+                address: Ipv4Addr::LOCALHOST,
+                source: EgressSource::Stun {
+                    host: LOCALHOST.into(),
+                    port: tcp,
+                    transport: StunTransport::Tcp,
+                },
+            })
+        );
+        assert_eq!(*tunnelled.lock().unwrap(), [format!("{LOCALHOST}:{tcp}")]);
     }
 
     #[test]

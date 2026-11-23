@@ -145,6 +145,7 @@ command | patch_runtime_overrides | settings:write |  | mutation | desktop,http 
 command | patch_system_settings | system:write |  | mutation | desktop,http,local |  | os_integration,presentation,elevation
 command | probe_direct_egress | settings:write |  | mutation | desktop,http |  |
 command | probe_profile_url | profile:read | sensitive | query | desktop |  |
+command | probe_route_egress | settings:write |  | mutation | desktop,http |  |
 command | query_core_logs | logs:read | sensitive | query | desktop,http,local |  |
 command | query_core_logs_summary | logs:read |  | query | desktop,http |  |
 command | query_meow_logbook | logs:read | sensitive | query | desktop |  |

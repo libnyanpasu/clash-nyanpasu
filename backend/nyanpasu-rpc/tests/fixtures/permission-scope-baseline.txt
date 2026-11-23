@@ -145,6 +145,7 @@ command | patch_runtime_overrides | settings | mutation | desktop,http |  | elev
 command | patch_system_settings | system | mutation | desktop,http,local |  | os_integration,presentation,elevation
 command | probe_direct_egress | settings | mutation | desktop,http |  |
 command | probe_profile_url | sensitive_read | query | desktop |  |
+command | probe_route_egress | settings | mutation | desktop,http |  |
 command | query_core_logs | sensitive_read | query | desktop,http,local |  |
 command | query_core_logs_summary | read | query | desktop,http |  |
 command | query_meow_logbook | sensitive_read | query | desktop |  |

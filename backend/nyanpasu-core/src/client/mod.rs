@@ -52,6 +52,7 @@ pub(crate) mod ports;
 pub mod profiles;
 pub mod reconciler;
 mod remote_access;
+mod route_egress;
 pub mod runtime;
 pub mod runtime_build;
 pub mod runtime_error;

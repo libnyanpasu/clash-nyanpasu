@@ -19,7 +19,7 @@ import {
   createRpcClient,
   type RpcEventTransport,
 } from '@nyanpasu/rpc'
-import type { DirectEgress } from '@nyanpasu/rpc/types'
+import type { EgressMethod, RouteEgress } from '@nyanpasu/rpc/types'
 import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -41,8 +41,9 @@ const items: DashboardItem[] = [
   { id: 'network', type: WidgetId.NetworkInfo, x: 0, y: 0, w: 4, h: 2 },
 ]
 
-const PROBED: DirectEgress = {
+const probed = (method: EgressMethod): RouteEgress => ({
   kind: 'probed',
+  method,
   ipv4: {
     address: '203.0.113.7',
     country: 'JP',
@@ -54,20 +55,40 @@ const PROBED: DirectEgress = {
     },
   },
   ipv6: null,
+})
+
+const PROBED = probed('direct')
+
+const METHOD_LABELS: Record<EgressMethod, () => string> = {
+  system_proxy: m.dashboard_widget_network_info_method_system_proxy,
+  tun: m.dashboard_widget_network_info_method_tun,
+  transparent_proxy: m.dashboard_widget_network_info_method_transparent_proxy,
+  direct: m.dashboard_widget_network_info_method_direct,
 }
+
+/** The line naming the route and what answered over it. */
+const routeText = (method: EgressMethod) =>
+  `${METHOD_LABELS[method]()} · ${m.dashboard_widget_network_info_via_stun({
+    server: 'stun.cloudflare.com:3478',
+    transport: 'UDP',
+  })}`
 
 type Backend = {
   allowed: boolean
   tun: boolean
+  systemProxy?: boolean
   hideAddresses?: boolean
   localCapture?: boolean
+  probeImpl?: () => Promise<RouteEgress>
 }
 
 function createRpcHarness({
   allowed,
   tun,
+  systemProxy,
   hideAddresses,
   localCapture,
+  probeImpl,
 }: Backend) {
   const calls: string[] = []
   const invoke = async <T,>(
@@ -92,7 +113,10 @@ function createRpcHarness({
       case 'set_storage_item':
         return 1 as T
       case 'get_app_settings':
-        return { enable_local_ip_probe: allowed } as T
+        return {
+          enable_local_ip_probe: allowed,
+          enable_system_proxy: systemProxy ?? false,
+        } as T
       case 'get_clash_settings':
         return {
           enable_tun_mode: tun,
@@ -101,8 +125,8 @@ function createRpcHarness({
             local: true,
           },
         } as T
-      case 'probe_direct_egress':
-        return PROBED as T
+      case 'probe_route_egress':
+        return (probeImpl ? await probeImpl() : PROBED) as T
       default:
         throw new Error(`Unexpected RPC method: ${method}`)
     }
@@ -120,7 +144,7 @@ function createRpcHarness({
       events,
       icons: createIconTransport(false),
     }),
-    probes: () => calls.filter((call) => call === 'probe_direct_egress').length,
+    probes: () => calls.filter((call) => call === 'probe_route_egress').length,
     calls,
   }
 }
@@ -202,7 +226,7 @@ async function mount(
   return { ...harness, controls, router }
 }
 
-test('each family shows its address, country and what answered', async ({
+test('each family shows its address, country, route and what answered', async ({
   onTestFinished,
 }) => {
   const { probes, controls } = await mount(onTestFinished, {
@@ -212,18 +236,16 @@ test('each family shows its address, country and what answered', async ({
 
   await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
   await expect
+    .element(page.getByText(regionName('JP')).first())
+    .toBeInTheDocument()
+  await expect
     .element(
-      page
-        .getByText(
-          `${regionName('JP')} · ${m.dashboard_widget_network_info_via_stun({
-            server: 'stun.cloudflare.com:3478',
-            transport: 'UDP',
-          })}`,
-          // A marquee repeats text that overflows.
-        )
-        .first(),
+      // A marquee repeats text that overflows.
+      page.getByText(routeText('direct')).first(),
     )
     .toBeInTheDocument()
+
+  await page.getByRole('button', { name: 'IPv4' }).click()
   await expect
     .element(page.getByText(m.dashboard_widget_network_info_no_address()))
     .toBeInTheDocument()
@@ -269,37 +291,34 @@ test('nothing is probed while detection is off, and the notice links to its sett
     .toBe('/main/settings/nyanpasu/public-ip')
 })
 
-test('nothing is probed while TUN mode is on', async ({ onTestFinished }) => {
-  const { probes } = await mount(onTestFinished, { allowed: true, tun: true })
+test.for<[EgressMethod, Partial<Backend>]>([
+  ['system_proxy', { systemProxy: true }],
+  ['tun', { tun: true }],
+  ['transparent_proxy', { localCapture: true }],
+])(
+  'a %s route is still probed and its method is named',
+  async ([method, route], { onTestFinished }) => {
+    const { probes } = await mount(onTestFinished, {
+      allowed: true,
+      tun: false,
+      ...route,
+      probeImpl: async () => probed(method),
+    })
 
-  await expect
-    .element(page.getByText(m.dashboard_widget_network_info_tun()))
-    .toBeInTheDocument()
-  expect(probes()).toBe(0)
-})
-
-test('local transparent capture suppresses the direct address probe', async ({
-  onTestFinished,
-}) => {
-  const { probes } = await mount(onTestFinished, {
-    allowed: true,
-    tun: false,
-    localCapture: true,
-  })
-  await expect
-    .element(
-      page.getByText(m.dashboard_widget_network_info_transparent_proxy()),
-    )
-    .toBeInTheDocument()
-  await expect
-    .element(
-      page.getByRole('button', {
-        name: m.dashboard_widget_network_info_refresh(),
-      }),
-    )
-    .toBeDisabled()
-  expect(probes()).toBe(0)
-})
+    await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
+    await expect
+      .element(page.getByText(routeText(method)).first())
+      .toBeInTheDocument()
+    await expect
+      .element(
+        page.getByRole('button', {
+          name: m.dashboard_widget_network_info_refresh(),
+        }),
+      )
+      .toBeEnabled()
+    expect(probes()).toBe(1)
+  },
+)
 
 test('hidden addresses keep their shape but not their digits', async ({
   onTestFinished,
@@ -312,4 +331,56 @@ test('hidden addresses keep their shape but not their digits', async ({
 
   await expect.element(page.getByText('•••.•.•••.•')).toBeInTheDocument()
   await expect.element(page.getByText('203.0.113.7')).not.toBeInTheDocument()
+})
+
+test('shows loading state while probing and resolves to egress details', async ({
+  onTestFinished,
+}) => {
+  let resolveProbe!: (value: RouteEgress) => void
+  await mount(onTestFinished, {
+    allowed: true,
+    tun: false,
+    probeImpl: () =>
+      new Promise<RouteEgress>((resolve) => {
+        resolveProbe = resolve
+      }),
+  })
+
+  await expect
+    .element(page.getByText(m.dashboard_widget_network_info_probing()))
+    .toBeInTheDocument()
+
+  act(() => resolveProbe(PROBED))
+
+  await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
+})
+
+test('shows error state when probing fails and allows retrying', async ({
+  onTestFinished,
+}) => {
+  let shouldFail = true
+  const { probes } = await mount(onTestFinished, {
+    allowed: true,
+    tun: false,
+    probeImpl: async () => {
+      if (shouldFail) throw new Error('probe failed')
+      return PROBED
+    },
+  })
+
+  await expect
+    .element(page.getByText(m.dashboard_widget_network_info_failed()))
+    .toBeInTheDocument()
+  expect(probes()).toBe(1)
+
+  shouldFail = false
+  await page
+    .getByRole('button', {
+      name: m.dashboard_widget_network_info_refresh(),
+    })
+    .first()
+    .click()
+
+  await expect.element(page.getByText('203.0.113.7')).toBeInTheDocument()
+  expect(probes()).toBe(2)
 })

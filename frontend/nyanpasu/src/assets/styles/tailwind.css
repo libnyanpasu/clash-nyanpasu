@@ -203,7 +203,7 @@
 
 @layer base {
   [class*='rounded'] {
-    corner-shape: superellipse(2);
+    corner-shape: superellipse(1.25);
   }
 }
 

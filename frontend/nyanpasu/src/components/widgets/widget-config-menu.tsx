@@ -1,647 +1,27 @@
-import ArrowDropDownRounded from '~icons/material-symbols/arrow-drop-down-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
-import SwapHorizRounded from '~icons/material-symbols/swap-horiz-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
-import {
   LauncherMenu,
-  LauncherMenuChipButton,
   LauncherMenuGroup,
   LauncherMenuIconButton,
   LauncherMenuRow,
 } from '@nyanpasu/ui/launcher-menu'
-import { NumberStepper } from '@nyanpasu/ui/number-stepper'
 import { Popover, PopoverContent, PopoverTrigger } from '@nyanpasu/ui/popover'
 import { ScrollArea } from '@nyanpasu/ui/scroll-area'
-import { Switch } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { useMatchesPlatform } from '@nyanpasu/platform/react'
+import { WidgetInstanceProvider } from './core/widget-context'
 import { useDashboardContext } from './provider'
+import { getWidgetDefinition } from './registry'
 import {
   DEFAULT_WIDGET_CONFIGS,
   getWidgetConfig,
-  WIDGET_CONFIG_NUMBER_RANGES,
   WidgetConfig,
   WidgetId,
 } from './widget-config'
-import { ConfigGroup, ConfigRow } from './widget-config-row'
-import {
-  ProviderReferencesField,
-  ReportProfileField,
-  SubscriptionTargetField,
-  WidgetOptionSelect,
-} from './widget-reference-fields'
-
-function Choice<T extends string>({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: T
-  options: { value: T; label: string; disabled?: boolean }[]
-  disabled: boolean
-  onChange: (value: T) => void
-}) {
-  const selected = options.find((option) => option.value === value)
-  const other = options.find((option) => option.value !== value)
-
-  // A two-way choice flips on press; longer lists open a menu.
-  if (options.length === 2) {
-    return (
-      <ConfigRow label={label}>
-        <LauncherMenuChipButton
-          aria-label={`${label}: ${selected?.label ?? value}`}
-          disabled={disabled || !other || other.disabled}
-          onClick={() => other && onChange(other.value)}
-        >
-          <span className="truncate">{selected?.label ?? value}</span>
-
-          <SwapHorizRounded className="size-4 shrink-0" aria-hidden="true" />
-        </LauncherMenuChipButton>
-      </ConfigRow>
-    )
-  }
-
-  return (
-    <WidgetOptionSelect
-      label={label}
-      value={value}
-      options={options}
-      disabled={disabled}
-      onChange={(next) => {
-        const option = options.find((item) => item.value === next)
-        if (option) onChange(option.value)
-      }}
-    />
-  )
-}
-
-function Toggle({
-  label,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  disabled: boolean
-  onChange: (value: boolean) => void
-}) {
-  const id = useId()
-  return (
-    <div
-      className="flex items-center justify-between gap-3"
-      data-slot="widget-config-toggle"
-    >
-      <label htmlFor={id} className="text-sm">
-        {label}
-      </label>
-      <Switch
-        id={id}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onChange}
-      />
-    </div>
-  )
-}
-
-function Stepper({
-  label,
-  value,
-  range,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: number
-  range: readonly [number, number]
-  disabled: boolean
-  onChange: (value: number) => void
-}) {
-  return (
-    <NumberStepper
-      variant="filled"
-      layout="inline"
-      label={label}
-      value={value}
-      min={range[0]}
-      max={range[1]}
-      decrementLabel={`${m.dashboard_widget_config_decrease()} ${label}`}
-      incrementLabel={`${m.dashboard_widget_config_increase()} ${label}`}
-      disabled={disabled}
-      onChange={onChange}
-    />
-  )
-}
-
-function ConfigFieldRows({
-  config,
-  disabled,
-  onChange,
-}: {
-  config: WidgetConfig
-  disabled: boolean
-  onChange: (config: WidgetConfig) => void
-}) {
-  const showTransparent = useMatchesPlatform({
-    surface: 'desktop',
-    clientOs: 'linux',
-  })
-  switch (config.type) {
-    case WidgetId.SubscriptionSchedule:
-      return (
-        <ConfigGroup>
-          <SubscriptionTargetField
-            target={config.target}
-            disabled={disabled}
-            onChange={(target) => onChange({ ...config, target })}
-          />
-          <Toggle
-            label={m.dashboard_widget_config_recent_runs()}
-            checked={config.showRecentRuns}
-            disabled={disabled}
-            onChange={(showRecentRuns) =>
-              onChange({ ...config, showRecentRuns })
-            }
-          />
-        </ConfigGroup>
-      )
-    case WidgetId.SubscriptionQuota:
-      return (
-        <>
-          <ConfigGroup>
-            <SubscriptionTargetField
-              target={config.target}
-              disabled={disabled}
-              onChange={(target) => onChange({ ...config, target })}
-            />
-          </ConfigGroup>
-
-          <ConfigGroup>
-            <Toggle
-              label={m.dashboard_widget_config_expiry()}
-              checked={config.showExpiry}
-              disabled={disabled}
-              onChange={(showExpiry) => onChange({ ...config, showExpiry })}
-            />
-            <Toggle
-              label={m.dashboard_widget_config_progress()}
-              checked={config.showProgress}
-              disabled={disabled}
-              onChange={(showProgress) => onChange({ ...config, showProgress })}
-            />
-            <Choice
-              label={m.dashboard_widget_subscription_quota_config_wave_style()}
-              value={config.waveStyle}
-              options={[
-                {
-                  value: 'filled',
-                  label:
-                    m.dashboard_widget_subscription_quota_config_wave_filled(),
-                },
-                {
-                  value: 'outline',
-                  label:
-                    m.dashboard_widget_subscription_quota_config_wave_outline(),
-                },
-              ]}
-              disabled={disabled || !config.showProgress}
-              onChange={(waveStyle) => onChange({ ...config, waveStyle })}
-            />
-            <Toggle
-              label={m.dashboard_widget_subscription_quota_config_wave_animation()}
-              checked={config.animateWave}
-              disabled={disabled || !config.showProgress}
-              onChange={(animateWave) => onChange({ ...config, animateWave })}
-            />
-          </ConfigGroup>
-
-          <ConfigGroup>
-            <Stepper
-              label={m.dashboard_widget_config_expiry_threshold()}
-              value={config.expiryWarningDays}
-              range={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays}
-              disabled={disabled}
-              onChange={(expiryWarningDays) =>
-                onChange({ ...config, expiryWarningDays })
-              }
-            />
-            <Stepper
-              label={m.dashboard_widget_config_quota_threshold()}
-              value={config.quotaWarningPercent}
-              range={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent}
-              disabled={disabled}
-              onChange={(quotaWarningPercent) =>
-                onChange({ ...config, quotaWarningPercent })
-              }
-            />
-          </ConfigGroup>
-        </>
-      )
-    case WidgetId.ProxyMode:
-      return (
-        <ConfigGroup>
-          <Choice
-            label={m.dashboard_widget_proxy_mode_config_layout()}
-            value={config.layout}
-            disabled={disabled}
-            options={[
-              {
-                value: 'focus',
-                label: m.dashboard_widget_proxy_mode_config_focus(),
-              },
-              {
-                value: 'flex',
-                label: m.dashboard_widget_proxy_mode_config_flex(),
-              },
-            ]}
-            onChange={(layout) => onChange({ ...config, layout })}
-          />
-        </ConfigGroup>
-      )
-    case WidgetId.RecentTraffic:
-    case WidgetId.OriginTraffic:
-    case WidgetId.ExitTraffic:
-    case WidgetId.TargetTraffic:
-    case WidgetId.RuleTraffic:
-      return (
-        <>
-          <ConfigGroup>
-            <WidgetOptionSelect
-              label={m.dashboard_widget_config_range()}
-              value={config.range}
-              disabled={disabled}
-              options={[
-                {
-                  value: 'last_hour',
-                  label: m.dashboard_widget_config_range_hour(),
-                },
-                {
-                  value: 'last6_hours',
-                  label: m.dashboard_widget_config_range_6hours(),
-                },
-                {
-                  value: 'last24_hours',
-                  label: m.dashboard_widget_config_range_24hours(),
-                },
-                {
-                  value: 'last7_days',
-                  label: m.dashboard_widget_config_range_7days(),
-                },
-                {
-                  value: 'last30_days',
-                  label: m.dashboard_widget_config_range_30days(),
-                },
-                { value: 'all', label: m.dashboard_widget_config_range_all() },
-              ]}
-              onChange={(range) =>
-                onChange({ ...config, range: range as typeof config.range })
-              }
-            />
-            <ReportProfileField
-              profileUid={config.profileUid}
-              disabled={disabled}
-              onChange={(profileUid) => onChange({ ...config, profileUid })}
-            />
-          </ConfigGroup>
-
-          <ConfigGroup>
-            <Toggle
-              label={m.dashboard_widget_config_directions()}
-              checked={config.showDirections}
-              disabled={disabled}
-              onChange={(showDirections) =>
-                onChange({ ...config, showDirections })
-              }
-            />
-            {config.type !== WidgetId.RecentTraffic && (
-              <Stepper
-                label={m.dashboard_widget_config_top()}
-                value={config.topN}
-                range={WIDGET_CONFIG_NUMBER_RANGES.topN}
-                disabled={disabled}
-                onChange={(topN) => onChange({ ...config, topN })}
-              />
-            )}
-            {(config.type === WidgetId.OriginTraffic ||
-              config.type === WidgetId.TargetTraffic) && (
-              <Toggle
-                label={m.dashboard_widget_config_hide_names()}
-                checked={config.hideNames}
-                disabled={disabled}
-                onChange={(hideNames) => onChange({ ...config, hideNames })}
-              />
-            )}
-          </ConfigGroup>
-        </>
-      )
-    case WidgetId.ActiveConnections:
-      return (
-        <>
-          <ConfigGroup>
-            <Choice
-              label={m.dashboard_widget_config_sort()}
-              value={config.sort}
-              options={[
-                {
-                  value: 'download',
-                  label: m.dashboard_widget_config_download(),
-                },
-                { value: 'upload', label: m.dashboard_widget_config_upload() },
-                { value: 'total', label: m.dashboard_widget_config_total() },
-              ]}
-              disabled={disabled}
-              onChange={(sort) => onChange({ ...config, sort })}
-            />
-            <Stepper
-              label={m.dashboard_widget_config_top()}
-              value={config.topN}
-              range={WIDGET_CONFIG_NUMBER_RANGES.topN}
-              disabled={disabled}
-              onChange={(topN) => onChange({ ...config, topN })}
-            />
-          </ConfigGroup>
-
-          <ConfigGroup>
-            <Toggle
-              label={m.dashboard_widget_config_process()}
-              checked={config.showProcess}
-              disabled={disabled}
-              onChange={(showProcess) => onChange({ ...config, showProcess })}
-            />
-            <Toggle
-              label={m.dashboard_widget_config_hide_targets()}
-              checked={config.hideTargets}
-              disabled={disabled}
-              onChange={(hideTargets) => onChange({ ...config, hideTargets })}
-            />
-          </ConfigGroup>
-        </>
-      )
-    case WidgetId.ProviderUpdates:
-      return (
-        <>
-          <ConfigGroup>
-            <Choice
-              label={m.dashboard_widget_config_provider_types()}
-              value={config.kinds}
-              options={[
-                {
-                  value: 'both',
-                  label: m.dashboard_widget_config_both_providers(),
-                },
-                {
-                  value: 'proxy',
-                  label: m.dashboard_widget_config_proxy_providers(),
-                },
-                {
-                  value: 'rule',
-                  label: m.dashboard_widget_config_rule_providers(),
-                },
-              ]}
-              disabled={disabled}
-              onChange={(kinds) => onChange({ ...config, kinds })}
-            />
-            <Stepper
-              label={m.dashboard_widget_config_items()}
-              value={config.maxItems}
-              range={WIDGET_CONFIG_NUMBER_RANGES.maxItems}
-              disabled={disabled}
-              onChange={(maxItems) => onChange({ ...config, maxItems })}
-            />
-          </ConfigGroup>
-
-          <ConfigGroup>
-            <ProviderReferencesField
-              resources={config.resources}
-              disabled={disabled}
-              onChange={(resources) => onChange({ ...config, resources })}
-            />
-          </ConfigGroup>
-        </>
-      )
-    case WidgetId.NetworkInfo:
-      return (
-        <ConfigGroup>
-          <Toggle
-            label={m.dashboard_widget_network_info_config_hide_addresses()}
-            checked={config.hideAddresses}
-            disabled={disabled}
-            onChange={(hideAddresses) => onChange({ ...config, hideAddresses })}
-          />
-        </ConfigGroup>
-      )
-    case WidgetId.ProxyShortcuts:
-      return (
-        <ConfigGroup>
-          <Choice
-            label={m.dashboard_widget_proxy_mode_config_layout()}
-            value={config.layout}
-            disabled={disabled}
-            options={[
-              {
-                value: 'equal',
-                label: m.dashboard_widget_proxy_shortcuts_config_equal(),
-              },
-              {
-                value: 'flex',
-                label: m.dashboard_widget_proxy_mode_config_flex(),
-              },
-            ]}
-            onChange={(layout) => onChange({ ...config, layout })}
-          />
-          <ConfigRow
-            label={m.dashboard_widget_proxy_shortcuts_config_buttons()}
-          >
-            <DropdownMenu align="end">
-              <DropdownMenuTrigger asChild>
-                <LauncherMenuChipButton
-                  disabled={disabled}
-                  aria-label={m.dashboard_widget_proxy_shortcuts_config_buttons()}
-                >
-                  <span className="truncate">
-                    {config.buttons.filter(
-                      (button) => button !== 'transparent' || showTransparent,
-                    ).length === (showTransparent ? 3 : 2)
-                      ? m.dashboard_widget_proxy_shortcuts_config_both()
-                      : config.buttons
-                          .filter(
-                            (button) =>
-                              button !== 'transparent' || showTransparent,
-                          )
-                          .map((button) =>
-                            button === 'system'
-                              ? m.dashboard_widget_proxy_shortcuts_config_system()
-                              : button === 'tun'
-                                ? m.settings_system_proxy_tun_mode_label()
-                                : m.settings_clash_transparent_proxy_label(),
-                          )
-                          .join(', ')}
-                  </span>
-                  <ArrowDropDownRounded
-                    className="size-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                </LauncherMenuChipButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {(
-                  [
-                    {
-                      value: 'system',
-                      label: m.dashboard_widget_proxy_shortcuts_config_system(),
-                    },
-                    {
-                      value: 'tun',
-                      label: m.settings_system_proxy_tun_mode_label(),
-                    },
-                    ...(showTransparent
-                      ? [
-                          {
-                            value: 'transparent' as const,
-                            label: m.settings_clash_transparent_proxy_label(),
-                          },
-                        ]
-                      : []),
-                  ] as const
-                ).map(({ value, label }) => (
-                  <DropdownMenuCheckboxItem
-                    key={value}
-                    checked={config.buttons.includes(value)}
-                    disabled={
-                      disabled ||
-                      (config.buttons.includes(value) &&
-                        config.buttons.filter(
-                          (button) =>
-                            button !== 'transparent' || showTransparent,
-                        ).length === 1)
-                    }
-                    onSelect={(event) => event.preventDefault()}
-                    onCheckedChange={(checked) =>
-                      onChange({
-                        ...config,
-                        buttons: checked
-                          ? [...config.buttons, value]
-                          : config.buttons.filter((button) => button !== value),
-                      })
-                    }
-                  >
-                    {label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </ConfigRow>
-          {config.buttons.includes('system') &&
-            config.buttons.includes('tun') && (
-              <Choice
-                label={m.dashboard_widget_proxy_shortcuts_config_order()}
-                value={config.order}
-                disabled={disabled}
-                options={[
-                  {
-                    value: 'system-first',
-                    label:
-                      m.dashboard_widget_proxy_shortcuts_config_system_first(),
-                  },
-                  {
-                    value: 'tun-first',
-                    label:
-                      m.dashboard_widget_proxy_shortcuts_config_tun_first(),
-                  },
-                ]}
-                onChange={(order) => onChange({ ...config, order })}
-              />
-            )}
-        </ConfigGroup>
-      )
-    case WidgetId.TrafficDown:
-    case WidgetId.TrafficUp:
-      return (
-        <ConfigGroup>
-          <Toggle
-            label={m.dashboard_widget_sparkline_config_chart()}
-            checked={config.showChart}
-            disabled={disabled}
-            onChange={(showChart) => onChange({ ...config, showChart })}
-          />
-          <Toggle
-            label={m.dashboard_widget_traffic_config_total()}
-            checked={config.showTotal}
-            disabled={disabled}
-            onChange={(showTotal) => onChange({ ...config, showTotal })}
-          />
-          <Choice
-            label={m.dashboard_widget_traffic_config_speed_unit()}
-            value={config.unit}
-            disabled={disabled}
-            options={[
-              { value: 'bytes', label: 'B/s' },
-              { value: 'bits', label: 'bit/s' },
-            ]}
-            onChange={(unit) => onChange({ ...config, unit })}
-          />
-        </ConfigGroup>
-      )
-    case WidgetId.Memory:
-    case WidgetId.Connections:
-      return (
-        <ConfigGroup>
-          <Toggle
-            label={m.dashboard_widget_sparkline_config_chart()}
-            checked={config.showChart}
-            disabled={disabled}
-            onChange={(showChart) => onChange({ ...config, showChart })}
-          />
-          <Stepper
-            label={m.dashboard_widget_sparkline_config_samples()}
-            value={config.samples}
-            range={WIDGET_CONFIG_NUMBER_RANGES.samples}
-            disabled={disabled || !config.showChart}
-            onChange={(samples) => onChange({ ...config, samples })}
-          />
-        </ConfigGroup>
-      )
-    case WidgetId.CoreShortcuts:
-      return (
-        <ConfigGroup>
-          <Toggle
-            label={m.dashboard_widget_core_shortcuts_config_version()}
-            checked={config.showVersion}
-            disabled={disabled}
-            onChange={(showVersion) => onChange({ ...config, showVersion })}
-          />
-          <Toggle
-            label={m.dashboard_widget_core_shortcuts_config_channel()}
-            checked={config.showChannel}
-            disabled={disabled}
-            onChange={(showChannel) => onChange({ ...config, showChannel })}
-          />
-        </ConfigGroup>
-      )
-  }
-}
-
-function ConfigFields(props: Parameters<typeof ConfigFieldRows>[0]) {
-  return (
-    <LauncherMenu data-slot="widget-config-fields">
-      <ConfigFieldRows {...props} />
-    </LauncherMenu>
-  )
-}
 
 export function WidgetConfigSaveStatus() {
   const { saveStatus, configLoading, configReadError, retryConfig } =
@@ -679,6 +59,11 @@ export function WidgetConfigSaveStatus() {
   )
 }
 
+/**
+ * The shared config surface. Each migrated widget owns its fields through
+ * `definition.ConfigForm`; this shell only supplies the popover, reset action,
+ * persistence state, and the instance context the form reads.
+ */
 export default function WidgetConfigMenu({
   id,
   type,
@@ -691,6 +76,8 @@ export default function WidgetConfigMenu({
   const { configs, saveConfig, saveStatus, configLoading, configReadError } =
     useDashboardContext()
   const config = getWidgetConfig(configs, id, type)
+  const definition = getWidgetDefinition(type)
+  const ConfigForm = definition.ConfigForm
   const disabled =
     configLoading || configReadError || saveStatus.state === 'saving'
   const titleId = useId()
@@ -756,11 +143,28 @@ export default function WidgetConfigMenu({
             className="min-h-0 flex-auto rounded-3xl"
             data-slot="widget-config-scroll-area"
           >
-            <ConfigFields
-              config={config}
-              disabled={disabled}
-              onChange={(next) => saveConfig(id, next)}
-            />
+            {ConfigForm && (
+              <WidgetInstanceProvider
+                id={id}
+                type={type}
+                mode="live"
+                interactive={false}
+                isEditing
+                span={{
+                  w: definition.size.defaultW,
+                  h: definition.size.defaultH,
+                }}
+                definition={definition}
+                config={config}
+                configDisabled={disabled}
+                updateConfig={(patch) =>
+                  saveConfig(id, { ...config, ...patch } as WidgetConfig)
+                }
+                resetConfig={() => saveConfig(id, DEFAULT_WIDGET_CONFIGS[type])}
+              >
+                <ConfigForm />
+              </WidgetInstanceProvider>
+            )}
           </ScrollArea>
 
           {(configLoading ||

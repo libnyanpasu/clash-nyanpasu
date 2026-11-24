@@ -1,11 +1,9 @@
 import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import { useReducedMotion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ActionSwap } from '@nyanpasu/ui/action-swap-text'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent } from '@nyanpasu/ui/card'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
@@ -18,7 +16,20 @@ import {
   useProfileMutations,
 } from '@nyanpasu/query'
 import { Link } from '@tanstack/react-router'
-import type { WidgetComponentProps } from './consts'
+import {
+  defineWidget,
+  useWidgetConfig,
+  useWidgetConfigActions,
+  useWidgetContext,
+  useWidgetInteractive,
+  Widget,
+  WidgetContent,
+  WidgetControls,
+  WidgetHeader,
+  WidgetMeta,
+  WidgetMetric,
+  WidgetTitle,
+} from './core'
 import {
   calculateSubscriptionQuota,
   isExpiryWarning,
@@ -26,49 +37,52 @@ import {
   resolveProfileTarget,
   subscriptionExpiryTimestamp,
 } from './dashboard-daily-utils'
-import { useDashboardContext, useWidgetConfig } from './provider'
 import { SubscriptionQuotaWave } from './subscription-quota-wave'
-import { WidgetId, type WidgetConfig } from './widget-config'
-import WidgetItem from './widget-item'
 import {
-  WidgetHeader,
-  WidgetMeta,
-  WidgetMetric,
-  WidgetTitle,
-} from './widget-ui'
+  DEFAULT_WIDGET_CONFIGS,
+  WIDGET_CONFIG_NUMBER_RANGES,
+  WidgetId,
+} from './widget-config'
+import {
+  ConfigChoice,
+  ConfigStepper,
+  ConfigToggle,
+} from './widget-config-fields'
+import { ConfigGroup } from './widget-config-row'
+import { SubscriptionTargetField } from './widget-reference-fields'
 
-function SubscriptionQuotaPreview({ id }: { id: string }) {
+function SubscriptionQuotaView({
+  chart,
+  overlay,
+  header,
+  children,
+}: {
+  chart?: ReactNode
+  overlay?: ReactNode
+  header: ReactNode
+  children: ReactNode
+}) {
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.SubscriptionQuota}
-      minW={3}
-      minH={2}
+    <Widget
+      scaling="proportional"
+      data-widget-kind="subscription-quota"
+      data-slot="subscription-quota-card"
     >
-      <Card className="relative isolate flex size-full flex-col">
-        <SubscriptionQuotaWave percent={68} waveStyle="filled" animateWave />
-        <WidgetHeader>
-          <WidgetTitle icon={DataUsageRounded}>
-            {m.dashboard_widget_subscription_quota_title()}
-          </WidgetTitle>
-        </WidgetHeader>
-        <CardContent className="relative min-h-0 flex-1 justify-start gap-0 p-4 pt-2">
-          <div className="flex min-h-0 flex-1 flex-col gap-1">
-            <div className="flex min-h-0 flex-1 items-center">
-              <WidgetMetric data-slot="subscription-quota-percent">
-                68%
-              </WidgetMetric>
-            </div>
-            <WidgetMeta data-slot="subscription-quota-summary">
-              {formatBytes(6.8 * 1024 ** 3)}{' '}
-              {m.dashboard_widget_subscription_quota_remaining_of({
-                total: formatBytes(10 * 1024 ** 3),
-              })}
-            </WidgetMeta>
-          </div>
-        </CardContent>
-      </Card>
-    </WidgetItem>
+      {chart}
+
+      {overlay}
+
+      <WidgetHeader className="pointer-events-none relative flex-row items-center justify-between gap-2">
+        {header}
+      </WidgetHeader>
+
+      <WidgetContent
+        className="pointer-events-none relative justify-start gap-0"
+        data-slot="subscription-quota-content"
+      >
+        {children}
+      </WidgetContent>
+    </Widget>
   )
 }
 
@@ -117,7 +131,6 @@ function QuotaSummary({
       const content = marquee?.querySelector<HTMLElement>(
         '[data-slot="text-marquee-content-item"], [data-slot="text-marquee-content"]',
       )
-      // Leave enough time for one complete scroll, including its initial pause.
       const duration = Math.max(
         8000,
         (((content?.scrollWidth ?? 0) + 32) / 30) * 1000 + 2000,
@@ -174,18 +187,48 @@ function QuotaSummary({
 
 type ActionState = 'idle' | 'degraded' | 'unconfirmed' | 'failed'
 
-function SubscriptionQuotaLive({
-  id,
-  onCloseClick,
-  disabled,
-  config,
-}: WidgetComponentProps & {
-  disabled: boolean
-  config: Extract<WidgetConfig, { type: WidgetId.SubscriptionQuota }>
-}) {
+function SubscriptionQuotaPreview() {
+  const config = useWidgetConfig(WidgetId.SubscriptionQuota)
+
+  return (
+    <SubscriptionQuotaView
+      chart={
+        config.showProgress ? (
+          <SubscriptionQuotaWave
+            percent={68}
+            waveStyle="filled"
+            animateWave={config.animateWave}
+          />
+        ) : undefined
+      }
+      header={<WidgetTitle />}
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-1">
+        <div className="flex min-h-0 flex-1 items-center">
+          <WidgetMetric data-slot="subscription-quota-percent">
+            {config.showProgress ? '68%' : '—'}
+          </WidgetMetric>
+        </div>
+        <WidgetMeta data-slot="subscription-quota-summary">
+          {config.showProgress
+            ? `${formatBytes(6.8 * 1024 ** 3)} ${m.dashboard_widget_subscription_quota_remaining_of(
+                {
+                  total: formatBytes(10 * 1024 ** 3),
+                },
+              )}`
+            : m.dashboard_widget_subscription_quota_unknown()}
+        </WidgetMeta>
+      </div>
+    </SubscriptionQuotaView>
+  )
+}
+
+function SubscriptionQuotaLive() {
   const query = useProfileListing()
   const { update } = useProfileMutations()
-  const { setIsEditing } = useDashboardContext()
+  const { enterEditMode } = useWidgetContext()
+  const interactive = useWidgetInteractive()
+  const config = useWidgetConfig(WidgetId.SubscriptionQuota)
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -210,7 +253,7 @@ function SubscriptionQuotaLive({
   const refresh = async () => {
     if (
       !profile ||
-      disabled ||
+      !interactive ||
       update.isPending ||
       checkingStatus ||
       (actionState === 'unconfirmed' && !checkedAfterUnconfirmed)
@@ -245,7 +288,7 @@ function SubscriptionQuotaLive({
   }
 
   const checkStatus = async () => {
-    if (disabled || checkingStatus) return
+    if (!interactive || checkingStatus) return
     setCheckingStatus(true)
     setCheckFailed(false)
     try {
@@ -305,145 +348,209 @@ function SubscriptionQuotaLive({
     ? m.dashboard_widget_operation_check()
     : m.dashboard_widget_subscription_quota_refresh()
 
+  const header = (
+    <>
+      <WidgetTitle className="flex-1" data-slot="subscription-quota-title">
+        {profile?.name ?? m.dashboard_widget_subscription_quota_configure()}
+      </WidgetTitle>
+      {profile && (
+        <WidgetControls>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="raised"
+                className="size-7"
+                icon
+                aria-label={refreshLabel}
+                disabled={!interactive || update.isPending || checkingStatus}
+                loading={update.isPending || checkingStatus}
+                onClick={needsCheck ? checkStatus : refresh}
+              >
+                <RefreshRounded className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{refreshLabel}</TooltipContent>
+          </Tooltip>
+        </WidgetControls>
+      )}
+    </>
+  )
+
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.SubscriptionQuota}
-      minW={3}
-      minH={2}
-      onCloseClick={onCloseClick}
-    >
-      <Card
-        className="relative isolate flex size-full flex-col"
-        data-slot="subscription-quota-card"
-      >
-        {quota && config.showProgress && !targetMessage && (
+    <SubscriptionQuotaView
+      chart={
+        quota && config.showProgress && !targetMessage ? (
           <SubscriptionQuotaWave
             percent={quota.remainingPercent}
             waveStyle={config.waveStyle}
             animateWave={config.animateWave}
           />
-        )}
-        {profile && !targetMessage && (
+        ) : undefined
+      }
+      overlay={
+        profile &&
+        !targetMessage && (
           <Link
             className="hover:bg-on-surface/5 active:bg-on-surface/10 focus-visible:outline-primary absolute inset-0 z-10 rounded-3xl transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
             data-slot="subscription-quota-details"
             aria-label={`${profile.name}: ${m.dashboard_widget_subscription_quota_details()}`}
-            aria-disabled={disabled}
-            tabIndex={disabled ? -1 : 0}
+            aria-disabled={!interactive}
+            tabIndex={interactive ? 0 : -1}
             onClick={(event) => {
-              if (disabled) event.preventDefault()
+              if (!interactive) event.preventDefault()
             }}
             to="/main/profiles/$type/detail/$uid"
             params={{ type: 'profile', uid: profile.uid }}
           />
-        )}
-        <WidgetHeader className="pointer-events-none relative flex-row items-center justify-between gap-2">
-          <WidgetTitle
-            className="flex-1"
-            icon={DataUsageRounded}
-            data-slot="subscription-quota-title"
-          >
-            {profile?.name ?? m.dashboard_widget_subscription_quota_configure()}
-          </WidgetTitle>
-          {profile && (
-            <div className="pointer-events-auto relative z-20 flex shrink-0 items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="raised"
-                    className="size-7"
-                    icon
-                    aria-label={refreshLabel}
-                    disabled={disabled || update.isPending || checkingStatus}
-                    loading={update.isPending || checkingStatus}
-                    onClick={needsCheck ? checkStatus : refresh}
-                  >
-                    <RefreshRounded className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{refreshLabel}</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-        </WidgetHeader>
-
-        <CardContent className="pointer-events-none relative min-h-0 flex-1 justify-start gap-0 p-4 pt-2">
-          <div
-            className="flex min-h-0 flex-1 flex-col gap-1"
-            data-slot="subscription-quota-content"
-          >
-            {targetMessage ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center text-sm">
-                {(resolution?.kind === 'needs_selection' ||
-                  resolution?.kind === 'missing' ||
-                  resolution?.kind === 'unsupported') && (
-                  <Button
-                    variant="raised"
-                    className="pointer-events-auto relative z-20 h-8 min-w-0 px-3 text-xs"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    {m.dashboard_widget_subscription_quota_configure()}
-                  </Button>
-                )}
-              </div>
-            ) : profile ? (
-              <>
-                {quota ? (
-                  <div
-                    className="flex min-h-0 flex-1 items-center"
-                    data-slot="subscription-quota-metric"
-                  >
-                    <WidgetMetric
-                      className="tabular-nums"
-                      data-slot="subscription-quota-percent"
-                    >
-                      {Math.round(quota.remainingPercent)}%
-                    </WidgetMetric>
-                  </div>
-                ) : (
-                  <WidgetMetric className="flex min-h-0 flex-1 items-center">
-                    &mdash;
-                  </WidgetMetric>
-                )}
-              </>
-            ) : (
-              <div className="flex-1" />
+        )
+      }
+      header={header}
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-1">
+        {targetMessage ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center text-[length:var(--w-text-body)]">
+            {(resolution?.kind === 'needs_selection' ||
+              resolution?.kind === 'missing' ||
+              resolution?.kind === 'unsupported') && (
+              <Button
+                variant="raised"
+                className="pointer-events-auto relative z-20 h-8 min-w-0 px-3 text-xs"
+                onClick={enterEditMode}
+              >
+                {m.dashboard_widget_subscription_quota_configure()}
+              </Button>
             )}
-            <QuotaSummary
-              notice={summaryNotice()}
-              isError={noticeIsError}
-              remaining={quota ? formatBytes(quota.remaining) : null}
-              total={quota ? formatBytes(quota.total) : null}
-              expiryText={
-                profile && config.showExpiry
-                  ? expiry
-                    ? m.dashboard_widget_subscription_quota_expires({
-                        relative: formatRelativeTime(
-                          expiry,
-                          Date.now(),
-                          getLocale(),
-                        ),
-                        date: formatDate(expiry),
-                      })
-                    : m.dashboard_widget_subscription_quota_expiry_unknown()
-                  : null
-              }
-            />
           </div>
-        </CardContent>
-      </Card>
-    </WidgetItem>
+        ) : profile ? (
+          quota ? (
+            <div
+              className="flex min-h-0 flex-1 items-center"
+              data-slot="subscription-quota-metric"
+            >
+              <WidgetMetric
+                className="tabular-nums"
+                data-slot="subscription-quota-percent"
+              >
+                {Math.round(quota.remainingPercent)}%
+              </WidgetMetric>
+            </div>
+          ) : (
+            <WidgetMetric className="flex min-h-0 flex-1 items-center">
+              &mdash;
+            </WidgetMetric>
+          )
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        <QuotaSummary
+          notice={summaryNotice()}
+          isError={noticeIsError}
+          remaining={quota ? formatBytes(quota.remaining) : null}
+          total={quota ? formatBytes(quota.total) : null}
+          expiryText={
+            profile && config.showExpiry
+              ? expiry
+                ? m.dashboard_widget_subscription_quota_expires({
+                    relative: formatRelativeTime(
+                      expiry,
+                      Date.now(),
+                      getLocale(),
+                    ),
+                    date: formatDate(expiry),
+                  })
+                : m.dashboard_widget_subscription_quota_expiry_unknown()
+              : null
+          }
+        />
+      </div>
+    </SubscriptionQuotaView>
   )
 }
 
-export function SubscriptionQuotaWidget(props: WidgetComponentProps) {
-  const { sourceOnly, isOverlay, disabled } = useDndGridContext()
-  const config = useWidgetConfig(props.id, WidgetId.SubscriptionQuota)
-
-  if (sourceOnly || isOverlay) return <SubscriptionQuotaPreview id={props.id} />
+function SubscriptionQuotaConfigForm() {
+  const { config, disabled, updateConfig } = useWidgetConfigActions(
+    WidgetId.SubscriptionQuota,
+  )
 
   return (
-    <SubscriptionQuotaLive {...props} disabled={!disabled} config={config} />
+    <>
+      <ConfigGroup>
+        <SubscriptionTargetField
+          target={config.target}
+          disabled={disabled}
+          onChange={(target) => updateConfig({ target })}
+        />
+      </ConfigGroup>
+
+      <ConfigGroup>
+        <ConfigToggle
+          label={m.dashboard_widget_config_expiry()}
+          checked={config.showExpiry}
+          disabled={disabled}
+          onChange={(showExpiry) => updateConfig({ showExpiry })}
+        />
+        <ConfigToggle
+          label={m.dashboard_widget_config_progress()}
+          checked={config.showProgress}
+          disabled={disabled}
+          onChange={(showProgress) => updateConfig({ showProgress })}
+        />
+        <ConfigChoice
+          label={m.dashboard_widget_subscription_quota_config_wave_style()}
+          value={config.waveStyle}
+          options={[
+            {
+              value: 'filled',
+              label: m.dashboard_widget_subscription_quota_config_wave_filled(),
+            },
+            {
+              value: 'outline',
+              label:
+                m.dashboard_widget_subscription_quota_config_wave_outline(),
+            },
+          ]}
+          disabled={disabled || !config.showProgress}
+          onChange={(waveStyle) => updateConfig({ waveStyle })}
+        />
+        <ConfigToggle
+          label={m.dashboard_widget_subscription_quota_config_wave_animation()}
+          checked={config.animateWave}
+          disabled={disabled || !config.showProgress}
+          onChange={(animateWave) => updateConfig({ animateWave })}
+        />
+      </ConfigGroup>
+
+      <ConfigGroup>
+        <ConfigStepper
+          label={m.dashboard_widget_config_expiry_threshold()}
+          value={config.expiryWarningDays}
+          range={WIDGET_CONFIG_NUMBER_RANGES.expiryWarningDays}
+          disabled={disabled}
+          onChange={(expiryWarningDays) => updateConfig({ expiryWarningDays })}
+        />
+        <ConfigStepper
+          label={m.dashboard_widget_config_quota_threshold()}
+          value={config.quotaWarningPercent}
+          range={WIDGET_CONFIG_NUMBER_RANGES.quotaWarningPercent}
+          disabled={disabled}
+          onChange={(quotaWarningPercent) =>
+            updateConfig({ quotaWarningPercent })
+          }
+        />
+      </ConfigGroup>
+    </>
   )
 }
+
+export const subscriptionQuotaWidget = defineWidget({
+  id: WidgetId.SubscriptionQuota,
+  category: 'subscription',
+  title: m.dashboard_widget_subscription_quota_title,
+  icon: DataUsageRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 3 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.SubscriptionQuota],
+  Component: SubscriptionQuotaLive,
+  Preview: SubscriptionQuotaPreview,
+  ConfigForm: SubscriptionQuotaConfigForm,
+})

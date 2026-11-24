@@ -13,14 +13,16 @@ import { page, userEvent } from 'vitest/browser'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import type { WidgetComponentProps } from '@/components/widgets/consts'
+import {
+  ProxyModeWidget,
+  SubscriptionQuotaWidget,
+  SubscriptionScheduleWidget,
+} from '@/components/widgets/legacy-widgets'
 import { DashboardProvider } from '@/components/widgets/provider'
 import {
   DEFAULT_WIDGET_CONFIGS,
   WidgetId,
 } from '@/components/widgets/widget-config'
-import { ProxyModeWidget } from '@/components/widgets/widget-proxy-mode'
-import { SubscriptionQuotaWidget } from '@/components/widgets/widget-subscription-quota'
-import { SubscriptionScheduleWidget } from '@/components/widgets/widget-subscription-schedule'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { formatDate } from '@/utils/date'

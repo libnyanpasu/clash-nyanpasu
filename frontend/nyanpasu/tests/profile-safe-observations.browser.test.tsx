@@ -7,10 +7,12 @@ import { page, userEvent } from 'vitest/browser'
 import { DndGridProvider } from '@nyanpasu/ui/dnd-grid'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { WidgetId } from '@/components/widgets/consts'
+import {
+  SubscriptionQuotaWidget,
+  SubscriptionScheduleWidget,
+} from '@/components/widgets/legacy-widgets'
 import { DashboardProvider } from '@/components/widgets/provider'
 import { WidgetDataCalibration } from '@/components/widgets/widget-data-calibration'
-import { SubscriptionQuotaWidget } from '@/components/widgets/widget-subscription-quota'
-import { SubscriptionScheduleWidget } from '@/components/widgets/widget-subscription-schedule'
 import ProxiesLayoutProvider from '@/pages/(main)/main/proxies/_modules/proxies-layout-provider'
 import { useGroupLayout } from '@/pages/(main)/main/proxies/_modules/use-group-layout'
 import { m } from '@/paraglide/messages'

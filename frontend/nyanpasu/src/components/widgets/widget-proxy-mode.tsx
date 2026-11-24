@@ -4,8 +4,6 @@ import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RouteRounded from '~icons/material-symbols/route-rounded'
 import { useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent } from '@nyanpasu/ui/card'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { ExpressiveChoice } from '@nyanpasu/ui/expressive-choice'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import { useCapabilities } from '@/components/auth/capabilities'
@@ -16,11 +14,20 @@ import {
   useProxyMode,
   type ProxyMode,
 } from '@nyanpasu/query'
-import type { WidgetComponentProps } from './consts'
-import { useWidgetConfig } from './provider'
-import { WidgetId } from './widget-config'
-import WidgetItem from './widget-item'
-import { WidgetHeader, WidgetTitle } from './widget-ui'
+import {
+  defineWidget,
+  useWidgetConfig,
+  useWidgetConfigActions,
+  useWidgetInteractive,
+  Widget,
+  WidgetContent,
+  WidgetControls,
+  WidgetHeader,
+  WidgetTitle,
+} from './core'
+import { DEFAULT_WIDGET_CONFIGS, WidgetId } from './widget-config'
+import { ConfigChoice } from './widget-config-fields'
+import { ConfigGroup } from './widget-config-row'
 
 const MODE_KEYS: ProxyMode[] = ['rule', 'global', 'direct']
 const MODE_ICONS = {
@@ -87,41 +94,34 @@ function ProxyModeOptions({
   )
 }
 
-function ProxyModePreview({ id }: { id: string }) {
-  const config = useWidgetConfig(id, WidgetId.ProxyMode)
+function ProxyModePreview() {
+  const config = useWidgetConfig(WidgetId.ProxyMode)
+
   return (
-    <WidgetItem id={id} widgetType={WidgetId.ProxyMode} minW={4} minH={2}>
-      <Card className="flex size-full flex-col">
-        <WidgetHeader className="gap-2">
-          <WidgetTitle icon={RouteRounded}>
-            {m.dashboard_widget_proxy_mode_title()}
-          </WidgetTitle>
-        </WidgetHeader>
-        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
-          <ProxyModeOptions
-            modes={MODE_KEYS}
-            currentMode="rule"
-            disabled
-            layout={config.layout}
-          />
-        </CardContent>
-      </Card>
-    </WidgetItem>
+    <Widget scaling="proportional" data-widget-kind="proxy-mode">
+      <WidgetHeader>
+        <WidgetTitle />
+      </WidgetHeader>
+      <WidgetContent className="justify-start gap-1">
+        <ProxyModeOptions
+          modes={MODE_KEYS}
+          currentMode="rule"
+          disabled
+          layout={config.layout}
+        />
+      </WidgetContent>
+    </Widget>
   )
 }
 
 type ActionState = 'idle' | 'degraded' | 'unconfirmed' | 'failed'
 
-function ProxyModeLive({
-  id,
-  onCloseClick,
-  disabled,
-}: WidgetComponentProps & {
-  disabled: boolean
-}) {
+function ProxyModeLive() {
   const proxyMode = useProxyMode()
-  const config = useWidgetConfig(id, WidgetId.ProxyMode)
+  const config = useWidgetConfig(WidgetId.ProxyMode)
   const coreStatus = useCoreStatus()
+  const interactive = useWidgetInteractive()
+  const canProxy = useCapabilities().hasPermission('proxy:write')
   const [actionState, setActionState] = useState<ActionState>('idle')
   const [checkedAfterUnconfirmed, setCheckedAfterUnconfirmed] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -137,7 +137,8 @@ function ProxyModeLive({
     coreStatus.data.status !== 'Running'
   const loadFailed = (proxyMode.query.isError || coreStatus.isError) && !waiting
   const actionable =
-    !disabled &&
+    interactive &&
+    canProxy &&
     (actionState !== 'unconfirmed' || checkedAfterUnconfirmed) &&
     !checkingStatus &&
     !waiting &&
@@ -174,7 +175,7 @@ function ProxyModeLive({
   }
 
   const checkStatus = async () => {
-    if (disabled || checkingStatus) return
+    if (!interactive || checkingStatus) return
     setCheckingStatus(true)
     setCheckFailed(false)
     try {
@@ -204,40 +205,34 @@ function ProxyModeLive({
           : m.dashboard_widget_proxy_mode_unknown()
 
   return (
-    <WidgetItem
-      id={id}
-      widgetType={WidgetId.ProxyMode}
-      minW={4}
-      minH={2}
-      onCloseClick={onCloseClick}
+    <Widget
+      scaling="proportional"
+      data-widget-kind="proxy-mode"
+      data-slot="proxy-mode-card"
     >
-      <Card className="flex size-full flex-col" data-slot="proxy-mode-card">
-        <WidgetHeader className="flex-wrap gap-x-2 gap-y-1">
-          <WidgetTitle className="flex-1" icon={RouteRounded}>
-            {m.dashboard_widget_proxy_mode_title()}
-          </WidgetTitle>
+      <WidgetHeader className="flex-wrap gap-x-2 gap-y-1">
+        <WidgetTitle />
 
+        <WidgetControls className="ml-auto">
           {actionState === 'unconfirmed' && (
-            <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="basic"
-                    icon
-                    className="ml-auto size-7 shrink-0"
-                    aria-label={m.dashboard_widget_operation_check()}
-                    disabled={disabled || checkingStatus}
-                    loading={checkingStatus}
-                    onClick={checkStatus}
-                  >
-                    <RefreshRounded className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {m.dashboard_widget_operation_check()}
-                </TooltipContent>
-              </Tooltip>
-            </>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="basic"
+                  icon
+                  className="size-7 shrink-0"
+                  aria-label={m.dashboard_widget_operation_check()}
+                  disabled={!interactive || checkingStatus}
+                  loading={checkingStatus}
+                  onClick={checkStatus}
+                >
+                  <RefreshRounded className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {m.dashboard_widget_operation_check()}
+              </TooltipContent>
+            </Tooltip>
           )}
           {message && (
             <span
@@ -251,48 +246,76 @@ function ProxyModeLive({
               {message}
             </span>
           )}
-        </WidgetHeader>
+        </WidgetControls>
+      </WidgetHeader>
 
-        <CardContent className="min-h-0 flex-1 justify-start gap-1 overflow-hidden px-4 py-3">
-          <ProxyModeOptions
-            modes={MODE_KEYS}
-            currentMode={currentMode}
-            layout={layout}
-            disabled={!actionable || proxyMode.isPending}
-            onChange={changeMode}
-          />
+      <WidgetContent className="justify-start gap-1">
+        <ProxyModeOptions
+          modes={MODE_KEYS}
+          currentMode={currentMode}
+          layout={layout}
+          disabled={!actionable || proxyMode.isPending}
+          onChange={changeMode}
+        />
 
-          {actionState !== 'idle' && (
-            <p
-              className={
-                actionState === 'failed'
-                  ? 'text-error text-xs'
-                  : 'text-on-surface-variant text-xs'
-              }
-              role={actionState === 'failed' ? 'alert' : 'status'}
-            >
-              {checkFailed
-                ? m.dashboard_widget_operation_check_failed()
-                : actionState === 'degraded'
-                  ? m.dashboard_widget_proxy_mode_committed_degraded()
-                  : actionState === 'unconfirmed'
-                    ? m.dashboard_widget_proxy_mode_unconfirmed()
-                    : m.dashboard_widget_proxy_mode_change_failed()}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </WidgetItem>
+        {actionState !== 'idle' && (
+          <p
+            className={
+              actionState === 'failed'
+                ? 'text-error text-xs'
+                : 'text-on-surface-variant text-xs'
+            }
+            role={actionState === 'failed' ? 'alert' : 'status'}
+          >
+            {checkFailed
+              ? m.dashboard_widget_operation_check_failed()
+              : actionState === 'degraded'
+                ? m.dashboard_widget_proxy_mode_committed_degraded()
+                : actionState === 'unconfirmed'
+                  ? m.dashboard_widget_proxy_mode_unconfirmed()
+                  : m.dashboard_widget_proxy_mode_change_failed()}
+          </p>
+        )}
+      </WidgetContent>
+    </Widget>
   )
 }
 
-export function ProxyModeWidget(props: WidgetComponentProps) {
-  const { sourceOnly, isOverlay, disabled } = useDndGridContext()
+function ProxyModeConfigForm() {
+  const { config, disabled, updateConfig } = useWidgetConfigActions(
+    WidgetId.ProxyMode,
+  )
 
-  // Switching the routing mode changes the core: `proxy` scope.
-  const canProxy = useCapabilities().hasPermission('proxy:write')
-
-  if (sourceOnly || isOverlay) return <ProxyModePreview id={props.id} />
-
-  return <ProxyModeLive {...props} disabled={!disabled || !canProxy} />
+  return (
+    <ConfigGroup>
+      <ConfigChoice
+        label={m.dashboard_widget_proxy_mode_config_layout()}
+        value={config.layout}
+        disabled={disabled}
+        options={[
+          {
+            value: 'focus',
+            label: m.dashboard_widget_proxy_mode_config_focus(),
+          },
+          {
+            value: 'flex',
+            label: m.dashboard_widget_proxy_mode_config_flex(),
+          },
+        ]}
+        onChange={(layout) => updateConfig({ layout })}
+      />
+    </ConfigGroup>
+  )
 }
+
+export const proxyModeWidget = defineWidget({
+  id: WidgetId.ProxyMode,
+  category: 'controls',
+  title: m.dashboard_widget_proxy_mode_title,
+  icon: RouteRounded,
+  size: { minW: 4, minH: 2, defaultW: 4, defaultH: 2 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ProxyMode],
+  Component: ProxyModeLive,
+  Preview: ProxyModePreview,
+  ConfigForm: ProxyModeConfigForm,
+})

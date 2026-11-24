@@ -287,7 +287,7 @@ test('narrow ranking rows keep shares on one line and scroll long names', async 
       () =>
         card.querySelectorAll('[data-slot="widget-traffic-report-row"]').length,
     )
-    .toBe(2)
+    .toBe(1)
   await expect
     .poll(() => card.querySelector('[data-slot="text-marquee-content-item"]'))
     .not.toBeNull()

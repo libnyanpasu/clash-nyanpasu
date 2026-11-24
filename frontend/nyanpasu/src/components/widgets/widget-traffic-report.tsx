@@ -4,10 +4,8 @@ import DataUsageRounded from '~icons/material-symbols/data-usage-rounded'
 import DnsRounded from '~icons/material-symbols/dns-rounded'
 import RuleFolderRounded from '~icons/material-symbols/rule-folder-rounded'
 import { motion, useReducedMotion } from 'motion/react'
-import { ComponentType, type ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { ActionSwap, ActionSwapText } from '@nyanpasu/ui/action-swap-text'
-import { Card, CardContent } from '@nyanpasu/ui/card'
-import { useDndGridContext } from '@nyanpasu/ui/dnd-grid'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
 import { LinearProgress } from '@nyanpasu/ui/progress'
 import TextMarquee from '@nyanpasu/ui/text-marquee'
@@ -21,11 +19,32 @@ import type {
   UsageGroup,
 } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
-import { WidgetComponentProps } from './consts'
-import { useWidgetConfig } from './provider'
-import { useWidgetHeight } from './use-widget-height'
-import { WidgetId, type ReportWidgetConfig } from './widget-config'
-import WidgetItem from './widget-item'
+import {
+  defineWidget,
+  useWidgetConfig,
+  useWidgetConfigActions,
+  useWidgetContext,
+  useWidgetListCapacity,
+  Widget,
+  WidgetContent,
+  WidgetHeader,
+  WidgetMeta,
+  WidgetMetric,
+  WidgetTitle,
+} from './core'
+import {
+  DEFAULT_WIDGET_CONFIGS,
+  WIDGET_CONFIG_NUMBER_RANGES,
+  WidgetId,
+  type ReportWidgetConfig,
+} from './widget-config'
+import {
+  ConfigChoice,
+  ConfigStepper,
+  ConfigToggle,
+} from './widget-config-fields'
+import { ConfigGroup } from './widget-config-row'
+import { ReportProfileField } from './widget-reference-fields'
 import {
   useDashboardTrafficProfile,
   useDashboardTrafficReport,
@@ -36,12 +55,10 @@ import {
   trafficSharePercent,
   usageTotalBytes,
 } from './widget-traffic-report-model'
-import { WidgetTitle } from './widget-ui'
-
-const TRAFFIC_ROW_HEIGHT = 48
 
 type ReportDimension = 'origin' | 'exit' | 'target' | 'rule'
 type ReportIcon = ComponentType<{ className?: string }>
+
 const reportIcons: Record<ReportDimension, ReportIcon> = {
   origin: AppsRounded,
   exit: CallSplitRounded,
@@ -74,112 +91,9 @@ function LoadingBody() {
 
 function TrafficStatus({ children }: { children: string }) {
   return (
-    <div className="text-on-surface-variant flex flex-1 items-center text-sm">
+    <div className="text-on-surface-variant flex flex-1 items-center text-[length:var(--w-text-body)]">
       {children}
     </div>
-  )
-}
-
-function ReportWidgetShell({
-  id,
-  onCloseClick,
-  widgetType,
-  minW,
-  minH,
-  title,
-  icon: Icon,
-  range,
-  profile,
-
-  children,
-}: WidgetComponentProps & {
-  widgetType: WidgetId
-  minW: number
-  minH: number
-  title: string
-  icon: ReportIcon
-  range: TrafficRange
-  profile: { uid: string; name?: string; missing: boolean } | null
-
-  children: ReactNode
-}) {
-  return (
-    <WidgetItem
-      id={id}
-      widgetType={widgetType}
-      minW={minW}
-      minH={minH}
-      onCloseClick={onCloseClick}
-    >
-      <Card className="size-full" data-slot="widget-traffic-report-card">
-        <CardContent className="flex size-full min-h-0 flex-col gap-2 overflow-hidden p-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <WidgetTitle className="flex-1" icon={Icon}>
-              {title}
-            </WidgetTitle>
-            <span className="text-on-surface-variant shrink-0 text-xs whitespace-nowrap">
-              {rangeLabels[range]()}
-            </span>
-          </div>
-          {profile && (
-            <p className="text-on-surface-variant -mt-2 truncate text-xs">
-              {profile.name
-                ? `${m.dashboard_widget_config_profile()}: ${profile.name}`
-                : profile.missing
-                  ? m.dashboard_widget_config_missing_reference({
-                      name: profile.uid,
-                    })
-                  : `${m.dashboard_widget_config_profile()}: ${profile.uid}`}
-            </p>
-          )}
-          {children}
-        </CardContent>
-      </Card>
-    </WidgetItem>
-  )
-}
-
-function TrafficReportContent({
-  range,
-  profileUid,
-  children,
-}: {
-  range: TrafficRange
-  profileUid: string | null
-  children: (
-    report: NonNullable<ReturnType<typeof useDashboardTrafficReport>>,
-  ) => ReactNode
-}) {
-  const result = useDashboardTrafficReport(range, profileUid)
-  if (!result) {
-    return (
-      <TrafficStatus>
-        {m.dashboard_widget_traffic_report_unavailable()}
-      </TrafficStatus>
-    )
-  }
-  if (!result.data && result.isPending) return <LoadingBody />
-  if (!result.data && result.isError) {
-    return (
-      <TrafficStatus>{m.dashboard_widget_traffic_report_error()}</TrafficStatus>
-    )
-  }
-  if (!result.data)
-    return (
-      <TrafficStatus>
-        {m.dashboard_widget_traffic_report_unavailable()}
-      </TrafficStatus>
-    )
-
-  return (
-    <>
-      {children(result as NonNullable<typeof result>)}
-      {result.isError && (
-        <p className="text-error text-xs">
-          {m.dashboard_widget_traffic_report_refresh_error()}
-        </p>
-      )}
-    </>
   )
 }
 
@@ -250,18 +164,16 @@ function RecentTrafficContent({
   const total = usageTotalBytes(report.total)
 
   return (
-    <div className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-2 overflow-hidden rounded-2xl px-4 py-2">
-      <p className="text-on-surface-variant text-xs">
-        {m.dashboard_widget_traffic_report_total_label()}
-      </p>
-      <p
-        className="overflow-hidden text-3xl whitespace-nowrap tabular-nums"
+    <div className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-2 overflow-hidden rounded-[var(--w-radius-inner)] px-4 py-2">
+      <WidgetMeta>{m.dashboard_widget_traffic_report_total_label()}</WidgetMeta>
+      <WidgetMetric
+        className="overflow-hidden text-[length:var(--w-text-metric)] whitespace-nowrap"
         data-slot="widget-traffic-report-total"
       >
         {formatBytes(total)}
-      </p>
+      </WidgetMetric>
       {showDirections && (
-        <div className="text-on-surface-variant min-w-0 text-xs tabular-nums">
+        <WidgetMeta className="min-w-0">
           <TextMarquee className="w-full">
             <span className="mr-4">
               {m.dashboard_widget_traffic_report_upload({
@@ -274,12 +186,12 @@ function RecentTrafficContent({
               })}
             </span>
           </TextMarquee>
-        </div>
+        </WidgetMeta>
       )}
       {total === 0 && (
-        <p className="text-on-surface-variant text-xs">
+        <WidgetMeta>
           {m.dashboard_widget_traffic_report_no_traffic()}
-        </p>
+        </WidgetMeta>
       )}
     </div>
   )
@@ -301,7 +213,8 @@ function RankingRows({
   compact?: boolean
 }) {
   const ranking = sliceTrafficRanking(report, dimension, topN)
-  const { ref: listRef, height: listHeight } = useWidgetHeight<HTMLDivElement>()
+  const { listRef, capacity } = useWidgetListCapacity({ baseGap: 0 })
+
   if (!ranking) {
     return (
       <TrafficStatus>
@@ -309,6 +222,7 @@ function RankingRows({
       </TrafficStatus>
     )
   }
+
   if (ranking.totalBytes === 0) {
     const Icon = reportIcons[dimension]
     return (
@@ -331,6 +245,7 @@ function RankingRows({
       />
     )
   }
+
   if (ranking.groups.length === 0) {
     return (
       <TrafficStatus>
@@ -355,10 +270,7 @@ function RankingRows({
     )
   }
 
-  const visibleCount =
-    compact || listHeight == null
-      ? 0
-      : Math.max(0, Math.floor(listHeight / TRAFFIC_ROW_HEIGHT))
+  const visibleCount = compact ? 0 : capacity
   const visibleGroups = ranking.groups.slice(1, visibleCount + 1)
   const displayedCount = visibleGroups.length + 1
   const otherUsage = ranking.groups
@@ -450,7 +362,7 @@ function TrafficRankingRow({
         layout="position"
         initial={false}
         transition={{ duration: reducedMotion ? 0 : 0.22, ease: 'easeOut' }}
-        className="flex h-12 min-w-0 items-center gap-3"
+        className="flex h-[var(--w-row-height)] min-w-0 items-center gap-[var(--w-gap-sm)]"
         data-slot={
           dimension === 'exit'
             ? 'widget-exit-traffic-row'
@@ -465,12 +377,12 @@ function TrafficRankingRow({
         </span>
         <div className="min-w-0 flex-1">
           <div
-            className="text-sm font-medium"
+            className="text-[length:var(--w-text-body)] font-medium"
             title={hideName ? undefined : label.title}
           >
             <TextMarquee className="w-full">{name}</TextMarquee>
           </div>
-          <div className="text-on-surface-variant text-xs tabular-nums">
+          <div className="text-on-surface-variant text-[length:var(--w-text-meta)] tabular-nums">
             <TextMarquee className="w-full">
               {m.dashboard_widget_traffic_report_share({
                 percent: percent?.toFixed(1) ?? '0',
@@ -479,7 +391,7 @@ function TrafficRankingRow({
           </div>
         </div>
         <ActionSwapText
-          className="shrink-0 text-sm whitespace-nowrap tabular-nums"
+          className="shrink-0 text-[length:var(--w-text-body)] whitespace-nowrap tabular-nums"
           value={`${value} ${unit}`}
         />
       </motion.div>
@@ -489,7 +401,7 @@ function TrafficRankingRow({
   return (
     <div
       className={cn(
-        'bg-surface-variant/30 text-on-surface flex flex-col rounded-2xl',
+        'bg-surface-variant/30 text-on-surface flex flex-col rounded-[var(--w-radius-inner)]',
         compact ? 'gap-0.5 px-3 py-1' : 'gap-1 px-4 py-3',
         expanded ? 'min-h-0 flex-1 justify-between' : 'shrink-0',
       )}
@@ -500,14 +412,19 @@ function TrafficRankingRow({
       }
     >
       {!compact && (
-        <p className="text-xs">
+        <p className="text-[length:var(--w-text-meta)]">
           {dimension === 'exit'
             ? m.dashboard_widget_exit_traffic_leading()
             : m.dashboard_widget_traffic_report_leading()}
         </p>
       )}
       <ActionSwap
-        className={cn('min-w-0 font-medium', compact ? 'text-xs' : 'text-base')}
+        className={cn(
+          'min-w-0 font-medium',
+          compact
+            ? 'text-[length:var(--w-text-meta)]'
+            : 'text-[length:var(--w-text-body)]',
+        )}
         title={hideName ? undefined : label.title}
         contentKey={name}
       >
@@ -518,12 +435,17 @@ function TrafficRankingRow({
           contentKey={`${value} ${unit}`}
           className={cn(
             'min-w-0 flex-1 truncate whitespace-nowrap',
-            compact ? 'text-xl' : 'text-3xl',
+            compact
+              ? 'text-[length:var(--w-text-body)]'
+              : 'text-[length:var(--w-text-metric)]',
           )}
         >
-          <span>{value}</span> <span className="text-sm">{unit}</span>
+          <span>{value}</span>{' '}
+          <span className="text-[length:var(--w-text-meta)]">{unit}</span>
         </ActionSwap>
-        <span className="shrink-0 text-base whitespace-nowrap">{share}</span>
+        <span className="shrink-0 text-[length:var(--w-text-body)] whitespace-nowrap">
+          {share}
+        </span>
       </div>
       <LinearProgress
         value={percent ?? 0}
@@ -533,7 +455,7 @@ function TrafficRankingRow({
         })}
       />
       {showDirections && (
-        <div className="min-w-0 text-xs tabular-nums">
+        <div className="min-w-0 text-[length:var(--w-text-meta)] tabular-nums">
           <TextMarquee className="w-full">
             <span className="mr-4">
               {m.dashboard_widget_traffic_report_upload({
@@ -564,7 +486,7 @@ function TrafficOtherRow({
   const percent = trafficSharePercent(usage, totalBytes)
 
   return (
-    <div className="text-on-surface-variant flex shrink-0 items-center gap-2 text-xs tabular-nums">
+    <div className="text-on-surface-variant flex shrink-0 items-center gap-2 text-[length:var(--w-text-meta)] tabular-nums">
       <span className="min-w-0 flex-1 truncate">
         {m.dashboard_widget_traffic_report_other({
           count: count.toLocaleString(),
@@ -580,136 +502,333 @@ function TrafficOtherRow({
   )
 }
 
-function useReportConfig(id: string, widgetType: WidgetId) {
-  return useWidgetConfig(id, widgetType) as ReportWidgetConfig & {
+function TrafficReportContent({
+  range,
+  profileUid,
+  children,
+}: {
+  range: TrafficRange
+  profileUid: string | null
+  children: (
+    report: NonNullable<ReturnType<typeof useDashboardTrafficReport>>,
+  ) => ReactNode
+}) {
+  const result = useDashboardTrafficReport(range, profileUid)
+
+  if (!result) {
+    return (
+      <TrafficStatus>
+        {m.dashboard_widget_traffic_report_unavailable()}
+      </TrafficStatus>
+    )
+  }
+
+  if (!result.data && result.isPending) return <LoadingBody />
+  if (!result.data && result.isError) {
+    return (
+      <TrafficStatus>{m.dashboard_widget_traffic_report_error()}</TrafficStatus>
+    )
+  }
+  if (!result.data) {
+    return (
+      <TrafficStatus>
+        {m.dashboard_widget_traffic_report_unavailable()}
+      </TrafficStatus>
+    )
+  }
+
+  return (
+    <>
+      {children(result as NonNullable<typeof result>)}
+      {result.isError && (
+        <p className="text-error text-[length:var(--w-text-meta)]">
+          {m.dashboard_widget_traffic_report_refresh_error()}
+        </p>
+      )}
+    </>
+  )
+}
+
+function TrafficWidget({ dimension }: { dimension?: ReportDimension }) {
+  const config = useWidgetConfig() as ReportWidgetConfig & {
     topN?: number
     hideNames?: boolean
   }
-}
-
-function TrafficWidget({
-  id,
-  onCloseClick,
-  widgetType,
-  title,
-  icon,
-  dimension,
-}: WidgetComponentProps & {
-  widgetType: WidgetId
-  title: string
-  icon: ReportIcon
-  dimension?: ReportDimension
-}) {
-  const config = useReportConfig(id, widgetType)
-  const { sourceOnly, isOverlay, displayItems } = useDndGridContext()
-
+  const { span } = useWidgetContext()
   const profile = useDashboardTrafficProfile(config.profileUid)
-  const itemSize = displayItems.find((item) => item.id === id)
-  const minH = 2
-  const compact = itemSize !== undefined && itemSize.h <= 2
-  const preview = sourceOnly || isOverlay
-  const expanded =
-    itemSize !== undefined && (itemSize.w > 3 || itemSize.h > minH)
+  const compact = span.h <= 2
+  const expanded = span.w > 3 || span.h > 2
   const showDirections =
     config.showDirections && !compact && (!dimension || expanded)
+  const topN = config.topN ?? 3
+  const hideNames = config.hideNames ?? false
 
   return (
-    <ReportWidgetShell
-      id={id}
-      onCloseClick={onCloseClick}
-      widgetType={widgetType}
-      minW={3}
-      minH={minH}
-      title={title}
-      icon={icon}
-      range={config.range}
-      profile={profile}
-    >
-      {preview ? (
-        <ReportPreview kind={dimension ?? 'recent'} />
-      ) : (
-        <TrafficReportContent
-          range={config.range}
+    <Widget scaling="list" data-widget-kind="traffic-report">
+      <WidgetHeader>
+        <WidgetTitle />
+
+        <span className="text-on-surface-variant shrink-0 text-[length:var(--w-text-meta)] whitespace-nowrap">
+          {rangeLabels[config.range]()}
+        </span>
+      </WidgetHeader>
+
+      <WidgetContent className="gap-2" data-slot="widget-traffic-report-card">
+        {profile && (
+          <WidgetMeta className="-mt-2 truncate">
+            {profile.name
+              ? `${m.dashboard_widget_config_profile()}: ${profile.name}`
+              : profile.missing
+                ? m.dashboard_widget_config_missing_reference({
+                    name: profile.uid,
+                  })
+                : `${m.dashboard_widget_config_profile()}: ${profile.uid}`}
+          </WidgetMeta>
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {dimension ? (
+            <TrafficReportContent
+              range={config.range}
+              profileUid={config.profileUid}
+            >
+              {(result) => (
+                <RankingRows
+                  report={result.data!}
+                  dimension={dimension}
+                  topN={topN}
+                  showDirections={showDirections}
+                  hideNames={hideNames}
+                  compact={compact}
+                />
+              )}
+            </TrafficReportContent>
+          ) : (
+            <TrafficReportContent
+              range={config.range}
+              profileUid={config.profileUid}
+            >
+              {(result) => (
+                <RecentTrafficContent
+                  report={result.data!}
+                  showDirections={showDirections}
+                />
+              )}
+            </TrafficReportContent>
+          )}
+        </div>
+      </WidgetContent>
+    </Widget>
+  )
+}
+
+function TrafficReportPreview({ kind }: { kind: 'recent' | ReportDimension }) {
+  const config = useWidgetConfig() as ReportWidgetConfig
+  const profile = useDashboardTrafficProfile(config.profileUid)
+
+  return (
+    <Widget scaling="list" data-widget-kind="traffic-report">
+      <WidgetHeader>
+        <WidgetTitle />
+
+        <span className="text-on-surface-variant shrink-0 text-[length:var(--w-text-meta)] whitespace-nowrap">
+          {rangeLabels[config.range]()}
+        </span>
+      </WidgetHeader>
+
+      <WidgetContent className="gap-2" data-slot="widget-traffic-report-card">
+        {profile && (
+          <WidgetMeta className="-mt-2 truncate">
+            {`${m.dashboard_widget_config_profile()}: ${profile.name ?? profile.uid}`}
+          </WidgetMeta>
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ReportPreview kind={kind} />
+        </div>
+      </WidgetContent>
+    </Widget>
+  )
+}
+
+function TrafficReportConfigForm() {
+  const { config, disabled, updateConfig } = useWidgetConfigActions()
+
+  if (
+    config.type !== WidgetId.RecentTraffic &&
+    config.type !== WidgetId.OriginTraffic &&
+    config.type !== WidgetId.ExitTraffic &&
+    config.type !== WidgetId.TargetTraffic &&
+    config.type !== WidgetId.RuleTraffic
+  ) {
+    return null
+  }
+
+  return (
+    <>
+      <ConfigGroup>
+        <ConfigChoice
+          label={m.dashboard_widget_config_range()}
+          value={config.range}
+          disabled={disabled}
+          options={[
+            {
+              value: 'last_hour',
+              label: m.dashboard_widget_config_range_hour(),
+            },
+            {
+              value: 'last6_hours',
+              label: m.dashboard_widget_config_range_6hours(),
+            },
+            {
+              value: 'last24_hours',
+              label: m.dashboard_widget_config_range_24hours(),
+            },
+            {
+              value: 'last7_days',
+              label: m.dashboard_widget_config_range_7days(),
+            },
+            {
+              value: 'last30_days',
+              label: m.dashboard_widget_config_range_30days(),
+            },
+            { value: 'all', label: m.dashboard_widget_config_range_all() },
+          ]}
+          onChange={(range) => updateConfig({ range })}
+        />
+        <ReportProfileField
           profileUid={config.profileUid}
-        >
-          {(result) =>
-            dimension ? (
-              <RankingRows
-                report={result.data!}
-                dimension={dimension}
-                topN={config.topN ?? 3}
-                showDirections={showDirections}
-                hideNames={config.hideNames ?? false}
-                compact={compact}
-              />
-            ) : (
-              <RecentTrafficContent
-                report={result.data!}
-                showDirections={showDirections}
-              />
-            )
-          }
-        </TrafficReportContent>
-      )}
-    </ReportWidgetShell>
+          disabled={disabled}
+          onChange={(profileUid) => updateConfig({ profileUid })}
+        />
+      </ConfigGroup>
+
+      <ConfigGroup>
+        <ConfigToggle
+          label={m.dashboard_widget_config_directions()}
+          checked={config.showDirections}
+          disabled={disabled}
+          onChange={(showDirections) => updateConfig({ showDirections })}
+        />
+        {config.type !== WidgetId.RecentTraffic && (
+          <ConfigStepper
+            label={m.dashboard_widget_config_top()}
+            value={config.topN}
+            range={WIDGET_CONFIG_NUMBER_RANGES.topN}
+            disabled={disabled}
+            onChange={(topN) => updateConfig({ topN })}
+          />
+        )}
+        {(config.type === WidgetId.OriginTraffic ||
+          config.type === WidgetId.TargetTraffic) && (
+          <ConfigToggle
+            label={m.dashboard_widget_config_hide_names()}
+            checked={config.hideNames}
+            disabled={disabled}
+            onChange={(hideNames) => updateConfig({ hideNames })}
+          />
+        )}
+      </ConfigGroup>
+    </>
   )
 }
 
-export function RecentTrafficWidget(props: WidgetComponentProps) {
-  return (
-    <TrafficWidget
-      {...props}
-      widgetType={WidgetId.RecentTraffic}
-      title={m.dashboard_widget_recent_traffic_title()}
-      icon={DataUsageRounded}
-    />
-  )
+function RecentTrafficLive() {
+  return <TrafficWidget />
 }
 
-export function OriginTrafficWidget(props: WidgetComponentProps) {
-  return (
-    <TrafficWidget
-      {...props}
-      widgetType={WidgetId.OriginTraffic}
-      title={m.dashboard_widget_origin_traffic_title()}
-      icon={AppsRounded}
-      dimension="origin"
-    />
-  )
+function RecentTrafficPreview() {
+  return <TrafficReportPreview kind="recent" />
 }
 
-export function ExitTrafficWidget(props: WidgetComponentProps) {
-  return (
-    <TrafficWidget
-      {...props}
-      widgetType={WidgetId.ExitTraffic}
-      title={m.dashboard_widget_exit_traffic_title()}
-      icon={CallSplitRounded}
-      dimension="exit"
-    />
-  )
+function OriginTrafficLive() {
+  return <TrafficWidget dimension="origin" />
 }
 
-export function TargetTrafficWidget(props: WidgetComponentProps) {
-  return (
-    <TrafficWidget
-      {...props}
-      widgetType={WidgetId.TargetTraffic}
-      title={m.dashboard_widget_target_traffic_title()}
-      icon={DnsRounded}
-      dimension="target"
-    />
-  )
+function OriginTrafficPreview() {
+  return <TrafficReportPreview kind="origin" />
 }
 
-export function RuleTrafficWidget(props: WidgetComponentProps) {
-  return (
-    <TrafficWidget
-      {...props}
-      widgetType={WidgetId.RuleTraffic}
-      title={m.dashboard_widget_rule_traffic_title()}
-      icon={RuleFolderRounded}
-      dimension="rule"
-    />
-  )
+function ExitTrafficLive() {
+  return <TrafficWidget dimension="exit" />
 }
+
+function ExitTrafficPreview() {
+  return <TrafficReportPreview kind="exit" />
+}
+
+function TargetTrafficLive() {
+  return <TrafficWidget dimension="target" />
+}
+
+function TargetTrafficPreview() {
+  return <TrafficReportPreview kind="target" />
+}
+
+function RuleTrafficLive() {
+  return <TrafficWidget dimension="rule" />
+}
+
+function RuleTrafficPreview() {
+  return <TrafficReportPreview kind="rule" />
+}
+
+export const recentTrafficWidget = defineWidget({
+  id: WidgetId.RecentTraffic,
+  category: 'analytics',
+  title: m.dashboard_widget_recent_traffic_title,
+  icon: DataUsageRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 2 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.RecentTraffic],
+  Component: RecentTrafficLive,
+  Preview: RecentTrafficPreview,
+  ConfigForm: TrafficReportConfigForm,
+})
+
+export const originTrafficWidget = defineWidget({
+  id: WidgetId.OriginTraffic,
+  category: 'analytics',
+  title: m.dashboard_widget_origin_traffic_title,
+  icon: AppsRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 4 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.OriginTraffic],
+  Component: OriginTrafficLive,
+  Preview: OriginTrafficPreview,
+  ConfigForm: TrafficReportConfigForm,
+})
+
+export const exitTrafficWidget = defineWidget({
+  id: WidgetId.ExitTraffic,
+  category: 'analytics',
+  title: m.dashboard_widget_exit_traffic_title,
+  icon: CallSplitRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 4 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ExitTraffic],
+  Component: ExitTrafficLive,
+  Preview: ExitTrafficPreview,
+  ConfigForm: TrafficReportConfigForm,
+})
+
+export const targetTrafficWidget = defineWidget({
+  id: WidgetId.TargetTraffic,
+  category: 'analytics',
+  title: m.dashboard_widget_target_traffic_title,
+  icon: DnsRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 4 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.TargetTraffic],
+  Component: TargetTrafficLive,
+  Preview: TargetTrafficPreview,
+  ConfigForm: TrafficReportConfigForm,
+})
+
+export const ruleTrafficWidget = defineWidget({
+  id: WidgetId.RuleTraffic,
+  category: 'analytics',
+  title: m.dashboard_widget_rule_traffic_title,
+  icon: RuleFolderRounded,
+  size: { minW: 3, minH: 2, defaultW: 4, defaultH: 4 },
+  defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.RuleTraffic],
+  Component: RuleTrafficLive,
+  Preview: RuleTrafficPreview,
+  ConfigForm: TrafficReportConfigForm,
+})

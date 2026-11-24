@@ -9,6 +9,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Stdio,
+    time::Duration,
 };
 
 use nyanpasu_paths::{InstallDirError, PathResolver};
@@ -65,13 +66,27 @@ pub async fn install_cli(paths: &PathResolver) -> Result<CliInstallation, Instal
 }
 
 async fn run(cli: &Path) -> Result<CliInstallation, InstallCliError> {
-    let output = Command::new(cli)
-        .args(["--json", "install"])
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .context(SpawnSnafu { path: cli })?;
+    let mut attempts = 0;
+    let output = loop {
+        match Command::new(cli)
+            .args(["--json", "install"])
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .output()
+            .await
+        {
+            Ok(output) => break output,
+            Err(err)
+                if (err.kind() == io::ErrorKind::ExecutableFileBusy
+                    || err.raw_os_error() == Some(26))
+                    && attempts < 10 =>
+            {
+                attempts += 1;
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(err) => return Err(err).context(SpawnSnafu { path: cli }),
+        }
+    };
     if !output.status.success() {
         let message = String::from_utf8_lossy(&output.stderr);
         return Err(InstallCliError::Refused {

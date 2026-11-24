@@ -4,7 +4,7 @@ import postcss from 'postcss'
 import { expect, test } from 'vitest'
 import postcssConfig from '../postcss.config.js'
 
-test('the app stylesheet applies superellipse(2) to rounded elements while keeping rounded-full round', async () => {
+test('the app stylesheet applies superellipse(1.25) to rounded elements while keeping rounded-full round', async () => {
   const from = fileURLToPath(
     new URL('../src/assets/styles/tailwind.css', import.meta.url),
   )
@@ -28,7 +28,7 @@ test('the app stylesheet applies superellipse(2) to rounded elements while keepi
   })
 
   expect(declsBySelector.get("[class*='rounded']")?.get('corner-shape')).toBe(
-    'superellipse(2)',
+    'superellipse(1.25)',
   )
   expect(declsBySelector.get('.rounded-full')?.get('corner-shape')).toBe(
     'round',

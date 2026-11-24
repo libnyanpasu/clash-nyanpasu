@@ -21,27 +21,24 @@ import { TestQueryProvider } from './query-provider'
 beforeEach(() => vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true))
 afterEach(() => vi.unstubAllGlobals())
 
-vi.mock('@/components/widgets/consts', async (importOriginal) => {
+vi.mock('@/components/widgets/core', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@/components/widgets/consts')>()
+    await importOriginal<typeof import('@/components/widgets/core')>()
   const { DndGridItem: GridItem } = await import('@nyanpasu/ui/dnd-grid')
-  const RENDER_MAP = Object.fromEntries(
-    Object.entries(actual.RENDER_MAP).map(([type, _Widget]) => {
-      const Widget = ({ id }: { id: string }) => {
-        const minimum = actual.WIDGET_MIN_SIZE_MAP[type as WidgetId]
-        return (
-          <GridItem id={id} {...minimum}>
-            <div data-layout-widget={id} data-layout-type={type}>
-              {id}
-            </div>
-          </GridItem>
-        )
-      }
-      return [type, Widget]
-    }),
-  ) as typeof actual.RENDER_MAP
 
-  return { ...actual, RENDER_MAP }
+  const WidgetGridHost = ({
+    item,
+  }: {
+    item: { id: string; type: WidgetId }
+  }) => (
+    <GridItem id={item.id}>
+      <div data-layout-widget={item.id} data-layout-type={item.type}>
+        {item.id}
+      </div>
+    </GridItem>
+  )
+
+  return { ...actual, WidgetGridHost }
 })
 
 vi.mock('@/components/widgets/widget-config-menu', () => ({

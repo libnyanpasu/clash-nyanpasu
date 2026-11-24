@@ -312,6 +312,7 @@ export const proxyModeWidget = defineWidget({
   id: WidgetId.ProxyMode,
   category: 'controls',
   title: m.dashboard_widget_proxy_mode_title,
+  description: m.dashboard_widget_proxy_mode_description,
   icon: RouteRounded,
   size: { minW: 4, minH: 2, defaultW: 4, defaultH: 2 },
   defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ProxyMode],

@@ -369,6 +369,7 @@ export const activeConnectionsWidget = defineWidget({
   id: WidgetId.ActiveConnections,
   category: 'realtime',
   title: m.dashboard_widget_active_connections_title,
+  description: m.dashboard_widget_active_connections_description,
   icon: NetworkCheckRounded,
   size: { minW: 4, minH: 2, defaultW: 6, defaultH: 3 },
   defaultConfig: DEFAULT_WIDGET_CONFIGS[WidgetId.ActiveConnections],

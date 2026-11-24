@@ -2,11 +2,6 @@ import type { DndGridItemType } from '@nyanpasu/ui/dnd-grid'
 import { WidgetId } from './widget-config'
 
 export { WidgetId } from './widget-config'
-export {
-  RENDER_MAP,
-  WIDGET_MIN_SIZE_MAP,
-  WIDGET_RECOMMENDED_SIZE_MAP,
-} from './widget-renderer'
 
 export type DashboardItem = DndGridItemType<string> & { type: WidgetId }
 

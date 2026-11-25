@@ -242,6 +242,7 @@ pub struct NyanpasuAppConfig {
         default = "default_stun_servers",
         deserialize_with = "deserialize_stun_servers"
     )]
+    #[specta(type = Vec<StunServer>)]
     pub stun_servers: Vec<StunServer>,
 
     /// HTTP lookup services asked when no STUN server answers, in order. A

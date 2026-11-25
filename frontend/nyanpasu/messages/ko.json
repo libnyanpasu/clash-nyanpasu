@@ -683,7 +683,7 @@
   "settings_nyanpasu_local_ip_probe_label": "로컬 IP 감지 허용",
   "settings_nyanpasu_local_ip_probe_description": "트래픽 페이지에서 공인 IPv4/IPv6 주소를 확인해 지도에 로컬 IP 위치를 표시합니다. 아래 STUN 서버에 먼저 묻고, 응답이 없으면 수락한 조회 서비스를 사용합니다. TUN이 켜져 있으면 사용하지 않습니다. 기존 기록은 바뀌지 않습니다.",
   "settings_public_ip_stun_label": "STUN 서버",
-  "settings_public_ip_stun_description": "응답이 올 때까지 순서대로 한 대씩 묻습니다. 요청을 받은 서버는 공인 IP 주소를 알게 됩니다.",
+  "settings_public_ip_stun_description": "순서대로 요청하며, 응답이 지연되면 다음 서버에도 순차적으로 동시 요청을 보내 응답이 올 때까지 진행합니다. 시스템 DNS가 주소를 확인하지 못하거나 Fake-IP를 반환하면 내장 DoH 서버에 순서대로 대체 조회를 시도합니다. 요청을 받은 서버는 공인 IP 주소를 알게 됩니다.",
   "settings_public_ip_stun_builtin": "기본 제공",
   "settings_public_ip_stun_no_transport": "어떤 전송 방식으로도 응답 없음",
   "settings_public_ip_stun_remove": "삭제",

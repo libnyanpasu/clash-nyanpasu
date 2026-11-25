@@ -710,7 +710,7 @@
   "settings_nyanpasu_local_ip_probe_label": "Allow Local IP Detection",
   "settings_nyanpasu_local_ip_probe_description": "Finds your public IPv4/IPv6 addresses on the Traffic page to display local IP locations on the map. Asks the STUN servers below, then any lookup service you accepted. Disabled while TUN is enabled. Existing history is unchanged.",
   "settings_public_ip_stun_label": "STUN Servers",
-  "settings_public_ip_stun_description": "Asked one at a time, in order, until one answers. Each server asked learns your public IP address.",
+  "settings_public_ip_stun_description": "Asked in order, starting a request to the next server if the current one does not answer promptly, until one responds. If system DNS cannot resolve a server or returns a Fake-IP, built-in DNS-over-HTTPS servers are queried sequentially as a fallback. Each server asked learns your public IP address.",
   "settings_public_ip_stun_builtin": "Built-in",
   "settings_public_ip_stun_no_transport": "Did not answer over any transport",
   "settings_public_ip_stun_remove": "Remove",

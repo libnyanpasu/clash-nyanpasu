@@ -54,7 +54,7 @@ pub(super) fn binding_request(id: TransactionId) -> [u8; HEADER_LEN] {
 
 /// How many bytes follow a header. TCP reads the rest of a message by it.
 #[must_use]
-pub(super) fn body_len(header: &[u8; HEADER_LEN]) -> usize {
+fn body_len(header: &[u8; HEADER_LEN]) -> usize {
     usize::from(u16::from_be_bytes([header[2], header[3]]))
 }
 
@@ -79,6 +79,9 @@ pub(super) fn validate_header(
         return Err(DecodeError::NotBindingSuccess { message_type });
     }
     let len = body_len(header);
+    if len % 4 != 0 {
+        return Err(DecodeError::NotStun);
+    }
     if len > max_body_len {
         return Err(DecodeError::TooLarge { len });
     }
@@ -134,20 +137,25 @@ fn decode_address(value: &[u8], xor: Option<TransactionId>) -> Option<SocketAddr
         key[4..].copy_from_slice(&id.0);
         port ^= (MAGIC_COOKIE >> 16) as u16;
     }
-    let unmask = |bytes: &[u8]| -> Vec<u8> {
-        bytes
-            .iter()
-            .zip(key)
-            .map(|(byte, mask)| byte ^ mask)
-            .collect()
-    };
     let ip = match family {
         FAMILY_IPV4 => {
-            let octets: [u8; 4] = unmask(value.get(4..8)?).try_into().ok()?;
+            if value.len() != 8 {
+                return None;
+            }
+            let mut octets = [0; 4];
+            for (dst, (&byte, mask)) in octets.iter_mut().zip(value[4..8].iter().zip(key)) {
+                *dst = byte ^ mask;
+            }
             IpAddr::V4(Ipv4Addr::from(octets))
         }
         FAMILY_IPV6 => {
-            let octets: [u8; 16] = unmask(value.get(4..20)?).try_into().ok()?;
+            if value.len() != 20 {
+                return None;
+            }
+            let mut octets = [0; 16];
+            for (dst, (&byte, mask)) in octets.iter_mut().zip(value[4..20].iter().zip(key)) {
+                *dst = byte ^ mask;
+            }
             IpAddr::V6(Ipv6Addr::from(octets))
         }
         _ => return None,
@@ -305,6 +313,75 @@ pub(super) mod tests {
         assert_eq!(
             validate_header(&header, RFC_5769_ID, 1004),
             Err(DecodeError::TooLarge { len: 2048 })
+        );
+    }
+
+    #[test]
+    fn validate_header_rejects_unaligned_lengths() {
+        let mut header: [u8; HEADER_LEN] = RFC_5769_RESPONSE[..HEADER_LEN].try_into().unwrap();
+        header[2..4].copy_from_slice(&5u16.to_be_bytes());
+
+        assert_eq!(
+            validate_header(&header, RFC_5769_ID, 1004),
+            Err(DecodeError::NotStun)
+        );
+    }
+
+    #[test]
+    fn standard_xor_mapped_address_beats_legacy_xor_mapped_address() {
+        let id = RFC_5769_ID;
+        let legacy_addr: SocketAddr = "198.51.100.9:3478".parse().unwrap();
+        let xor_addr: SocketAddr = "203.0.113.55:4433".parse().unwrap();
+        let mut legacy_response = binding_response(&binding_request(id), legacy_addr);
+        legacy_response[20..22].copy_from_slice(&XOR_MAPPED_ADDRESS_LEGACY.to_be_bytes());
+        let xor_response = binding_response(&binding_request(id), xor_addr);
+
+        let mut combined = xor_response[..20].to_vec();
+        let legacy_attr = &legacy_response[20..];
+        let xor_attr = &xor_response[20..];
+        let total_len = (legacy_attr.len() + xor_attr.len()) as u16;
+        combined[2..4].copy_from_slice(&total_len.to_be_bytes());
+        combined.extend_from_slice(legacy_attr);
+        combined.extend_from_slice(xor_attr);
+
+        assert_eq!(mapped_address(&combined, id), Ok(xor_addr));
+    }
+
+    #[test]
+    fn legacy_xor_mapped_address_decodes_ipv6() {
+        let id = TransactionId::random().unwrap();
+        let address: SocketAddr = "[2001:db8::99]:54321".parse().unwrap();
+        let mut response = binding_response(&binding_request(id), address);
+        response[20..22].copy_from_slice(&XOR_MAPPED_ADDRESS_LEGACY.to_be_bytes());
+
+        assert_eq!(mapped_address(&response, id), Ok(address));
+    }
+
+    #[test]
+    fn decode_address_enforces_exact_attribute_lengths() {
+        let id = RFC_5769_ID;
+        let addr: SocketAddr = "203.0.113.55:4433".parse().unwrap();
+        let mut response = binding_response(&binding_request(id), addr);
+        // Extend the IPv4 XOR-MAPPED-ADDRESS value from 8 to 12 bytes.
+        response[2..4].copy_from_slice(&16u16.to_be_bytes());
+        response[22..24].copy_from_slice(&12u16.to_be_bytes());
+        response.extend_from_slice(&[0; 4]);
+
+        assert_eq!(
+            mapped_address(&response, id),
+            Err(DecodeError::NoMappedAddress)
+        );
+
+        let v6_addr: SocketAddr = "[2001:db8::7]:40000".parse().unwrap();
+        let mut v6_response = binding_response(&binding_request(id), v6_addr);
+        // Extend the IPv6 XOR-MAPPED-ADDRESS value from 20 to 24 bytes.
+        v6_response[2..4].copy_from_slice(&28u16.to_be_bytes());
+        v6_response[22..24].copy_from_slice(&24u16.to_be_bytes());
+        v6_response.extend_from_slice(&[0; 4]);
+
+        assert_eq!(
+            mapped_address(&v6_response, id),
+            Err(DecodeError::NoMappedAddress)
         );
     }
 }

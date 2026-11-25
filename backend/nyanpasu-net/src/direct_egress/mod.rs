@@ -49,6 +49,10 @@ const MIN_TCP_ATTEMPT_WINDOW: Duration = Duration::from_millis(800);
 const ECHO_TIMEOUT: Duration = Duration::from_secs(5);
 /// Large enough for any Binding response a server sends.
 const MAX_MESSAGE_LEN: usize = 1024;
+/// Maximum HTTP response body accepted from a DoH JSON endpoint.
+const MAX_DOH_BODY_LEN: usize = 16 * 1024;
+/// Maximum HTTP response body accepted from a plain-text IP echo provider.
+const MAX_ECHO_BODY_LEN: usize = 256;
 /// IP-literal DoH JSON endpoints used only when system DNS returns Fake-IPs
 /// (`198.18.0.0/15`), omits the requested family, fails, or returns unreachable
 /// (e.g. DNS-poisoned) addresses. Using IP literals avoids depending on system DNS.
@@ -110,8 +114,13 @@ fn supports_transport(
 }
 
 fn build_direct_http_client() -> Option<reqwest::Client> {
-    // The system proxy and the core's ports would both route requests by rule.
-    match reqwest::Client::builder().no_proxy().build() {
+    // The system proxy and the core's ports would both route requests by rule,
+    // and redirects could bounce a probe onto an unintended or internal host.
+    match reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
         Ok(client) => Some(client),
         Err(error) => {
             tracing::warn!(%error, "failed to construct direct HTTP client for egress probing");
@@ -170,12 +179,19 @@ fn is_fake_ip(ip: IpAddr) -> bool {
 fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
+            let [a, b, ..] = ip.octets();
+            let is_cgnat = a == 100 && (b & 0xc0) == 64;
+            let is_this_network = a == 0;
+            let is_reserved_high = a >= 240;
             !(ip.is_loopback()
                 || ip.is_private()
                 || ip.is_link_local()
                 || ip.is_unspecified()
                 || ip.is_broadcast()
-                || ip.is_multicast())
+                || ip.is_multicast()
+                || is_cgnat
+                || is_this_network
+                || is_reserved_high)
         }
         IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
             Some(ip) => is_public(ip.into()),
@@ -188,6 +204,14 @@ fn is_public(ip: IpAddr) -> bool {
             }
         },
     }
+}
+
+/// Whether `ask_stun_resolved` may fall back to Fake-IP addresses over TCP
+/// when no real addresses succeeded (allowed only for manual server tests).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FakeIpFallback {
+    Deny,
+    AllowTcp,
 }
 
 /// Addresses resolved for one `(host, port, family)` lookup.
@@ -353,10 +377,22 @@ impl ProbeRuntime {
     ) -> StunAttempt {
         let deadline = Instant::now() + STUN_DEADLINE;
         let targets = self.resolve_host(host, port, family, deadline).await;
-        self.ask_stun_resolved(host, port, transport, family, &targets, deadline)
-            .await
+        self.ask_stun_resolved(
+            host,
+            port,
+            transport,
+            family,
+            &targets,
+            deadline,
+            FakeIpFallback::Deny,
+        )
+        .await
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "will pass &StunServer in Commit 2"
+    )]
     async fn ask_stun_resolved(
         &self,
         host: &str,
@@ -365,6 +401,7 @@ impl ProbeRuntime {
         family: Family,
         targets: &ResolvedTargets,
         deadline: Instant,
+        fake_ip_fallback: FakeIpFallback,
     ) -> StunAttempt {
         let mut tried_any = false;
 
@@ -400,9 +437,13 @@ impl ProbeRuntime {
             }
         }
 
-        // Last-resort TCP fallback for Fake-IPs when DoH yielded nothing (e.g.
-        // a manual server test while TUN is active and DoH is blocked).
-        if targets.primary.is_empty() && !targets.fake.is_empty() && transport == StunTransport::Tcp
+        // Last-resort TCP fallback for Fake-IPs when DoH yielded nothing (only for
+        // manual server tests while TUN is active and DoH is blocked; regular
+        // probes must never connect to Fake-IPs).
+        if fake_ip_fallback == FakeIpFallback::AllowTcp
+            && targets.primary.is_empty()
+            && !targets.fake.is_empty()
+            && transport == StunTransport::Tcp
         {
             tried_any = true;
             if let Some(attempt) = self
@@ -612,10 +653,16 @@ async fn query_doh_endpoint(
         .await;
     let body: serde_json::Value = match response {
         Ok(resp) => match resp.error_for_status() {
-            Ok(ok) => match ok.json().await {
-                Ok(json) => json,
+            Ok(ok) => match read_capped_body(ok, MAX_DOH_BODY_LEN).await {
+                Ok(bytes) => match serde_json::from_slice(&bytes) {
+                    Ok(json) => json,
+                    Err(error) => {
+                        tracing::debug!(endpoint, host, %error, "DoH response was not valid JSON");
+                        return Vec::new();
+                    }
+                },
                 Err(error) => {
-                    tracing::debug!(endpoint, host, %error, "DoH response was not valid JSON");
+                    tracing::debug!(endpoint, host, %error, "DoH response body exceeded limit or failed");
                     return Vec::new();
                 }
             },
@@ -638,6 +685,9 @@ fn parse_doh_ips(
     family: Family,
     destinations: fn(IpAddr) -> bool,
 ) -> Vec<SocketAddr> {
+    if body.get("Status").and_then(serde_json::Value::as_u64) != Some(0) {
+        return Vec::new();
+    }
     let expected_type = family.dns_type_code();
     let Some(answers) = body.get("Answer").and_then(serde_json::Value::as_array) else {
         return Vec::new();
@@ -757,7 +807,8 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
                 StunTransport::Udp,
                 Family::Ipv4,
                 &v4_targets,
-                deadline
+                deadline,
+                FakeIpFallback::AllowTcp,
             ),
             self.runtime.ask_stun_resolved(
                 host,
@@ -765,7 +816,8 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
                 StunTransport::Tcp,
                 Family::Ipv4,
                 &v4_targets,
-                deadline
+                deadline,
+                FakeIpFallback::AllowTcp,
             ),
             self.runtime.ask_stun_resolved(
                 host,
@@ -773,7 +825,8 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
                 StunTransport::Udp,
                 Family::Ipv6,
                 &v6_targets,
-                deadline
+                deadline,
+                FakeIpFallback::AllowTcp,
             ),
             self.runtime.ask_stun_resolved(
                 host,
@@ -781,7 +834,8 @@ impl DirectEgressProbe for NetworkDirectEgressProbe {
                 StunTransport::Tcp,
                 Family::Ipv6,
                 &v6_targets,
-                deadline
+                deadline,
+                FakeIpFallback::AllowTcp,
             ),
         );
         StunServerTest::new(udp_ipv4, udp_ipv6, tcp_ipv4, tcp_ipv6)
@@ -961,15 +1015,44 @@ async fn exchange_tcp_once(
     accept_mapped_address(mapped, family, destinations)
 }
 
-async fn fetch(client: &reqwest::Client, url: &str) -> reqwest::Result<String> {
-    client
+#[derive(Debug, snafu::Snafu)]
+enum HttpBodyError {
+    #[snafu(context(false), display("HTTP request error"))]
+    Request { source: reqwest::Error },
+    #[snafu(display("HTTP response body exceeded {limit} bytes"))]
+    TooLarge { limit: usize },
+    #[snafu(context(false), display("HTTP response was not valid UTF-8"))]
+    InvalidUtf8 { source: std::string::FromUtf8Error },
+}
+
+async fn read_capped_body(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Vec<u8>, HttpBodyError> {
+    if let Some(len) = response.content_length()
+        && len > limit as u64
+    {
+        return Err(HttpBodyError::TooLarge { limit });
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if body.len().saturating_add(chunk.len()) > limit {
+            return Err(HttpBodyError::TooLarge { limit });
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+async fn fetch(client: &reqwest::Client, url: &str) -> Result<String, HttpBodyError> {
+    let response = client
         .get(url)
         .timeout(ECHO_TIMEOUT)
         .send()
         .await?
-        .error_for_status()?
-        .text()
-        .await
+        .error_for_status()?;
+    let bytes = read_capped_body(response, MAX_ECHO_BODY_LEN).await?;
+    Ok(String::from_utf8(bytes)?)
 }
 
 #[cfg(test)]
@@ -1399,6 +1482,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn probe_never_connects_to_fake_ip_over_tcp() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tcp_port = listener.local_addr().unwrap().port();
+        let tcp_hits = Arc::new(AtomicUsize::new(0));
+        let hits = tcp_hits.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, from) = listener.accept().await.unwrap();
+                hits.fetch_add(1, Ordering::Relaxed);
+                let mut request = [0; HEADER_LEN];
+                if stream.read_exact(&mut request).await.is_err() {
+                    continue;
+                }
+                let response = binding_response(&request, from);
+                let _ = stream.write_all(&response).await;
+            }
+        });
+
+        let targets = ResolvedTargets {
+            primary: Vec::new(),
+            fake: vec![SocketAddr::new(Ipv4Addr::LOCALHOST.into(), tcp_port)],
+            can_fallback_doh: false,
+        };
+        let deadline = Instant::now() + STUN_DEADLINE;
+        let probe = loopback_probe();
+
+        let denied = probe
+            .runtime
+            .ask_stun_resolved(
+                LOCALHOST,
+                tcp_port,
+                StunTransport::Tcp,
+                Family::Ipv4,
+                &targets,
+                deadline,
+                FakeIpFallback::Deny,
+            )
+            .await;
+        assert_eq!(denied, StunAttempt::NoAddress);
+        assert_eq!(tcp_hits.load(Ordering::Relaxed), 0);
+
+        let allowed = probe
+            .runtime
+            .ask_stun_resolved(
+                LOCALHOST,
+                tcp_port,
+                StunTransport::Tcp,
+                Family::Ipv4,
+                &targets,
+                deadline,
+                FakeIpFallback::AllowTcp,
+            )
+            .await;
+        assert!(matches!(allowed, StunAttempt::Answered { .. }));
+        assert_eq!(tcp_hits.load(Ordering::Relaxed), 1);
+
+        let fake_server = StunServer {
+            host: "198.18.0.1".into(),
+            port: tcp_port,
+            enabled: true,
+            builtin: false,
+            capabilities: StunServerCapabilities {
+                udp: StunFamilies::default(),
+                tcp: StunFamilies {
+                    ipv4: true,
+                    ipv6: false,
+                },
+            },
+        };
+        let sources = sources(vec![fake_server], AllowingPorts(vec![tcp_port]));
+        assert_eq!(probe.ipv4(&sources).await, None);
+    }
+
+    #[tokio::test]
     async fn a_server_the_permission_no_longer_allows_is_not_asked() {
         let udp = udp_stun_server(0).await;
         let sources = sources(vec![target(udp, true, false)], AllowingPorts(Vec::new()));
@@ -1441,14 +1598,27 @@ mod tests {
             "10.0.0.1",
             "192.168.1.1",
             "169.254.0.1",
+            "100.64.0.1",
+            "100.127.255.254",
+            "0.0.0.0",
+            "0.1.2.3",
+            "240.0.0.1",
+            "254.0.0.1",
             "::1",
             "fd00::1",
             "fe80::1",
             "::ffff:192.168.1.1",
+            "::ffff:100.64.0.1",
         ] {
             assert!(!is_public(local.parse().unwrap()), "{local}");
         }
-        for public in ["203.0.113.7", "198.18.0.1", "2001:db8::7"] {
+        for public in [
+            "203.0.113.7",
+            "198.18.0.1",
+            "100.63.255.255",
+            "100.128.0.0",
+            "2001:db8::7",
+        ] {
             assert!(is_public(public.parse().unwrap()), "{public}");
         }
         for fake in ["198.18.0.1", "198.19.255.254", "::ffff:198.18.6.4"] {
@@ -1486,6 +1656,65 @@ mod tests {
             parse_doh_ips(&body, 3478, Family::Ipv6, is_public),
             vec!["[2606:4700:49::]:3478".parse().unwrap()]
         );
+
+        let nxdomain = serde_json::json!({
+            "Status": 3,
+            "Answer": [{ "type": 1, "data": "162.159.207.0" }]
+        });
+        assert!(parse_doh_ips(&nxdomain, 3478, Family::Ipv4, is_public).is_empty());
+
+        let missing_status = serde_json::json!({
+            "Answer": [{ "type": 1, "data": "162.159.207.0" }]
+        });
+        assert!(parse_doh_ips(&missing_status, 3478, Family::Ipv4, is_public).is_empty());
+    }
+
+    #[tokio::test]
+    async fn direct_http_client_refuses_redirects_and_caps_response_bodies() {
+        let probe = loopback_probe();
+        let base_url = serve(
+            Router::new()
+                .route("/target", get(|| async { "203.0.113.7" }))
+                .route(
+                    "/redirect",
+                    get(|| async { axum::response::Redirect::temporary("/target") }),
+                )
+                .route(
+                    "/large-echo",
+                    get(|| async { "203.0.113.7\n".repeat(40) }),
+                )
+                .route(
+                    "/large-doh",
+                    get(|| async move {
+                        let padding = "x".repeat(MAX_DOH_BODY_LEN + 1024);
+                        format!(
+                            r#"{{"Status":0,"Comment":"{padding}","Answer":[{{"type":1,"data":"127.0.0.1"}}]}}"#
+                        )
+                    }),
+                ),
+        )
+        .await;
+
+        assert_eq!(
+            probe.runtime.echo(&format!("{base_url}redirect")).await,
+            None
+        );
+        assert_eq!(
+            probe.runtime.echo(&format!("{base_url}large-echo")).await,
+            None
+        );
+
+        let doh_probe = loopback_probe_with_doh(vec![format!("{base_url}large-doh")]);
+        let doh_ips = doh_probe
+            .runtime
+            .resolve_doh(
+                "stun.test.invalid",
+                3478,
+                Family::Ipv4,
+                Instant::now() + STUN_DEADLINE,
+            )
+            .await;
+        assert!(doh_ips.is_empty());
     }
 
     #[tokio::test]

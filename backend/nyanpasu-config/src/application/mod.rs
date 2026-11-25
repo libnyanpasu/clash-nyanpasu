@@ -238,7 +238,10 @@ pub struct NyanpasuAppConfig {
 
     /// STUN servers the public IP probe asks, built-in and user-added, in
     /// the order it asks them.
-    #[serde(default = "default_stun_servers")]
+    #[serde(
+        default = "default_stun_servers",
+        deserialize_with = "deserialize_stun_servers"
+    )]
     pub stun_servers: Vec<StunServer>,
 
     /// HTTP lookup services asked when no STUN server answers, in order. A
@@ -440,6 +443,112 @@ mod patch_tests {
 
         assert_eq!(config.stun_servers, default_stun_servers());
         assert!(config.ip_lookup_providers.is_empty());
+    }
+
+    #[test]
+    fn legacy_stun_servers_migrate_on_deserialize_preserving_user_order_and_toggles() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        let stale_caps = StunServerCapabilities::default();
+        let custom_caps = StunServerCapabilities {
+            udp: StunFamilies {
+                ipv4: true,
+                ipv6: false,
+            },
+            tcp: StunFamilies {
+                ipv4: false,
+                ipv6: true,
+            },
+        };
+        value["stun_servers"] = serde_json::json!([
+            {
+                "host": "stun.miwifi.com",
+                "port": 3478,
+                "enabled": true,
+                "capabilities": stale_caps,
+                "builtin": true
+            },
+            {
+                "host": "stun.custom.example",
+                "port": 3479,
+                "enabled": true,
+                "capabilities": custom_caps,
+                "builtin": false
+            },
+            {
+                "host": "stun.nextcloud.com",
+                "port": 3478,
+                "enabled": false,
+                "capabilities": stale_caps,
+                "builtin": true
+            },
+            {
+                "host": "stun.cloudflare.com",
+                "port": 3478,
+                "enabled": false,
+                "capabilities": stale_caps,
+                "builtin": true
+            },
+            {
+                "host": "stun.l.google.com",
+                "port": 19302,
+                "enabled": true,
+                "capabilities": stale_caps,
+                "builtin": true
+            },
+            {
+                "host": "stun.chat.bilibili.com",
+                "port": 3478,
+                "enabled": false,
+                "capabilities": stale_caps,
+                "builtin": true
+            }
+        ]);
+
+        let yaml = yaml_serde::to_string(&value).unwrap();
+        let config: NyanpasuAppConfig = yaml_serde::from_str(&yaml).unwrap();
+
+        let hosts: Vec<&str> = config
+            .stun_servers
+            .iter()
+            .map(|server| server.host.as_str())
+            .collect();
+        assert_eq!(
+            hosts,
+            [
+                "stun.miwifi.com",
+                "stun.custom.example",
+                "stun.nextcloud.com",
+                "stun.cloudflare.com",
+                "stun.l.google.com",
+                "stun.chat.bilibili.com",
+                "stun.hitv.com",
+            ]
+        );
+        assert!(!config.stun_servers[2].enabled);
+        assert!(!config.stun_servers[3].enabled);
+        assert!(!config.stun_servers[5].enabled);
+        assert!(config.stun_servers[6].enabled);
+
+        let nextcloud_default = default_stun_servers()
+            .into_iter()
+            .find(|server| server.host == "stun.nextcloud.com")
+            .unwrap();
+        assert_eq!(
+            config.stun_servers[2].capabilities,
+            nextcloud_default.capabilities
+        );
+        assert_eq!(config.stun_servers[1].capabilities, custom_caps);
+        assert!(!config.stun_servers[1].builtin);
+        assert_eq!(
+            validate_public_ip_probe_sources(&config.stun_servers, &config.ip_lookup_providers),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn stun_server_patch_preserves_explicit_list_without_reinjecting_builtins() {
+        let patch: NyanpasuAppConfigPatch = serde_json::from_str(r#"{"stun_servers":[]}"#).unwrap();
+        assert_eq!(patch.stun_servers, Some(Vec::new()));
     }
 
     #[test]

@@ -894,7 +894,26 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
             applied.target_core,
             client.get_app_config().await.unwrap().core
         );
-        assert_eq!(endpoint.submissions(), 2);
+        // Concurrent commits that land before the first reconcile round reads the
+        // snapshot coalesce into a single submission; otherwise each triggers its own.
+        let concurrent_submissions = endpoint.submissions();
+        assert!(
+            (1..=2).contains(&concurrent_submissions),
+            "expected 1 or 2 submissions for concurrent override patches, got {concurrent_submissions}"
+        );
+
+        let third = client
+            .patch_runtime_overrides(override_patch(serde_json::json!({"allow-lan": true})))
+            .await;
+        assert!(third.unwrap().degradations().is_empty());
+        let saved =
+            serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
+        assert_eq!(saved["mode"], "global");
+        assert_eq!(saved["ipv6"], true);
+        assert_eq!(saved["allow-lan"], true);
+        let applied = client.inner.reconciler.runtime().promoted.unwrap();
+        assert_eq!(applied.config()["allow-lan"].as_bool(), Some(true));
+        assert_eq!(endpoint.submissions(), concurrent_submissions + 1);
     })
     .await;
 }

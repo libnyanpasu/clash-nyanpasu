@@ -4,10 +4,7 @@ use std::sync::Arc;
 use nyanpasu_core_manager::CoreErrorKind;
 use nyanpasu_runtime_values::{
     execution_host::ExecutionHost,
-    runtime_error::{
-        ApplyRuntimeSnafu, CoreRolledBackSnafu, PublishRuntimeSnafu, ResolveCoreBinarySnafu,
-        RuntimeError, StopServiceSnafu, SubmissionUnobservedSnafu,
-    },
+    runtime_error::{RuntimeError, StopServiceSnafu},
 };
 use snafu::IntoError as _;
 
@@ -45,7 +42,10 @@ impl RuntimeReconciler {
             Err(error) => {
                 let message = format!("runtime_product_publish_failed: {error}");
                 self.pending_product = Some((product, message));
-                Some(Arc::new(PublishRuntimeSnafu.into_error(error)))
+                Some(Arc::new(RuntimeError::PublishRuntime {
+                    source: error,
+                    candidate_snapshot_id: None,
+                }))
             }
         }
     }
@@ -74,8 +74,11 @@ impl RuntimeReconciler {
         })?;
         self.preparation
             .core_spec(&runtime.snapshot.target_core)
-            .map_err(|error| ApplyOutcome::Refused {
-                cause: Arc::new(ResolveCoreBinarySnafu.into_error(error)),
+            .map_err(|source| ApplyOutcome::Refused {
+                cause: Arc::new(RuntimeError::ResolveCoreBinary {
+                    source,
+                    candidate_snapshot_id: None,
+                }),
             })?;
         Ok(PreparedCandidate {
             runtime,
@@ -188,23 +191,26 @@ impl RuntimeReconciler {
                 })
             }
             Ok(RuntimeSubmission::RolledBack(report)) => ApplyOutcome::Refused {
-                cause: Arc::new(
-                    CoreRolledBackSnafu {
-                        reason: report.failed_apply,
-                    }
-                    .build(),
-                ),
+                cause: Arc::new(RuntimeError::CoreRolledBack {
+                    reason: report.failed_apply,
+                    candidate_snapshot_id: None,
+                }),
             },
-            Ok(RuntimeSubmission::Unknown(uncertain)) => ApplyOutcome::Unknown(Arc::new(
-                SubmissionUnobservedSnafu.into_error(runtime_error::core_failure(uncertain.error)),
-            )),
+            Ok(RuntimeSubmission::Unknown(uncertain)) => {
+                ApplyOutcome::Unknown(Arc::new(RuntimeError::SubmissionUnobserved {
+                    failure: runtime_error::core_failure(uncertain.error),
+                    candidate_snapshot_id: None,
+                }))
+            }
             Ok(RuntimeSubmission::NotSubmitted(error)) => not_submitted_outcome(error),
             Err(error) => ApplyOutcome::Refused {
                 cause: Arc::new(error),
             },
             Ok(RuntimeSubmission::Unchanged(error)) => {
-                let error =
-                    Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+                let error = Arc::new(RuntimeError::ApplyRuntime {
+                    failure: runtime_error::core_failure(error),
+                    candidate_snapshot_id: None,
+                });
                 ApplyOutcome::Refused { cause: error }
             }
         }
@@ -244,7 +250,10 @@ fn not_submitted_outcome(error: nyanpasu_core_manager::CoreError) -> ApplyOutcom
                 | CoreErrorKind::BackendUnavailable
         )
     );
-    let error = Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+    let error = Arc::new(RuntimeError::ApplyRuntime {
+        failure: runtime_error::core_failure(error),
+        candidate_snapshot_id: None,
+    });
     if waiting {
         ApplyOutcome::Waiting(error)
     } else {
@@ -258,10 +267,9 @@ mod tests {
 
     use nyanpasu_core_manager::{CoreError, OperationId};
     use nyanpasu_core_metadata::CoreErrorKind;
-    use snafu::ResultExt as _;
 
     use crate::client::runtime_error;
-    use nyanpasu_runtime_values::runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError};
+    use nyanpasu_runtime_values::runtime_error::{CoreFailure, RuntimeError};
 
     // Guards classifying only these four kinds as dependencies, regardless of the retryable hint.
     #[test]
@@ -328,10 +336,10 @@ mod tests {
                         retryable,
                         operation_id: operation_id.map(|id| id.to_string()),
                     };
-                    let runtime: RuntimeError = Err::<(), _>(error.clone())
-                        .map_err(runtime_error::core_failure)
-                        .context(ApplyRuntimeSnafu)
-                        .unwrap_err();
+                    let runtime = RuntimeError::ApplyRuntime {
+                        failure: runtime_error::core_failure(error.clone()),
+                        candidate_snapshot_id: None,
+                    };
                     assert_eq!(
                         runtime.source().unwrap().downcast_ref::<CoreFailure>(),
                         Some(&expected)

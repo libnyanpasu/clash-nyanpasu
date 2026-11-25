@@ -4,10 +4,8 @@ use std::sync::Arc;
 use nyanpasu_core_manager::{CoreErrorKind, OperationId};
 use nyanpasu_ipc::api::status::CoreStateDetail;
 use nyanpasu_runtime_values::{
-    configuration::ConvergenceHealth,
-    core_status::EndpointConnectivity,
-    execution_host::ExecutionHost,
-    runtime_error::{ConfigurationNotInEffectSnafu, RuntimeError},
+    configuration::ConvergenceHealth, core_status::EndpointConnectivity,
+    execution_host::ExecutionHost, runtime_error::RuntimeError,
 };
 
 use super::{
@@ -92,7 +90,10 @@ pub(super) struct Round {
 }
 
 pub(super) fn cause(reason: String) -> Arc<RuntimeError> {
-    Arc::new(ConfigurationNotInEffectSnafu { reason }.build())
+    Arc::new(RuntimeError::ConfigurationNotInEffect {
+        reason,
+        candidate_snapshot_id: None,
+    })
 }
 
 impl RuntimeReconciler {

@@ -11,7 +11,7 @@ use nyanpasu_profile_io::fs_service::ProfileFileService;
 use nyanpasu_runtime_values::{
     mutation::{CommitAborted, ConfigDomain},
     profiles::ProfilesError,
-    runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
+    runtime_error::RuntimeError,
 };
 use nyanpasu_state_engine::{StateSnapshot, Version};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -90,13 +90,11 @@ impl RuntimeGate for Gate {
         self.events.lock().unwrap().push("check");
         self.staged.lock().unwrap().push(candidate.staged);
         if self.reject.load(Ordering::SeqCst) {
-            Err(Arc::new(
-                CoreRejectedConfigSnafu {
-                    core_kind: Some(nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed),
-                    message: "invalid candidate",
-                }
-                .build(),
-            ))
+            Err(Arc::new(RuntimeError::CoreRejectedConfig {
+                core_kind: Some(nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed),
+                message: "invalid candidate".into(),
+                candidate_snapshot_id: None,
+            }))
         } else {
             Ok(())
         }

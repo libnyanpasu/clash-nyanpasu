@@ -2,23 +2,19 @@
 use std::sync::Arc;
 
 use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
-use nyanpasu_runtime_values::{
-    mutation::ConfigDomain,
-    runtime_error::{
-        CheckUnavailableSnafu, CoreRejectedConfigSnafu, ResolveCoreBinarySnafu, RuntimeError,
-    },
-};
+use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime_error::RuntimeError};
 use nyanpasu_state_engine::{StateSnapshot, Version};
-use snafu::IntoError as _;
 
 use super::{
     RuntimeReconcilerClient,
     ports::{RuntimeBuildPort, RuntimeCheckOutcome, RuntimeCheckRequest, RuntimeValidatorPort},
-    preparation::RuntimePreparation,
+    preparation::{PrepareFailure, RuntimePreparation},
 };
 use crate::{
     client::{
-        core_lifecycle::ports::RuntimePreparationPort, ports::SessionPortResolver,
+        candidate_inspection::{CandidateEvidence, CandidateStore},
+        core_lifecycle::ports::RuntimePreparationPort,
+        ports::SessionPortResolver,
         runtime::RuntimeRevisionAllocator,
     },
     state::mutation::{
@@ -33,6 +29,7 @@ pub(in crate::client) struct CandidateCheck {
     preparation: RuntimePreparation,
     validator: Arc<dyn RuntimeValidatorPort>,
     workflow: RuntimeReconcilerClient,
+    candidates: Arc<CandidateStore>,
 }
 
 pub(in crate::client) struct Args {
@@ -44,6 +41,7 @@ pub(in crate::client) struct Args {
     pub revisions: RuntimeRevisionAllocator,
     pub validator: Arc<dyn RuntimeValidatorPort>,
     pub workflow: RuntimeReconcilerClient,
+    pub candidates: Arc<CandidateStore>,
 }
 
 impl CandidateCheck {
@@ -57,6 +55,7 @@ impl CandidateCheck {
             revisions,
             validator,
             workflow,
+            candidates,
         } = args;
         let preparation =
             RuntimePreparation::new(profile_content, builder, ports).with_revisions(revisions);
@@ -66,6 +65,22 @@ impl CandidateCheck {
             preparation,
             validator,
             workflow,
+            candidates,
+        }
+    }
+
+    /// Keeps the candidate the failure refused, naming it in the error.
+    async fn keep(
+        &self,
+        error: RuntimeError,
+        candidate: Option<Box<CandidateEvidence>>,
+    ) -> RuntimeError {
+        let Some(candidate) = candidate else {
+            return error;
+        };
+        match self.candidates.save(*candidate).await {
+            Some(id) => error.with_candidate_snapshot_id(id),
+            None => error,
         }
     }
 }
@@ -97,38 +112,47 @@ impl RuntimeGate for CandidateCheck {
         for (path, content) in candidate.staged {
             inputs.content.0.insert(path, Ok(content));
         }
-        let prepared = self
-            .preparation
-            .prepare_candidate_inputs(inputs)
-            .await
-            .map_err(Arc::new)?;
-        let core_spec = self
-            .preparation
-            .core_spec(&prepared.snapshot.target_core)
-            .map_err(|error| Arc::new(ResolveCoreBinarySnafu.into_error(error)))?;
-        match self
-            .validator
-            .check(RuntimeCheckRequest {
-                core_spec,
-                intent: &prepared.intent,
-            })
-            .await
-        {
-            RuntimeCheckOutcome::Passed => self.workflow.checked(prepared),
-            RuntimeCheckOutcome::Rejected { kind, message } => {
-                return Err(Arc::new(
-                    CoreRejectedConfigSnafu {
+        let prepared = match self.preparation.prepare_candidate_inputs(inputs).await {
+            Ok(prepared) => prepared,
+            Err(PrepareFailure { error, candidate }) => {
+                return Err(Arc::new(self.keep(error, candidate).await));
+            }
+        };
+        let failure = match self.preparation.core_spec(&prepared.snapshot.target_core) {
+            Err(source) => RuntimeError::ResolveCoreBinary {
+                source,
+                candidate_snapshot_id: None,
+            },
+            Ok(core_spec) => match self
+                .validator
+                .check(RuntimeCheckRequest {
+                    core_spec,
+                    intent: &prepared.intent,
+                })
+                .await
+            {
+                RuntimeCheckOutcome::Passed => {
+                    self.workflow.checked(prepared);
+                    return Ok(());
+                }
+                RuntimeCheckOutcome::Rejected { kind, message } => {
+                    RuntimeError::CoreRejectedConfig {
                         core_kind: kind,
                         message,
+                        candidate_snapshot_id: None,
                     }
-                    .build(),
-                ));
-            }
-            RuntimeCheckOutcome::Unavailable(reason) => {
-                return Err(Arc::new(CheckUnavailableSnafu { reason }.build()));
-            }
-        }
-        Ok(())
+                }
+                RuntimeCheckOutcome::Unavailable(reason) => RuntimeError::CheckUnavailable {
+                    reason,
+                    candidate_snapshot_id: None,
+                },
+            },
+        };
+        // Every refusal of a built candidate leaves through here.
+        let candidate = CandidateEvidence::of_snapshot(&prepared.snapshot);
+        Err(Arc::new(
+            self.keep(failure, Some(Box::new(candidate))).await,
+        ))
     }
 
     fn committed(&self, domain: ConfigDomain, version: Version) {

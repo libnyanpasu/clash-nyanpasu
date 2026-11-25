@@ -11,12 +11,12 @@ use crate::{
 };
 
 use super::{
-    LogSink, apply_transform,
+    Halted, HaltedStep, LogSink, apply_transform,
     error::{
-        CompositionMemberInvalidSnafu, ContentSourceSnafu, ParseProfileSnafu, RuntimePipelineError,
+        CompositionMemberInvalidSnafu, ContentSourceSnafu, ParseProfileSnafu,
         SelectedProfileNotConfigSnafu, SelectedProfileNotFoundSnafu,
     },
-    parse_config_document,
+    or_halt, parse_config_document,
     ports::{ProfileContentSource, ScriptRunner},
 };
 use crate::runtime::value::ConfigValue;
@@ -33,7 +33,7 @@ pub(super) fn build_scoped_file(
     logs: &mut LogSink,
     profile_id: &ProfileId,
     role: ConfigExecutionRole,
-) -> Result<ScopedBuild, RuntimePipelineError> {
+) -> Result<ScopedBuild, Halted> {
     let member_error = |reason: &str| match &role {
         ConfigExecutionRole::Selected => SelectedProfileNotConfigSnafu {
             profile: profile_id.clone(),
@@ -50,35 +50,50 @@ pub(super) fn build_scoped_file(
         }
     };
 
+    // A failure before the root is recorded names the profile being read.
+    let profile_step = || HaltedStep::Profile {
+        profile_id: profile_id.clone(),
+    };
+
     let Some(item) = profiles.items.get(profile_id) else {
-        return Err(match &role {
+        let error = match &role {
             ConfigExecutionRole::Selected => SelectedProfileNotFoundSnafu {
                 profile: profile_id.clone(),
             }
             .build(),
             _ => member_error("member not found"),
-        });
+        };
+        return Err(Halted::at(error, profile_step()));
     };
     let ProfileDefinition::Config {
         config: ConfigDefinition::File(file),
     } = &item.definition
     else {
-        return Err(member_error("not a direct FileConfig"));
+        return Err(Halted::at(
+            member_error("not a direct FileConfig"),
+            profile_step(),
+        ));
     };
 
     let path = file.source.materialized().file.clone();
-    let text = content.read(&path).with_context(|_| ContentSourceSnafu {
-        profile: profile_id.clone(),
-        path: path.clone(),
-    })?;
+    let text = content
+        .read(&path)
+        .with_context(|_| ContentSourceSnafu {
+            profile: profile_id.clone(),
+            path: path.clone(),
+        })
+        .map_err(|error| Halted::at(error, profile_step()))?;
     let raw = match parse_config_document(&text) {
         Ok(raw) => raw,
         Err(message) => {
-            return ParseProfileSnafu {
-                profile: profile_id.clone(),
-                message,
-            }
-            .fail();
+            return Err(Halted::at(
+                ParseProfileSnafu {
+                    profile: profile_id.clone(),
+                    message,
+                }
+                .build(),
+                profile_step(),
+            ));
         }
     };
 
@@ -92,8 +107,13 @@ pub(super) fn build_scoped_file(
     );
 
     for (index, transform_id) in file.transforms.iter().enumerate() {
-        let (next, kind, entries, failed) =
-            apply_transform(profiles, content, runner, transform_id, &value)?;
+        let (next, kind, entries, failed) = or_halt!(
+            apply_transform(profiles, content, runner, transform_id, &value),
+            builder,
+            HaltedStep::Transform {
+                profile_id: transform_id.clone()
+            }
+        );
         let tag = OperatorTag::ScopedTransform {
             host_profile_id: profile_id.clone(),
             role: role.clone(),
@@ -103,7 +123,7 @@ pub(super) fn build_scoped_file(
         };
         logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
-        builder.push(tag, next.clone())?;
+        or_halt!(builder.push(tag, next.clone()), builder);
         value = next;
     }
 

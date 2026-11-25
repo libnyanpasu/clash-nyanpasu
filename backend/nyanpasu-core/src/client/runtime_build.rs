@@ -3,17 +3,21 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use nyanpasu_config::runtime::executor::ProfileContentSource;
+use nyanpasu_config::{
+    application::ClashCore,
+    profile::Profiles,
+    runtime::executor::{ProfileContentSource, RuntimeArtifact, ScriptRunner},
+};
 use nyanpasu_profile_transform::{
-    RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
+    BuildFailure, RuntimeBuildInput, RuntimeBuilder, StartScriptRunnerSnafu,
 };
 use snafu::ResultExt;
 
 use crate::client::{
-    artifact_snapshot::runtime_snapshot_data_from_artifact,
+    artifact_snapshot::{render_final_config, runtime_snapshot_data_from_artifact},
     reconciler::{
         inputs,
-        ports::{RuntimeBuildPort, ScriptRunnerFactory},
+        ports::{RuntimeBuildFailure, RuntimeBuildPort, ScriptRunnerFactory},
     },
     runtime,
 };
@@ -85,33 +89,19 @@ impl RuntimeBuildPort for RuntimeBuildService {
         inputs: inputs::RuntimeInputs,
         resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildFailure> {
         let script_runner = self.scripts.clone();
         let built = tokio::task::spawn_blocking(move || {
-            let inputs::RuntimeInputs {
-                app,
-                clash,
-                profiles,
-                content,
-            } = inputs;
-            let core = app.core;
-            let builtin_enabled = app.enable_builtin_enhanced;
-            let scripts = script_runner().context(StartScriptRunnerSnafu)?;
-            let input = RuntimeBuildInput {
-                profiles: profiles.clone(),
-                clash,
-                app,
+            let scripts = script_runner()
+                .context(StartScriptRunnerSnafu)
+                .map_err(RuntimeBuildFailure::from)?;
+            build_snapshot(
+                revision,
+                inputs,
                 resolved_ports,
-            };
-            let artifact = RuntimeBuilder::build(&input, &content, scripts.as_ref())?;
-            if strict_transforms {
-                RuntimeBuilder::validate_transforms(&artifact)?;
-            }
-            let data =
-                runtime_snapshot_data_from_artifact(artifact, &profiles, core, builtin_enabled)?;
-            Ok(Arc::new(runtime::RuntimeSnapshot::from_data(
-                revision, core, data,
-            )))
+                strict_transforms,
+                scripts.as_ref(),
+            )
         })
         .await;
         nyanpasu_owner_support::blocking::join(built)
@@ -123,6 +113,72 @@ impl RuntimeBuildPort for RuntimeBuildService {
     ) -> Result<(), PublishRuntimeError> {
         runtime::write_product(self.paths.product().as_std_path(), snapshot.product_bytes()).await
     }
+}
+
+/// Builds a snapshot on the calling blocking thread. A failure keeps the
+/// candidate the build had produced.
+pub(in crate::client) fn build_snapshot(
+    revision: runtime::RuntimeRevision,
+    inputs: inputs::RuntimeInputs,
+    resolved_ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
+    strict_transforms: bool,
+    scripts: &dyn ScriptRunner,
+) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildFailure> {
+    let inputs::RuntimeInputs {
+        app,
+        clash,
+        profiles,
+        content,
+    } = inputs;
+    let core = app.core;
+    let builtin_enabled = app.enable_builtin_enhanced;
+    let input = RuntimeBuildInput {
+        profiles: profiles.clone(),
+        clash,
+        app,
+        resolved_ports,
+    };
+    let artifact = RuntimeBuilder::build(&input, &content, scripts)
+        .map_err(|failure| RuntimeBuildFailure::of_build(revision, core, failure))?;
+    finish_snapshot(
+        revision,
+        core,
+        artifact,
+        &profiles,
+        builtin_enabled,
+        strict_transforms,
+    )
+}
+
+fn finish_snapshot(
+    revision: runtime::RuntimeRevision,
+    core: ClashCore,
+    artifact: RuntimeArtifact,
+    profiles: &Profiles,
+    builtin_enabled: bool,
+    strict_transforms: bool,
+) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildFailure> {
+    let rendered = if strict_transforms {
+        RuntimeBuilder::validate_transforms(&artifact)
+    } else {
+        Ok(())
+    }
+    .and_then(|()| render_final_config(&artifact));
+    let config_text = match rendered {
+        Ok(config_text) => config_text,
+        Err(error) => {
+            return Err(RuntimeBuildFailure::of_build(
+                revision,
+                core,
+                BuildFailure::complete(error, artifact),
+            ));
+        }
+    };
+    let data =
+        runtime_snapshot_data_from_artifact(artifact, config_text, profiles, core, builtin_enabled);
+    Ok(Arc::new(runtime::RuntimeSnapshot::from_data(
+        revision, core, data,
+    )))
 }
 
 #[cfg(test)]

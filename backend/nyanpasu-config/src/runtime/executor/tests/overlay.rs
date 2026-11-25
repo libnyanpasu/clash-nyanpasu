@@ -469,7 +469,7 @@ fn assert_disabled_overlay(filter: serde_json::Value, operation: ScriptOperation
         predicates: Default::default(),
         expressions: Default::default(),
     };
-    let error = execute(&inputs, &content, &runner).unwrap_err();
+    let error = execute(&inputs, &content, &runner).unwrap_err().error;
     assert!(
         matches!(
             error,

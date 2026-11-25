@@ -106,6 +106,8 @@ command | get_transparent_proxy_status | system:read | system.proxy | sensitive 
 command | get_transparent_proxy_status_summary | system:read | system.proxy |  |  | desktop | tauri/src/ipc.rs
 command | import_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
 command | inspect_applied_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | inspect_candidate_node | profile:read | profile.runtime | sensitive |  | desktop | nyanpasu-rpc/src/commands/profile/runtime.rs
+command | inspect_candidate_runtime | profile:read | profile.runtime | sensitive |  | desktop | nyanpasu-rpc/src/commands/profile/runtime.rs
 command | inspect_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | inspect_runtime_node | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | inspect_updater | system:read | system.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs

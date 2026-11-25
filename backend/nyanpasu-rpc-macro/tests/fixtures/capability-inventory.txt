@@ -108,6 +108,8 @@ get_transparent_proxy_status | desktop | - | - | query | system:read
 get_transparent_proxy_status_summary | desktop | - | - | query | system:read
 import_profile | desktop,http,local | - | elevation,os_integration,presentation | mutation | profile:write
 inspect_applied_runtime | desktop,http | - | - | query | profile:read
+inspect_candidate_node | desktop | - | - | query | profile:read
+inspect_candidate_runtime | desktop | - | - | query | profile:read
 inspect_runtime | desktop,http | - | - | query | profile:read
 inspect_runtime_node | desktop,http | - | - | query | profile:read
 inspect_updater | desktop,http | - | - | query | system:read

@@ -18,13 +18,14 @@ use nyanpasu_config::{
     },
     profile::{ProfileValidationError, Profiles, ScriptRuntime},
     runtime::executor::{
-        BuiltinTransform, DnsParams, ExecutionTarget, GuardInputs, PortError, ProfileContentSource,
-        ResolvedPortBindings, RuntimeArtifact, RuntimePipelineError, RuntimePipelineInputs,
-        ScriptRunner, StepLogEntry, TransformFailure, TunFlavor, TunParams, TunStackWrite, execute,
+        BuiltinTransform, DnsParams, ExecutionTarget, GuardInputs, PartialArtifact, PortError,
+        ProfileContentSource, ResolvedPortBindings, RuntimeArtifact, RuntimePipelineError,
+        RuntimePipelineInputs, ScriptRunner, StepLogEntry, TransformFailure, TunFlavor, TunParams,
+        TunStackWrite, execute,
     },
 };
 use serde::Serialize;
-use snafu::{ResultExt, Snafu, ensure};
+use snafu::{IntoError as _, ResultExt, Snafu};
 
 #[derive(Debug, Serialize, serde::Deserialize, specta::Type)]
 pub struct RuntimeBuildLog {
@@ -67,6 +68,42 @@ pub enum RuntimeBuildError {
     /// The profiles or transforms wrote values the selected core rejects.
     #[snafu(display("the selected core does not support {values:?}"))]
     UnsupportedConfigValues { values: Vec<UnsupportedConfigValue> },
+}
+
+/// A failed build, with the candidate it had produced when the failure came
+/// after the pipeline recorded any step.
+#[derive(Debug)]
+pub struct BuildFailure {
+    pub error: RuntimeBuildError,
+    pub candidate: Option<BuildCandidate>,
+}
+
+/// What a failed build had produced.
+#[derive(Debug)]
+pub enum BuildCandidate {
+    /// The pipeline finished and a later check refused its result.
+    Complete(Box<RuntimeArtifact>),
+    /// The pipeline stopped; these are the steps before the one that failed.
+    Partial(Box<PartialArtifact>),
+}
+
+impl From<RuntimeBuildError> for BuildFailure {
+    fn from(error: RuntimeBuildError) -> Self {
+        Self {
+            error,
+            candidate: None,
+        }
+    }
+}
+
+impl BuildFailure {
+    /// A failure of the finished `artifact`.
+    pub fn complete(error: RuntimeBuildError, artifact: RuntimeArtifact) -> Self {
+        Self {
+            error,
+            candidate: Some(BuildCandidate::Complete(Box::new(artifact))),
+        }
+    }
 }
 
 pub struct RuntimeBuildInput {
@@ -193,24 +230,28 @@ impl RuntimeBuilder {
         })
     }
 
+    /// # Errors
+    /// Input validation fails without a candidate; a stopped pipeline returns
+    /// the steps it completed, and a refused result returns the whole artifact.
     pub fn build(
         input: &RuntimeBuildInput,
         content: &dyn ProfileContentSource,
         scripts: &dyn ScriptRunner,
-    ) -> Result<RuntimeArtifact, RuntimeBuildError> {
+    ) -> Result<RuntimeArtifact, BuildFailure> {
         if let Err(errors) = input.profiles.validate() {
-            return ValidateProfilesSnafu { errors }.fail();
+            return Err(ValidateProfilesSnafu { errors }.build().into());
         }
         if input.clash.transparent_proxy.mode
             != nyanpasu_config::clash::config::TransparentProxyMode::Disabled
             && !input.app.enable_service_mode
         {
-            return TransparentProxyRequiresServiceModeSnafu.fail();
+            return Err(TransparentProxyRequiresServiceModeSnafu.build().into());
         }
         input
             .clash
             .validate_transparent_proxy(input.app.core, cfg!(target_os = "linux"))
-            .context(ValidateTransparentProxySnafu)?;
+            .context(ValidateTransparentProxySnafu)
+            .map_err(BuildFailure::from)?;
 
         let target = match &input.profiles.current {
             Some(uid) => ExecutionTarget::Selected(uid.clone()),
@@ -244,12 +285,20 @@ impl RuntimeBuilder {
             expand_include_all: input.clash.expand_include_all,
             builtin_transforms: &builtin_transforms,
         };
-        let artifact = execute(&inputs, content, scripts).context(RunPipelineSnafu)?;
+        let artifact = execute(&inputs, content, scripts).map_err(|failure| BuildFailure {
+            error: RunPipelineSnafu.into_error(failure.error),
+            candidate: failure.partial.map(BuildCandidate::Partial),
+        })?;
 
         // The core parses these keys whether TUN is on or not, and rejects the
         // whole config on a value it does not know.
         let values = features.unsupported_values(&artifact.final_config);
-        ensure!(values.is_empty(), UnsupportedConfigValuesSnafu { values });
+        if !values.is_empty() {
+            return Err(BuildFailure::complete(
+                UnsupportedConfigValuesSnafu { values }.build(),
+                artifact,
+            ));
+        }
         Ok(artifact)
     }
 }
@@ -557,7 +606,10 @@ mod tests {
         input.profiles = Arc::new(profiles);
         assert!(matches!(
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
-            Err(RuntimeBuildError::ValidateProfiles { .. })
+            Err(BuildFailure {
+                error: RuntimeBuildError::ValidateProfiles { .. },
+                candidate: None
+            })
         ));
     }
 
@@ -569,7 +621,10 @@ mod tests {
 
         assert!(matches!(
             RuntimeBuilder::build(&input, &EmptyContent, &EchoRunner),
-            Err(RuntimeBuildError::TransparentProxyRequiresServiceMode)
+            Err(BuildFailure {
+                error: RuntimeBuildError::TransparentProxyRequiresServiceMode,
+                candidate: None
+            })
         ));
     }
 
@@ -607,7 +662,19 @@ mod tests {
             let mut input = base_input();
             input.app.core = core;
             input.app.enable_builtin_enhanced = true;
-            let error = RuntimeBuilder::build(&input, &EmptyContent, &Unavailable).unwrap_err();
+            let failure = RuntimeBuilder::build(&input, &EmptyContent, &Unavailable).unwrap_err();
+            // The engine is missing at the first builtin: the steps before it stay.
+            let Some(BuildCandidate::Partial(partial)) = failure.candidate else {
+                panic!("a stopped pipeline keeps its completed steps");
+            };
+            assert!(matches!(
+                partial.graph.nodes[partial.last_node as usize].tag,
+                nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                    step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Defaults,
+                    ..
+                }
+            ));
+            let error = failure.error;
             assert_eq!(
                 serde_json::to_value(&error).unwrap(),
                 serde_json::json!({

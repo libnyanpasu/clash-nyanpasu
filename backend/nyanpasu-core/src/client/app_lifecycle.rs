@@ -33,6 +33,7 @@ impl NyanpasuClient {
     pub fn request_shutdown(&self) {
         self.inner.shutdown.cancel();
         self.inner.tasks.close();
+        self.inner.candidates.close();
     }
 
     /// Waits until every owner has finished tearing itself down and the core
@@ -40,6 +41,8 @@ impl NyanpasuClient {
     /// waiting.
     pub async fn wait_shutdown(&self) {
         self.inner.tasks.wait().await;
+        // Every owner that could save a candidate has stopped.
+        self.inner.candidates.release();
         // The workflow stops the core in its `post_stop`, which ractor skips
         // when the workflow panicked. Every owner has finished by now, so
         // nothing drives the core any more, and a stop the workflow already

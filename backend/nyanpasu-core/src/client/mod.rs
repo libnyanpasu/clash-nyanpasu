@@ -27,6 +27,7 @@ mod app_lifecycle;
 pub mod app_update;
 pub mod application;
 pub mod artifact_snapshot;
+mod candidate_inspection;
 mod clash_api;
 pub(crate) mod clash_config;
 mod clash_streams;
@@ -338,6 +339,8 @@ struct NyanpasuClientInner {
     paths: PathResolver,
     storage: Arc<dyn StorageSnapshot>,
     reconciler: reconciler::RuntimeReconcilerClient,
+    /// Candidates kept for inspection after a failed change.
+    candidates: Arc<candidate_inspection::CandidateStore>,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
@@ -604,6 +607,9 @@ impl NyanpasuClient {
         let builder = host_adapters.runtime_build;
         let validator: Arc<dyn reconciler::ports::RuntimeValidatorPort> =
             Arc::new(reconciler::adapters::CoreCheckValidator::new(&core_v2));
+        let candidates = Arc::new(candidate_inspection::CandidateStore::new(Arc::new(
+            candidate_inspection::TempCandidateFiles::new(&paths),
+        )));
         let reconciler =
             reconciler::RuntimeReconcilerClient::spawn(reconciler::RuntimeReconcilerArgs {
                 revisions: revisions.clone(),
@@ -634,6 +640,7 @@ impl NyanpasuClient {
                     revisions,
                     validator,
                     workflow: reconciler.clone(),
+                    candidates: candidates.clone(),
                 }),
             );
             mutations
@@ -818,6 +825,7 @@ impl NyanpasuClient {
                 paths,
                 storage,
                 reconciler,
+                candidates,
                 core_api: core_v2,
                 proxies,
                 streams,

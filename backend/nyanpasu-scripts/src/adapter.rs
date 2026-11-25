@@ -567,7 +567,7 @@ function main(config) {
                 assert_eq!(artifact.final_config.to_json()["marker"], "executed");
                 assert!(artifact.transform_failures.is_empty());
             } else {
-                let error = result.unwrap_err();
+                let error = result.unwrap_err().error;
                 let RuntimePipelineError::ExecuteScript { source } = error else {
                     panic!("{error:?}")
                 };

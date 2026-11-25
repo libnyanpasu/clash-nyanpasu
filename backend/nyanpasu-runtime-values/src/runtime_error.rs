@@ -14,8 +14,8 @@ use serde::Serialize;
 use snafu::Snafu;
 
 use super::{
-    check::RuntimeCheckUnavailable, core_spec::CoreSpecError, execution_host::ExecutionHost,
-    ports::PortResolveError, publish::PublishRuntimeError,
+    candidate::CandidateSnapshotId, check::RuntimeCheckUnavailable, core_spec::CoreSpecError,
+    execution_host::ExecutionHost, ports::PortResolveError, publish::PublishRuntimeError,
 };
 
 /// The wire mirror of a `CoreError`, which is a foreign type without serde.
@@ -58,6 +58,10 @@ pub enum RuntimeError {
     ApplyRuntime {
         #[snafu(source)]
         failure: CoreFailure,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     #[snafu(display("could not stop the core: {failure}"))]
     StopCore {
@@ -118,16 +122,40 @@ pub enum RuntimeError {
 
     /// The committed configuration is waiting or has not taken effect.
     #[snafu(display("the committed configuration is not in effect: {reason}"))]
-    ConfigurationNotInEffect { reason: String },
+    ConfigurationNotInEffect {
+        reason: String,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
 
     #[snafu(display("could not build the runtime configuration: {source}"))]
-    BuildRuntime { source: RuntimeBuildError },
+    BuildRuntime {
+        source: RuntimeBuildError,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     #[snafu(display("could not publish the runtime configuration: {source}"))]
-    PublishRuntime { source: PublishRuntimeError },
+    PublishRuntime {
+        source: PublishRuntimeError,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     #[snafu(display("could not resolve the ports of the runtime: {source}"))]
     ResolvePort { source: PortResolveError },
     #[snafu(display("could not find the core to run: {source}"))]
-    ResolveCoreBinary { source: CoreSpecError },
+    ResolveCoreBinary {
+        source: CoreSpecError,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     #[snafu(display("could not install the core binary: {source}"))]
     InstallCoreBinary { source: InstallCoreBinaryError },
     #[snafu(display("could not prepare the service install command: {source}"))]
@@ -139,17 +167,37 @@ pub enum RuntimeError {
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
         message: String,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     #[snafu(display("the configuration could not be checked: {reason:?}"))]
-    CheckUnavailable { reason: RuntimeCheckUnavailable },
+    CheckUnavailable {
+        reason: RuntimeCheckUnavailable,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// The core restored its own previous configuration.
     #[snafu(display("the core would not start this configuration and kept the previous one"))]
-    CoreRolledBack { reason: Option<String> },
+    CoreRolledBack {
+        reason: Option<String>,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// The submission ended unobserved, so it may have taken effect.
     #[snafu(display("the runtime submission is unobserved: {failure}"))]
     SubmissionUnobserved {
         #[snafu(source)]
         failure: CoreFailure,
+        /// The candidate build this failure happened to, kept for inspection
+        /// in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
 
     /// No runtime configuration has been built yet.
@@ -173,10 +221,128 @@ pub enum RuntimeError {
 }
 
 impl RuntimeError {
+    /// The field that carries the candidate build of a failure that had one;
+    /// `None` for a failure that never relates to a candidate.
+    fn candidate_slot(&mut self) -> Option<&mut Option<CandidateSnapshotId>> {
+        match self {
+            Self::ApplyRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::ConfigurationNotInEffect {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::BuildRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::PublishRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::ResolveCoreBinary {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CoreRejectedConfig {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CheckUnavailable {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CoreRolledBack {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::SubmissionUnobserved {
+                candidate_snapshot_id,
+                ..
+            } => Some(candidate_snapshot_id),
+            Self::ShuttingDown
+            | Self::OwnerUnresponsive { .. }
+            | Self::StopCore { .. }
+            | Self::RecoverRuntime { .. }
+            | Self::RecoverServiceEndpoint { .. }
+            | Self::RefreshStatus { .. }
+            | Self::InstallService { .. }
+            | Self::StartService { .. }
+            | Self::StopService { .. }
+            | Self::RestartService { .. }
+            | Self::UninstallService { .. }
+            | Self::MoveHost { .. }
+            | Self::ServiceHostsCore
+            | Self::ResolvePort { .. }
+            | Self::InstallCoreBinary { .. }
+            | Self::PrepareServiceInstallPrompt { .. }
+            | Self::ReadCoreVersion { .. }
+            | Self::NoRuntimeConfig
+            | Self::SerializeRuntimeConfig { .. }
+            | Self::ConvertRuntimeConfig { .. }
+            | Self::RuntimeSnapshotChanged
+            | Self::RuntimeNodeNotFound { .. } => None,
+        }
+    }
+
+    /// The candidate build kept for this failure, if one was.
+    pub fn candidate_snapshot_id(&self) -> Option<&CandidateSnapshotId> {
+        match self {
+            Self::ApplyRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::ConfigurationNotInEffect {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::BuildRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::PublishRuntime {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::ResolveCoreBinary {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CoreRejectedConfig {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CheckUnavailable {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::CoreRolledBack {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::SubmissionUnobserved {
+                candidate_snapshot_id,
+                ..
+            } => candidate_snapshot_id.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Names the candidate build kept for this failure. A failure that never
+    /// relates to a candidate is returned unchanged.
+    #[must_use]
+    pub fn with_candidate_snapshot_id(mut self, id: CandidateSnapshotId) -> Self {
+        if let Some(slot) = self.candidate_slot() {
+            *slot = Some(id);
+        }
+        self
+    }
+
     /// The core's own failure this error carries, if the core produced it.
     fn core_failure(&self) -> Option<&CoreFailure> {
         match self {
-            Self::ApplyRuntime { failure }
+            Self::ApplyRuntime { failure, .. }
             | Self::StopCore { failure }
             | Self::RecoverRuntime { failure }
             | Self::RecoverServiceEndpoint { failure }
@@ -187,7 +353,7 @@ impl RuntimeError {
             | Self::RestartService { failure }
             | Self::UninstallService { failure }
             | Self::MoveHost { failure, .. }
-            | Self::SubmissionUnobserved { failure } => Some(failure),
+            | Self::SubmissionUnobserved { failure, .. } => Some(failure),
             Self::ShuttingDown
             | Self::OwnerUnresponsive { .. }
             | Self::CoreRejectedConfig { .. }
@@ -238,6 +404,7 @@ mod tests {
     fn committed_configuration_cause_names_what_is_not_in_effect() {
         let error = RuntimeError::ConfigurationNotInEffect {
             reason: "waiting for a stable runtime".into(),
+            candidate_snapshot_id: None,
         };
         assert_eq!(
             error.to_string(),
@@ -250,6 +417,28 @@ mod tests {
                 "reason": "waiting for a stable runtime",
             })
         );
+    }
+
+    #[test]
+    fn a_candidate_id_sits_beside_the_kind_and_only_on_candidate_failures() {
+        use crate::candidate::CandidateSnapshotId;
+        let id = CandidateSnapshotId::parse("a_-012345678901234567").unwrap();
+        let error = RuntimeError::CoreRolledBack {
+            reason: None,
+            candidate_snapshot_id: None,
+        }
+        .with_candidate_snapshot_id(id.clone());
+        assert_eq!(error.candidate_snapshot_id(), Some(&id));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            json!({
+                "kind": "core_rolled_back",
+                "reason": null,
+                "candidate_snapshot_id": "a_-012345678901234567",
+            })
+        );
+        let unrelated = RuntimeError::NoRuntimeConfig.with_candidate_snapshot_id(id);
+        assert!(unrelated.candidate_snapshot_id().is_none());
     }
 
     #[test]
@@ -268,6 +457,7 @@ mod tests {
             (
                 RuntimeError::ApplyRuntime {
                     failure: failure.clone(),
+                    candidate_snapshot_id: None,
                 },
                 "apply_runtime",
             ),
@@ -328,6 +518,7 @@ mod tests {
             (
                 RuntimeError::SubmissionUnobserved {
                     failure: failure.clone(),
+                    candidate_snapshot_id: None,
                 },
                 "submission_unobserved",
             ),
@@ -352,6 +543,7 @@ mod tests {
                     message: "check failed".into(),
                     retryable: false
                 },
+                candidate_snapshot_id: None,
             })
             .unwrap(),
             json!({"kind": "check_unavailable", "reason": {"cause": "backend", "kind": "apply_failed", "message": "check failed", "retryable": false}})

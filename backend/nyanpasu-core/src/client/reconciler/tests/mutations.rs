@@ -76,7 +76,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::super::ports::RuntimeBuildFailure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -120,6 +120,8 @@ pub(super) struct Fixture {
     /// once the token is cancelled.
     pub(super) shutdown: tokio_util::sync::CancellationToken,
     pub(super) tasks: tokio_util::task::TaskTracker,
+    /// The candidates the check keeps when it refuses one.
+    pub(super) candidates: Arc<crate::client::candidate_inspection::CandidateStore>,
     _dir: tempfile::TempDir,
 }
 
@@ -363,6 +365,7 @@ pub(super) async fn fixture_from(
     )
     .await
     .unwrap();
+    let candidates = crate::client::candidate_inspection::CandidateStore::for_tests();
     let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
         super::super::check::CandidateCheck::new(super::super::check::Args {
             application: application.snapshot_handle(),
@@ -376,11 +379,13 @@ pub(super) async fn fixture_from(
             revisions: revisions.clone(),
             validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             workflow: client.clone(),
+            candidates: candidates.clone(),
         }),
     );
     let application = application_owner(application, gate.clone(), &shutdown, &tasks).await;
     let clash = clash_owner(clash, gate, &shutdown, &tasks).await;
     Fixture {
+        candidates,
         client,
         endpoint,
         builder,
@@ -663,7 +668,7 @@ async fn unsupported_engine_is_rejected_before_source_persistence() {
                 panic!("{commit:?}")
             };
             assert_eq!(errors.len(), 1);
-            let RuntimeError::BuildRuntime { source: build } = errors[0].as_ref() else {
+            let RuntimeError::BuildRuntime { source: build, .. } = errors[0].as_ref() else {
                 panic!("{errors:?}")
             };
             let RuntimeBuildError::RunPipeline { source: pipeline } = build else {

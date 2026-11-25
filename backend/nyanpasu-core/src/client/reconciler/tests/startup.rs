@@ -453,6 +453,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             revisions,
             validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             workflow: client.clone(),
+            candidates: crate::client::candidate_inspection::CandidateStore::for_tests(),
         }),
     );
     let application =

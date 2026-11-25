@@ -20,7 +20,10 @@ use std::sync::Arc;
 
 use indexmap::{IndexMap, IndexSet};
 
-pub use artifact::{RuntimeArtifact, StepLog, StepLogEntry, StepLogLevel, TransformFailure};
+pub use artifact::{
+    HaltedStep, PartialArtifact, PipelineFailure, PipelineHalt, RuntimeArtifact, StepLog,
+    StepLogEntry, StepLogLevel, TransformFailure,
+};
 pub use builtin::known_fields;
 pub use error::RuntimePipelineError;
 pub use ports::{PortError, ProfileContentSource, ScriptRunner};
@@ -192,6 +195,85 @@ impl LogSink {
     }
 }
 
+/// A pipeline stopped by `error`, holding the nodes recorded so far.
+pub(super) struct Halted {
+    pub error: RuntimePipelineError,
+    pub builder: Option<Box<ConfigSnapshotsBuilder>>,
+    /// The step that failed, when it is one a user can recognize.
+    pub step: Option<HaltedStep>,
+}
+
+impl Halted {
+    /// A stop at `step` before anything was recorded.
+    fn at(error: RuntimePipelineError, step: HaltedStep) -> Self {
+        Self {
+            error,
+            builder: None,
+            step: Some(step),
+        }
+    }
+
+    fn into_failure(self, logs: LogSink) -> PipelineFailure {
+        // A graph that does not build has no prefix the viewer can trust.
+        let partial = self
+            .builder
+            .and_then(|builder| (*builder).build_stored_with_current().ok())
+            .map(|(graph, last_node)| {
+                let keys: IndexSet<SnapshotNodeKey> =
+                    graph.nodes.iter().map(|node| node.tag.node_key()).collect();
+                let step_logs = logs
+                    .into_step_logs()
+                    .into_iter()
+                    .filter(|log| keys.contains(&log.key))
+                    .collect();
+                Box::new(PartialArtifact {
+                    graph,
+                    last_node,
+                    step_logs,
+                    failed_step: self.step,
+                })
+            });
+        PipelineFailure {
+            error: self.error,
+            partial,
+        }
+    }
+}
+
+impl From<RuntimePipelineError> for Halted {
+    fn from(error: RuntimePipelineError) -> Self {
+        Self {
+            error,
+            builder: None,
+            step: None,
+        }
+    }
+}
+
+/// Unwraps `$result`, or stops the pipeline keeping the nodes `$builder`
+/// recorded; `$step` names the step that failed.
+macro_rules! or_halt {
+    ($result:expr, $builder:expr) => {
+        or_halt!(@stop $result, $builder, None)
+    };
+    ($result:expr, $builder:expr, $step:expr) => {
+        or_halt!(@stop $result, $builder, Some($step))
+    };
+    (@stop $result:expr, $builder:expr, $step:expr) => {
+        match $result {
+            Ok(value) => value,
+            Err(error) => {
+                return Err(Halted {
+                    error: error.into(),
+                    builder: Some(Box::new($builder)),
+                    step: $step,
+                });
+            }
+        }
+    };
+}
+pub(super) use or_halt;
+
 /// Shared transform application (scoped / composition / global). Lenient by
 /// design: ordinary failures pass the config through and log (spec D7); missing
 /// engines reject the pipeline. The `TransformKind::Overlay` placeholder on
@@ -263,13 +345,25 @@ pub(crate) fn apply_transform(
 /// Executes the full pipeline for one target (spec §7.1 table + shared tail).
 /// Rejects structural failures and missing engines; ordinary transform failures
 /// remain lenient (spec D7).
+///
+/// # Errors
+/// A stopped pipeline returns its error with the steps it completed, when it
+/// had recorded any.
 pub fn execute(
     inputs: &RuntimePipelineInputs<'_>,
     content: &dyn ProfileContentSource,
     runner: &dyn ScriptRunner,
-) -> Result<RuntimeArtifact, RuntimePipelineError> {
+) -> Result<RuntimeArtifact, PipelineFailure> {
     let mut logs = LogSink::default();
+    run(inputs, content, runner, &mut logs).map_err(|halted| halted.into_failure(logs))
+}
 
+fn run(
+    inputs: &RuntimePipelineInputs<'_>,
+    content: &dyn ProfileContentSource,
+    runner: &dyn ScriptRunner,
+    logs: &mut LogSink,
+) -> Result<RuntimeArtifact, Halted> {
     let (mut builder, mut working, selected) = match &inputs.target {
         ExecutionTarget::Bare => {
             let empty = Arc::new(value_util::empty_object());
@@ -284,13 +378,15 @@ pub fn execute(
                 return Err(SelectedProfileNotFoundSnafu {
                     profile: id.clone(),
                 }
-                .build());
+                .build()
+                .into());
             };
             let ProfileDefinition::Config { config } = &item.definition else {
                 return Err(SelectedProfileNotConfigSnafu {
                     profile: id.clone(),
                 }
-                .build());
+                .build()
+                .into());
             };
             match config {
                 crate::profile::ConfigDefinition::File(_) => {
@@ -298,7 +394,7 @@ pub fn execute(
                         inputs.profiles,
                         content,
                         runner,
-                        &mut logs,
+                        logs,
                         id,
                         ConfigExecutionRole::Selected,
                     )?;
@@ -309,7 +405,7 @@ pub fn execute(
                         inputs.profiles,
                         content,
                         runner,
-                        &mut logs,
+                        logs,
                         id,
                         composition,
                     )?;
@@ -324,8 +420,13 @@ pub fn execute(
     // expansion. Nyanpasu's own steps record the patch they made instead of
     // diffing the trees.
     for (index, transform_id) in inputs.profiles.global_transforms.iter().enumerate() {
-        let (next, kind, entries, failed) =
-            apply_transform(inputs.profiles, content, runner, transform_id, &working)?;
+        let (next, kind, entries, failed) = or_halt!(
+            apply_transform(inputs.profiles, content, runner, transform_id, &working),
+            builder,
+            HaltedStep::Transform {
+                profile_id: transform_id.clone()
+            }
+        );
         let tag = OperatorTag::GlobalTransform {
             selected_profile_id: selected.clone(),
             transform_profile_id: transform_id.clone(),
@@ -334,7 +435,7 @@ pub fn execute(
         };
         logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
-        builder.push(tag, next.clone())?;
+        or_halt!(builder.push(tag, next.clone()), builder);
         working = next;
     }
 
@@ -354,12 +455,18 @@ pub fn execute(
         let stage1 = builtin::stage1_fields(&inputs.profiles.valid);
         let (filtered, patch) = builtin::filter_fields(&working, &stage1);
         let filtered = Arc::new(filtered);
-        builder.push_delta(step(BuiltinStepKind::FieldFilter), filtered.clone(), patch)?;
+        or_halt!(
+            builder.push_delta(step(BuiltinStepKind::FieldFilter), filtered.clone(), patch),
+            builder
+        );
         // A field left to the profiles keeps their value whatever the filter
         // allows: choosing it is the user's say on that one key.
         let (next, patch) = keep_inherited(&filtered, &working, &ownership);
         working = Arc::new(next);
-        builder.push_delta(step(BuiltinStepKind::KeepUnmanaged), working.clone(), patch)?;
+        or_halt!(
+            builder.push_delta(step(BuiltinStepKind::KeepUnmanaged), working.clone(), patch),
+            builder
+        );
     }
 
     let managed_settings = step(BuiltinStepKind::ManagedSettings);
@@ -370,10 +477,16 @@ pub fn execute(
     );
     let (next, patch) = apply_settings(&working, &ownership);
     working = Arc::new(next);
-    builder.push_delta(managed_settings, working.clone(), patch)?;
+    or_halt!(
+        builder.push_delta(managed_settings, working.clone(), patch),
+        builder
+    );
     let (next, patch) = apply_defaults(&working, &ownership);
     working = Arc::new(next);
-    builder.push_delta(step(BuiltinStepKind::Defaults), working.clone(), patch)?;
+    or_halt!(
+        builder.push_delta(step(BuiltinStepKind::Defaults), working.clone(), patch),
+        builder
+    );
 
     for (index, builtin_transform) in inputs.builtin_transforms.iter().enumerate() {
         let mut entries = Vec::new();
@@ -391,7 +504,13 @@ pub fn execute(
         let next = match result {
             Ok(value) => Arc::new(value),
             Err(error) => {
-                let error = error::ordinary_script_error(error)?;
+                let error = or_halt!(
+                    error::ordinary_script_error(error),
+                    builder,
+                    HaltedStep::BuiltinTransform {
+                        name: builtin_transform.name.clone()
+                    }
+                );
                 // Parity: builtin errors are swallowed with a log (mod.rs:136-141),
                 // now retained instead of discarded (spec §13 #7).
                 entries.push(StepLogEntry::error(error.to_string()));
@@ -402,7 +521,7 @@ pub fn execute(
             }
         };
         logs.extend(tag.node_key(), entries);
-        builder.push(tag, next.clone())?;
+        or_halt!(builder.push(tag, next.clone()), builder);
         working = next;
     }
 
@@ -414,7 +533,7 @@ pub fn execute(
         };
         logs.extend(tag.node_key(), entries);
         working = Arc::new(next);
-        builder.push(tag, working.clone())?;
+        or_halt!(builder.push(tag, working.clone()), builder);
     }
 
     // TODO: 可选排序算法
@@ -424,13 +543,15 @@ pub fn execute(
     // order.
     applied_fields.retain(|key| builtin::known_fields().any(|field| field == key));
 
-    let (graph, final_node) = builder.build_stored_with_current()?;
+    let (graph, final_node) = builder
+        .build_stored_with_current()
+        .map_err(RuntimePipelineError::from)?;
     let transform_failures = logs.failures.clone();
     Ok(RuntimeArtifact {
         final_config: working,
         graph,
         final_node,
-        step_logs: logs.into_step_logs(),
+        step_logs: std::mem::take(logs).into_step_logs(),
         applied_fields,
         transform_failures,
     })

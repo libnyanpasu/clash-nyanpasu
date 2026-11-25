@@ -509,19 +509,19 @@ where
 }
 
 #[cfg(unix)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
 #[cfg(windows)]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 #[cfg(not(any(unix, windows)))]
-fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+pub(super) fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 

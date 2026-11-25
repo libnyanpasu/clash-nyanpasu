@@ -78,6 +78,8 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::profile::runtime::inspect_runtime,
             commands::profile::runtime::inspect_applied_runtime,
             commands::profile::runtime::inspect_runtime_node,
+            commands::profile::runtime::inspect_candidate_runtime,
+            commands::profile::runtime::inspect_candidate_node,
             commands::profile::runtime::get_postprocessing_output,
             commands::proxy::delay::clash_api_get_proxy_delay,
             commands::settings::clash::clash_api_get_settings,
@@ -890,6 +892,10 @@ mod tests {
         assert!(queries.contains("getAppUpdateState:"));
         // A probe downloads but writes nothing.
         assert!(queries.contains("probeProfileUrl:"));
+        assert!(queries.contains("inspectCandidateRuntime:"));
+        assert!(!mutations.contains("inspectCandidateRuntime:"));
+        assert!(queries.contains("inspectCandidateNode:"));
+        assert!(!mutations.contains("inspectCandidateNode:"));
         for name in [
             "checkAppUpdate:",
             "downloadAppUpdate:",

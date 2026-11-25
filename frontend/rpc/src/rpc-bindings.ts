@@ -173,6 +173,28 @@ export function createRpcClient(
         { snapshotId, nodeId },
         options,
       ),
+    /**
+     *  A candidate kept after a failed configuration change in this session. It
+     *  holds content that was never committed and unredacted step logs, so only
+     *  the desktop reaches it.
+     */
+    inspectCandidateRuntime: (snapshotId: string, options?: InvokeOptions) =>
+      __RPC_INVOKE<CandidateInspection_Serialize>(
+        'inspect_candidate_runtime',
+        { snapshotId },
+        options,
+      ),
+    /**  One node of a kept candidate; desktop only, like the candidate itself. */
+    inspectCandidateNode: (
+      snapshotId: string,
+      nodeId: number,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<RuntimeInspectionContent_Serialize>(
+        'inspect_candidate_node',
+        { snapshotId, nodeId },
+        options,
+      ),
     getPostprocessingOutput: (options?: InvokeOptions) =>
       __RPC_INVOKE<PostProcessingOutput>(
         'get_postprocessing_output',
@@ -2955,6 +2977,38 @@ export type BuiltinStepKind =
 export type Bytes = {
   upload: number
   download: number
+}
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection =
+  CandidateInspection_Serialize | CandidateInspection_Deserialize
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection_Deserialize = {
+  /**
+   *  `snapshot_id` is the candidate's ID; `final_id` is its built document,
+   *  or the last step a stopped build completed.
+   */
+  inspection: RuntimeInspection_Deserialize
+  /**
+   *  Which step a stopped build could not run, which has no node, and
+   *  why. `None` when the build finished.
+   */
+  halted?: PipelineHalt_Deserialize | null
+}
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection_Serialize = {
+  /**
+   *  `snapshot_id` is the candidate's ID; `final_id` is its built document,
+   *  or the last step a stopped build completed.
+   */
+  inspection: RuntimeInspection_Serialize
+  /**
+   *  Which step a stopped build could not run, which has no node, and
+   *  why. `None` when the build finished.
+   */
+  halted: PipelineHalt_Serialize | null
 }
 
 /**
@@ -6006,6 +6060,21 @@ export type Grant =
   | ({ permissions: Partial<{ [key in Resource]: Access }> } & { role?: never })
 
 /**
+ *  The step a stopped pipeline could not complete. It has no node, so this
+ *  is what names it.
+ */
+export type HaltedStep =
+  /**
+   *  Reading a config profile: the selected one, or a composition's base
+   *  or member.
+   */
+  | { kind: 'profile'; profile_id: ProfileId }
+  /**  A transform profile, scoped to a profile or global. */
+  | { kind: 'transform'; profile_id: ProfileId }
+  /**  A built-in transform. */
+  | { kind: 'builtin_transform'; name: string }
+
+/**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
  *  they are fixed by the configurations users already have.
  */
@@ -8076,6 +8145,23 @@ export type Permission = {
 
 export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
+
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt = PipelineHalt_Serialize | PipelineHalt_Deserialize
+
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt_Deserialize = {
+  /**  `None` when no step can be named, such as for an internal error. */
+  step?: HaltedStep | null
+  reason: string
+}
+
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt_Serialize = {
+  /**  `None` when no step can be named, such as for an internal error. */
+  step: HaltedStep | null
+  reason: string
+}
 
 /**  The port a resolution was picking for. */
 export type PortField =
@@ -11192,7 +11278,15 @@ export type RuntimeError_Deserialize =
   | { kind: 'shutting_down' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  | { kind: 'apply_runtime'; failure: CoreFailure_Deserialize }
+  | {
+      kind: 'apply_runtime'
+      failure: CoreFailure_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'stop_core'; failure: CoreFailure_Deserialize }
   | { kind: 'recover_runtime'; failure: CoreFailure_Deserialize }
   | { kind: 'recover_service_endpoint'; failure: CoreFailure_Deserialize }
@@ -11206,11 +11300,43 @@ export type RuntimeError_Deserialize =
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
   /**  The committed configuration is waiting or has not taken effect. */
-  | { kind: 'configuration_not_in_effect'; reason: string }
-  | { kind: 'build_runtime'; source: RuntimeBuildError_Deserialize }
-  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | {
+      kind: 'configuration_not_in_effect'
+      reason: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
+  | {
+      kind: 'build_runtime'
+      source: RuntimeBuildError_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
+  | {
+      kind: 'publish_runtime'
+      source: PublishRuntimeError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'resolve_port'; source: PortResolveError }
-  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | {
+      kind: 'resolve_core_binary'
+      source: CoreSpecError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError_Deserialize }
   | {
       kind: 'prepare_service_install_prompt'
@@ -11221,12 +11347,41 @@ export type RuntimeError_Deserialize =
       kind: 'core_rejected_config'
       core_kind?: CoreErrorKind | null
       message: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
     }
-  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable_Deserialize }
+  | {
+      kind: 'check_unavailable'
+      reason: RuntimeCheckUnavailable_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  The core restored its own previous configuration. */
-  | { kind: 'core_rolled_back'; reason?: string | null }
+  | {
+      kind: 'core_rolled_back'
+      reason?: string | null
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  The submission ended unobserved, so it may have taken effect. */
-  | { kind: 'submission_unobserved'; failure: CoreFailure_Deserialize }
+  | {
+      kind: 'submission_unobserved'
+      failure: CoreFailure_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }
@@ -11241,7 +11396,15 @@ export type RuntimeError_Serialize =
   | { kind: 'shutting_down' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  | { kind: 'apply_runtime'; failure: CoreFailure_Serialize }
+  | {
+      kind: 'apply_runtime'
+      failure: CoreFailure_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'stop_core'; failure: CoreFailure_Serialize }
   | { kind: 'recover_runtime'; failure: CoreFailure_Serialize }
   | { kind: 'recover_service_endpoint'; failure: CoreFailure_Serialize }
@@ -11255,11 +11418,43 @@ export type RuntimeError_Serialize =
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
   /**  The committed configuration is waiting or has not taken effect. */
-  | { kind: 'configuration_not_in_effect'; reason: string }
-  | { kind: 'build_runtime'; source: RuntimeBuildError_Serialize }
-  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | {
+      kind: 'configuration_not_in_effect'
+      reason: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
+  | {
+      kind: 'build_runtime'
+      source: RuntimeBuildError_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
+  | {
+      kind: 'publish_runtime'
+      source: PublishRuntimeError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'resolve_port'; source: PortResolveError }
-  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | {
+      kind: 'resolve_core_binary'
+      source: CoreSpecError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError_Serialize }
   | {
       kind: 'prepare_service_install_prompt'
@@ -11270,12 +11465,41 @@ export type RuntimeError_Serialize =
       kind: 'core_rejected_config'
       core_kind: CoreErrorKind | null
       message: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
     }
-  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable_Serialize }
+  | {
+      kind: 'check_unavailable'
+      reason: RuntimeCheckUnavailable_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  The core restored its own previous configuration. */
-  | { kind: 'core_rolled_back'; reason: string | null }
+  | {
+      kind: 'core_rolled_back'
+      reason: string | null
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  The submission ended unobserved, so it may have taken effect. */
-  | { kind: 'submission_unobserved'; failure: CoreFailure_Serialize }
+  | {
+      kind: 'submission_unobserved'
+      failure: CoreFailure_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }

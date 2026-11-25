@@ -683,7 +683,7 @@
   "settings_nyanpasu_local_ip_probe_label": "允许探测本机 IP",
   "settings_nyanpasu_local_ip_probe_description": "打开流量页面时探测本机公网 IPv4/IPv6，用于地图中局域网和本地来源的定位。先询问下方的 STUN 服务器，均无应答时再使用你已同意的查询服务。TUN 开启时不探测，不修改已有历史记录。",
   "settings_public_ip_stun_label": "STUN 服务器",
-  "settings_public_ip_stun_description": "按顺序逐个询问，直到有服务器应答。被询问的服务器会得知你的公网 IP 地址。",
+  "settings_public_ip_stun_description": "按顺序询问，若当前服务器未及时应答则继续并行询问下一个，直到有服务器应答。若系统 DNS 无法解析或返回 Fake-IP，会按顺序通过内置的 DoH 服务器进行回退解析。被询问的服务器会得知你的公网 IP 地址。",
   "settings_public_ip_stun_builtin": "内置",
   "settings_public_ip_stun_no_transport": "所有传输方式均无应答",
   "settings_public_ip_stun_remove": "删除",

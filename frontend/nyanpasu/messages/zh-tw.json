@@ -683,7 +683,7 @@
   "settings_nyanpasu_local_ip_probe_label": "允許偵測本機 IP",
   "settings_nyanpasu_local_ip_probe_description": "開啟流量頁面時偵測本機公網 IPv4/IPv6，用於地圖中區域網路與本機來源的定位。先詢問下方的 STUN 伺服器，皆無回應時再使用你已同意的查詢服務。TUN 啟用時不偵測，不修改既有歷史記錄。",
   "settings_public_ip_stun_label": "STUN 伺服器",
-  "settings_public_ip_stun_description": "依序逐一詢問，直到有伺服器回應。被詢問的伺服器會得知你的公網 IP 位址。",
+  "settings_public_ip_stun_description": "依序詢問，若目前伺服器未及時回應則繼續並行詢問下一個，直到有伺服器回應。若系統 DNS 無法解析或傳回 Fake-IP，會依序透過內建的 DoH 伺服器進行回退解析。被詢問的伺服器會得知你的公網 IP 位址。",
   "settings_public_ip_stun_builtin": "內建",
   "settings_public_ip_stun_no_transport": "所有傳輸方式皆無回應",
   "settings_public_ip_stun_remove": "刪除",

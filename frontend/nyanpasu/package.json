@@ -68,7 +68,7 @@
     "@tanstack/router-plugin": "1.169.0",
     "@types/d3": "7.4.3",
     "@types/less": "3.0.8",
-    "@types/react": "19.3.2",
+    "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-legacy": "8.2.4",
     "@vitejs/plugin-react": "6.3.0",

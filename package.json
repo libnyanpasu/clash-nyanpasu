@@ -132,7 +132,7 @@
     "stylelint-config-recess-order": "7.10.1",
     "stylelint-config-standard": "41.1.0",
     "stylelint-declaration-block-no-ignored-properties": "3.1.0",
-    "stylelint-order": "8.1.3",
+    "stylelint-order": "9.0.0",
     "tailwindcss": "4.3.5",
     "typescript": "7.0.2",
     "vite": "8.3.8",

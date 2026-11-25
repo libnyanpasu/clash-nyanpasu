@@ -35,8 +35,10 @@ pub struct StunServer {
 }
 
 /// The built-in servers, in the order the probe asks them. Capabilities are
-/// what each operator documents or what its DNS records offer (AAAA records
-/// for IPv6), checked on 2026-11-06.
+/// verified against live DNS records and Binding probes (IPv4/IPv6, UDP/TCP).
+/// The default-enabled set mixes global and mainland-China operators, includes
+/// dual-stack IPv6 coverage in both regions, and enables a TCP-capable server
+/// so UDP-restricted networks still succeed.
 pub fn default_stun_servers() -> Vec<StunServer> {
     const BOTH: StunFamilies = StunFamilies {
         ipv4: true,
@@ -52,10 +54,11 @@ pub fn default_stun_servers() -> Vec<StunServer> {
     };
     [
         ("stun.cloudflare.com", 3478, true, BOTH, NONE),
-        ("stun.l.google.com", 19302, true, BOTH, NONE),
         ("stun.miwifi.com", 3478, true, IPV4, NONE),
-        ("stun.chat.bilibili.com", 3478, false, IPV4, NONE),
-        ("stun.nextcloud.com", 3478, false, BOTH, BOTH),
+        ("stun.hitv.com", 3478, true, BOTH, NONE),
+        ("stun.l.google.com", 19302, true, BOTH, NONE),
+        ("stun.nextcloud.com", 3478, true, BOTH, BOTH),
+        ("stun.chat.bilibili.com", 3478, true, IPV4, NONE),
     ]
     .into_iter()
     .map(|(host, port, enabled, udp, tcp)| StunServer {

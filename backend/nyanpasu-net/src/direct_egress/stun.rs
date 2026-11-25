@@ -9,6 +9,8 @@ const BINDING_REQUEST: u16 = 0x0001;
 const BINDING_SUCCESS: u16 = 0x0101;
 const MAPPED_ADDRESS: u16 = 0x0001;
 const XOR_MAPPED_ADDRESS: u16 = 0x0020;
+/// Legacy RFC 3489 draft attribute type still sent by some older STUN servers.
+const XOR_MAPPED_ADDRESS_LEGACY: u16 = 0x8020;
 const FAMILY_IPV4: u8 = 0x01;
 const FAMILY_IPV6: u8 = 0x02;
 
@@ -34,6 +36,8 @@ pub(super) enum DecodeError {
     OtherTransaction,
     #[snafu(display("the message is not a Binding success response: {message_type:#06x}"))]
     NotBindingSuccess { message_type: u16 },
+    #[snafu(display("the declared attribute length {len} exceeds the limit"))]
+    TooLarge { len: usize },
     #[snafu(display("the response carries no mapped address"))]
     NoMappedAddress,
 }
@@ -54,13 +58,14 @@ pub(super) fn body_len(header: &[u8; HEADER_LEN]) -> usize {
     usize::from(u16::from_be_bytes([header[2], header[3]]))
 }
 
-/// The address the server saw the request come from. `XOR-MAPPED-ADDRESS`
-/// wins over the older `MAPPED-ADDRESS`, which some servers still send.
-pub(super) fn mapped_address(message: &[u8], id: TransactionId) -> Result<SocketAddr, DecodeError> {
-    let header: &[u8; HEADER_LEN] = message
-        .get(..HEADER_LEN)
-        .and_then(|header| header.try_into().ok())
-        .ok_or(DecodeError::Truncated)?;
+/// Validates a STUN Binding success header and returns its declared body length.
+/// TCP calls this before allocating and reading the body so a non-STUN service
+/// cannot force an oversized read or hang waiting for bytes that never arrive.
+pub(super) fn validate_header(
+    header: &[u8; HEADER_LEN],
+    id: TransactionId,
+    max_body_len: usize,
+) -> Result<usize, DecodeError> {
     let cookie = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
     // The top two bits of every STUN message are zero.
     if cookie != MAGIC_COOKIE || header[0] & 0xC0 != 0 {
@@ -73,10 +78,26 @@ pub(super) fn mapped_address(message: &[u8], id: TransactionId) -> Result<Socket
     if message_type != BINDING_SUCCESS {
         return Err(DecodeError::NotBindingSuccess { message_type });
     }
+    let len = body_len(header);
+    if len > max_body_len {
+        return Err(DecodeError::TooLarge { len });
+    }
+    Ok(len)
+}
+
+/// The address the server saw the request come from. `XOR-MAPPED-ADDRESS`
+/// wins over the legacy `0x8020` variant and the older `MAPPED-ADDRESS`.
+pub(super) fn mapped_address(message: &[u8], id: TransactionId) -> Result<SocketAddr, DecodeError> {
+    let header: &[u8; HEADER_LEN] = message
+        .get(..HEADER_LEN)
+        .and_then(|header| header.try_into().ok())
+        .ok_or(DecodeError::Truncated)?;
+    let len = validate_header(header, id, usize::MAX)?;
     let mut attributes = message
-        .get(HEADER_LEN..HEADER_LEN + body_len(header))
+        .get(HEADER_LEN..HEADER_LEN + len)
         .ok_or(DecodeError::Truncated)?;
 
+    let mut legacy_xor = None;
     let mut mapped = None;
     while attributes.len() >= 4 {
         let kind = u16::from_be_bytes([attributes[0], attributes[1]]);
@@ -88,14 +109,17 @@ pub(super) fn mapped_address(message: &[u8], id: TransactionId) -> Result<Socket
                     return Ok(address);
                 }
             }
-            MAPPED_ADDRESS => mapped = mapped.or(decode_address(value, None)),
+            XOR_MAPPED_ADDRESS_LEGACY => {
+                legacy_xor = legacy_xor.or_else(|| decode_address(value, Some(id)));
+            }
+            MAPPED_ADDRESS => mapped = mapped.or_else(|| decode_address(value, None)),
             _ => {}
         }
         // Attribute values are padded to a multiple of four bytes.
         let padded = (4 + len).next_multiple_of(4);
         attributes = attributes.get(padded..).unwrap_or_default();
     }
-    mapped.ok_or(DecodeError::NoMappedAddress)
+    legacy_xor.or(mapped).ok_or(DecodeError::NoMappedAddress)
 }
 
 /// `None` for a malformed value. `xor` carries the transaction ID when the
@@ -248,6 +272,39 @@ pub(super) mod tests {
         assert_eq!(
             mapped_address(&no_attributes, RFC_5769_ID),
             Err(DecodeError::NoMappedAddress)
+        );
+    }
+
+    #[test]
+    fn legacy_xor_mapped_address_is_preferred_over_plain_mapped_address() {
+        let id = RFC_5769_ID;
+        let xor_addr: SocketAddr = "203.0.113.55:4433".parse().unwrap();
+        let mut xor_response = binding_response(&binding_request(id), xor_addr);
+        // Rewrite the attribute type from 0x0020 to legacy 0x8020.
+        xor_response[20..22].copy_from_slice(&XOR_MAPPED_ADDRESS_LEGACY.to_be_bytes());
+
+        // Prepend a plain MAPPED-ADDRESS pointing elsewhere to check precedence.
+        let mut combined = xor_response[..20].to_vec();
+        let plain_attr = [
+            0x00, 0x01, 0x00, 0x08, 0x00, 0x01, 0x0d, 0x96, 198, 51, 100, 9,
+        ];
+        let legacy_attr = &xor_response[20..];
+        let total_len = (plain_attr.len() + legacy_attr.len()) as u16;
+        combined[2..4].copy_from_slice(&total_len.to_be_bytes());
+        combined.extend_from_slice(&plain_attr);
+        combined.extend_from_slice(legacy_attr);
+
+        assert_eq!(mapped_address(&combined, id), Ok(xor_addr));
+    }
+
+    #[test]
+    fn validate_header_rejects_oversized_bodies() {
+        let mut header: [u8; HEADER_LEN] = RFC_5769_RESPONSE[..HEADER_LEN].try_into().unwrap();
+        header[2..4].copy_from_slice(&2048u16.to_be_bytes());
+
+        assert_eq!(
+            validate_header(&header, RFC_5769_ID, 1004),
+            Err(DecodeError::TooLarge { len: 2048 })
         );
     }
 }

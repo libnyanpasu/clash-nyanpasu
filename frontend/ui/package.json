@@ -34,7 +34,7 @@
   "devDependencies": {
     "@iconify/json": "2.2.561",
     "@types/d3": "7.4.3",
-    "@types/react": "19.3.0",
+    "@types/react": "19.3.2",
     "@types/react-dom": "19.3.0",
     "unplugin-icons": "24.0.0"
   },

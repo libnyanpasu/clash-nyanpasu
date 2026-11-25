@@ -138,3 +138,105 @@ test('the viewer loads injected node content without runtime queries', async ({
   await expect.element(page.getByText('injected-node: 0')).toBeVisible()
   expect(ipc).not.toHaveBeenCalled()
 })
+
+test('a kept candidate says how far it got and why its build stopped', async ({
+  onTestFinished,
+}) => {
+  mockIPC(() => {
+    throw new Error('Unexpected backend call')
+  })
+  const queryClient = new QueryClient()
+  const source: InspectionSource = {
+    summary: { data: summary, isPending: false, isError: false, error: null },
+    loadNode: (snapshotId, nodeId) => ({
+      queryKey: ['candidate-node', snapshotId, nodeId],
+      queryFn: async (): Promise<RuntimeInspectionContent_Serialize> => ({
+        yaml: `candidate-node: ${nodeId}`,
+        diff: null,
+        logs: [],
+      }),
+    }),
+  }
+  const reason = 'the member file could not be read'
+  const halted = {
+    step: { kind: 'profile', profile_id: 'member' },
+    reason,
+  } as const
+  const profiles = new Map([
+    ['member', { uid: 'member', name: 'Member profile' } as never],
+  ])
+
+  function Viewer({ stopped }: { stopped: boolean }) {
+    const [step, setStep] = useState<string>()
+
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <div className="flex h-dvh w-dvw flex-col">
+            <InspectViewer
+              source={source}
+              selectedStep={step}
+              onStepChange={setStep}
+              inspectView={DEFAULT_INSPECT_VIEW}
+              onViewChange={() => {}}
+              profiles={profiles}
+              candidate={
+                stopped
+                  ? { halted, stage: 'built' }
+                  : { halted: null, stage: 'applied_unpublished' }
+              }
+            />
+          </div>
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+  }
+
+  const render_ = async (stopped: boolean) => {
+    const root = createRootRoute({
+      component: () => <Viewer stopped={stopped} />,
+    })
+    const router = createRouter({
+      routeTree: root,
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+    return render(<RouterProvider router={router as never} />)
+  }
+
+  const stopped = await render_(true)
+  onTestFinished(() => {
+    queryClient.clear()
+    clearMocks()
+    vi.unstubAllGlobals()
+  })
+  // It names the step it could not run, as its rows name that profile.
+  await expect
+    .element(
+      page.getByText(m.inspect_candidate_halted_at({ step: 'Member profile' })),
+    )
+    .toBeVisible()
+  expect(
+    stopped.container.querySelector('[data-slot="inspect-candidate-halted"]')
+      ?.textContent,
+  ).toContain(reason)
+  // The last completed step is shown as itself, never as a final config.
+  await userEvent.click(page.getByRole('tab', { name: m.inspect_tab_output() }))
+  await expect.element(page.getByText('candidate-node: 1')).toBeVisible()
+  expect(
+    stopped.container.querySelector(
+      '[data-slot="inspect-step-rail"] [data-key="final"]',
+    ),
+  ).toBeNull()
+  await stopped.unmount()
+
+  const unpublished = await render_(false)
+  await expect
+    .element(page.getByText(m.inspect_candidate_applied_unpublished()))
+    .toBeVisible()
+  expect(
+    unpublished.container.querySelector(
+      '[data-slot="inspect-candidate-halted"]',
+    ),
+  ).toBeNull()
+  await unpublished.unmount()
+})

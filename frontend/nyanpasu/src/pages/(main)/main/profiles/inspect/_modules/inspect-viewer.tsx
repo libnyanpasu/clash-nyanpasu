@@ -15,6 +15,7 @@ import { m } from '@/paraglide/messages'
 import type { RuntimeInspection_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import type { UseQueryResult } from '@tanstack/react-query'
+import CandidateNotice, { type CandidateState } from './candidate-notice'
 import {
   buildSteps,
   filterSteps,
@@ -26,6 +27,9 @@ import type { InspectView } from './inspect-view'
 import StepDetail, { defaultTab, type InspectTab } from './step-detail'
 import StepGraph from './step-graph'
 import StepRail from './step-rail'
+
+/** No node is the final one. */
+const NO_FINAL = -1
 
 export type InspectionSource = {
   summary: Pick<
@@ -50,6 +54,7 @@ export default function InspectViewer({
   snapshotControls,
   status,
   onRefresh,
+  candidate,
 }: {
   source: InspectionSource
   selectedStep?: string
@@ -62,6 +67,8 @@ export default function InspectViewer({
   snapshotControls?: ReactNode
   status?: ReactNode
   onRefresh?: () => void
+  /** A kept candidate's stage, and why its build stopped when it did. */
+  candidate?: CandidateState
 }) {
   const inspection = source.summary
   const snapshot = inspection.data
@@ -75,9 +82,15 @@ export default function InspectViewer({
     tab: InspectTab
   }>()
 
+  // A stopped build has no final configuration: its last node is only the
+  // last step it completed.
+  const halted = candidate?.halted != null
   const steps = useMemo(
-    () => (snapshot ? buildSteps(snapshot.nodes, snapshot.final_id) : []),
-    [snapshot],
+    () =>
+      snapshot
+        ? buildSteps(snapshot.nodes, halted ? NO_FINAL : snapshot.final_id)
+        : [],
+    [snapshot, halted],
   )
   // Keep the step key across snapshots; a missing key falls back to the final step.
   const selected = resolveStep(steps, stepParam)
@@ -167,6 +180,10 @@ export default function InspectViewer({
         onRefresh={onRefresh}
         onShowSteps={() => setStepsOpen(true)}
       />
+
+      {candidate && (
+        <CandidateNotice candidate={candidate} profiles={profiles} />
+      )}
 
       {inspection.isPending && (
         <p

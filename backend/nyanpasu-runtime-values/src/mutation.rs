@@ -33,12 +33,20 @@ pub enum CommitAborted {
     WriteConfig {
         #[serde(skip)]
         source: BoxedCause,
+        /// The checked candidate the write was committing, kept for
+        /// inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<crate::candidate::CandidateSnapshotId>,
     },
     /// The write failed and so did the recovery of what the transaction staged.
     #[snafu(display("failed to write the config and failed to recover afterwards"))]
     RecoverAfterWriteFailure {
         #[serde(skip)]
         source: BoxedCause,
+        /// The checked candidate the write was committing, kept for
+        /// inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<crate::candidate::CandidateSnapshotId>,
     },
     /// Candidate validation refused the change.
     #[snafu(display("the core rejected the candidate configuration: {}", joined(errors)))]
@@ -54,6 +62,58 @@ pub enum CommitAborted {
         #[serde(skip)]
         source: BoxedCause,
     },
+}
+
+impl CommitAborted {
+    /// A write that failed; nothing committed.
+    pub fn write_failed(source: BoxedCause) -> Self {
+        Self::WriteConfig {
+            source,
+            candidate_snapshot_id: None,
+        }
+    }
+
+    /// A write that failed, and so did the recovery of what it staged.
+    pub fn recovery_failed(source: BoxedCause) -> Self {
+        Self::RecoverAfterWriteFailure {
+            source,
+            candidate_snapshot_id: None,
+        }
+    }
+
+    /// The candidate this abort names: the checked one a write failed to
+    /// commit, or the one a refusing or failing runtime check kept.
+    pub fn candidate_snapshot_id(&self) -> Option<&crate::candidate::CandidateSnapshotId> {
+        match self {
+            Self::RuntimeRefused { errors, .. } | Self::RuntimeFailed { errors, .. } => errors
+                .iter()
+                .find_map(|error| error.candidate_snapshot_id()),
+            Self::WriteConfig {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::RecoverAfterWriteFailure {
+                candidate_snapshot_id,
+                ..
+            } => candidate_snapshot_id.as_ref(),
+        }
+    }
+
+    /// Where a failed write names the checked candidate; a check's own
+    /// refusal names its candidate in its runtime errors instead.
+    pub fn candidate_slot(&mut self) -> Option<&mut Option<crate::candidate::CandidateSnapshotId>> {
+        match self {
+            Self::WriteConfig {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::RecoverAfterWriteFailure {
+                candidate_snapshot_id,
+                ..
+            } => Some(candidate_snapshot_id),
+            Self::RuntimeRefused { .. } | Self::RuntimeFailed { .. } => None,
+        }
+    }
 }
 
 fn joined(errors: &[Arc<RuntimeError>]) -> String {

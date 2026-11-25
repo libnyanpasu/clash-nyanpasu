@@ -14,17 +14,18 @@ use std::sync::Arc;
 
 use nyanpasu_config::{
     application::ClashCore,
+    profile::ProfileId,
     runtime::executor::{PartialArtifact, PipelineHalt, RuntimeArtifact},
 };
 use nyanpasu_profile_transform::BuildCandidate;
 
 #[cfg(test)]
 pub(in crate::client) use store::CandidateFiles;
-pub(in crate::client) use store::{CandidateStore, TempCandidateFiles};
+pub(in crate::client) use store::{CandidateStore, Retention, TempCandidateFiles};
 
 use super::{
     runtime::{RuntimeRevision, RuntimeSnapshot},
-    runtime_inspection::RuntimeInspectionData,
+    runtime_inspection::{CandidateStage, RuntimeInspectionData},
 };
 
 /// What a failure keeps for inspection. A finished build's graph and logs are
@@ -37,6 +38,21 @@ pub(in crate::client) struct CandidateEvidence {
     /// Which step a stopped build could not run, and why; `None` when the
     /// build finished.
     pub halted: Option<PipelineHalt>,
+    pub stage: CandidateStage,
+    /// The source whose later failures replace this one.
+    pub source: Option<CandidateSource>,
+}
+
+/// A source that can fail the same way again and again, such as a
+/// subscription refreshed on a schedule: only its latest failure is kept, so
+/// it cannot crowd out the others.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::client) struct CandidateSource(String);
+
+impl CandidateSource {
+    pub(in crate::client) fn profile(id: &ProfileId) -> Self {
+        Self(format!("profile:{}", id.0))
+    }
 }
 
 impl CandidateEvidence {
@@ -46,7 +62,17 @@ impl CandidateEvidence {
             target_core: snapshot.target_core,
             inspection: snapshot.inspection.clone(),
             halted: None,
+            stage: CandidateStage::Built,
+            source: None,
         }
+    }
+
+    pub(in crate::client) fn at(self, stage: CandidateStage) -> Self {
+        Self { stage, ..self }
+    }
+
+    pub(in crate::client) fn from_source(self, source: Option<CandidateSource>) -> Self {
+        Self { source, ..self }
     }
 
     /// The candidate a failed build left, described by the error that ended it.
@@ -79,6 +105,8 @@ impl CandidateEvidence {
                         step: failed_step,
                         reason: error.to_string(),
                     }),
+                    stage: CandidateStage::Built,
+                    source: None,
                 }
             }
         }
@@ -98,6 +126,8 @@ impl CandidateEvidence {
                 step_logs: artifact.step_logs,
             }),
             halted: None,
+            stage: CandidateStage::Built,
+            source: None,
         }
     }
 }

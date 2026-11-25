@@ -1,8 +1,9 @@
 use crate::state::{
-    config_error::{
-        ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu, VersionConflictSnafu,
+    config_error::{ConfigError, LeaveNightlyChannelSnafu, ShuttingDownSnafu},
+    mutation::{
+        DomainChange, MutationCoordinator, impact,
+        ports::{CheckPass, RuntimeCandidate},
     },
-    mutation::{DomainChange, MutationCoordinator, impact, ports::RuntimeCandidate},
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::mutation::ConfigDomain;
@@ -52,6 +53,7 @@ pub struct ApplicationActorState {
     build_channel: nyanpasu_config::application::ReleaseChannel,
     shutdown: CancellationToken,
     settings_changes: tokio::sync::watch::Sender<NyanpasuAppConfig>,
+    outcomes: crate::state::mutation::ports::OwnerOutcomes,
 }
 
 #[derive(Debug)]
@@ -59,10 +61,12 @@ pub struct ApplicationActorState {
 pub enum ApplicationActorMessage {
     Patch {
         patch: NyanpasuAppConfigPatch,
+        attribution: crate::state::mutation::ports::Attribution,
         reply: RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
     },
     Replace {
         state: NyanpasuAppConfig,
+        attribution: crate::state::mutation::ports::Attribution,
         reply: RpcReplyPort<Result<ApplicationSnapshot, ConfigError>>,
     },
 }
@@ -73,11 +77,46 @@ impl ApplicationActor {
     async fn patch(
         state: &mut ApplicationActorState,
         patch: NyanpasuAppConfigPatch,
+        attribution: crate::state::mutation::ports::Attribution,
     ) -> Result<ApplicationSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
         let requested = crate::client::effects::plan::requested_owners(&patch);
         next.apply(patch);
-        Self::commit(state, next, requested).await
+        Self::commit(state, next, requested, attribution).await
+    }
+
+    /// Decides `next` and reports the outcome before anyone hears of it,
+    /// so the record follows this owner's order whatever its callers do.
+    async fn commit(
+        state: &mut ApplicationActorState,
+        next: NyanpasuAppConfig,
+        requested: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
+        attribution: crate::state::mutation::ports::Attribution,
+    ) -> Result<ApplicationSnapshot, ConfigError> {
+        let before = state.manager.snapshot_handle().load().state.clone();
+        let result = Self::decide(state, next, requested).await;
+        if state.mutations.ensure_ready().is_ok() {
+            let record = state.mutations.outcomes();
+            match &result {
+                Ok(snapshot) => state.outcomes.committed(
+                    record.as_ref(),
+                    attribution,
+                    crate::state::mutation::ports::TraySetting::changed_application(
+                        &before,
+                        &snapshot.state,
+                    ),
+                    snapshot.version,
+                ),
+                Err(error) => state.outcomes.failed(
+                    record.as_ref(),
+                    attribution,
+                    state.manager.snapshot_handle().load().version,
+                    error,
+                    error.candidate_snapshot_id(),
+                ),
+            }
+        }
+        result
     }
 
     fn snapshot(state: &ApplicationActorState) -> ApplicationSnapshot {
@@ -99,7 +138,7 @@ impl ApplicationActor {
         Ok(())
     }
 
-    async fn commit(
+    async fn decide(
         state: &mut ApplicationActorState,
         mut next: NyanpasuAppConfig,
         requested: Vec<nyanpasu_runtime_values::configuration::EffectKind>,
@@ -137,18 +176,19 @@ impl ApplicationActor {
         let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
         let operation_id = reaches_runtime.then(OperationId::generate);
         let gate = state.mutations.runtime();
-        if reaches_runtime {
+        let pass = if reaches_runtime {
             gate.check(RuntimeCandidate {
+                background: None,
                 change: DomainChange::Application {
                     candidate: std::sync::Arc::new(next.clone()),
                 },
                 staged: Default::default(),
             })
             .await
-            .map_err(|error| {
-                ConfigError::runtime_check_failure(ConfigDomain::Application, error)
-            })?;
-        }
+            .map_err(|error| ConfigError::runtime_check_failure(ConfigDomain::Application, error))?
+        } else {
+            CheckPass::default()
+        };
         let result = state.manager.replace_if_version(version, next).await;
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
@@ -165,16 +205,20 @@ impl ApplicationActor {
                 }
                 Ok(snapshot)
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
-                domain: ConfigDomain::Application,
-                expected: *version.as_ref(),
-                actual: *actual_version.as_ref(),
-            }
-            .fail(),
-            Err(error) => Err(ConfigError::commit_failure(
-                ConfigDomain::Application,
-                error,
-            )),
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(pass
+                .keep_for(ConfigError::VersionConflict {
+                    domain: ConfigDomain::Application,
+                    expected: *version.as_ref(),
+                    actual: *actual_version.as_ref(),
+                    candidate_snapshot_id: None,
+                })
+                .await),
+            Err(error) => Err(pass
+                .keep_for(ConfigError::commit_failure(
+                    ConfigDomain::Application,
+                    error,
+                ))
+                .await),
         }
     }
 }
@@ -195,6 +239,7 @@ impl Actor for ApplicationActor {
             build_channel: args.build_channel,
             shutdown: args.shutdown,
             settings_changes: args.settings_changes,
+            outcomes: Default::default(),
         })
     }
 
@@ -216,11 +261,20 @@ impl Actor for ApplicationActor {
                     .fail(),
                 );
             }
-            ApplicationActorMessage::Patch { patch, reply } => {
-                let _ = reply.send(Self::patch(state, patch).await);
+            ApplicationActorMessage::Patch {
+                patch,
+                attribution,
+                reply,
+            } => {
+                let _ = reply.send(Self::patch(state, patch, attribution).await);
             }
-            ApplicationActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(Self::commit(state, next, Default::default()).await);
+            ApplicationActorMessage::Replace {
+                state: next,
+                attribution,
+                reply,
+            } => {
+                let _ =
+                    reply.send(Self::commit(state, next, Default::default(), attribution).await);
             }
         }
         Ok(())

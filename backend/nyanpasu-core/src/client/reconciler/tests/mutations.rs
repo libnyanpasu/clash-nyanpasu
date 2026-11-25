@@ -122,6 +122,8 @@ pub(super) struct Fixture {
     pub(super) tasks: tokio_util::task::TaskTracker,
     /// The candidates the check keeps when it refuses one.
     pub(super) candidates: Arc<crate::client::candidate_inspection::CandidateStore>,
+    /// The files the store keeps them in.
+    pub(super) files: Arc<CountingFiles>,
     _dir: tempfile::TempDir,
 }
 
@@ -341,6 +343,10 @@ pub(super) async fn fixture_from(
     );
     let notifications = Arc::new(RecordingNotifications::default());
     let revisions = runtime::RuntimeRevisionAllocator::new();
+    let files = Arc::new(CountingFiles::default());
+    let candidates = Arc::new(crate::client::candidate_inspection::CandidateStore::new(
+        files.clone(),
+    ));
     let client = RuntimeReconcilerClient::spawn_with_ticks(
         RuntimeReconcilerArgs {
             revisions: revisions.clone(),
@@ -360,12 +366,12 @@ pub(super) async fn fixture_from(
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
             tasks: tasks.clone(),
+            candidates: candidates.clone(),
         },
         false,
     )
     .await
     .unwrap();
-    let candidates = crate::client::candidate_inspection::CandidateStore::for_tests();
     let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
         super::super::check::CandidateCheck::new(super::super::check::Args {
             application: application.snapshot_handle(),
@@ -386,6 +392,7 @@ pub(super) async fn fixture_from(
     let clash = clash_owner(clash, gate, &shutdown, &tasks).await;
     Fixture {
         candidates,
+        files,
         client,
         endpoint,
         builder,
@@ -785,6 +792,7 @@ pub(super) async fn application_owner(
     mutations.connect(
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
         gate,
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
     );
     crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -809,6 +817,7 @@ pub(super) async fn clash_owner(
     mutations.connect(
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
         gate,
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
     );
     crate::client::clash_config::ClashConfigClient::from_manager(
         mutations,
@@ -826,6 +835,24 @@ pub(super) struct CommittedSource {
     version: nyanpasu_state_engine::Version,
     reaches_runtime: bool,
 }
+/// Temporary files whose creation a test counts, and can refuse as the
+/// store refuses a build too large to keep.
+#[derive(Default)]
+pub(super) struct CountingFiles {
+    pub(super) created: AtomicUsize,
+    pub(super) refuse: AtomicBool,
+}
+
+impl crate::client::candidate_inspection::CandidateFiles for CountingFiles {
+    fn create(&self) -> std::io::Result<std::fs::File> {
+        self.created.fetch_add(1, Ordering::SeqCst);
+        if self.refuse.load(Ordering::SeqCst) {
+            return Err(std::io::Error::other("this candidate cannot be kept"));
+        }
+        tempfile::tempfile()
+    }
+}
+
 #[async_trait::async_trait]
 pub(super) trait SourceOwner {
     type Value: Send;

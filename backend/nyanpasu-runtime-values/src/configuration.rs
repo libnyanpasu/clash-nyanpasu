@@ -3,6 +3,8 @@
 use nyanpasu_config::profile::ProfileId;
 use serde::Serialize;
 
+use crate::{candidate::CandidateSnapshotId, profiles::ProfilesError};
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct ConfigurationStatus {
     pub event_seq: u64,
@@ -12,9 +14,45 @@ pub struct ConfigurationStatus {
     pub effects: Vec<EffectConvergence>,
     /// The latest background-source receipt per profile.
     pub sources: Vec<SourceStatus>,
+    /// The latest change per origin that no caller waited on and whose
+    /// failure kept a candidate; held for this session only. Left out when
+    /// empty, so the status reads as it did before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused_changes: Vec<RefusedBackgroundChange>,
     pub active: Option<String>,
     pub recent_operations: Vec<OperationStatus>,
 }
+/// Where a change no caller waited on came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundChangeOrigin {
+    /// Library sync applying the application settings.
+    SyncApplication,
+    /// Library sync applying the Clash settings.
+    SyncClash,
+    /// Library sync applying the profiles.
+    SyncProfiles,
+    /// A tray item or a global shortcut changing the proxy mode.
+    ActionClashMode,
+    /// A tray item or a global shortcut changing the system proxy.
+    ActionSystemProxy,
+    /// A tray item or a global shortcut changing TUN mode.
+    ActionTunMode,
+    /// A tray item or a global shortcut changing the transparent proxy.
+    ActionTransparentProxy,
+}
+
+/// A change no caller waited on that the configuration check refused, or
+/// whose commit failed after it, with the candidate it kept while this
+/// session still holds it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct RefusedBackgroundChange {
+    pub origin: BackgroundChangeOrigin,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_snapshot_id: Option<CandidateSnapshotId>,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct SourceVersions {
     pub application: u64,
@@ -27,6 +65,9 @@ pub struct RuntimeConvergence {
     pub health: ConvergenceHealth,
     pub operation_id: Option<String>,
     pub message: Option<String>,
+    /// The candidate the current failure kept for inspection in this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_snapshot_id: Option<CandidateSnapshotId>,
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct EffectConvergence {
@@ -149,19 +190,27 @@ pub enum SourceOrigin {
 pub enum SourceOutcome {
     Committed {
         operation_id: Option<String>,
+        /// The committed content's file is not completed yet; maintenance
+        /// retries it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deferred: Option<DeferredCompletion>,
     },
     /// Its result no longer applied to the profile and was dropped (V31).
-    Superseded {
-        reason: String,
-    },
+    Superseded { reason: String },
     Failed {
         message: String,
+        /// The candidate the failure kept for inspection in this session.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     /// The content reached the source transaction and was refused; nothing
     /// was committed and an external file is never rewritten (V33).
     Rejected {
         code: String,
         message: String,
+        /// The candidate the failure kept for inspection in this session.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
 }
 
@@ -173,15 +222,47 @@ impl SourceOutcome {
         Self::Rejected {
             code: code.into(),
             message: error.to_string(),
+            candidate_snapshot_id: None,
+        }
+    }
+
+    /// A change the source transaction refused, naming the candidate its
+    /// error kept.
+    pub fn refused(code: &str, error: &ProfilesError) -> Self {
+        Self::Rejected {
+            code: code.into(),
+            message: error.report(),
+            candidate_snapshot_id: error.candidate_snapshot_id().cloned(),
+        }
+    }
+
+    /// A source that failed, naming the candidate its error kept.
+    pub fn failed(error: &ProfilesError) -> Self {
+        Self::Failed {
+            message: error.report(),
+            candidate_snapshot_id: error.candidate_snapshot_id().cloned(),
         }
     }
 
     pub fn health(&self) -> ConvergenceHealth {
         match self {
+            Self::Committed {
+                deferred: Some(_), ..
+            } => ConvergenceHealth::RetryScheduled,
             Self::Committed { .. } | Self::Superseded { .. } => ConvergenceHealth::Healthy,
             Self::Failed { .. } | Self::Rejected { .. } => ConvergenceHealth::Blocked,
         }
     }
+}
+
+/// A committed source whose file could not be completed yet.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DeferredCompletion {
+    pub message: String,
+    /// The candidate the committed content was checked with, kept for
+    /// inspection in this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_snapshot_id: Option<CandidateSnapshotId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]

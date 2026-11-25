@@ -27,6 +27,14 @@ use crate::{
         },
     },
 };
+use nyanpasu_config::profile::ManagedProfilePath;
+use nyanpasu_contracts::profiles::{
+    error::ProfileFileError,
+    ports::{
+        CleanupOutcome, MaterializationReconcileReport, MaterializationResource, PreparedCleanup,
+        PreparedMaterialization, ProfileMaterializationPort,
+    },
+};
 use nyanpasu_runtime_values::execution_host::ExecutionHost;
 
 #[derive(Default)]
@@ -126,6 +134,16 @@ impl Fixture {
         installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
         fetcher: Option<Arc<dyn nyanpasu_contracts::profiles::ports::SubscriptionFetcher>>,
     ) -> Self {
+        Self::with_profile_files(fail_reconcile, installer, fetcher, None).await
+    }
+
+    /// `materialization` wraps the port profile files materialize through.
+    async fn with_profile_files(
+        fail_reconcile: bool,
+        installer: Arc<dyn nyanpasu_contracts::core_install::BinaryInstaller>,
+        fetcher: Option<Arc<dyn nyanpasu_contracts::profiles::ports::SubscriptionFetcher>>,
+        materialization: Option<Arc<CompleteFails>>,
+    ) -> Self {
         let calls = Arc::new(Calls::default());
         let (url, server) = (async {
             let router = Router::new()
@@ -171,6 +189,15 @@ impl Fixture {
             adapters.profile_files = Arc::new(move |ports| {
                 let mut files = factory(ports);
                 files.fetcher = fetcher.clone();
+                files
+            });
+        }
+        if let Some(materialization) = materialization {
+            let factory = adapters.profile_files.clone();
+            adapters.profile_files = Arc::new(move |ports| {
+                let mut files = factory(ports);
+                materialization.wrap(files.materialization);
+                files.materialization = materialization.clone();
                 files
             });
         }
@@ -1361,4 +1388,1005 @@ async fn deferred_profile_change_interrupts_connections_once_on_retry() {
         f.client.request_shutdown();
         f.client.wait_shutdown().await;
     }
+}
+
+#[tokio::test]
+async fn a_scheduled_refresh_the_check_refuses_names_its_candidate_in_the_source_row() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    use nyanpasu_runtime_values::{candidate::CandidateSnapshotId, configuration::SourceOutcome};
+
+    use crate::state::profiles::actor::{ProfilesActorMessage, RefreshOrigin};
+    let mut fetcher = MockSubscriptionFetcher::new();
+    let fetched = AtomicUsize::new(0);
+    fetcher.expect_fetch().times(3).returning(move |_, _| {
+        Ok(FetchedSubscription {
+            content: match fetched.fetch_add(1, Ordering::SeqCst) {
+                0 => "proxies: []\n".into(),
+                n => format!(
+                    "proxies: []\nproxy-groups:\n  - {{name: refreshed-marker-{n}, type: select, proxies: [DIRECT]}}\n"
+                ),
+            },
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let f = Fixture::with_fetcher(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+    )
+    .await;
+    let uid = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .into_value();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Reject(
+            CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
+                "subscription rejected",
+                false,
+            ),
+        ));
+    // Scheduled refreshes run once the application started its producers.
+    f.client.inner.profiles.start_producers().unwrap();
+    let mut sources = f.client.inner.profiles.subscribe_sources();
+    // The candidate the next scheduled refusal names in the source row,
+    // other than `previous`.
+    let mut refused = async |previous: Option<&CandidateSnapshotId>| {
+        f.client
+            .inner
+            .profiles
+            .cast_for_test(ProfilesActorMessage::RefreshRemote {
+                uid: uid.clone(),
+                patch: None,
+                origin: RefreshOrigin::Scheduled,
+                reply: None,
+            });
+        let snapshot = sources
+            .wait_for(|snapshot| {
+                snapshot.entries.iter().any(|entry| {
+                    entry.profile == uid
+                        && matches!(&entry.outcome, SourceOutcome::Rejected { candidate_snapshot_id, .. }
+                            if candidate_snapshot_id.as_ref() != previous)
+                })
+            })
+            .await
+            .unwrap()
+            .clone();
+        let row = snapshot
+            .entries
+            .into_iter()
+            .find(|entry| entry.profile == uid)
+            .unwrap();
+        let SourceOutcome::Rejected {
+            candidate_snapshot_id: Some(id),
+            ..
+        } = &row.outcome
+        else {
+            panic!(
+                "the scheduled receipt names its candidate: {:?}",
+                row.outcome
+            );
+        };
+        let status = f.client.configuration_status();
+        assert!(
+            status
+                .sources
+                .iter()
+                .any(|entry| entry.outcome == row.outcome)
+        );
+        id.clone()
+    };
+    let first = refused(None).await;
+    let candidate = f.client.inspect_candidate_runtime(&first).await.unwrap();
+    let content = f
+        .client
+        .inspect_candidate_node(&first, candidate.inspection.final_id)
+        .await
+        .unwrap();
+    assert!(
+        content.yaml.contains("refreshed-marker"),
+        "{}",
+        content.yaml
+    );
+
+    // The same subscription failing again replaces its candidate instead of
+    // adding one.
+    let second = refused(Some(&first)).await;
+    assert!(f.client.inspect_candidate_runtime(&second).await.is_ok());
+    assert!(f.client.inspect_candidate_runtime(&first).await.is_err());
+    assert_eq!(f.client.inner.candidates.kept(), [second]);
+}
+
+/// Refuses every check from now on.
+fn refuse_checks(f: &Fixture) {
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Reject(
+            CoreError::new(
+                nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed,
+                "background change rejected",
+                false,
+            ),
+        ));
+}
+
+/// The refused background change from `origin` the status reports, and the
+/// mode of the candidate it names.
+async fn refused_change(
+    f: &Fixture,
+    origin: nyanpasu_runtime_values::configuration::BackgroundChangeOrigin,
+) -> serde_json::Value {
+    let status = f.client.configuration_status();
+    let entry = status
+        .refused_changes
+        .iter()
+        .find(|entry| entry.origin == origin)
+        .unwrap_or_else(|| panic!("{origin:?} is reported: {:?}", status.refused_changes));
+    assert!(
+        entry.message.contains("background change rejected"),
+        "{}",
+        entry.message
+    );
+    let id = entry
+        .candidate_snapshot_id
+        .as_ref()
+        .expect("the entry names its candidate");
+    let candidate = f.client.inspect_candidate_runtime(id).await.unwrap();
+    let content = f
+        .client
+        .inspect_candidate_node(id, candidate.inspection.final_id)
+        .await
+        .unwrap();
+    let config: serde_json::Value = yaml_serde::from_str(&content.yaml).unwrap();
+    config["mode"].clone()
+}
+
+#[tokio::test]
+async fn a_synced_change_the_check_refuses_is_reported_with_its_candidate() {
+    use nyanpasu_runtime_values::configuration::BackgroundChangeOrigin;
+
+    use crate::{client::sync::OwnerStatePort, sync::ports::PortableStatePort as _};
+    let f = Fixture::new(false).await;
+    let inner = &f.client.inner;
+    // The port library sync applies through, over this client's owners and
+    // status.
+    let port = OwnerStatePort {
+        application: inner.application.clone(),
+        clash: inner.clash_config.clone(),
+        profiles: inner.profiles.clone(),
+        paths: inner.paths.clone(),
+    };
+    let current = inner.clash_config.snapshot();
+    let mut next = current.state.clone();
+    next.overrides.apply(mode_patch());
+    let merged = nyanpasu_config::sync::project_clash(&next).unwrap();
+    refuse_checks(&f);
+
+    let outcome = port.apply_clash(current.version, &merged).await.unwrap();
+    assert!(
+        matches!(outcome, crate::sync::ports::ApplyOutcome::Refused { .. }),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::SyncClash).await,
+        "global"
+    );
+
+    // Once a synced change commits, its earlier refusal is no longer news.
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+    let current = inner.clash_config.snapshot();
+    port.apply_clash(current.version, &merged).await.unwrap();
+    assert!(f.client.configuration_status().refused_changes.is_empty());
+}
+
+#[tokio::test]
+async fn a_synced_change_to_the_same_setting_clears_the_tray_row() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+
+    use crate::{client::sync::OwnerStatePort, sync::ports::PortableStatePort as _};
+    let f = Fixture::new(false).await;
+    let inner = &f.client.inner;
+    let port = OwnerStatePort {
+        application: inner.application.clone(),
+        clash: inner.clash_config.clone(),
+        profiles: inner.profiles.clone(),
+        paths: inner.paths.clone(),
+    };
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+        .await
+        .unwrap_err();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+
+    // A synced change to another setting leaves the mode refusal.
+    let current = inner.clash_config.snapshot();
+    let mut next = current.state.clone();
+    next.overrides.apply(ClashGuardOverridesPatch {
+        allow_lan: Some(true),
+        ..Default::default()
+    });
+    let merged = nyanpasu_config::sync::project_clash(&next).unwrap();
+    port.apply_clash(current.version, &merged).await.unwrap();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+
+    // One that changes the mode clears it: the owner sees which settings
+    // its commit changed.
+    let current = inner.clash_config.snapshot();
+    let mut next = current.state.clone();
+    next.overrides.apply(mode_patch());
+    let merged = nyanpasu_config::sync::project_clash(&next).unwrap();
+    port.apply_clash(current.version, &merged).await.unwrap();
+    assert!(f.client.configuration_status().refused_changes.is_empty());
+}
+
+#[tokio::test]
+async fn a_tray_or_shortcut_change_the_check_refuses_is_reported_with_its_candidate() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_action_that_finishes_after_a_later_refusal_leaves_that_refusal_reported() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    // The first action commits and then waits on the connections it closes.
+    f.calls.hold_close.store(true, Ordering::SeqCst);
+    let first = {
+        let client = f.client.clone();
+        tokio::spawn(async move {
+            client
+                .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+                .await
+        })
+    };
+    f.calls.entered.notified().await;
+
+    // A later action of the same kind is refused meanwhile.
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+
+    // The earlier one finishing does not report over the later refusal.
+    f.calls.hold_close.store(false, Ordering::SeqCst);
+    f.calls.release.notify_one();
+    first.await.unwrap().unwrap();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+}
+
+#[tokio::test]
+async fn a_refusal_after_an_earlier_action_commits_stays_reported() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    // The earlier action reaches its owner and commits; its caller has not
+    // resumed when the later one is refused, and both finish together.
+    let before = f.client.inner.clash_config.snapshot().version;
+    let mut global = std::pin::pin!(
+        f.client
+            .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+    );
+    assert!(global.as_mut().now_or_never().is_none());
+    until(|| f.client.inner.clash_config.snapshot().version != before).await;
+    refuse_checks(&f);
+    let (global, direct) = tokio::join!(
+        global,
+        f.client
+            .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+    );
+    global.unwrap();
+    direct.unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+
+    // Another action starts; the settings page sets the mode meanwhile,
+    // which clears the refusal so far, and then the action is refused.
+    let late = f
+        .client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal);
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+    f.client.set_proxy_mode(Mode::Rule).await.unwrap();
+    assert!(f.client.configuration_status().refused_changes.is_empty());
+    refuse_checks(&f);
+    late.await.unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+}
+
+/// Waits for `done`, letting the owners run meanwhile.
+async fn until(done: impl Fn() -> bool) {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !done() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the owner gets there");
+}
+
+/// The candidate the status reports for `origin`.
+fn reported(
+    f: &Fixture,
+    origin: nyanpasu_runtime_values::configuration::BackgroundChangeOrigin,
+) -> Option<nyanpasu_runtime_values::candidate::CandidateSnapshotId> {
+    f.client
+        .configuration_status()
+        .refused_changes
+        .into_iter()
+        .find(|entry| entry.origin == origin)
+        .and_then(|entry| entry.candidate_snapshot_id)
+}
+
+#[tokio::test]
+async fn a_refusal_whose_caller_resumes_after_its_candidate_is_dropped_leaves_the_later_one() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    // The owner refuses the first action and reports it; its caller waits.
+    let mut first = std::pin::pin!(
+        f.client
+            .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+    );
+    assert!(first.as_mut().now_or_never().is_none());
+    until(|| reported(&f, BackgroundChangeOrigin::ActionClashMode).is_some()).await;
+    let dropped = reported(&f, BackgroundChangeOrigin::ActionClashMode).unwrap();
+
+    // Eight later refusals of the same setting push its candidate out.
+    for _ in 0..8 {
+        f.client
+            .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+            .await
+            .unwrap_err();
+    }
+    let latest = reported(&f, BackgroundChangeOrigin::ActionClashMode).unwrap();
+    assert_ne!(latest, dropped);
+    assert!(f.client.inspect_candidate_runtime(&dropped).await.is_err());
+
+    // Its caller resuming changes nothing: the latest one still opens.
+    first.await.unwrap_err();
+    assert_eq!(
+        reported(&f, BackgroundChangeOrigin::ActionClashMode),
+        Some(latest)
+    );
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+}
+
+#[tokio::test]
+async fn a_commit_whose_caller_is_gone_still_clears_the_refusal_before_it() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+        .await
+        .unwrap_err();
+    assert!(reported(&f, BackgroundChangeOrigin::ActionClashMode).is_some());
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+
+    // The settings page asks for the mode and stops waiting once the
+    // request reached the owner.
+    let before = f.client.inner.clash_config.snapshot().version;
+    {
+        let mut settings = std::pin::pin!(f.client.set_proxy_mode(Mode::Global));
+        assert!(settings.as_mut().now_or_never().is_none());
+    }
+    until(|| f.client.inner.clash_config.snapshot().version != before).await;
+    until(|| f.client.configuration_status().refused_changes.is_empty()).await;
+}
+
+#[tokio::test]
+async fn a_settings_reply_delayed_past_a_later_refusal_leaves_that_refusal_reported() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    // The settings page sets the mode; its owner commits, and the caller
+    // has not resumed yet.
+    let before = f.client.inner.clash_config.snapshot().version;
+    let mut settings = std::pin::pin!(f.client.set_proxy_mode(Mode::Global));
+    assert!(settings.as_mut().now_or_never().is_none());
+    until(|| f.client.inner.clash_config.snapshot().version != before).await;
+
+    // A tray action is refused after that commit.
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+
+    // The settings caller resuming does not clear the later refusal.
+    settings.await.unwrap();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "direct"
+    );
+}
+
+#[tokio::test]
+async fn only_an_action_on_the_same_setting_clears_its_refusal() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap_err();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+
+    // The system proxy is another setting: the mode refusal stays.
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ToggleSystemProxy)
+        .await
+        .unwrap();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+
+    // A mode change that succeeds replaces it.
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap();
+    assert!(f.client.configuration_status().refused_changes.is_empty());
+}
+
+#[tokio::test]
+async fn refreshes_a_user_asked_for_each_keep_their_candidate() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    let mut fetcher = MockSubscriptionFetcher::new();
+    let fetched = AtomicUsize::new(0);
+    fetcher.expect_fetch().times(3).returning(move |_, _| {
+        Ok(FetchedSubscription {
+            content: format!(
+                "proxies: []\nproxy-groups:\n  - {{name: manual-{}, type: select, proxies: [DIRECT]}}\n",
+                fetched.fetch_add(1, Ordering::SeqCst)
+            ),
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let f = Fixture::with_fetcher(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+    )
+    .await;
+    let uid = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .into_value();
+    refuse_checks(&f);
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let error = f
+            .client
+            .refresh_profile(uid.clone(), None)
+            .await
+            .unwrap_err();
+        let crate::client::ClientError::Profiles(error) = error else {
+            panic!("expected a profiles error: {error:?}");
+        };
+        ids.push(error.candidate_snapshot_id().unwrap().clone());
+    }
+    // The first dialog's candidate stays open beside the second.
+    for (n, id) in ids.iter().enumerate() {
+        let candidate = f.client.inspect_candidate_runtime(id).await.unwrap();
+        let content = f
+            .client
+            .inspect_candidate_node(id, candidate.inspection.final_id)
+            .await
+            .unwrap();
+        assert!(
+            content.yaml.contains(&format!("manual-{}", n + 1)),
+            "{}",
+            content.yaml
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_scheduled_refresh_whose_file_is_not_completed_names_its_candidate_in_the_source_row() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    use nyanpasu_runtime_values::configuration::{ConvergenceHealth, SourceOutcome};
+
+    use crate::state::profiles::actor::{ProfilesActorMessage, RefreshOrigin};
+    let mut fetcher = MockSubscriptionFetcher::new();
+    let fetched = AtomicUsize::new(0);
+    fetcher.expect_fetch().times(2).returning(move |_, _| {
+        Ok(FetchedSubscription {
+            content: match fetched.fetch_add(1, Ordering::SeqCst) {
+                0 => "proxies: []\n".into(),
+                _ => "proxies: []\nproxy-groups:\n  - {name: deferred-marker, type: select, proxies: [DIRECT]}\n"
+                    .into(),
+            },
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let materialization = Arc::new(CompleteFails::default());
+    let f = Fixture::with_profile_files(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+        Some(materialization.clone()),
+    )
+    .await;
+    let uid = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .into_value();
+    f.client.inner.profiles.start_producers().unwrap();
+    materialization.fail.store(true, Ordering::SeqCst);
+    let mut sources = f.client.inner.profiles.subscribe_sources();
+    f.client
+        .inner
+        .profiles
+        .cast_for_test(ProfilesActorMessage::RefreshRemote {
+            uid: uid.clone(),
+            patch: None,
+            origin: RefreshOrigin::Scheduled,
+            reply: None,
+        });
+    let snapshot = sources
+        .wait_for(|snapshot| {
+            snapshot.entries.iter().any(|entry| {
+                entry.profile == uid
+                    && matches!(
+                        entry.outcome,
+                        SourceOutcome::Committed {
+                            deferred: Some(_),
+                            ..
+                        }
+                    )
+            })
+        })
+        .await
+        .unwrap()
+        .clone();
+    let row = snapshot
+        .entries
+        .iter()
+        .find(|entry| entry.profile == uid)
+        .unwrap();
+    // The source stays committed, and its row asks for attention.
+    assert_eq!(row.health, ConvergenceHealth::RetryScheduled);
+    let SourceOutcome::Committed {
+        deferred: Some(deferred),
+        ..
+    } = &row.outcome
+    else {
+        unreachable!()
+    };
+    let id = deferred
+        .candidate_snapshot_id
+        .as_ref()
+        .expect("the deferred file names its checked candidate");
+    let candidate = f.client.inspect_candidate_runtime(id).await.unwrap();
+    let content = f
+        .client
+        .inspect_candidate_node(id, candidate.inspection.final_id)
+        .await
+        .unwrap();
+    assert!(content.yaml.contains("deferred-marker"), "{}", content.yaml);
+
+    // Maintenance completes the file, and the row is healthy again.
+    materialization.fail.store(false, Ordering::SeqCst);
+    f.client
+        .inner
+        .profiles
+        .cast_for_test(ProfilesActorMessage::ReconcileMaterializations);
+    let snapshot = sources
+        .wait_for(|snapshot| {
+            snapshot.entries.iter().any(|entry| {
+                entry.profile == uid
+                    && matches!(
+                        entry.outcome,
+                        SourceOutcome::Committed { deferred: None, .. }
+                    )
+            })
+        })
+        .await
+        .unwrap()
+        .clone();
+    let row = snapshot
+        .entries
+        .iter()
+        .find(|entry| entry.profile == uid)
+        .unwrap();
+    assert_eq!(row.health, ConvergenceHealth::Healthy);
+}
+
+#[tokio::test]
+async fn a_row_stops_offering_a_candidate_the_session_dropped_but_keeps_its_message() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    use nyanpasu_runtime_values::{
+        configuration::{BackgroundChangeOrigin, SourceOutcome},
+        hotkey::HotkeyAction,
+    };
+
+    use crate::state::profiles::actor::{ProfilesActorMessage, RefreshOrigin};
+    let mut fetcher = MockSubscriptionFetcher::new();
+    fetcher.expect_fetch().times(2).returning(|_, _| {
+        Ok(FetchedSubscription {
+            content: "proxies: []\n".into(),
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let f = Fixture::with_fetcher(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+    )
+    .await;
+    let uid = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .into_value();
+    refuse_checks(&f);
+    // A scheduled refresh and a tray item are refused, and their rows name
+    // their candidates.
+    f.client.inner.profiles.start_producers().unwrap();
+    let mut sources = f.client.inner.profiles.subscribe_sources();
+    f.client
+        .inner
+        .profiles
+        .cast_for_test(ProfilesActorMessage::RefreshRemote {
+            uid: uid.clone(),
+            patch: None,
+            origin: RefreshOrigin::Scheduled,
+            reply: None,
+        });
+    sources
+        .wait_for(|snapshot| {
+            snapshot.entries.iter().any(|entry| {
+                entry.profile == uid && matches!(entry.outcome, SourceOutcome::Rejected { .. })
+            })
+        })
+        .await
+        .unwrap();
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+    let source_row = |status: &nyanpasu_runtime_values::configuration::ConfigurationStatus| {
+        let row = status
+            .sources
+            .iter()
+            .find(|entry| entry.profile == uid)
+            .unwrap();
+        let SourceOutcome::Rejected {
+            message,
+            candidate_snapshot_id,
+            ..
+        } = &row.outcome
+        else {
+            panic!("the refresh was refused: {:?}", row.outcome);
+        };
+        (message.clone(), candidate_snapshot_id.clone())
+    };
+    let before = f.client.configuration_status();
+    assert!(source_row(&before).1.is_some());
+
+    // Eight unrelated failures fill the session's candidates.
+    let (_, _, _, _, mut evictions) = f.client.subscribe_configuration_changes();
+    evictions.borrow_and_update();
+    for _ in 0..8 {
+        f.client.set_proxy_mode(Mode::Direct).await.unwrap_err();
+    }
+
+    // The view that follows the changes is told to look again, and a fresh
+    // read keeps both failures without offering what can no longer open.
+    assert!(evictions.has_changed().unwrap());
+    let after = f.client.configuration_status();
+    assert!(after.event_seq > before.event_seq);
+    let (message, candidate) = source_row(&after);
+    assert_eq!(message, source_row(&before).0);
+    assert_eq!(candidate, None);
+    let tray = after
+        .refused_changes
+        .iter()
+        .find(|entry| entry.origin == BackgroundChangeOrigin::ActionClashMode)
+        .unwrap();
+    assert!(tray.message.contains("background change rejected"));
+    assert_eq!(tray.candidate_snapshot_id, None);
+}
+
+#[tokio::test]
+async fn an_action_that_fails_without_a_candidate_leaves_the_last_refusal() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap_err();
+    // The next mode change fails too, and keeps nothing.
+    f.client.inner.candidates.close();
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeDirect)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+}
+
+#[tokio::test]
+async fn a_settings_change_to_the_same_setting_clears_the_tray_row() {
+    use nyanpasu_runtime_values::{configuration::BackgroundChangeOrigin, hotkey::HotkeyAction};
+    let f = Fixture::new(false).await;
+    refuse_checks(&f);
+    f.client
+        .dispatch_hotkey_action(HotkeyAction::ClashModeGlobal)
+        .await
+        .unwrap_err();
+    f.endpoint
+        .delegate
+        .set_check_answer(crate::client::test_support::TestCheckAnswer::Pass);
+
+    // Another override from the settings page leaves it.
+    f.client
+        .patch_runtime_overrides(ClashGuardOverridesPatch {
+            allow_lan: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        refused_change(&f, BackgroundChangeOrigin::ActionClashMode).await,
+        "global"
+    );
+
+    // The settings page setting the mode replaces it.
+    f.client.set_proxy_mode(Mode::Global).await.unwrap();
+    assert!(f.client.configuration_status().refused_changes.is_empty());
+}
+
+/// Materializes profile files through another port, except that completing
+/// a write fails while `fail` is set.
+#[derive(Default)]
+struct CompleteFails {
+    inner: std::sync::OnceLock<Arc<dyn ProfileMaterializationPort>>,
+    fail: AtomicBool,
+}
+
+impl CompleteFails {
+    fn wrap(&self, port: Arc<dyn ProfileMaterializationPort>) {
+        let _ = self.inner.set(port);
+    }
+
+    fn port(&self) -> &dyn ProfileMaterializationPort {
+        self.inner.get().unwrap().as_ref()
+    }
+}
+
+impl ProfileMaterializationPort for CompleteFails {
+    fn prepare_state_first(
+        &self,
+        path: &ManagedProfilePath,
+        resource: MaterializationResource,
+        expected_revision: u64,
+    ) -> Result<PreparedMaterialization, ProfileFileError> {
+        self.port()
+            .prepare_state_first(path, resource, expected_revision)
+    }
+
+    fn prepare_file_first(
+        &self,
+        path: &ManagedProfilePath,
+        resource: MaterializationResource,
+        expected_revision: u64,
+    ) -> Result<PreparedMaterialization, ProfileFileError> {
+        self.port()
+            .prepare_file_first(path, resource, expected_revision)
+    }
+
+    fn promote(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError> {
+        self.port().promote(prepared)
+    }
+
+    fn complete(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError> {
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(ProfileFileError::mock("journal stuck"));
+        }
+        self.port().complete(prepared)
+    }
+
+    fn compensate(&self, prepared: &PreparedMaterialization) -> Result<(), ProfileFileError> {
+        self.port().compensate(prepared)
+    }
+
+    fn prepare_cleanup(
+        &self,
+        path: &ManagedProfilePath,
+        expected_revision: u64,
+    ) -> Result<PreparedCleanup, ProfileFileError> {
+        self.port().prepare_cleanup(path, expected_revision)
+    }
+
+    fn activate_cleanup(&self, cleanup: &PreparedCleanup) -> Result<(), ProfileFileError> {
+        self.port().activate_cleanup(cleanup)
+    }
+
+    fn cancel_cleanup(&self, cleanup: &PreparedCleanup) -> Result<(), ProfileFileError> {
+        self.port().cancel_cleanup(cleanup)
+    }
+
+    fn retry_cleanup(
+        &self,
+        cleanup: &PreparedCleanup,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> Result<CleanupOutcome, ProfileFileError> {
+        self.port().retry_cleanup(cleanup, profiles)
+    }
+
+    fn reconcile(
+        &self,
+        profiles: &nyanpasu_config::profile::Profiles,
+    ) -> Result<MaterializationReconcileReport, ProfileFileError> {
+        self.port().reconcile(profiles)
+    }
+}
+
+#[tokio::test]
+async fn a_saved_profile_whose_file_is_not_completed_names_its_checked_candidate() {
+    use nyanpasu_runtime_values::runtime::DegradationReason;
+    let materialization = Arc::new(CompleteFails::default());
+    let f = Fixture::with_profile_files(
+        false,
+        Arc::new(Installer::succeeding()),
+        None,
+        Some(materialization.clone()),
+    )
+    .await;
+    let added = f
+        .client
+        .create_profile(
+            crate::client::test_support::facade::local_config_request("local"),
+            Some(
+                "proxies: []
+"
+                .into(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert!(
+        added.degradations().is_empty(),
+        "{:?}",
+        added.degradations()
+    );
+    let uid = added.into_value();
+    assert_eq!(
+        f.client.get_profiles().await.unwrap().current,
+        Some(uid.clone())
+    );
+
+    materialization.fail.store(true, Ordering::SeqCst);
+    let outcome = f
+        .client
+        .save_profile_file(
+            uid,
+            "proxies: []
+proxy-groups:
+  - {name: saved-marker, type: select, proxies: [DIRECT]}
+"
+            .into(),
+        )
+        .await
+        .unwrap();
+    let id = outcome
+        .degradations()
+        .iter()
+        .find_map(|degradation| match &degradation.reason {
+            DegradationReason::MaterializationDeferred {
+                candidate_snapshot_id,
+            } => candidate_snapshot_id.clone(),
+            _ => None,
+        })
+        .expect("the deferred file names the candidate its change was checked with");
+    let candidate = f.client.inspect_candidate_runtime(&id).await.unwrap();
+    assert_eq!(
+        candidate.stage,
+        crate::client::runtime_inspection::CandidateStage::Prechecked
+    );
+    let content = f
+        .client
+        .inspect_candidate_node(&id, candidate.inspection.final_id)
+        .await
+        .unwrap();
+    assert!(content.yaml.contains("saved-marker"), "{}", content.yaml);
 }

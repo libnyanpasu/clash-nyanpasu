@@ -398,8 +398,11 @@ impl crate::state::mutation::ports::RuntimeGate for SavedRuntimeGate {
     async fn check(
         &self,
         _: crate::state::mutation::ports::RuntimeCandidate,
-    ) -> Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
-        Ok(())
+    ) -> Result<
+        crate::state::mutation::ports::CheckPass,
+        Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
+    > {
+        Ok(Default::default())
     }
 
     fn committed(
@@ -415,5 +418,6 @@ fn connect_source(client: &NyanpasuClient, mutations: crate::state::mutation::Mu
     mutations.connect(
         Arc::new(effects::ports::NoopCommitNotifications),
         Arc::new(SavedRuntimeGate(client.inner.reconciler.clone())),
+        Arc::new(client.inner.refused_changes.clone()),
     );
 }

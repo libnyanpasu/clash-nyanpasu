@@ -152,6 +152,8 @@ pub(super) struct RuntimeReconcilerArgs {
     /// stops the core in `post_stop`.
     pub shutdown: CancellationToken,
     pub tasks: TaskTracker,
+    /// Where failed attempts keep their candidates for inspection.
+    pub candidates: Arc<super::candidate_inspection::CandidateStore>,
 }
 
 struct ActorArgs {
@@ -183,6 +185,11 @@ impl RuntimeReconcilerState {
         });
         let degradations = std::mem::take(&mut self.workflow.round_degradations);
         let maintenance = self.workflow.maintenance();
+        let maintenance_candidate = self.workflow.maintenance_candidate();
+        // The store holds every candidate this or a later round can report,
+        // so a status never names one that has aged out.
+        let reportable = self.workflow.reportable_candidates(&round.conclusion);
+        self.workflow.candidates.hold(&reportable);
         self.reconciler.send_modify(|status| {
             status.seq = status
                 .seq
@@ -200,6 +207,7 @@ impl RuntimeReconcilerState {
                 status.degradations = degradations;
             }
             status.maintenance = maintenance;
+            status.maintenance_candidate = maintenance_candidate;
             if status.recent.len() == HISTORY_LEN {
                 status.recent.pop_front();
             }
@@ -450,6 +458,8 @@ impl RuntimeReconcilerClient {
             service_preferred: args.application.load().state.enable_service_mode,
             release_owed: false,
             startup: None,
+            candidates: args.candidates,
+            waiting_candidate: None,
             lifecycle: CoreLifecycleWorkflow {
                 application: args.application,
                 core: CoreFacade::new(args.core, args.service),

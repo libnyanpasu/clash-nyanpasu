@@ -339,6 +339,23 @@ impl RuntimeError {
         self
     }
 
+    /// Whether this kind of failure can name a candidate, so that keeping
+    /// one for it is worth the write.
+    pub fn carries_candidate_snapshot_id(&self) -> bool {
+        matches!(
+            self,
+            Self::ApplyRuntime { .. }
+                | Self::ConfigurationNotInEffect { .. }
+                | Self::BuildRuntime { .. }
+                | Self::PublishRuntime { .. }
+                | Self::ResolveCoreBinary { .. }
+                | Self::CoreRejectedConfig { .. }
+                | Self::CheckUnavailable { .. }
+                | Self::CoreRolledBack { .. }
+                | Self::SubmissionUnobserved { .. }
+        )
+    }
+
     /// The core's own failure this error carries, if the core produced it.
     fn core_failure(&self) -> Option<&CoreFailure> {
         match self {

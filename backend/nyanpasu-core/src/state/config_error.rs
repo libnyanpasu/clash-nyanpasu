@@ -7,17 +7,16 @@ use nyanpasu_config::{
     clash::config::TransparentProxyValidationError,
 };
 use nyanpasu_runtime_values::{
+    candidate::CandidateSnapshotId,
     hotkey::HotkeyParseError,
-    mutation::{
-        CommitAborted, ConfigDomain, NotReady, RecoverAfterWriteFailureSnafu, WriteConfigSnafu,
-    },
+    mutation::{CommitAborted, ConfigDomain, NotReady},
 };
 use nyanpasu_state_engine::{
     ReplaceIfVersionError,
     error::{StateChangedError, UpsertError},
 };
 use serde::Serialize;
-use snafu::{IntoError, Snafu};
+use snafu::Snafu;
 
 #[derive(Debug, Snafu, Serialize, specta::Type)]
 #[snafu(visibility(pub(crate)))]
@@ -63,6 +62,10 @@ pub enum ConfigError {
         domain: ConfigDomain,
         expected: u64,
         actual: u64,
+        /// The checked candidate the change failed to commit, kept for
+        /// inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     #[snafu(display("the {domain:?} config change was not committed"))]
     Commit {
@@ -95,6 +98,53 @@ impl ConfigError {
         Self::Commit { domain, source }
     }
 
+    fn candidate_slot(&mut self) -> Option<&mut Option<CandidateSnapshotId>> {
+        match self {
+            Self::VersionConflict {
+                candidate_snapshot_id,
+                ..
+            } => Some(candidate_snapshot_id),
+            Self::Commit { source, .. } => source.candidate_slot(),
+            _ => None,
+        }
+    }
+
+    /// The candidate this failure names: the checked one a commit failed
+    /// with, or the one a runtime check refused.
+    pub fn candidate_snapshot_id(&self) -> Option<&CandidateSnapshotId> {
+        match self {
+            Self::VersionConflict {
+                candidate_snapshot_id: Some(id),
+                ..
+            } => Some(id),
+            Self::Commit { source, .. } => source.candidate_snapshot_id(),
+            _ => None,
+        }
+    }
+
+    /// Names the checked candidate the change failed to commit; other
+    /// failures stay as they are.
+    #[must_use]
+    pub fn with_candidate_snapshot_id(mut self, id: CandidateSnapshotId) -> Self {
+        if let Some(slot) = self.candidate_slot() {
+            *slot = Some(id);
+        }
+        self
+    }
+
+    /// Whether this failure to commit can name the checked candidate.
+    pub fn carries_candidate_snapshot_id(&self) -> bool {
+        matches!(
+            self,
+            Self::VersionConflict { .. }
+                | Self::Commit {
+                    source: CommitAborted::WriteConfig { .. }
+                        | CommitAborted::RecoverAfterWriteFailure { .. },
+                    ..
+                }
+        )
+    }
+
     /// The one place a persistence error of a config source becomes a config
     /// error. A CAS mismatch from the persistent manager's publication check
     /// is the same conflict as its pre-write `Conflict` result.
@@ -104,20 +154,19 @@ impl ConfigError {
                 expected,
                 actual,
             }) => {
-                return VersionConflictSnafu {
+                return Self::VersionConflict {
                     domain,
                     expected: *expected.as_ref(),
                     actual: *actual.as_ref(),
-                }
-                .build();
+                    candidate_snapshot_id: None,
+                };
             }
             error @ (ReplaceIfVersionError::WriteConfig(_)
-            | ReplaceIfVersionError::LocalWrite(_)) => {
-                WriteConfigSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            | ReplaceIfVersionError::LocalWrite(_)) => CommitAborted::write_failed(Box::new(error)),
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
+                CommitAborted::recovery_failed(Box::new(error))
             }
-            error @ ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu
-                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
         };
-        CommitSnafu { domain }.into_error(source)
+        Self::Commit { domain, source }
     }
 }

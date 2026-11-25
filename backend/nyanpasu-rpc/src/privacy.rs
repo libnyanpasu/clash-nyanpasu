@@ -293,7 +293,7 @@ fn project_degradation_reason(reason: &DegradationReason) -> PublicDegradationRe
         DegradationReason::JobsJournalUnavailable => {
             PublicDegradationReason::JobsJournalUnavailable
         }
-        DegradationReason::MaterializationDeferred => {
+        DegradationReason::MaterializationDeferred { .. } => {
             PublicDegradationReason::MaterializationDeferred
         }
         DegradationReason::CleanupDeferred => PublicDegradationReason::CleanupDeferred,

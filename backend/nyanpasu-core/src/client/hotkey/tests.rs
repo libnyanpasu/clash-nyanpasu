@@ -4,6 +4,24 @@ use super::ports::{HotkeyBindings, HotkeyOp};
 use crate::client::test_support::AnyAccelerator;
 use nyanpasu_runtime_values::hotkey::{HotkeyAction, HotkeyParseError};
 
+#[test]
+fn every_action_reports_under_a_setting_whose_commit_clears_its_row() {
+    use crate::state::mutation::ports::TraySetting;
+    for action in HotkeyAction::all() {
+        let Some(origin) = super::action_origin(*action) else {
+            continue;
+        };
+        assert!(
+            TraySetting::ORIGINS.contains(&origin),
+            "{action:?} reports under {origin:?}, which no owner compares"
+        );
+        assert!(
+            TraySetting::of(origin).is_some(),
+            "{origin:?} names no setting"
+        );
+    }
+}
+
 fn entries(raw: &[&str]) -> Vec<String> {
     raw.iter().map(ToString::to_string).collect()
 }

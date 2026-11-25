@@ -2,11 +2,11 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.34",
-    "mihomo_alpha": "alpha-c7af25c",
+    "mihomo_alpha": "alpha-53f61d4",
     "clash_rs": "v0.10.12",
-    "clash_rs_alpha": "0.10.12-alpha+sha.a79e0ef",
+    "clash_rs_alpha": "0.10.12-alpha+sha.9846239",
     "meow": "v0.29.0",
-    "meow_alpha": "alpha-d740cab",
+    "meow_alpha": "alpha-083e4b2",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
   "arch_template": {
@@ -67,5 +67,5 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz"
     }
   },
-  "updated_at": "2026-11-24T22:16:26.485Z"
+  "updated_at": "2026-11-25T22:17:07.687Z"
 }

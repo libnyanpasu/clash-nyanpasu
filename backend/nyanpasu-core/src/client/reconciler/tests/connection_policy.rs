@@ -2390,3 +2390,56 @@ proxy-groups:
         .unwrap();
     assert!(content.yaml.contains("saved-marker"), "{}", content.yaml);
 }
+
+#[tokio::test]
+async fn a_first_import_whose_selection_is_refused_names_the_candidate_in_its_degradation() {
+    use nyanpasu_contracts::profiles::ports::{FetchedSubscription, MockSubscriptionFetcher};
+    use nyanpasu_runtime_values::runtime::DegradationReason;
+    let mut fetcher = MockSubscriptionFetcher::new();
+    fetcher.expect_fetch().times(1).returning(|_, _| {
+        Ok(FetchedSubscription {
+            content: "proxies: []\nproxy-groups:\n  - {name: imported-marker, type: select, proxies: [DIRECT]}\n"
+                .into(),
+            filename: None,
+            subscription: Default::default(),
+            suggested_update_interval_minutes: None,
+            content_type: None,
+            file_name: None,
+        })
+    });
+    let f = Fixture::with_fetcher(
+        false,
+        Arc::new(Installer::succeeding()),
+        Some(Arc::new(fetcher)),
+    )
+    .await;
+    refuse_checks(&f);
+    let outcome = f
+        .client
+        .import_profile(
+            "https://example.com/profile".parse().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let id = outcome
+        .degradations()
+        .iter()
+        .find_map(|degradation| match &degradation.reason {
+            DegradationReason::ProfileAutoActivationFailed { cause, .. } => {
+                cause.candidate_snapshot_id().cloned()
+            }
+            _ => None,
+        })
+        .expect("the refused selection names its candidate");
+    let candidate = f.client.inspect_candidate_runtime(&id).await.unwrap();
+    let content = f
+        .client
+        .inspect_candidate_node(&id, candidate.inspection.final_id)
+        .await
+        .unwrap();
+    assert!(content.yaml.contains("imported-marker"), "{}", content.yaml);
+}

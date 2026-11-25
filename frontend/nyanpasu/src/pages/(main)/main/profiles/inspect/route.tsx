@@ -94,6 +94,7 @@ function RouteComponent() {
 
   return (
     <InspectViewer
+      backTo="/main/profiles"
       source={{ summary: inspection, loadNode }}
       selectedStep={step}
       onStepChange={(step) =>

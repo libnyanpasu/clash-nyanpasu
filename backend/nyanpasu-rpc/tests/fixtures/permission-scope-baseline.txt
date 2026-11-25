@@ -130,6 +130,7 @@ command | mutate_proxies | proxy | mutation | desktop,http |  | presentation
 command | open_app_config_dir | system | mutation | desktop | opener |
 command | open_app_data_dir | system | mutation | desktop | opener |
 command | open_backups_dir | system | mutation | desktop | opener |
+command | open_candidate_config_window | system | mutation | desktop | window |
 command | open_core_dir | system | mutation | desktop | opener |
 command | open_log_session | read | mutation | desktop,http,local |  |
 command | open_logs_dir | system | mutation | desktop | opener |

@@ -331,3 +331,126 @@ test('public IpcError without detail skips copy-details prompt and keeps localiz
   expect(alert).toHaveBeenCalledTimes(2)
   expect(confirm).not.toHaveBeenCalled()
 })
+
+const candidate = 'a_-012345678901234567'
+const keptError = new RpcFailure('save_profile_file', {
+  kind: 'application_error',
+  message: 'opaque',
+  code: 'runtime_refused',
+  retryable: false,
+  operation_id: null,
+  domain_error: {
+    kind: {
+      domain: 'config',
+      error: {
+        kind: 'commit',
+        domain: 'clash',
+        source: {
+          kind: 'runtime_refused',
+          errors: [
+            {
+              kind: 'core_rejected_config',
+              core_kind: 'config_check_failed',
+              message: 'opaque',
+              candidate_snapshot_id: candidate,
+            },
+          ],
+        },
+      },
+    },
+    message: 'opaque',
+    detail: 'opaque',
+  },
+})
+
+test('a native error that kept a candidate offers it beside copy and close', async () => {
+  const opened: unknown[] = []
+  const copied: string[] = []
+  let choice = m.inspect_candidate_view()
+  mockIPC((command, args) => {
+    expect(command).toBe('call_rpc')
+    const { method, params } = args as {
+      method: string
+      params: { buttons: unknown; text: string }
+    }
+    if (method === 'open_candidate_config_window') {
+      opened.push(params)
+      return
+    }
+    if (method === 'write_clipboard_text') {
+      copied.push(params.text)
+      return
+    }
+    expect(method).toBe('show_native_message_dialog')
+    expect(params.buttons).toEqual({
+      type: 'yes_no_cancel_custom',
+      yes: m.inspect_candidate_view(),
+      no: m.common_copy_error_details(),
+      cancel: m.common_close(),
+    })
+    return choice
+  })
+  const show = () => message(formatError(keptError), { error: keptError })
+
+  await show()
+  expect(opened).toEqual([{ snapshotId: candidate }])
+  choice = m.common_copy_error_details()
+  await show()
+  expect(copied).toEqual([
+    JSON.stringify(
+      { method: keptError.method, envelope: keptError.envelope },
+      null,
+      2,
+    ),
+  ])
+  choice = m.common_close()
+  await show()
+  expect(opened).toHaveLength(1)
+  expect(copied).toHaveLength(1)
+})
+
+test('a message without an error offers the candidate it is given', async () => {
+  const opened: unknown[] = []
+  mockIPC((command, args) => {
+    const { method, params } = args as {
+      method: string
+      params: { buttons: unknown }
+    }
+    if (method === 'open_candidate_config_window') {
+      opened.push(params)
+      return
+    }
+    expect(method).toBe('show_native_message_dialog')
+    expect(params.buttons).toEqual({
+      type: 'ok_cancel_custom',
+      ok: m.inspect_candidate_view(),
+      cancel: m.common_close(),
+    })
+    return m.inspect_candidate_view()
+  })
+
+  await message('degraded', { kind: 'warning', candidate })
+
+  expect(opened).toEqual([{ snapshotId: candidate }])
+})
+
+test('the browser never offers a kept candidate', async ({
+  onTestFinished,
+}) => {
+  vi.stubGlobal('isTauri', false)
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  onTestFinished(() => {
+    alert.mockRestore()
+    confirm.mockRestore()
+  })
+
+  await message(formatError(keptError), { kind: 'error', error: keptError })
+  await message('degraded', { kind: 'warning', candidate })
+
+  expect(alert).toHaveBeenCalledTimes(2)
+  // Only the copy-details question of the error; nothing opens a window.
+  expect(confirm).toHaveBeenCalledExactlyOnceWith(
+    `${m.common_copy_error_details()}?`,
+  )
+})

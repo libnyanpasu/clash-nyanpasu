@@ -130,6 +130,7 @@ command | mutate_proxies | proxy:write | proxy.groups |  |  | desktop,http | nya
 command | open_app_config_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_app_data_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_backups_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_candidate_config_window | system:write | system.window |  |  | desktop | tauri/src/ipc/system/window.rs
 command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src/ipc.rs
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs

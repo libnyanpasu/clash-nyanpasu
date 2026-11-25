@@ -2,11 +2,12 @@
 //! `nyanpasu_rpc::commands::system::window`.
 
 use nyanpasu_rpc::error::{IpcError, Result};
+use nyanpasu_runtime_values::candidate::CandidateSnapshotId;
 use tauri::{AppHandle, State, Webview};
 
 use crate::window::{
     WindowManager, kinds,
-    kinds::{EditorWindow, EditorWindowType, MainWindow},
+    kinds::{CandidateConfigWindow, EditorWindow, EditorWindowType, MainWindow},
 };
 
 #[nyanpasu_rpc::rpc(capabilities(window))]
@@ -35,6 +36,19 @@ pub async fn create_editor_window(
 #[specta::specta]
 pub async fn create_main_window(windows: State<'_, WindowManager>) -> Result<()> {
     windows.open(&MainWindow, None)?;
+    Ok(())
+}
+
+/// Opens the candidate a failed change kept, one window per candidate.
+#[nyanpasu_rpc::rpc(capabilities(window))]
+#[tauri::command]
+#[specta::specta]
+pub async fn open_candidate_config_window(
+    windows: State<'_, WindowManager>,
+    snapshot_id: CandidateSnapshotId,
+) -> Result<()> {
+    let (window, params) = CandidateConfigWindow::for_snapshot(&snapshot_id);
+    windows.open(&window, params)?;
     Ok(())
 }
 

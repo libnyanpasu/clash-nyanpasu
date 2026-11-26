@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Switch } from '@nyanpasu/ui/switch'
+import { RequireCapability } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -10,6 +11,7 @@ import {
   ItemLabel,
   ItemLabelText,
 } from '../../../../_modules/settings-card'
+import LanAddressesDialog from './lan-addresses-dialog'
 
 export default function AllowLanSwitch() {
   const { query } = useClashConfig()
@@ -39,11 +41,23 @@ export default function AllowLanSwitch() {
         </ItemLabelText>
       </ItemLabel>
 
-      <Switch
-        checked={Boolean(value)}
-        onCheckedChange={handleAllowLan}
-        loading={upsert.isPending}
-      />
+      <div
+        className="flex items-center gap-3"
+        data-slot="allow-lan-switch-actions"
+      >
+        <RequireCapability permission="remote:read">
+          <LanAddressesDialog
+            allowLan={Boolean(value)}
+            liveConfig={query.data}
+          />
+        </RequireCapability>
+
+        <Switch
+          checked={Boolean(value)}
+          onCheckedChange={handleAllowLan}
+          loading={upsert.isPending}
+        />
+      </div>
     </ItemContainer>
   )
 }

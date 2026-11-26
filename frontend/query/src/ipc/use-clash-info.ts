@@ -11,9 +11,13 @@ import { useQueryApi } from '../provider/rpc-provider'
  * @returns An object containing the properties of the query returned by useQuery, including loading,
  * error states, and the fetched data.
  */
-export const useClashInfo = () => {
+export const useClashInfo = (options?: { enabled?: boolean }) => {
   const api = useQueryApi()
-  const query = useQuery(api.queries.getClashInfo())
+  const infoOptions = api.queries.getClashInfo()
+  const query = useQuery({
+    ...infoOptions,
+    enabled: options?.enabled,
+  })
 
   return {
     ...query,

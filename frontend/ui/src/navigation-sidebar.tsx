@@ -18,7 +18,7 @@ import { Sidebar, useSidebar } from './slider-sidebar'
 export const NAVIGATION_SIDEBAR_WIDTH = { open: 200, closed: 88 } as const
 
 export const navigationSidebarVariants = cva(
-  'bg-surface z-10 flex min-h-0 shrink-0 flex-col max-md:inset-y-0 max-md:left-0 md:relative',
+  'bg-surface-container dark:bg-surface-container-low z-10 flex min-h-0 shrink-0 flex-col max-md:inset-y-0 max-md:left-0 md:relative',
 )
 
 export const navigationSidebarItemVariants = cva(

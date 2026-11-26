@@ -39,7 +39,7 @@ export function resolveHostCompletionBinary(
   platform: NodeJS.Platform = process.platform,
 ): string {
   const ext = platform === 'win32' ? '.exe' : ''
-  const profileDir = profile === 'release' ? 'release' : 'debug'
+  const profileDir = profile === 'release' ? 'release-cli' : 'debug'
   return path.join(
     workspaceRoot,
     'backend/target',
@@ -66,7 +66,7 @@ export async function generateCompletions(
       'nyanpasu-cli',
       '--bin',
       'nyanpasu-cli',
-      ...(profile === 'release' ? ['--release'] : []),
+      ...(profile === 'release' ? ['--profile', 'release-cli'] : []),
     ]
     const built = await exec('cargo', {
       cwd: workspaceRoot,

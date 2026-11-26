@@ -36,7 +36,7 @@ test('planCliCargoBuild selects cargo for native/Darwin/Windows targets and cros
   assert.strictEqual(nativePlan.isCross, false)
   assert.strictEqual(
     nativePlan.targetBinaryPath,
-    path.join('/repo', 'backend/target/release/nyanpasu-cli'),
+    path.join('/repo', 'backend/target/release-cli/nyanpasu-cli'),
   )
 
   const linuxCrossPlan = planCliCargoBuild({
@@ -58,7 +58,8 @@ test('planCliCargoBuild selects cargo for native/Darwin/Windows targets and cros
     'nyanpasu-cli',
     '--bin',
     'nyanpasu-cli',
-    '--release',
+    '--profile',
+    'release-cli',
     '--target',
     'aarch64-unknown-linux-gnu',
   ])
@@ -76,14 +77,14 @@ test('planCliCargoBuild selects cargo for native/Darwin/Windows targets and cros
     winArm64Plan.targetBinaryPath,
     path.join(
       '/repo',
-      'backend/target/aarch64-pc-windows-msvc/release/nyanpasu-cli.exe',
+      'backend/target/aarch64-pc-windows-msvc/release-cli/nyanpasu-cli.exe',
     ),
   )
 })
 
 test('prepareCliSidecarAndCompletions stages native sidecar and generates completions', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'nyanpasu-prepare-cli-'))
-  const builtBinary = path.join(root, 'backend/target/release/nyanpasu-cli')
+  const builtBinary = path.join(root, 'backend/target/release-cli/nyanpasu-cli')
   const sidecarDir = path.join(root, 'backend/tauri/sidecar')
   const completionsDir = path.join(root, 'backend/tauri/completions')
   const calls: { command: string; args: string[] }[] = []

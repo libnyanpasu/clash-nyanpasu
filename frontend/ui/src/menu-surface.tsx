@@ -8,10 +8,9 @@ const MotionSlot = motion.create(Slot.Root)
 
 const menuSurfaceVariants = cva([
   'relative z-50 w-full overflow-auto rounded',
-  'dark:text-on-surface',
-  'bg-inverse-on-surface dark:bg-surface',
-  'shadow-background shadow-sm',
-  'border-outline-variant/50 dark:border-outline-variant/15 border',
+  'bg-surface-container-high text-on-surface',
+  'shadow-sm shadow-shadow/15',
+  'border border-outline-variant/50',
 ])
 
 /** The shared popup surface and opening motion for project menus. */

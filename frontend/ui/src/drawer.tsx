@@ -59,7 +59,7 @@ function DrawerSurface({
       aria-hidden={!open || undefined}
       className={cn(
         'fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full flex-col rounded-t-3xl',
-        'bg-surface text-on-surface',
+        'bg-surface-container-low text-on-surface',
         className,
       )}
       initial={reducedMotion ? { opacity: 0 } : { y: '100%' }}
@@ -94,7 +94,7 @@ export function DrawerContent({
           <DialogPrimitive.Overlay forceMount asChild>
             <motion.div
               data-slot="drawer-overlay"
-              className="fixed inset-0 z-50 bg-black/30"
+              className="bg-scrim/32 fixed inset-0 z-50"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

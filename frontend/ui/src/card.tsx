@@ -6,12 +6,9 @@ import { cn } from '@nyanpasu/utils'
 export const cardVariants = cva('rounded-3xl text-on-surface overflow-hidden', {
   variants: {
     variant: {
-      basic: ['shadow-sm', 'bg-surface dark:bg-surface'],
-      raised: ['shadow-sm', 'bg-primary-container dark:bg-on-primary'],
-      outline: [
-        'bg-surface dark:bg-surface',
-        'border border-outline-variant dark:border-outline-variant',
-      ],
+      basic: ['shadow-sm', 'bg-surface-container-low'],
+      raised: ['shadow-sm', 'bg-surface-container-high'],
+      outline: ['bg-surface', 'border border-outline-variant'],
     },
   },
   defaultVariants: {
@@ -30,9 +27,9 @@ export const cardHeaderVariants = cva(
   {
     variants: {
       variant: {
-        basic: 'border-surface-variant dark:border-surface-variant',
-        raised: 'border-inverse-primary dark:border-primary-container',
-        outline: 'border-outline-variant dark:border-outline-variant',
+        basic: 'border-outline-variant',
+        raised: 'border-outline-variant',
+        outline: 'border-outline-variant',
       },
       divider: {
         true: 'border-b py-4 ',
@@ -53,9 +50,9 @@ export const cardFooterVariants = cva(
   {
     variants: {
       variant: {
-        basic: 'border-surface-variant dark:border-surface-variant',
-        raised: 'border-inverse-primary dark:border-primary-container',
-        outline: 'border-outline-variant dark:border-outline-variant',
+        basic: 'border-outline-variant',
+        raised: 'border-outline-variant',
+        outline: 'border-outline-variant',
       },
       divider: {
         true: 'border-t py-2',

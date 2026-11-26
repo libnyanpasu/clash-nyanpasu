@@ -59,7 +59,7 @@ function PopoverSurface({
       inert={!open}
       aria-hidden={!open || undefined}
       className={cn(
-        'border-outline-variant/50 bg-surface text-on-surface z-50 flex w-72 flex-col overflow-hidden rounded-3xl border shadow-lg',
+        'bg-surface-container-high text-on-surface border-outline-variant/50 shadow-shadow/15 z-50 flex w-72 flex-col overflow-hidden rounded-3xl border shadow-lg',
         !open && 'pointer-events-none',
         className,
       )}

@@ -22,12 +22,12 @@ export const selectTriggerVariants = cva(
     'px-4 py-4 outline-hidden',
     // TODO: size variants, fix this
     'flex items-center justify-between h-14',
-    'dark:text-on-surface',
+    'text-on-surface',
   ],
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
+        filled: 'rounded-t bg-surface-container-highest',
         // outlined use selectValuePlaceholderFieldsetVariants
         outlined: '',
         // compact pill that sits at the end of a menu row
@@ -46,14 +46,14 @@ export const selectLineVariants = cva('', {
   variants: {
     variant: {
       filled: [
-        'absolute inset-x-0 bottom-0 w-full border-b border-on-primary-container',
+        'absolute inset-x-0 bottom-0 w-full border-b border-outline-variant',
         'transition-all duration-200',
 
         // pseudo elements be overlay parent element, will not affect the box size
         'after:absolute after:inset-x-0 after:bottom-0 after:z-10',
         "after:scale-x-0 after:border-b-2 after:opacity-0 after:content-['']",
         'after:transition-all after:duration-200',
-        'after:border-primary dark:after:border-on-primary-container',
+        'after:border-primary',
 
         // sync parent group state, state from radix-ui
         'group-data-[state=open]:border-b-0',
@@ -125,9 +125,6 @@ export const selectValuePlaceholderVariants = cva(
           'group-data-[state=open]:-top-2',
           'group-data-[state=open]:text-sm',
           'group-data-[state=open]:text-primary',
-
-          'dark:group-data-[state=open]:text-inverse-primary',
-          'dark:group-data-[state=closed]:text-on-primary-container',
         ],
         chip: 'hidden',
       },
@@ -177,13 +174,8 @@ export const selectValuePlaceholderFieldsetVariants = cva(
           // different material web border color, i think this looks better
           'group-data-[state=closed]:border-outline-variant',
           'group-data-[state=open]:border-primary',
-          'peer-not-focus:border-primary-container',
+          'peer-not-focus:border-outline-variant',
           'peer-focus:border-primary',
-          // dark must be prefixed
-          'dark:group-data-[state=closed]:border-outline-variant',
-          'dark:group-data-[state=open]:border-primary-container',
-          'dark:peer-not-focus:border-outline-variant',
-          'dark:peer-focus:border-primary-container',
         ],
         chip: 'hidden',
       },
@@ -231,9 +223,9 @@ export type SelectValuePlaceholderLegendVariants = VariantProps<
 export const selectContentVariants = cva(
   [
     'relative w-full overflow-auto rounded z-50',
-    'shadow shadow-zinc-300 dark:shadow-zinc-900',
-    'bg-inverse-on-surface dark:bg-surface',
-    'dark:text-on-surface',
+    'bg-surface-container-high text-on-surface',
+    'shadow-sm shadow-shadow/15',
+    'border border-outline-variant/50',
   ],
   {
     variants: {
@@ -402,7 +394,7 @@ export const SelectLabel = ({
     <SelectPrimitive.Label
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
-        'text-primary dark:text-inverse-primary',
+        'text-primary',
         className,
       )}
       {...props}
@@ -524,8 +516,8 @@ export const SelectItem = ({
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant data-[state=checked]:bg-primary-container',
-        'dark:hover:bg-surface-variant dark:data-[state=checked]:bg-primary-container',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
@@ -533,7 +525,7 @@ export const SelectItem = ({
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
 
       <SelectPrimitive.ItemIndicator>
-        <Check className="text-primary" />
+        <Check className="text-on-primary-container" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

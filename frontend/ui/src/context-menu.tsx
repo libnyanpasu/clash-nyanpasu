@@ -16,11 +16,9 @@ const MotionContent = ({
     <motion.div
       className={cn(
         'relative z-50 w-full overflow-auto rounded-lg',
-        'dark:text-on-surface',
-        'bg-background/10',
-        'backdrop-blur',
-        'dark:shadow-inverse-on-surface/30 shadow-inverse-surface/30 shadow-sm',
-        'border-outline-variant/50 dark:border-outline-variant/50 border',
+        'bg-surface-container-high text-on-surface',
+        'shadow-shadow/15 shadow-sm',
+        'border-outline-variant/50 border',
         className,
       )}
       style={{
@@ -142,17 +140,15 @@ export function ContextMenuSubTrigger({
       className={cn(
         'flex h-9 cursor-default items-center justify-between gap-2 px-3 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=open]:bg-surface-variant/30',
-        'dark:data-[state=open]:bg-surface-variant/30',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=open]:bg-on-surface/8',
         className,
       )}
       {...props}
     >
       {children}
 
-      <ArrowRight className="text-outline-variant dark:text-outline size-5" />
+      <ArrowRight className="text-on-surface-variant size-5" />
     </ContextMenuPrimitive.SubTrigger>
   )
 }
@@ -222,10 +218,9 @@ export const ContextMenuItem = ({
       className={cn(
         'flex h-9 cursor-default items-center gap-2 px-3 text-sm outline-hidden',
         'cursor-pointer',
-        'data-[disabled=false]:hover:bg-surface-variant/70',
-        'data-[disabled=false]:dark:hover:bg-surface-variant/50',
+        'data-[disabled=false]:hover:bg-on-surface/8',
+        'data-[disabled=false]:data-[highlighted]:bg-on-surface/8',
         'data-[disabled=true]:text-on-surface/50',
-        'data-[disabled=true]:dark:text-on-surface/50',
         'data-[disabled=true]:cursor-default',
         className,
       )}
@@ -244,9 +239,8 @@ export const ContextMenuCheckboxItem = ({
       className={cn(
         'flex h-9 cursor-default items-center justify-between gap-2 px-3 text-sm outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
@@ -254,7 +248,7 @@ export const ContextMenuCheckboxItem = ({
       {children}
 
       <ContextMenuPrimitive.ItemIndicator>
-        <Check className="text-primary size-5" />
+        <Check className="text-on-primary-container size-5" />
       </ContextMenuPrimitive.ItemIndicator>
     </ContextMenuPrimitive.CheckboxItem>
   )
@@ -272,9 +266,8 @@ export const ContextMenuRadioItem = ({
       className={cn(
         'flex h-9 cursor-default items-center justify-between gap-2 px-3 text-sm outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
@@ -282,7 +275,7 @@ export const ContextMenuRadioItem = ({
       {children}
 
       <ContextMenuPrimitive.ItemIndicator>
-        <Check className="text-primary size-5" />
+        <Check className="text-on-primary-container size-5" />
       </ContextMenuPrimitive.ItemIndicator>
     </ContextMenuPrimitive.RadioItem>
   )
@@ -295,7 +288,7 @@ export const ContextMenuLabel = ({
   return (
     <ContextMenuPrimitive.Label
       className={cn(
-        'text-outline-variant flex h-9 cursor-default items-center gap-2 px-3 text-xs font-medium outline-hidden',
+        'text-on-surface-variant flex h-9 cursor-default items-center gap-2 px-3 text-xs font-medium outline-hidden',
         className,
       )}
       {...props}
@@ -322,7 +315,7 @@ export const ContextMenuShortcut = ({
   return (
     <span
       className={cn(
-        'text-outline-variant ml-auto text-xs tracking-widest',
+        'text-on-surface-variant ml-auto text-xs tracking-widest',
         className,
       )}
       {...props}

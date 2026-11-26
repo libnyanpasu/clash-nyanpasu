@@ -11,11 +11,20 @@ import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
+import { cn } from '@nyanpasu/utils'
 
-const GLASS_SHADOW = 'shadow-lg shadow-shadow/15 dark:shadow-shadow/40'
+const GLASS_SURFACE = cn(
+  'bg-surface-container-high',
+  'supports-[backdrop-filter]:bg-surface-container-high/76 supports-[backdrop-filter]:backdrop-blur-xl',
+  'motion-reduce:backdrop-blur-none',
+  '[@media(prefers-reduced-transparency:reduce)]:bg-surface-container-high',
+  'contrast-more:bg-surface-container-high',
+  'border border-outline-variant/40',
+  'shadow-lg shadow-shadow/15 dark:shadow-shadow/40',
+)
 
 test.for(['light', 'dark'] as const)(
-  'glass controls preserve legacy styling in %s theme',
+  'glass controls share the M3E glass surface in %s theme',
   async (theme, { onTestFinished }) => {
     const rootElement = document.documentElement
     const wasDark = rootElement.classList.contains('dark')
@@ -33,15 +42,13 @@ test.for(['light', 'dark'] as const)(
     flushSync(() => {
       root.render(
         <div>
-          <Button
+          <button
             data-testid="legacy-button"
-            variant="raised"
-            icon
-            disableRipple
-            className={`bg-surface-variant text-on-surface-variant dark:text-on-surface-variant size-11 shrink-0 ${GLASS_SHADOW}`}
+            type="button"
+            className={`text-on-surface-variant hover:bg-surface-container-highest relative grid h-11 w-11 cursor-pointer place-content-center overflow-hidden rounded-full p-0 text-sm font-medium transition-[background-color,color,shadow,filter] focus:outline-hidden ${GLASS_SURFACE}`}
           >
             <span>+</span>
-          </Button>
+          </button>
           <Button data-testid="glass-button" variant="glass" icon disableRipple>
             <span>+</span>
           </Button>
@@ -52,7 +59,7 @@ test.for(['light', 'dark'] as const)(
             onValueChange={() => {}}
             placeholder="Search"
             clearLabel="Clear search"
-            className={`bg-surface-variant dark:bg-surface-variant h-11 rounded-full ${GLASS_SHADOW}`}
+            className={`h-11 rounded-full ${GLASS_SURFACE}`}
           />
           <SearchField
             data-testid="glass-search"
@@ -65,7 +72,7 @@ test.for(['light', 'dark'] as const)(
 
           <div
             data-testid="legacy-group"
-            className={`bg-surface-variant text-on-surface-variant flex min-w-0 items-center gap-1 rounded-full p-1 [&>button]:h-9 ${GLASS_SHADOW}`}
+            className={`text-on-surface-variant flex min-w-0 items-center gap-1 rounded-full p-1 [&>button]:h-9 ${GLASS_SURFACE}`}
           >
             <Button icon disableRipple data-testid="legacy-group-icon">
               +
@@ -115,7 +122,7 @@ test.for(['light', 'dark'] as const)(
             variant="tabs"
             size="sm"
             defaultValue="first"
-            className="h-9 w-auto shrink-0 rounded-full bg-transparent **:data-[slot=segmented-button-item-state-layer]:rounded-full *:data-[slot=segmented-button-slider-pill]:rounded-full dark:bg-transparent"
+            className="h-9 w-auto shrink-0 rounded-full bg-transparent **:data-[slot=segmented-button-item-state-layer]:rounded-full *:data-[slot=segmented-button-slider-pill]:rounded-full"
           >
             <SegmentedButtonItem
               value="first"
@@ -188,6 +195,12 @@ test.for(['light', 'dark'] as const)(
         boxShadow: style.boxShadow,
         outline: style.outline,
       }
+    }
+
+    // Compare interaction states at their settled values rather than at
+    // different points in each button's color/shadow transition.
+    for (const testId of ['legacy-button', 'glass-button']) {
+      element(testId).style.transition = 'none'
     }
 
     element('legacy-button').focus()

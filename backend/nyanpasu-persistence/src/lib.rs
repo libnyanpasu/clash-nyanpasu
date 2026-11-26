@@ -14,9 +14,9 @@ use std::{
 };
 
 use backon::{BlockingRetryable as _, Retryable as _};
+use jiff::Timestamp;
 use nyanpasu_utils::io::{IoFailure, classify, transient_backoff};
 use snafu::{ResultExt as _, Snafu};
-use time::OffsetDateTime;
 
 /// Detects symlinks and Windows reparse points without following their targets.
 pub fn is_link(metadata: &std::fs::Metadata) -> bool {
@@ -83,24 +83,16 @@ pub enum Error {
 /// Moves a confirmed bad node to a sibling, never replacing earlier evidence.
 /// A failed rename is fatal; callers must not rebuild over the original node.
 pub fn preserve(path: &Path, cause: &(dyn std::error::Error + 'static)) -> Result<PathBuf, Error> {
-    preserve_at(path, cause, OffsetDateTime::now_utc())
+    preserve_at(path, cause, Timestamp::now())
 }
 
 fn preserve_at(
     path: &Path,
     cause: &(dyn std::error::Error + 'static),
-    now: OffsetDateTime,
+    now: Timestamp,
 ) -> Result<PathBuf, Error> {
     let mut name = path.as_os_str().to_os_string();
-    name.push(format!(
-        ".corrupt-{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        now.year(),
-        u8::from(now.month()),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    ));
+    name.push(format!(".corrupt-{}", now.strftime("%Y%m%dT%H%M%SZ")));
     let evidence = PathBuf::from(name);
     corrupt_rename(path, &evidence).context(PreserveEvidenceSnafu {
         path,
@@ -146,7 +138,7 @@ mod tests {
     fn evidence_collision_never_overwrites_either_copy() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("storage.db");
-        let now = OffsetDateTime::UNIX_EPOCH;
+        let now = Timestamp::UNIX_EPOCH;
         let cause = io::Error::from(io::ErrorKind::InvalidData);
         std::fs::write(&path, b"first evidence").unwrap();
         let evidence = preserve_at(&path, &cause, now).unwrap();

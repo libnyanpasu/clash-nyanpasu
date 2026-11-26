@@ -1,5 +1,5 @@
 use super::{Ctx, MigrationState, MigrationStep, ModuleMigrator};
-use chrono::{SecondsFormat, Utc};
+use jiff::Timestamp;
 use nyanpasu_persistence::write;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -279,12 +279,23 @@ impl MigrationStore {
 }
 
 fn timestamp() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    timestamp_at(Timestamp::now())
+}
+
+fn timestamp_at(now: Timestamp) -> String {
+    format!("{now:.3}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_timestamp_retains_legacy_millisecond_precision() {
+        for fixture in ["1970-01-01T00:00:00.000Z", "2026-09-21T14:13:20.120Z"] {
+            assert_eq!(timestamp_at(fixture.parse().unwrap()), fixture);
+        }
+    }
 
     #[test]
     fn state_reader_retries_transient_read_before_parsing() {

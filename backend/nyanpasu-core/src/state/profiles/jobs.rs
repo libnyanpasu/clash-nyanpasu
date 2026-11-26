@@ -193,7 +193,7 @@ impl ProfileJobs {
                 continue;
             };
             let overdue = materialized.updated_at.is_none_or(|at| {
-                (time::OffsetDateTime::now_utc() - at).whole_seconds() as i128
+                jiff::Timestamp::now().duration_since(at).as_secs() as i128
                     >= i128::from(minutes.get()) * 60
             });
             if overdue

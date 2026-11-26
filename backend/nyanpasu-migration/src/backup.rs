@@ -7,13 +7,13 @@ use camino::Utf8PathBuf;
 use nyanpasu_contracts::{BoxedCause, bundle_metadata::BundleMetadata};
 use nyanpasu_paths::PathResolver;
 
+use jiff::Timestamp;
 use semver::Version;
 use serde::Serialize;
 use std::{
     fs, io,
     path::{Path, PathBuf},
 };
-use time::{OffsetDateTime, UtcOffset};
 
 pub const MIGRATION_PREFIX: &str = "migration-";
 pub const MANUAL_PREFIX: &str = "manual-";
@@ -79,7 +79,7 @@ pub struct BackupRequest<'a> {
     pub bundle_metadata: BundleMetadata,
     pub storage: StorageSource<'a>,
     pub kind: BackupKind<'a>,
-    pub now: OffsetDateTime,
+    pub now: Timestamp,
 }
 
 #[derive(Debug, Clone)]
@@ -428,30 +428,12 @@ fn manifest(req: &BackupRequest<'_>, symlinks: Vec<ManifestSymlink>) -> Manifest
     }
 }
 
-fn file_stamp(now: OffsetDateTime) -> String {
-    let now = now.to_offset(UtcOffset::UTC);
-    format!(
-        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        now.year(),
-        u8::from(now.month()),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    )
+fn file_stamp(now: Timestamp) -> String {
+    now.strftime("%Y%m%dT%H%M%SZ").to_string()
 }
 
-fn rfc3339(now: OffsetDateTime) -> String {
-    let now = now.to_offset(UtcOffset::UTC);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        now.year(),
-        u8::from(now.month()),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    )
+fn rfc3339(now: Timestamp) -> String {
+    now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 #[cfg(test)]
@@ -462,8 +444,8 @@ mod tests {
     const NOW: i64 = 1_790_000_000;
     const STAMP: &str = "20260921T141320Z";
 
-    fn now() -> OffsetDateTime {
-        OffsetDateTime::from_unix_timestamp(NOW).unwrap()
+    fn now() -> Timestamp {
+        Timestamp::from_second(NOW).unwrap()
     }
 
     fn paths(root: &Path) -> PathResolver {
@@ -829,7 +811,7 @@ mod tests {
         let first =
             create_backup(&manual(&paths, StorageSource::File(storage.as_std_path()))).unwrap();
         let mut request = manual(&paths, StorageSource::File(storage.as_std_path()));
-        request.now = now() + time::Duration::seconds(1);
+        request.now = now() + jiff::SignedDuration::from_secs(1);
         let second = create_backup(&request).unwrap();
 
         assert_eq!(names(&second.path.join(CONFIG_DIR)), ["profiles.yaml"]);

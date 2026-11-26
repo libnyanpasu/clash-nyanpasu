@@ -234,7 +234,7 @@ impl RedbCoreLogStore {
     fn export_logs(&self, home: Option<String>) -> Result<CoreLogExport> {
         use nyanpasu_config::redact::redact_text;
         use nyanpasu_diagnose::archive::{LOG_AGE, LOG_CAP};
-        let cutoff = chrono::Utc::now().timestamp_millis() - LOG_AGE.as_millis() as i64;
+        let cutoff = jiff::Timestamp::now().as_millisecond() - LOG_AGE.as_millis() as i64;
         let mut lines = Vec::new();
         let mut bytes = 0;
         let mut truncated = false;
@@ -262,11 +262,9 @@ impl RedbCoreLogStore {
                 if record.received_at < cutoff {
                     break 'shards;
                 }
-                let time = record.time.unwrap_or_else(|| {
-                    chrono::DateTime::from_timestamp_millis(record.received_at)
-                        .map(|time| time.to_rfc3339())
-                        .unwrap_or_else(|| record.received_at.to_string())
-                });
+                let time = record
+                    .time
+                    .unwrap_or_else(|| format_received_at(record.received_at));
                 // A stored payload may contain newlines; each exported record is one line.
                 let payload = record.payload.replace(['\r', '\n'], " ");
                 let line = format!(
@@ -529,5 +527,36 @@ impl CoreLogStore for RedbCoreLogStore {
     }
     fn status(&mut self) -> CoreLogResult<CoreLogStatus> {
         Ok(self.current_status())
+    }
+}
+
+// Preserve the previous Chrono RFC 3339 representation in archived logs.
+fn format_received_at(received_at: i64) -> String {
+    jiff::Timestamp::from_millisecond(received_at)
+        .map(|time| {
+            if received_at % 1000 == 0 {
+                time.strftime("%Y-%m-%dT%H:%M:%S+00:00").to_string()
+            } else {
+                time.strftime("%Y-%m-%dT%H:%M:%S%.3f+00:00").to_string()
+            }
+        })
+        .unwrap_or_else(|_| received_at.to_string())
+}
+
+#[cfg(test)]
+mod timestamp_tests {
+    #[test]
+    fn archive_timestamp_retains_legacy_rfc3339_shape() {
+        for (millis, fixture) in [
+            (0, "1970-01-01T00:00:00+00:00"),
+            (100, "1970-01-01T00:00:00.100+00:00"),
+            (-1, "1969-12-31T23:59:59.999+00:00"),
+        ] {
+            assert_eq!(
+                fixture.parse::<jiff::Timestamp>().unwrap().as_millisecond(),
+                millis
+            );
+            assert_eq!(super::format_received_at(millis), fixture);
+        }
     }
 }

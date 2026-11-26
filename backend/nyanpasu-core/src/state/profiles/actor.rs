@@ -812,7 +812,7 @@ impl ProfilesActor {
                 reason: "external profile definition changed while it was read".into(),
             };
         };
-        materialized.updated_at = Some(time::OffsetDateTime::now_utc());
+        materialized.updated_at = Some(jiff::Timestamp::now());
         match Self::commit_file_first(
             myself,
             state,
@@ -899,7 +899,7 @@ impl ProfilesActor {
         else {
             return changed();
         };
-        materialized.updated_at = Some(time::OffsetDateTime::now_utc());
+        materialized.updated_at = Some(jiff::Timestamp::now());
         *slot = subscription;
         // Manual/scheduled refresh never adopts server interval suggestions;
         // import applies them only on first commit.
@@ -1054,7 +1054,7 @@ impl ProfilesActor {
         option: RemoteProfileOptions,
         file: ManagedProfilePath,
         subscription: SubscriptionInfo,
-        updated_at: Option<time::OffsetDateTime>,
+        updated_at: Option<jiff::Timestamp>,
     ) -> ProfileDefinition {
         let source = ProfileSource::Remote {
             materialized: MaterializedFile { file, updated_at },
@@ -2349,7 +2349,7 @@ impl Actor for ProfilesActor {
                             ManagedProfilePath::new("pending.yaml")
                                 .expect("static managed path is valid"),
                             subscription,
-                            Some(time::OffsetDateTime::now_utc()),
+                            Some(jiff::Timestamp::now()),
                         );
                         if let Err(error) = Self::validate_fetched_content(&definition, &content) {
                             Err(ProfileContentRejectedSnafu.into_error(error))
@@ -2440,7 +2440,7 @@ impl Actor for ProfilesActor {
                                 Some(ProfileSource::Local {
                                     binding: LocalBinding::External { materialized, .. },
                                 }) => {
-                                    materialized.updated_at = Some(time::OffsetDateTime::now_utc());
+                                    materialized.updated_at = Some(jiff::Timestamp::now());
                                     Ok(AffectsRule::Touched(uid))
                                 }
                                 _ => ProfileNotFoundSnafu { uid }.fail(),

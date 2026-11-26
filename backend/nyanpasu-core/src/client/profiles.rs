@@ -730,7 +730,7 @@ mod tests {
                     binding: LocalBinding::Managed {
                         materialized: MaterializedFile {
                             file: ManagedProfilePath::new("client-supplied.lua").unwrap(),
-                            updated_at: Some(time::OffsetDateTime::UNIX_EPOCH),
+                            updated_at: Some(jiff::Timestamp::UNIX_EPOCH),
                         },
                     },
                 },
@@ -1352,7 +1352,7 @@ mod tests {
         client.start_producers().unwrap();
         let mut item = remote_config_item("r1");
         if let Some(source) = item.definition.source_mut() {
-            source.materialized_mut().updated_at = Some(time::OffsetDateTime::now_utc());
+            source.materialized_mut().updated_at = Some(jiff::Timestamp::now());
         }
         let mut profiles = Profiles::default();
         profiles.append_item(item);
@@ -1482,8 +1482,9 @@ mod tests {
             .unwrap();
             let mut item = remote_config_item("r1");
             if let Some(source) = item.definition.source_mut() {
-                source.materialized_mut().updated_at =
-                    Some(time::OffsetDateTime::now_utc() - time::Duration::days(30));
+                source.materialized_mut().updated_at = Some(
+                    jiff::Timestamp::now() - jiff::SignedDuration::from_secs(30 * 24 * 60 * 60),
+                );
             }
             let mut profiles = Profiles::default();
             profiles.append_item(item);
@@ -1551,7 +1552,7 @@ mod tests {
                 unreachable!("the fixture is remote")
             };
             materialized.updated_at =
-                Some(time::OffsetDateTime::now_utc() - time::Duration::days(30));
+                Some(jiff::Timestamp::now() - jiff::SignedDuration::from_secs(30 * 24 * 60 * 60));
             option.update_interval_minutes = RemoteSyncInterval::DISABLED;
             let mut profiles = Profiles::default();
             profiles.append_item(item);
@@ -3259,7 +3260,7 @@ mod tests {
         let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
         let mut item = remote_config_item("placeholder");
         if let Some(source) = item.definition.source_mut() {
-            source.materialized_mut().updated_at = Some(time::OffsetDateTime::UNIX_EPOCH);
+            source.materialized_mut().updated_at = Some(jiff::Timestamp::UNIX_EPOCH);
             if let ProfileSource::Remote { subscription, .. } = source {
                 subscription.upload = Some(1);
             }
@@ -4059,7 +4060,7 @@ mod tests {
     fn fresh_remote_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
         let mut item = remote_config_item(uid);
         if let Some(source) = item.definition.source_mut() {
-            source.materialized_mut().updated_at = Some(time::OffsetDateTime::now_utc());
+            source.materialized_mut().updated_at = Some(jiff::Timestamp::now());
         }
         item
     }

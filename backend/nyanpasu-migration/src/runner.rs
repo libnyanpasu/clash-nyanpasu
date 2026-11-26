@@ -12,13 +12,13 @@ use crate::{
         StorageSource,
     },
 };
+use jiff::Timestamp;
 use nyanpasu_contracts::bundle_metadata::BundleMetadata;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_persistence::write;
 use semver::Version;
 use snafu::ResultExt as _;
 use std::{path::PathBuf, sync::Arc};
-use time::OffsetDateTime;
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
@@ -281,7 +281,7 @@ impl Runner {
                 from: self.store.app.last_succeeded.as_ref(),
                 target: &self.target,
             },
-            now: OffsetDateTime::now_utc(),
+            now: Timestamp::now(),
         })
         .context(CreateBackupSnafu)?;
         println!("Backup created at {}", info.path.display());

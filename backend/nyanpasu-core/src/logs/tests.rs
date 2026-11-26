@@ -776,7 +776,7 @@ async fn diagnostic_export_flushes_full_payloads_and_survives_shutdown() {
     logs.set_instance(Some("instance".into())).await.unwrap();
     for n in 0..3 {
         let mut r = record(n, 8192);
-        r.received_at = chrono::Utc::now().timestamp_millis();
+        r.received_at = jiff::Timestamp::now().as_millisecond();
         r.payload.push_str(" password=secret /home/test/path 你好");
         logs.append(r).await.unwrap();
     }
@@ -805,11 +805,11 @@ fn diagnostic_export_stops_at_the_three_day_boundary() {
     let directory = TempDir::new().unwrap();
     let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
     let mut old = record(0, 32);
-    old.received_at = chrono::Utc::now().timestamp_millis()
+    old.received_at = jiff::Timestamp::now().as_millisecond()
         - nyanpasu_diagnose::archive::LOG_AGE.as_millis() as i64
         - 1000;
     let mut recent = record(1, 32);
-    recent.received_at = chrono::Utc::now().timestamp_millis();
+    recent.received_at = jiff::Timestamp::now().as_millisecond();
     store
         .append(&[
             PreparedCoreLog::new(&old).unwrap(),
@@ -861,7 +861,7 @@ fn diagnostic_export_large_store_measurement() {
     use std::time::Instant;
     let directory = TempDir::new().unwrap();
     let mut store = RedbCoreLogStore::open(directory.path().into()).unwrap();
-    let now = chrono::Utc::now().timestamp_millis();
+    let now = jiff::Timestamp::now().as_millisecond();
     for first in (0..12288).step_by(128) {
         let records: Vec<_> = (first..first + 128)
             .map(|n| {

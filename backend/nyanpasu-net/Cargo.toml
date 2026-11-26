@@ -17,11 +17,11 @@ backon = { version = '1.0.1', features = ['tokio-sleep'] }
 base64 = '0.23'
 bytes = '1'
 getrandom = { version = '0.4', features = ['std'] }
+jiff = '1'
 percent-encoding = '2.3.1'
 reqwest = { workspace = true }
 serde_json = { version = '1', features = ['preserve_order'] }
 snafu = { workspace = true }
-time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
 tokio = { workspace = true, features = ['full'] }
 tracing = { workspace = true }
 tracing-attributes = '0.1'

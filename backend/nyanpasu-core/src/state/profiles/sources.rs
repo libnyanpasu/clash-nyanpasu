@@ -49,7 +49,7 @@ impl SourceLedger {
                 origin,
                 health: outcome.health(),
                 outcome,
-                at: (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
+                at: jiff::Timestamp::now().as_millisecond(),
             },
         );
         self.publish();

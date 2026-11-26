@@ -1255,7 +1255,7 @@ impl NyanpasuClient {
                     paths: &paths,
                     storage: StorageSource::Live(storage.as_ref()),
                     kind: BackupKind::Manual,
-                    now: time::OffsetDateTime::now_utc(),
+                    now: jiff::Timestamp::now(),
                 })?;
                 if let Err(error) = backup::prune_backups(
                     paths.backups_dir().as_std_path(),

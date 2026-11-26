@@ -46,7 +46,7 @@ uuid = { version = '1.23.1', features = ['serde', 'v4'] }
 yaml_serde = { workspace = true }
 port_scanner = '0.1.5'
 slab = { version = '0.4.12', features = ['serde'] }
-time = { version = '0.3', features = ['serde', 'serde-well-known'] }
+jiff = { version = '1', features = ['serde'] }
 
 tracing.workspace = true
 tracing-subscriber = { version = '0.3', features = [

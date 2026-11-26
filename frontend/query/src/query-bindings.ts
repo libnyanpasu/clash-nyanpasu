@@ -1470,6 +1470,13 @@ export function createQueryBindings(rpc: RpcClient) {
           uid: Parameters<typeof commands.openProfile>[0]
         }) => commands.openProfile(input.uid),
       }),
+    setProfileFileOpener: () =>
+      mutationOptions({
+        mutationKey: ['setProfileFileOpener'],
+        mutationFn: (input: {
+          opener: Parameters<typeof commands.setProfileFileOpener>[0]
+        }) => commands.setProfileFileOpener(input.opener),
+      }),
     saveProfileFile: () =>
       mutationOptions({
         mutationKey: ['saveProfileFile'],
@@ -1840,6 +1847,7 @@ export function createQueryBindings(rpc: RpcClient) {
     replaceProfileDefinition: () => ['replaceProfileDefinition'],
     viewProfile: () => ['viewProfile'],
     openProfile: () => ['openProfile'],
+    setProfileFileOpener: () => ['setProfileFileOpener'],
     saveProfileFile: () => ['saveProfileFile'],
     setCustomAppDir: () => ['setCustomAppDir'],
     installService: () => ['installService'],

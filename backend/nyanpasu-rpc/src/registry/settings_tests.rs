@@ -200,6 +200,9 @@ async fn command_scope_is_identical_across_rpc_transports() {
 async fn app_patch_decode_rejects_dedicated_fields_over_http() {
     let fixture = Fixture::new(false).await;
     for patch in [
+        json!({"profile_file_opener": {"type": "system_default"}}),
+        json!({"profile_file_opener": {"type": "custom", "path": "editor"}}),
+        json!({"profile_file_opener": {"type": "custom", "path": "editor"}, "proxy_layout_column": 97}),
         json!({"hotkeys": []}),
         json!({"hotkeys": ["toggle_tun_mode,Control+Q"]}),
         json!({"enable_service_mode": false}),
@@ -221,6 +224,25 @@ async fn app_patch_decode_rejects_dedicated_fields_over_http() {
             .recent_operations
             .is_empty()
     );
+    fixture.shutdown().await;
+}
+
+#[tokio::test]
+async fn profile_editor_command_is_unavailable_over_http_and_local() {
+    let fixture = Fixture::new(false).await;
+    for transport in [RpcTransport::Http, RpcTransport::Local] {
+        let error = fixture
+            .rpc
+            .call(
+                transport,
+                "set_profile_file_opener",
+                RpcCaller::desktop("settings"),
+                json!({"opener": {"type": "custom", "path": "editor"}}),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, "unsupported");
+    }
     fixture.shutdown().await;
 }
 

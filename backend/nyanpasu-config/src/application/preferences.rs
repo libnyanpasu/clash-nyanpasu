@@ -7,7 +7,8 @@
 //! - system-affecting settings (`system`): [`super::SystemSettingsPatch`], including the network
 //!   rules that write them;
 //! - dedicated settings with their own command: `hotkeys` (`set_hotkeys`), `enable_service_mode`
-//!   (`set_service_mode`), `remote_access` (`set_remote_access`) and `core`
+//!   (`set_service_mode`), `profile_file_opener` (`set_profile_file_opener`),
+//!   `remote_access` (`set_remote_access`) and `core`
 //!   (`change_clash_core`).
 //!
 //! Every request type accepts only its own fields, so its fields, and its schema, are exactly the
@@ -96,6 +97,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             enable_memory_usage,
             lighten_animation_effects,
             enable_service_mode,
+            profile_file_opener,
             enable_auto_launch,
             enable_silent_start,
             enable_system_proxy,
@@ -138,6 +140,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             "preferences";
             hotkeys,
             enable_service_mode,
+            profile_file_opener,
             remote_access,
             core,
             enable_auto_launch,
@@ -265,6 +268,7 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             enable_macos_colored_icons,
             // Other classes are never written from here.
             enable_service_mode: None,
+            profile_file_opener: None,
             enable_auto_launch: None,
             enable_system_proxy: None,
             enable_proxy_guard: None,
@@ -309,6 +313,13 @@ mod tests {
                 vec![json!([]), json!(["open_or_close_dashboard,Ctrl+Q"])],
             ),
             ("enable_service_mode", vec![json!(false), json!(true)]),
+            (
+                "profile_file_opener",
+                vec![
+                    json!({"type": "system_default"}),
+                    json!({"type": "custom", "path": "editor"}),
+                ],
+            ),
             (
                 "remote_access",
                 vec![

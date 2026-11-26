@@ -91,6 +91,20 @@ impl ReleaseChannel {
     }
 }
 
+/// The desktop application's choice of program for opening a profile file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProfileFileOpener {
+    #[default]
+    SystemDefault,
+    VsCode,
+    Zed,
+    NotepadPlusPlus,
+    Custom {
+        path: std::path::PathBuf,
+    },
+}
+
 /// `application.yaml` schema.
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
@@ -128,6 +142,10 @@ pub struct NyanpasuAppConfig {
     /// host state and must never be writable over HTTP. Core domain patches remain
     /// supported.
     pub enable_service_mode: bool,
+
+    /// Device-local program selection; RPC writes require the desktop-only command.
+    #[serde(default)]
+    pub profile_file_opener: ProfileFileOpener,
 
     /// can the app auto startup
     pub enable_auto_launch: bool,
@@ -319,6 +337,7 @@ impl Default for NyanpasuAppConfig {
             enable_memory_usage: true,
             lighten_animation_effects: false,
             enable_service_mode: false,
+            profile_file_opener: ProfileFileOpener::default(),
             enable_auto_launch: false,
             enable_silent_start: false,
             enable_system_proxy: false,
@@ -363,6 +382,14 @@ impl Default for NyanpasuAppConfig {
 mod patch_tests {
     use super::*;
     use struct_patch::Status;
+
+    #[test]
+    fn profile_file_opener_defaults_for_older_configs() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        value.as_object_mut().unwrap().remove("profile_file_opener");
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.profile_file_opener, ProfileFileOpener::SystemDefault);
+    }
 
     /// The macOS icon preference is part of every platform's schema, so a file
     /// written before it existed still loads and a projection round-trips.

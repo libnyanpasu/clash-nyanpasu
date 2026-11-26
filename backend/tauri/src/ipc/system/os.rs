@@ -3,10 +3,14 @@
 
 use chrono::Local;
 use log::debug;
-use nyanpasu_config::profile::ProfileId;
+use nyanpasu_config::{
+    application::{NyanpasuAppConfigPatch, ProfileFileOpener},
+    profile::ProfileId,
+};
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_paths::PathResolver;
 use nyanpasu_rpc::error::{IpcError, Result};
+use nyanpasu_rpc_protocol::types::RpcUnitMutationOutcome;
 use nyanpasu_runtime_values::profiles::ProfileFileMissingSnafu;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
@@ -473,8 +477,26 @@ pub async fn open_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     if !path.exists() {
         return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
-    help::open_with_default_app(&path)?;
+    help::open_profile_file(&path, &client.get_app_config().await?.profile_file_opener)?;
     Ok(())
+}
+
+/// The selected program is a desktop-only, device-local preference.
+#[nyanpasu_rpc::rpc(privacy, capabilities(opener), expose = [])]
+#[tauri::command]
+#[specta::specta]
+pub async fn set_profile_file_opener(
+    client: State<'_, NyanpasuClient>,
+    opener: ProfileFileOpener,
+) -> Result<RpcUnitMutationOutcome> {
+    help::validate_profile_file_opener(&opener)?;
+    Ok(client
+        .patch_app_config(NyanpasuAppConfigPatch {
+            profile_file_opener: Some(opener),
+            ..Default::default()
+        })
+        .await?
+        .into())
 }
 
 #[nyanpasu_rpc::rpc(capabilities(clipboard), expose = [])]

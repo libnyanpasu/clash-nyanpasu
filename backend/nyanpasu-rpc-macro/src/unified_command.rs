@@ -990,6 +990,7 @@ mod tests {
                 "select_proxy",
                 "set_global_transforms",
                 "set_hotkeys",
+                "set_profile_file_opener",
                 "set_profile_layout",
                 "set_profile_valid_fields",
                 "set_proxy_group_layout",
@@ -1519,7 +1520,7 @@ mod tests {
                     "duplicate {platform} command"
                 );
             }
-            assert_eq!(rows.len(), 220, "{platform} command inventory");
+            assert_eq!(rows.len(), 221, "{platform} command inventory");
             inventories.push((platform, rows));
         }
         render_capability_inventory(&inventories)

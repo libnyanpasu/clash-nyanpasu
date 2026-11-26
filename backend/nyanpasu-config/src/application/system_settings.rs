@@ -57,6 +57,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             enable_memory_usage,
             lighten_animation_effects,
             enable_service_mode,
+            profile_file_opener,
             enable_auto_launch,
             enable_silent_start,
             enable_system_proxy,
@@ -99,6 +100,7 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             "system settings";
             hotkeys,
             enable_service_mode,
+            profile_file_opener,
             remote_access,
             core,
             app_singleton_port,
@@ -219,6 +221,10 @@ mod tests {
             ("hotkeys", json!([])),
             ("enable_service_mode", json!(false)),
             ("enable_service_mode", json!(true)),
+            (
+                "profile_file_opener",
+                json!({"type": "custom", "path": "editor"}),
+            ),
             ("remote_access", json!({})),
             ("remote_access", json!({"http": {"enabled": false}})),
             ("core", json!("mihomo")),
@@ -236,9 +242,10 @@ mod tests {
         fields
     }
 
-    const REFUSED: [&str; 35] = [
+    const REFUSED: [&str; 36] = [
         "hotkeys",
         "enable_service_mode",
+        "profile_file_opener",
         "remote_access",
         "core",
         "app_singleton_port",
@@ -385,7 +392,13 @@ mod tests {
     /// the serialized default config, so a newly added field takes part automatically.
     #[test]
     fn every_config_field_has_exactly_one_request_type() {
-        const DEDICATED: [&str; 4] = ["hotkeys", "enable_service_mode", "remote_access", "core"];
+        const DEDICATED: [&str; 5] = [
+            "hotkeys",
+            "enable_service_mode",
+            "remote_access",
+            "core",
+            "profile_file_opener",
+        ];
         let config = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
         for (field, value) in config.as_object().unwrap() {
             // A default `null` (an unset clearable field) is spelled as a write in both requests.

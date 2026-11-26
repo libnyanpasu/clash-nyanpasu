@@ -41,6 +41,7 @@ pub const APPLICATION_SCOPES: &[(&str, FieldScope)] = &[
     ("enable_memory_usage", Portable),
     ("lighten_animation_effects", Portable),
     ("enable_service_mode", Device),
+    ("profile_file_opener", Device),
     ("enable_auto_launch", Device),
     ("enable_silent_start", Device),
     ("enable_system_proxy", Device),

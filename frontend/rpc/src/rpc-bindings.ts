@@ -1199,6 +1199,16 @@ export function createRpcClient(
       __RPC_INVOKE<null>('view_profile', { uid }, options),
     openProfile: (uid: ProfileId, options?: InvokeOptions) =>
       __RPC_INVOKE<null>('open_profile', { uid }, options),
+    /**  The selected program is a desktop-only, device-local preference. */
+    setProfileFileOpener: (
+      opener: ProfileFileOpener,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<RpcUnitMutationOutcome_Serialize>(
+        'set_profile_file_opener',
+        { opener },
+        options,
+      ),
     saveProfileFile: (
       uid: ProfileId,
       fileData: string,
@@ -7784,6 +7794,8 @@ export type NyanpasuAppConfig_Deserialize = {
    *  supported.
    */
   enable_service_mode: boolean
+  /**  Device-local program selection; RPC writes require the desktop-only command. */
+  profile_file_opener?: ProfileFileOpener
   /**  can the app auto startup */
   enable_auto_launch: boolean
   /**  not show the window on launch */
@@ -7926,6 +7938,8 @@ export type NyanpasuAppConfig_Serialize = {
    *  supported.
    */
   enable_service_mode: boolean
+  /**  Device-local program selection; RPC writes require the desktop-only command. */
+  profile_file_opener: ProfileFileOpener
   /**  can the app auto startup */
   enable_auto_launch: boolean
   /**  not show the window on launch */
@@ -8468,6 +8482,14 @@ export type ProfileFileError =
   | { kind: 'not_completable' }
   | { kind: 'cleanup_already_activated' }
   | { kind: 'diverged_before_recovery' }
+
+/**  The desktop application's choice of program for opening a profile file. */
+export type ProfileFileOpener =
+  | { type: 'system_default' }
+  | { type: 'vs_code' }
+  | { type: 'zed' }
+  | { type: 'notepad_plus_plus' }
+  | { type: 'custom'; path: string }
 
 /**
  *  A user-named group of Config profiles. A Config profile belongs to at most

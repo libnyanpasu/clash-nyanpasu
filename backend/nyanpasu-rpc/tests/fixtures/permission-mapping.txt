@@ -189,6 +189,7 @@ command | set_clash_ws_recording | traffic:write | traffic.connections |  |  | d
 command | set_custom_app_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | set_global_transforms | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_hotkeys | system:write | system.hotkeys |  |  | desktop | nyanpasu-rpc/src/commands/storage.rs
+command | set_profile_file_opener | system:write | system.os |  |  | desktop | tauri/src/ipc/system/os.rs
 command | set_profile_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_profile_valid_fields | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_proxy_group_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs

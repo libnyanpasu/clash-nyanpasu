@@ -350,6 +350,15 @@ mod tests {
                 impact: false,
                 owners: &[EffectKind::CoreLogStorage],
             },
+            AppCase {
+                field: "profile_file_opener",
+                mutate: |app| {
+                    app.profile_file_opener =
+                        nyanpasu_config::application::ProfileFileOpener::VsCode
+                },
+                impact: false,
+                owners: &[],
+            },
             // Peripheral owners.
             AppCase {
                 field: "language",

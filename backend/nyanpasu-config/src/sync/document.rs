@@ -539,6 +539,27 @@ mod tests {
     }
 
     #[test]
+    fn syncing_cannot_replace_the_device_local_editor() {
+        use crate::application::ProfileFileOpener;
+        let config = NyanpasuAppConfig {
+            profile_file_opener: ProfileFileOpener::VsCode,
+            ..Default::default()
+        };
+        let mut remote = project_application(&config).unwrap();
+        assert!(!remote.payload.contains_key("profile_file_opener"));
+        remote.payload.insert(
+            "profile_file_opener".into(),
+            json!({"type": "custom", "path": "editor"}),
+        );
+        assert_eq!(
+            apply_application(&config, &remote)
+                .unwrap()
+                .profile_file_opener,
+            ProfileFileOpener::VsCode
+        );
+    }
+
+    #[test]
     fn profile_projection_drops_device_state() {
         let projection = project_profiles(&catalog()).unwrap();
         let text = String::from_utf8(projection.to_canonical_bytes()).unwrap();

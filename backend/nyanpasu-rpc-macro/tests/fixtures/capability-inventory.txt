@@ -191,6 +191,7 @@ set_clash_ws_recording | desktop,http | - | - | mutation | traffic:write
 set_custom_app_dir | desktop | - | - | mutation | system:write
 set_global_transforms | desktop,http | - | elevation,os_integration,presentation | mutation | profile:write
 set_hotkeys | desktop | - | hotkey | mutation | system:write
+set_profile_file_opener | desktop | opener | - | mutation | system:write
 set_profile_layout | desktop,http | - | presentation | mutation | profile:write
 set_profile_valid_fields | desktop,http | - | elevation,os_integration,presentation | mutation | profile:write
 set_proxy_group_layout | desktop,http | - | presentation | mutation | profile:write

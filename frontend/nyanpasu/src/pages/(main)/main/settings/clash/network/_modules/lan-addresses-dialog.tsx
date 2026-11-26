@@ -24,6 +24,8 @@ import { cn } from '@nyanpasu/utils'
 import {
   buildLanAddressGroups,
   resolveLiveLanPorts,
+  type LanAddressGroup,
+  type LanAddressItem,
   type LanPortKind,
 } from './lan-addresses'
 
@@ -33,6 +35,170 @@ const PORT_LABELS = {
   socks5: m.settings_clash_settings_socks_port_label,
   http: m.settings_clash_settings_http_port_label,
 } satisfies Record<LanPortKind, () => string>
+
+function AllowLanDisabledNotice({ allowLan }: { allowLan: boolean }) {
+  if (allowLan) {
+    return null
+  }
+
+  return (
+    <p
+      role="note"
+      data-slot="allow-lan-addresses-disabled-notice"
+      className="bg-secondary-container text-on-secondary-container rounded-xl px-4 py-3 text-sm"
+    >
+      {m.settings_clash_settings_allow_lan_addresses_disabled_notice()}
+    </p>
+  )
+}
+
+function ControllerLoopbackNotice({ address }: { address: string | null }) {
+  if (!address) {
+    return null
+  }
+
+  return (
+    <p
+      role="note"
+      data-slot="allow-lan-addresses-controller-loopback-notice"
+      className="bg-surface-variant/60 text-on-surface-variant rounded-xl px-4 py-3 text-sm"
+    >
+      {m.settings_clash_settings_allow_lan_addresses_controller_loopback_notice(
+        { address },
+      )}
+    </p>
+  )
+}
+
+function CopyErrorAlert({ error }: { error: string | null }) {
+  if (!error) {
+    return null
+  }
+
+  return (
+    <p role="alert" className="text-error text-sm">
+      {error}
+    </p>
+  )
+}
+
+function LanAddressRow({
+  entry,
+  onCopy,
+}: {
+  entry: LanAddressItem
+  onCopy: (address: string) => void
+}) {
+  return (
+    <li className="flex items-center gap-3" data-slot="allow-lan-address-item">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <code className="text-sm break-all select-text">{entry.address}</code>
+
+        <span className="text-on-surface-variant text-xs">
+          {PORT_LABELS[entry.kind]()}
+        </span>
+      </span>
+
+      <Button
+        type="button"
+        icon
+        aria-label={`${m.common_copy()} ${entry.address}`}
+        onClick={() => onCopy(entry.address)}
+      >
+        <ContentCopyRounded />
+      </Button>
+    </li>
+  )
+}
+
+function LanAddressGroupCard({
+  group,
+  onCopy,
+}: {
+  group: LanAddressGroup
+  onCopy: (address: string) => void
+}) {
+  return (
+    <section
+      className="bg-surface-variant/30 flex flex-col gap-2 rounded-2xl p-4"
+      data-slot="allow-lan-addresses-group"
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">{group.interfaceName}</h3>
+
+        <code className="text-on-surface-variant text-xs select-text">
+          {group.ip}
+        </code>
+      </div>
+
+      <ul className="flex flex-col gap-1">
+        {group.entries.map((entry) => (
+          <LanAddressRow
+            key={`${entry.kind}-${entry.address}`}
+            entry={entry}
+            onCopy={onCopy}
+          />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function LanAddressesBody({
+  isError,
+  isSuccess,
+  groups,
+  hasPorts,
+  onCopy,
+}: {
+  isError: boolean
+  isSuccess: boolean
+  groups: readonly LanAddressGroup[]
+  hasPorts: boolean
+  onCopy: (address: string) => void
+}) {
+  if (isError) {
+    return (
+      <p role="alert" className="text-error text-sm">
+        {m.settings_clash_settings_allow_lan_addresses_error()}
+      </p>
+    )
+  }
+
+  if (isSuccess && groups.length === 0) {
+    return (
+      <p
+        data-slot="allow-lan-addresses-empty"
+        className="text-on-surface-variant text-sm"
+      >
+        {m.settings_clash_settings_allow_lan_addresses_empty_networks()}
+      </p>
+    )
+  }
+
+  if (!hasPorts) {
+    return (
+      <p
+        data-slot="allow-lan-addresses-empty-ports"
+        className="text-on-surface-variant text-sm"
+      >
+        {m.settings_clash_settings_allow_lan_addresses_empty_ports()}
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4" data-slot="allow-lan-addresses-groups">
+      {groups.map((group) => (
+        <LanAddressGroupCard
+          key={`${group.interfaceName}-${group.ip}`}
+          group={group}
+          onCopy={onCopy}
+        />
+      ))}
+    </div>
+  )
+}
 
 function LanAddressesModalContent({
   allowLan,
@@ -91,105 +257,21 @@ function LanAddressesModalContent({
             {m.settings_clash_settings_allow_lan_addresses_description()}
           </p>
 
-          {!allowLan && (
-            <p
-              role="note"
-              data-slot="allow-lan-addresses-disabled-notice"
-              className="bg-secondary-container text-on-secondary-container rounded-xl px-4 py-3 text-sm"
-            >
-              {m.settings_clash_settings_allow_lan_addresses_disabled_notice()}
-            </p>
-          )}
+          <AllowLanDisabledNotice allowLan={allowLan} />
 
-          {resolved.controllerLoopbackAddress && (
-            <p
-              role="note"
-              data-slot="allow-lan-addresses-controller-loopback-notice"
-              className="bg-surface-variant/60 text-on-surface-variant rounded-xl px-4 py-3 text-sm"
-            >
-              {m.settings_clash_settings_allow_lan_addresses_controller_loopback_notice(
-                { address: resolved.controllerLoopbackAddress },
-              )}
-            </p>
-          )}
+          <ControllerLoopbackNotice
+            address={resolved.controllerLoopbackAddress}
+          />
 
-          {networks.isError ? (
-            <p role="alert" className="text-error text-sm">
-              {m.settings_clash_settings_allow_lan_addresses_error()}
-            </p>
-          ) : networks.isSuccess && groups.length === 0 ? (
-            <p
-              data-slot="allow-lan-addresses-empty"
-              className="text-on-surface-variant text-sm"
-            >
-              {m.settings_clash_settings_allow_lan_addresses_empty_networks()}
-            </p>
-          ) : resolved.ports.length === 0 ? (
-            <p
-              data-slot="allow-lan-addresses-empty-ports"
-              className="text-on-surface-variant text-sm"
-            >
-              {m.settings_clash_settings_allow_lan_addresses_empty_ports()}
-            </p>
-          ) : (
-            <div
-              className="flex flex-col gap-4"
-              data-slot="allow-lan-addresses-groups"
-            >
-              {groups.map((group) => (
-                <section
-                  key={`${group.interfaceName}-${group.ip}`}
-                  className="bg-surface-variant/30 flex flex-col gap-2 rounded-2xl p-4"
-                  data-slot="allow-lan-addresses-group"
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="text-sm font-medium">
-                      {group.interfaceName}
-                    </h3>
+          <LanAddressesBody
+            isError={networks.isError}
+            isSuccess={networks.isSuccess}
+            groups={groups}
+            hasPorts={resolved.ports.length > 0}
+            onCopy={handleCopy}
+          />
 
-                    <code className="text-on-surface-variant text-xs select-text">
-                      {group.ip}
-                    </code>
-                  </div>
-
-                  <ul className="flex flex-col gap-1">
-                    {group.entries.map((entry) => (
-                      <li
-                        key={`${entry.kind}-${entry.address}`}
-                        className="flex items-center gap-3"
-                        data-slot="allow-lan-address-item"
-                      >
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <code className="text-sm break-all select-text">
-                            {entry.address}
-                          </code>
-
-                          <span className="text-on-surface-variant text-xs">
-                            {PORT_LABELS[entry.kind]()}
-                          </span>
-                        </span>
-
-                        <Button
-                          type="button"
-                          icon
-                          aria-label={`${m.common_copy()} ${entry.address}`}
-                          onClick={() => handleCopy(entry.address)}
-                        >
-                          <ContentCopyRounded />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )}
-
-          {error && (
-            <p role="alert" className="text-error text-sm">
-              {error}
-            </p>
-          )}
+          <CopyErrorAlert error={error} />
         </CardContent>
 
         <CardFooter className="shrink-0">

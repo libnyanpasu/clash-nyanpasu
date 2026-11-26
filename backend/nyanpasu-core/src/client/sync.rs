@@ -14,7 +14,10 @@ use nyanpasu_config::{
     application::NyanpasuAppConfig, clash::config::ClashConfig, sync::PortableDocument,
 };
 use nyanpasu_paths::{LogicalPath, PathResolver};
-use nyanpasu_runtime_values::sync::{ConflictChoice, SyncConflict, SyncStatus};
+use nyanpasu_runtime_values::{
+    configuration::BackgroundChangeOrigin,
+    sync::{ConflictChoice, SyncConflict, SyncStatus},
+};
 use nyanpasu_state_engine::Version;
 use snafu::{ResultExt as _, Snafu};
 
@@ -22,7 +25,7 @@ use crate::{
     client::{
         application::ApplicationClient, clash_config::ClashConfigClient, profiles::ProfilesClient,
     },
-    state::application::ApplicationSnapshot,
+    state::{application::ApplicationSnapshot, mutation::ports::Attribution},
     sync::{
         self, SyncFailure,
         client::SyncClient,
@@ -158,7 +161,9 @@ impl PortableStatePort for OwnerStatePort {
                     reason: error.to_string(),
                 }
             })?;
-        Ok(match self.application.replace(next).await {
+        // The owner reports how the change ended, in its own order.
+        let by = Attribution::from(BackgroundChangeOrigin::SyncApplication);
+        Ok(match self.application.replace_for(next, by).await {
             Ok(_) => ApplyOutcome::Committed { deferred: false },
             Err(error) => outcome_from_config(&error),
         })
@@ -179,7 +184,9 @@ impl PortableStatePort for OwnerStatePort {
                 reason: error.to_string(),
             }
         })?;
-        Ok(match self.clash.replace(next).await {
+        // The owner reports how the change ended, in its own order.
+        let by = Attribution::from(BackgroundChangeOrigin::SyncClash);
+        Ok(match self.clash.replace_for(next, by).await {
             Ok(_) => ApplyOutcome::Committed { deferred: false },
             Err(error) => outcome_from_config(&error),
         })
@@ -200,7 +207,9 @@ impl PortableStatePort for OwnerStatePort {
                 reason: error.to_string(),
             }
         })?;
-        Ok(match self.profiles.replace(next).await {
+        // The owner reports how the change ended, in its own order.
+        let by = Attribution::from(BackgroundChangeOrigin::SyncProfiles);
+        Ok(match self.profiles.replace_for(next, by).await {
             Ok(report) => {
                 // A committed catalog whose runtime application is deferred still
                 // saved the source, so the baseline may advance; the deferral is

@@ -142,10 +142,23 @@ async fn config_reconcile_failure_reports_committed_state_without_replaying() {
             .await
             .unwrap();
         assert_eq!(outcome.degradations().len(), 1);
-        assert!(matches!(
-            outcome.degradations()[0].reason,
-            nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { .. }
-        ));
+        let nyanpasu_runtime_values::runtime::DegradationReason::RuntimeDeferred { cause } =
+            &outcome.degradations()[0].reason
+        else {
+            panic!("{:?}", outcome.degradations());
+        };
+        // The refused application names its candidate in the degradation
+        // and in the status, and the desktop can open it.
+        let kept = cause.candidate_snapshot_id().cloned().expect("the candidate is kept");
+        assert_eq!(
+            client.configuration_status().runtime.candidate_snapshot_id,
+            Some(kept.clone())
+        );
+        let candidate = client.inspect_candidate_runtime(&kept).await.unwrap();
+        assert_eq!(
+            candidate.stage,
+            crate::client::runtime_inspection::CandidateStage::Built
+        );
         // The cached startup reply acknowledges the queued commit notification without applying again.
         client.startup_reconcile().await;
         assert_eq!(
@@ -194,11 +207,21 @@ async fn config_persistence_failure_leaves_runtime_and_source_unchanged() {
     );
     let crate::client::ClientError::Config(crate::state::config_error::ConfigError::Commit {
         domain: nyanpasu_runtime_values::mutation::ConfigDomain::Clash,
-        source: nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig { source },
+        source:
+            nyanpasu_runtime_values::mutation::CommitAborted::WriteConfig {
+                source,
+                candidate_snapshot_id: Some(kept),
+            },
     }) = error
     else {
         panic!("{error:?}")
     };
+    // The core had accepted the change in its check; that candidate is kept.
+    let candidate = client.inspect_candidate_runtime(&kept).await.unwrap();
+    assert_eq!(
+        candidate.stage,
+        crate::client::runtime_inspection::CandidateStage::Prechecked
+    );
     assert!(
         source.to_string().contains("failed to write config"),
         "{source}"

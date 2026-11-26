@@ -13,11 +13,12 @@ use nyanpasu_config::runtime::snapshot::persistence::{
 };
 use nyanpasu_runtime_values::{candidate::CandidateSnapshotId, runtime_error::RuntimeError};
 use parking_lot::Mutex;
+use tokio::sync::watch;
 
-use super::CandidateEvidence;
-use crate::client::runtime;
+use super::{CandidateEvidence, CandidateSource};
+use crate::client::{runtime, runtime_inspection::CandidateStage};
 
-/// How many candidates one session keeps at most.
+/// How many candidates one session keeps at most, the held ones included.
 const CAPACITY: usize = 8;
 /// The largest compressed archive a save writes; a larger build keeps no copy.
 const MAX_ENCODED_BYTES: u64 = 16 * 1024 * 1024;
@@ -66,15 +67,93 @@ impl CandidateFiles for TempCandidateFiles {
 
 struct Entry {
     id: CandidateSnapshotId,
+    stage: CandidateStage,
+    source: Option<CandidateSource>,
     /// Reads seek from the start, so one read at a time.
     file: Mutex<File>,
+}
+
+/// How long a kept candidate stays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::client) enum Retention {
+    /// Among the latest; the oldest goes first, and a later one from the
+    /// same source replaces it.
+    Recent,
+    /// Held for the reconciler, which can report it again in a later round,
+    /// until it lets go of it; then it becomes a recent one. Held ones count
+    /// against the same capacity: past it, the oldest held one goes too.
+    Pinned,
 }
 
 #[derive(Default)]
 struct Index {
     closed: bool,
+    /// What the reconciler holds, beside the recent ones.
+    pinned: Vec<Arc<Entry>>,
     /// Oldest first.
     recent: VecDeque<Arc<Entry>>,
+}
+
+impl Index {
+    /// Publishes `entry` and returns what no longer fits, for the caller to
+    /// drop outside the lock.
+    fn publish(&mut self, entry: Arc<Entry>, retention: Retention) -> Vec<Arc<Entry>> {
+        let mut released = Vec::new();
+        match retention {
+            Retention::Recent => {
+                if let Some(source) = &entry.source
+                    && let Some(at) = self
+                        .recent
+                        .iter()
+                        .position(|kept| kept.source.as_ref() == Some(source))
+                {
+                    released.extend(self.recent.remove(at));
+                }
+                self.recent.push_back(entry);
+            }
+            Retention::Pinned => self.pinned.push(entry),
+        }
+        released.extend(self.trim());
+        released
+    }
+
+    /// Holds exactly what `ids` names that this index still has; what was
+    /// held before and is not named becomes a recent one.
+    fn hold(&mut self, ids: &[CandidateSnapshotId]) -> Vec<Arc<Entry>> {
+        let (held, released): (Vec<_>, Vec<_>) = std::mem::take(&mut self.pinned)
+            .into_iter()
+            .partition(|entry| ids.contains(&entry.id));
+        self.pinned = held;
+        let named: Vec<_> = self
+            .recent
+            .iter()
+            .filter(|entry| ids.contains(&entry.id))
+            .cloned()
+            .collect();
+        self.recent.retain(|entry| !ids.contains(&entry.id));
+        self.pinned.extend(named);
+        self.recent.extend(released);
+        self.trim()
+    }
+
+    /// What no longer fits, oldest first: the recent ones beside the held
+    /// ones, then held ones past the capacity.
+    fn trim(&mut self) -> Vec<Arc<Entry>> {
+        let room = CAPACITY.saturating_sub(self.pinned.len());
+        let excess = self.recent.len().saturating_sub(room);
+        let mut released: Vec<_> = self.recent.drain(..excess).collect();
+        let over = self.pinned.len().saturating_sub(CAPACITY);
+        released.extend(self.pinned.drain(..over));
+        released
+    }
+
+    fn find(&self, id: &CandidateSnapshotId) -> Option<Arc<Entry>> {
+        self.pinned
+            .iter()
+            .chain(&self.recent)
+            .find(|entry| entry.id == *id)
+            .cloned()
+    }
 }
 
 /// The candidates this session kept, each in its own anonymous file and
@@ -89,6 +168,9 @@ pub(in crate::client) struct CandidateStore {
     files: Arc<dyn CandidateFiles>,
     max_encoded_bytes: u64,
     index: Mutex<Index>,
+    /// How many times candidates were dropped, so a view that names them
+    /// can look again.
+    evictions: watch::Sender<u64>,
 }
 
 impl CandidateStore {
@@ -97,15 +179,44 @@ impl CandidateStore {
             files,
             max_encoded_bytes: MAX_ENCODED_BYTES,
             index: Mutex::default(),
+            evictions: watch::Sender::new(0),
         }
     }
 
-    /// Keeps `evidence` for inspection and returns its ID. A build too large
-    /// to keep, a write that fails or a store that is closing keeps nothing,
-    /// and the failure is reported without an ID.
+    /// Drops `released` outside the index lock and tells the views.
+    fn evict(&self, released: Vec<Arc<Entry>>) {
+        if released.is_empty() {
+            return;
+        }
+        drop(released);
+        self.evictions.send_modify(|count| *count += 1);
+    }
+
+    /// How many times candidates were dropped.
+    pub(in crate::client) fn evictions(&self) -> u64 {
+        *self.evictions.borrow()
+    }
+
+    /// Changes whenever candidates are dropped.
+    pub(in crate::client) fn subscribe_evictions(&self) -> watch::Receiver<u64> {
+        self.evictions.subscribe()
+    }
+
+    /// Keeps `evidence` among the latest and returns its ID. A build too
+    /// large to keep, a write that fails or a store that is closing keeps
+    /// nothing, and the failure is reported without an ID.
     pub(in crate::client) async fn save(
         self: &Arc<Self>,
         evidence: CandidateEvidence,
+    ) -> Option<CandidateSnapshotId> {
+        self.keep(evidence, Retention::Recent).await
+    }
+
+    /// Keeps `evidence` like [`Self::save`], for as long as `retention` says.
+    pub(in crate::client) async fn keep(
+        self: &Arc<Self>,
+        evidence: CandidateEvidence,
+        retention: Retention,
     ) -> Option<CandidateSnapshotId> {
         if self.index.lock().closed {
             return None;
@@ -128,15 +239,13 @@ impl CandidateStore {
             if index.closed {
                 return None;
             }
-            index.recent.push_back(entry);
-            if index.recent.len() > CAPACITY {
-                index.recent.pop_front()
-            } else {
-                None
-            }
+            index.publish(entry, retention)
         };
-        drop(evicted);
-        Some(id)
+        // A recent one that finds no room beside the held ones is dropped
+        // at once, and named nowhere.
+        let kept = !evicted.iter().any(|entry| entry.id == id);
+        self.evict(evicted);
+        kept.then_some(id)
     }
 
     fn write(&self, evidence: &CandidateEvidence) -> Result<Entry, SnapshotPersistError> {
@@ -160,6 +269,8 @@ impl CandidateStore {
             .expect("a safe-alphabet nanoid of 21 characters is a candidate snapshot id");
         Ok(Entry {
             id,
+            stage: evidence.stage,
+            source: evidence.source.clone(),
             file: Mutex::new(file),
         })
     }
@@ -174,15 +285,14 @@ impl CandidateStore {
     pub(in crate::client) async fn inspect<T: Send + 'static>(
         self: &Arc<Self>,
         id: &CandidateSnapshotId,
-        project: impl FnOnce(&CandidateArchive) -> Result<T, RuntimeError> + Send + 'static,
+        project: impl FnOnce(&CandidateArchive, CandidateStage) -> Result<T, RuntimeError>
+        + Send
+        + 'static,
     ) -> Result<T, RuntimeError> {
         let entry = self
             .index
             .lock()
-            .recent
-            .iter()
-            .find(|entry| entry.id == *id)
-            .cloned()
+            .find(id)
             .ok_or(RuntimeError::RuntimeSnapshotChanged)?;
         nyanpasu_owner_support::blocking::join(
             tokio::task::spawn_blocking(move || {
@@ -190,10 +300,22 @@ impl CandidateStore {
                     tracing::debug!(%error, "the kept candidate does not decode");
                     RuntimeError::RuntimeSnapshotChanged
                 })?;
-                project(&archive)
+                project(&archive, entry.stage)
             })
             .await,
         )
+    }
+
+    /// Holds what the reconciler can still report, so none of it ages out,
+    /// and lets everything it held before age out among the latest.
+    pub(in crate::client) fn hold(&self, ids: &[CandidateSnapshotId]) {
+        let released = self.index.lock().hold(ids);
+        self.evict(released);
+    }
+
+    /// Whether `id` can still be opened.
+    pub(in crate::client) fn holds(&self, id: &CandidateSnapshotId) -> bool {
+        self.index.lock().find(id).is_some()
     }
 
     /// Stops keeping candidates. Saves already writing finish without being
@@ -209,9 +331,11 @@ impl CandidateStore {
         let released = {
             let mut index = self.index.lock();
             index.closed = true;
-            std::mem::take(&mut index.recent)
+            let mut released = std::mem::take(&mut index.pinned);
+            released.extend(std::mem::take(&mut index.recent));
+            released
         };
-        drop(released);
+        self.evict(released);
     }
 }
 
@@ -265,10 +389,21 @@ impl CandidateStore {
         self
     }
 
+    /// The recent IDs, oldest first.
     pub(in crate::client) fn kept(&self) -> Vec<CandidateSnapshotId> {
         self.index
             .lock()
             .recent
+            .iter()
+            .map(|entry| entry.id.clone())
+            .collect()
+    }
+
+    /// The held IDs, in the order they were first held.
+    pub(in crate::client) fn pinned(&self) -> Vec<CandidateSnapshotId> {
+        self.index
+            .lock()
+            .pinned
             .iter()
             .map(|entry| entry.id.clone())
             .collect()

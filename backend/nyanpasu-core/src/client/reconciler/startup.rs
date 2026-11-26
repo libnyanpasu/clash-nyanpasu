@@ -24,6 +24,7 @@ use crate::{
         facade::{HostChangeFailure, ReconcileReport, StopReport},
     },
     client::{
+        candidate_inspection::CandidateEvidence,
         core_lifecycle::{Ownership, effective_host},
         runtime_recovery::{ObservedRuntime, matches_confirmed_apply},
     },
@@ -337,15 +338,22 @@ impl RuntimeReconciler {
                     self.lifecycle.ownership = Ownership::Established { host: owner };
                     let expected =
                         observed.expect("planning only applies an observed stable runtime");
-                    let outcome = match self.prepare_candidate(round.inputs.clone()).await {
-                        Ok(prepared) => {
-                            self.apply_prepared(&expected, prepared, operation_id).await
-                        }
-                        Err(outcome) => {
-                            self.lifecycle.runtime.accept_transition();
-                            outcome
-                        }
-                    };
+                    let (outcome, candidate) =
+                        match self.prepare_candidate(round.inputs.clone()).await {
+                            Ok(prepared) => {
+                                let candidate =
+                                    CandidateEvidence::of_snapshot(&prepared.runtime.snapshot);
+                                (
+                                    self.apply_prepared(&expected, prepared, operation_id).await,
+                                    Some(candidate),
+                                )
+                            }
+                            Err((outcome, candidate)) => {
+                                self.lifecycle.runtime.accept_transition();
+                                (outcome, candidate.map(|candidate| *candidate))
+                            }
+                        };
+                    let outcome = self.name_attempt(&target, outcome, candidate).await;
                     let recorded = match &outcome {
                         ApplyOutcome::Applied(_) => Some(AttemptOutcome::Applied),
                         ApplyOutcome::Refused { cause } => {
@@ -401,6 +409,17 @@ impl RuntimeReconciler {
                 }
             }
         }
+        // Every way a round ends up waiting for the core names the checked
+        // build of the change it waits to apply, if there is one.
+        round.conclusion = match std::mem::replace(&mut round.conclusion, Conclusion::Closed) {
+            Conclusion::Waiting { cause } if cause.candidate_snapshot_id().is_none() => {
+                let candidate = self.checked_candidate(&target);
+                Conclusion::Waiting {
+                    cause: self.name_wait(&target, cause, candidate).await,
+                }
+            }
+            conclusion => conclusion,
+        };
         self.maintain(trigger, round.inputs.app.enable_service_mode)
             .await;
         if self.lifecycle.core.pending_action().is_some()
@@ -466,7 +485,7 @@ impl RuntimeReconciler {
             return;
         }
         if trigger == Trigger::Retry {
-            if let Some((product, _)) = self.pending_product.clone() {
+            if let Some((product, _, _)) = self.pending_product.clone() {
                 if self
                     .lifecycle
                     .runtime

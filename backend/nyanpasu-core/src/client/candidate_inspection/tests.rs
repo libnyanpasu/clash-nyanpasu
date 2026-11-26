@@ -13,8 +13,14 @@ use std::{
 use nyanpasu_config::application::ClashCore;
 use nyanpasu_runtime_values::{candidate::CandidateSnapshotId, runtime_error::RuntimeError};
 
-use super::{CandidateEvidence, CandidateFiles, CandidateStore, TempCandidateFiles};
-use crate::client::{runtime::RuntimeRevisionAllocator, runtime_inspection};
+use super::{
+    CandidateEvidence, CandidateFiles, CandidateSource, CandidateStore, Retention,
+    TempCandidateFiles,
+};
+use crate::client::{
+    runtime::RuntimeRevisionAllocator,
+    runtime_inspection::{self, CandidateStage},
+};
 
 fn evidence() -> CandidateEvidence {
     CandidateEvidence {
@@ -22,6 +28,8 @@ fn evidence() -> CandidateEvidence {
         target_core: ClashCore::default(),
         inspection: Arc::new(runtime_inspection::tests::inspection_data()),
         halted: None,
+        stage: CandidateStage::Built,
+        source: None,
     }
 }
 
@@ -29,7 +37,7 @@ async fn revision_of(
     store: &Arc<CandidateStore>,
     id: &CandidateSnapshotId,
 ) -> Result<u64, RuntimeError> {
-    store.inspect(id, |archive| Ok(archive.revision)).await
+    store.inspect(id, |archive, _| Ok(archive.revision)).await
 }
 
 /// Blocks each file creation until the test lets it through.
@@ -76,7 +84,7 @@ async fn a_kept_candidate_decodes_and_its_evidence_is_released() {
     let id = store.save(evidence).await.unwrap();
     assert!(inspection.upgrade().is_none(), "the store keeps no graph");
     let graph = store
-        .inspect(&id, |archive| Ok(archive.graph.clone()))
+        .inspect(&id, |archive, _| Ok(archive.graph.clone()))
         .await
         .unwrap();
     assert_eq!(graph, expected);
@@ -143,7 +151,7 @@ async fn a_read_survives_the_eviction_that_races_it() {
         let (entered, release) = (entered.clone(), release.clone());
         async move {
             store
-                .inspect(&id, move |archive| {
+                .inspect(&id, move |archive, _| {
                     entered.wait();
                     release.wait();
                     Ok(archive.revision)
@@ -267,6 +275,74 @@ async fn kept_files_cannot_be_opened_by_name_and_vanish_on_release() {
     assert!(directory_entries(directory.as_std_path()).is_empty());
 }
 
+#[tokio::test]
+async fn held_candidates_outlive_recent_failures_until_they_are_let_go() {
+    let store = CandidateStore::for_tests();
+    let pinned = store
+        .keep(
+            evidence().at(CandidateStage::AppliedUnpublished),
+            Retention::Pinned,
+        )
+        .await
+        .unwrap();
+    let mut recent = Vec::new();
+    for _ in 0..10 {
+        recent.push(store.save(evidence()).await.unwrap());
+    }
+    // Eight in all: the held one and the seven latest.
+    assert_eq!(store.pinned(), std::slice::from_ref(&pinned));
+    assert_eq!(store.kept(), recent[3..]);
+    let stage = store.inspect(&pinned, |_, stage| Ok(stage)).await.unwrap();
+    assert_eq!(stage, CandidateStage::AppliedUnpublished);
+
+    // A second one is held beside it, and the oldest recent one goes.
+    let next = store.keep(evidence(), Retention::Pinned).await.unwrap();
+    assert_eq!(store.pinned(), [pinned.clone(), next.clone()]);
+    assert_eq!(store.kept(), recent[4..]);
+    assert!(revision_of(&store, &recent[3]).await.is_err());
+
+    // Let go of, the first ages out among the recent ones.
+    store.hold(std::slice::from_ref(&next));
+    assert_eq!(store.pinned(), std::slice::from_ref(&next));
+    assert_eq!(store.kept().last(), Some(&pinned));
+    assert_eq!(store.kept().len(), 7);
+    assert!(store.holds(&recent[4]));
+    assert!(!store.holds(&recent[3]));
+
+    store.release();
+    assert!(store.pinned().is_empty());
+    assert!(revision_of(&store, &next).await.is_err());
+}
+
+#[tokio::test]
+async fn no_more_than_eight_candidates_are_kept_even_when_all_are_held() {
+    let store = CandidateStore::for_tests();
+    let evictions = store.subscribe_evictions();
+    let recent = store.save(evidence()).await.unwrap();
+    let mut held = Vec::new();
+    for n in 0..9 {
+        held.push(store.keep(evidence(), Retention::Pinned).await.unwrap());
+        // Every save is admitted within the capacity, before any round
+        // lets go of what it held.
+        assert!(store.pinned().len() + store.kept().len() <= 8, "after {n}");
+    }
+    // The recent one went first, then the oldest held one.
+    assert!(!store.holds(&recent));
+    assert!(!store.holds(&held[0]));
+    assert_eq!(store.pinned(), held[1..]);
+    assert!(store.kept().is_empty());
+    assert!(revision_of(&store, &held[0]).await.is_err());
+    // Those that look at what the store holds learn that it changed.
+    assert!(evictions.has_changed().unwrap());
+    assert_eq!(store.evictions(), 2);
+
+    // A recent one finds no room beside eight held ones, so it names
+    // nothing.
+    assert_eq!(store.save(evidence()).await, None);
+    assert_eq!(store.pinned(), held[1..]);
+    assert!(store.kept().is_empty());
+}
+
 /// A file that keeps its name, as the Unix fallback leaves one whose unlink
 /// failed.
 #[cfg(unix)]
@@ -293,4 +369,40 @@ async fn a_file_that_still_has_a_name_receives_nothing() {
     assert!(store.save(evidence()).await.is_none());
     assert!(store.kept().is_empty());
     assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn a_source_that_keeps_failing_keeps_only_its_latest_candidate() {
+    let store = CandidateStore::for_tests();
+    let other = store.save(evidence()).await.unwrap();
+    let source = || {
+        Some(CandidateSource::profile(
+            &nyanpasu_config::profile::ProfileId("remote".into()),
+        ))
+    };
+    let mut latest = None;
+    for _ in 0..10 {
+        latest = store.save(evidence().from_source(source())).await;
+    }
+    // The subscription's failures replace each other; the other one stays.
+    assert_eq!(store.kept(), [other, latest.unwrap()]);
+}
+
+#[tokio::test]
+async fn the_reconciler_holds_what_it_can_still_report() {
+    let store = CandidateStore::for_tests();
+    let first = store.keep(evidence(), Retention::Pinned).await.unwrap();
+    let second = store.keep(evidence(), Retention::Pinned).await.unwrap();
+    store.hold(std::slice::from_ref(&second));
+    assert_eq!(store.kept(), std::slice::from_ref(&first));
+
+    // Holding a recent one again takes it back out of the recent ones.
+    store.hold(&[first.clone(), second.clone()]);
+    assert_eq!(store.pinned(), [second.clone(), first.clone()]);
+    assert!(store.kept().is_empty());
+
+    // Holding nothing lets both age out.
+    store.hold(&[]);
+    assert!(store.pinned().is_empty());
+    assert_eq!(store.kept(), [second, first]);
 }

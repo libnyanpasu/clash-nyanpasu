@@ -307,11 +307,13 @@ cases!(
     Materialization {
         operation: sample(json!("prepare_file_first")),
         source: profile_file_error_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     VersionConflict {
         expected: 4,
         actual: 5,
         cleanup_failures: vec![ProfilesError::ShuttingDown],
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     Commit {
         uid: if present {
@@ -396,7 +398,9 @@ cases!(
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
-    MaterializationDeferred,
+    MaterializationDeferred {
+        candidate_snapshot_id: candidate_snapshot_id(present),
+    },
     CleanupDeferred,
     ProfileAutoActivationFailed {
         profile: sample(json!("profile-1")),
@@ -413,9 +417,11 @@ cases!(
     present;
     WriteConfig {
         source: Box::new(io_source()),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     RecoverAfterWriteFailure {
         source: Box::new(io_source()),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     RuntimeRefused {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
@@ -886,6 +892,7 @@ cases!(
         domain: sample(json!("profiles")),
         expected: 7,
         actual: 8,
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     Commit {
         domain: sample(json!("profiles")),

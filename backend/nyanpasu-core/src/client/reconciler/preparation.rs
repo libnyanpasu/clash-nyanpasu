@@ -24,6 +24,7 @@ use nyanpasu_runtime_values::{
 };
 
 /// A preparation that failed, with the candidate its build had produced.
+#[derive(Debug)]
 pub(in crate::client) struct PrepareFailure {
     pub error: RuntimeError,
     pub candidate: Option<Box<CandidateEvidence>>,
@@ -75,7 +76,9 @@ impl RuntimePreparation {
         app: NyanpasuAppConfig,
     ) -> Result<PreparedRuntime, RuntimeError> {
         let inputs = self.capture_inputs(app, clash, profiles).await;
-        self.prepare_inputs(inputs).await
+        self.prepare_inputs(inputs)
+            .await
+            .map_err(|failure| failure.error)
     }
 
     pub async fn capture_inputs(
@@ -117,13 +120,13 @@ impl RuntimePreparation {
             .await
     }
 
-    pub async fn prepare_inputs(
+    /// Prepares a committed target, keeping failed transforms lenient. A
+    /// failure keeps the candidate its build had produced.
+    pub(in crate::client) async fn prepare_inputs(
         &self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedRuntime, RuntimeError> {
-        self.prepare_inputs_with_policy(inputs, false)
-            .await
-            .map_err(|failure| failure.error)
+    ) -> Result<PreparedRuntime, PrepareFailure> {
+        self.prepare_inputs_with_policy(inputs, false).await
     }
 
     /// Prepares a candidate for the check, refusing failed transforms. A

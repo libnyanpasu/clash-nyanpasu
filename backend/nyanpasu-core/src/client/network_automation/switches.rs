@@ -105,7 +105,11 @@ impl ConfigCaptureSwitches {
         patch.enable_tun_mode = tun_changes.then_some(tun_target);
 
         let application = self.application.snapshot().state;
-        let refusal = match self.clash_config.patch_validated(&application, patch).await {
+        let refusal = match self
+            .clash_config
+            .patch_validated(&application, patch, Default::default())
+            .await
+        {
             Ok(_) => None,
             Err(error) => Some(failed(&error)),
         };

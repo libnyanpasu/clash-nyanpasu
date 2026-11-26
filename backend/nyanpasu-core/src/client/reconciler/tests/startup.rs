@@ -342,6 +342,8 @@ pub(super) struct Graph {
     pub(super) clash: crate::client::clash_config::ClashConfigClient,
     ports: Arc<SessionPortResolver>,
     notifications: Arc<RecordingNotifications>,
+    /// The candidates the check and the workflow keep.
+    candidates: Arc<crate::client::candidate_inspection::CandidateStore>,
     /// The workflow's shutdown token.
     shutdown: tokio_util::sync::CancellationToken,
     dir: tempfile::TempDir,
@@ -413,6 +415,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
     let shutdown = tokio_util::sync::CancellationToken::new();
     let tasks = tokio_util::task::TaskTracker::new();
     let revisions = crate::client::runtime::RuntimeRevisionAllocator::new();
+    let candidates = crate::client::candidate_inspection::CandidateStore::for_tests();
     let client = RuntimeReconcilerClient::spawn_with_ticks(
         RuntimeReconcilerArgs {
             revisions: revisions.clone(),
@@ -435,6 +438,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
             tasks: tasks.clone(),
+            candidates: candidates.clone(),
         },
         setup.schedule_ticks,
     )
@@ -453,7 +457,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
             revisions,
             validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             workflow: client.clone(),
-            candidates: crate::client::candidate_inspection::CandidateStore::for_tests(),
+            candidates: candidates.clone(),
         }),
     );
     let application =
@@ -471,6 +475,7 @@ pub(super) async fn graph(setup: Setup) -> Graph {
         clash,
         ports,
         notifications,
+        candidates,
         shutdown,
         dir,
         _profiles: profiles,
@@ -1353,6 +1358,40 @@ async fn a_startup_update_still_running_holds_back_submission_and_adoption() {
                 .map(|error| error.kind),
             Some(Some(CoreErrorKind::OperationConflict))
         );
+
+        // A change that passed its check while the update runs waits too,
+        // and names the build it was checked with.
+        use struct_patch::Patch as _;
+        let mut next = g.clash.snapshot().state.clone();
+        next.overrides.apply(
+            nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
+                mode: Some(nyanpasu_config::clash::config::overrides::Mode::Global),
+                ..Default::default()
+            },
+        );
+        let source = super::mutations::commit_source(&g.clash, next)
+            .await
+            .unwrap();
+        let status = super::mutations::settled(&g.client, source).await;
+        let super::super::Conclusion::Waiting { cause } = &status.conclusion else {
+            panic!("expected a wait: {:?}", status.conclusion);
+        };
+        let id = cause
+            .candidate_snapshot_id()
+            .expect("the wait names the checked build")
+            .clone();
+        assert_eq!(
+            crate::client::configuration_status::runtime_convergence(&status).candidate_snapshot_id,
+            Some(id.clone())
+        );
+        let mode = g
+            .candidates
+            .inspect(&id, |archive, _| {
+                Ok(archive.graph.restore(archive.final_node).unwrap()["mode"].clone())
+            })
+            .await
+            .unwrap();
+        assert_eq!(mode, "global");
 
         g.daemon.release.notify_one();
         tokio::time::timeout(Duration::from_secs(5), async {

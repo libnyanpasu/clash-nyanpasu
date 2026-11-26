@@ -55,6 +55,23 @@ impl SourceLedger {
         self.publish();
     }
 
+    /// Every deferred profile file was completed: the rows that waited on
+    /// one are healthy again.
+    pub(super) fn complete_deferred(&mut self) {
+        let mut changed = false;
+        for status in self.entries.values_mut() {
+            if let SourceOutcome::Committed { deferred, .. } = &mut status.outcome
+                && deferred.take().is_some()
+            {
+                status.health = status.outcome.health();
+                changed = true;
+            }
+        }
+        if changed {
+            self.publish();
+        }
+    }
+
     /// Drops the entries of deleted profiles and follows renames.
     pub(super) fn reconcile(&mut self, profiles: &Profiles) {
         let mut changed = false;
@@ -103,13 +120,18 @@ mod tests {
     fn failed() -> SourceOutcome {
         SourceOutcome::Failed {
             message: "download failed".into(),
+            candidate_snapshot_id: None,
         }
     }
 
     #[test]
     fn health_marks_failed_and_rejected_as_blocked() {
         assert_eq!(
-            SourceOutcome::Committed { operation_id: None }.health(),
+            SourceOutcome::Committed {
+                operation_id: None,
+                deferred: None,
+            }
+            .health(),
             ConvergenceHealth::Healthy
         );
         assert_eq!(
@@ -123,7 +145,8 @@ mod tests {
         assert_eq!(
             SourceOutcome::Rejected {
                 code: SourceOutcome::SUBSCRIPTION_REJECTED.into(),
-                message: "refused".into()
+                message: "refused".into(),
+                candidate_snapshot_id: None,
             }
             .health(),
             ConvergenceHealth::Blocked
@@ -150,6 +173,7 @@ mod tests {
             SourceOrigin::ManualRefresh,
             SourceOutcome::Committed {
                 operation_id: Some("op".into()),
+                deferred: None,
             },
         );
 

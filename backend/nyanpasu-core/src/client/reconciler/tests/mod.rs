@@ -361,6 +361,7 @@ async fn workflow_graph_with_clients(
             instance_config_dir: Default::default(),
             shutdown,
             tasks: tokio_util::task::TaskTracker::new(),
+            candidates: crate::client::candidate_inspection::CandidateStore::for_tests(),
         },
         schedule_ticks,
     )

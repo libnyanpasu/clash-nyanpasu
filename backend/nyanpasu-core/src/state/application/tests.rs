@@ -47,7 +47,10 @@ struct Gate {
 }
 #[async_trait::async_trait]
 impl RuntimeGate for Gate {
-    async fn check(&self, _: RuntimeCandidate) -> Result<(), Arc<RuntimeError>> {
+    async fn check(
+        &self,
+        _: RuntimeCandidate,
+    ) -> Result<crate::state::mutation::ports::CheckPass, Arc<RuntimeError>> {
         assert_eq!(
             std::fs::read(&self.path).unwrap(),
             self.previous_bytes,
@@ -60,7 +63,7 @@ impl RuntimeGate for Gate {
         }
         match &self.rejection {
             Some(error) => Err(error.clone()),
-            None => Ok(()),
+            None => Ok(Default::default()),
         }
     }
     fn committed(&self, domain: ConfigDomain, version: Version) {
@@ -150,6 +153,7 @@ async fn fixture(rejection: Option<Arc<RuntimeError>>) -> Fixture {
             previous_bytes: previous_bytes.clone(),
         }),
         gate.clone(),
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
     );
     let client = ApplicationClient::from_manager(
         coordinator,

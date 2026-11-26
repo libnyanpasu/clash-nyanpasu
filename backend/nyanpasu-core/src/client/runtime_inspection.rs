@@ -72,6 +72,20 @@ pub struct CandidateInspection {
     /// Which step a stopped build could not run, which has no node, and
     /// why. `None` when the build finished.
     pub halted: Option<PipelineHalt>,
+    pub stage: CandidateStage,
+}
+
+/// How far a kept candidate got; the error that names it says what failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateStage {
+    /// The build of a change that did not take effect.
+    Built,
+    /// The core accepted it in a check, and then the source did not commit
+    /// the change.
+    Prechecked,
+    /// It took effect, but the files derived from it were not published.
+    AppliedUnpublished,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -415,10 +429,11 @@ impl NyanpasuClient {
         let key = id.to_string();
         self.inner
             .candidates
-            .inspect(id, move |archive| {
+            .inspect(id, move |archive, stage| {
                 Ok(CandidateInspection {
                     inspection: InspectionView::candidate(&key, archive).inspection_summary(),
                     halted: archive.halted.clone(),
+                    stage,
                 })
             })
             .await
@@ -436,7 +451,7 @@ impl NyanpasuClient {
         let key = id.to_string();
         self.inner
             .candidates
-            .inspect(id, move |archive| {
+            .inspect(id, move |archive, _| {
                 InspectionView::candidate(&key, archive).inspection_content(&key, node_id)
             })
             .await

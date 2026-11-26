@@ -21,6 +21,7 @@ enum Connection {
     Ready {
         effects: Arc<dyn CommitNotifications>,
         runtime: Arc<dyn ports::RuntimeGate>,
+        outcomes: Arc<dyn ports::OutcomeRecord>,
     },
     #[cfg(any(test, feature = "test-support"))]
     Isolated,
@@ -43,9 +44,14 @@ impl MutationCoordinator {
         &self,
         effects: Arc<dyn CommitNotifications>,
         runtime: Arc<dyn ports::RuntimeGate>,
+        outcomes: Arc<dyn ports::OutcomeRecord>,
     ) {
         assert!(matches!(*self.0.borrow(), Connection::Pending));
-        self.0.send_replace(Connection::Ready { effects, runtime });
+        self.0.send_replace(Connection::Ready {
+            effects,
+            runtime,
+            outcomes,
+        });
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -76,6 +82,17 @@ impl MutationCoordinator {
         }
     }
 
+    /// Where the source reports the changes it decided. Every write passes
+    /// [`MutationCoordinator::ensure_ready`] first.
+    pub(crate) fn outcomes(&self) -> Arc<dyn ports::OutcomeRecord> {
+        match &*self.0.borrow() {
+            Connection::Ready { outcomes, .. } => outcomes.clone(),
+            #[cfg(any(test, feature = "test-support"))]
+            Connection::Isolated => Arc::new(ports::NoOutcomes),
+            Connection::Pending => unreachable!("a source decides only once connected"),
+        }
+    }
+
     pub fn ensure_ready(&self) -> Result<(), NotReady> {
         ensure!(
             !matches!(*self.0.borrow(), Connection::Pending),
@@ -97,8 +114,11 @@ impl ports::RuntimeGate for IsolatedRuntimeGate {
     async fn check(
         &self,
         _: ports::RuntimeCandidate,
-    ) -> Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
-        Ok(())
+    ) -> Result<
+        crate::state::mutation::ports::CheckPass,
+        Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
+    > {
+        Ok(Default::default())
     }
     fn committed(
         &self,

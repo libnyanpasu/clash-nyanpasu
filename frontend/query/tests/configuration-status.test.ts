@@ -67,6 +67,15 @@ describe('configuration status', () => {
       },
       'blocked',
     )
+    const deferred = source(
+      'deferred',
+      {
+        kind: 'committed',
+        operation_id: 'op',
+        deferred: { message: 'materialization completion deferred' },
+      },
+      'retry_scheduled',
+    )
     const withSources = {
       ...status(1, 'healthy'),
       sources: [
@@ -82,13 +91,15 @@ describe('configuration status', () => {
           'healthy',
         ),
         rejected,
+        deferred,
       ],
     }
-    expect(attentionSources(withSources)).toEqual([failed, rejected])
+    expect(attentionSources(withSources)).toEqual([failed, rejected, deferred])
     expect(attentionSources(status(1, 'healthy'))).toEqual([])
     expect(attentionSources(withSources).map(sourceMessage)).toEqual([
       'download failed',
       'not a mapping',
+      'materialization completion deferred',
     ])
   })
   it('distinguishes a lost reply from a confirmed domain refusal', async () => {

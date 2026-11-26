@@ -365,8 +365,21 @@ impl ProfilesClient {
 
     #[allow(dead_code)]
     pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError> {
+        self.replace_for(profiles, Default::default()).await
+    }
+
+    /// [`Self::replace`] on behalf of `attribution`.
+    pub(crate) async fn replace_for(
+        &self,
+        profiles: Profiles,
+        attribution: crate::state::mutation::ports::Attribution,
+    ) -> Result<CommitReport, ProfilesError> {
         self.call(
-            |reply| ProfilesActorMessage::Replace { profiles, reply },
+            |reply| ProfilesActorMessage::Replace {
+                profiles,
+                attribution,
+                reply,
+            },
             None,
         )
         .await
@@ -4523,7 +4536,10 @@ mod tests {
         // Nothing runs `r1`, so its refresh is a plain save with no operation.
         assert!(matches!(
             committed.outcome,
-            SourceOutcome::Committed { operation_id: None }
+            SourceOutcome::Committed {
+                operation_id: None,
+                deferred: None,
+            }
         ));
         assert_eq!(committed.health, ConvergenceHealth::Healthy);
 
@@ -4535,7 +4551,7 @@ mod tests {
         .await;
         assert!(matches!(
             &failed.outcome,
-            SourceOutcome::Failed { message } if message.contains("HTTP 500")
+            SourceOutcome::Failed { message, .. } if message.contains("HTTP 500")
         ));
         assert_eq!(failed.health, ConvergenceHealth::Blocked);
         assert_eq!(client.sources().entries.len(), 1, "one row per profile");

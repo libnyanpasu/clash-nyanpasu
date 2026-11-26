@@ -1,6 +1,9 @@
 use crate::state::{
-    config_error::{ConfigError, ShuttingDownSnafu, VersionConflictSnafu},
-    mutation::{DomainChange, MutationCoordinator, impact, ports::RuntimeCandidate},
+    config_error::{ConfigError, ShuttingDownSnafu},
+    mutation::{
+        DomainChange, MutationCoordinator, impact,
+        ports::{Attribution, CheckPass, OwnerOutcomes, RuntimeCandidate, TraySetting},
+    },
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::mutation::ConfigDomain;
@@ -47,6 +50,7 @@ pub struct ClashConfigActorState {
     mutations: MutationCoordinator,
     manager: PersistentStateManager<ClashConfig, ClashConfigFormat>,
     shutdown: CancellationToken,
+    outcomes: OwnerOutcomes,
 }
 
 #[derive(Debug)]
@@ -54,14 +58,17 @@ pub struct ClashConfigActorState {
 pub enum ClashConfigActorMessage {
     Patch {
         patch: ClashConfigPatch,
+        attribution: Attribution,
         reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
     PatchOverrides {
         patch: ClashGuardOverridesPatch,
+        attribution: Attribution,
         reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
     Replace {
         state: ClashConfig,
+        attribution: Attribution,
         reply: RpcReplyPort<Result<ClashConfigSnapshot, ConfigError>>,
     },
 }
@@ -73,17 +80,48 @@ impl ClashConfigActor {
     async fn patch(
         state: &mut ClashConfigActorState,
         patch: ClashConfigPatch,
+        attribution: Attribution,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
         let mut next = state.manager.snapshot_handle().load().state.clone();
         next.apply(patch);
-        Self::commit(state, next).await
+        Self::commit(state, next, attribution).await
+    }
+
+    /// Decides `next` and reports the outcome before anyone hears of it,
+    /// so the record follows this owner's order whatever its callers do.
+    async fn commit(
+        state: &mut ClashConfigActorState,
+        next: ClashConfig,
+        attribution: Attribution,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
+        let before = state.manager.snapshot_handle().load().state.clone();
+        let result = Self::decide(state, next).await;
+        if state.mutations.ensure_ready().is_ok() {
+            let record = state.mutations.outcomes();
+            match &result {
+                Ok(snapshot) => state.outcomes.committed(
+                    record.as_ref(),
+                    attribution,
+                    TraySetting::changed_clash(&before, &snapshot.state),
+                    snapshot.version,
+                ),
+                Err(error) => state.outcomes.failed(
+                    record.as_ref(),
+                    attribution,
+                    state.manager.snapshot_handle().load().version,
+                    error,
+                    error.candidate_snapshot_id(),
+                ),
+            }
+        }
+        result
     }
 
     fn snapshot(state: &ClashConfigActorState) -> ClashConfigSnapshot {
         ClashConfigSnapshot::from_versioned(&state.manager.snapshot_handle().load())
     }
 
-    async fn commit(
+    async fn decide(
         state: &mut ClashConfigActorState,
         next: ClashConfig,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
@@ -93,16 +131,19 @@ impl ClashConfigActor {
         let reaches_runtime = impact::reaches_runtime(&current.state, &next, &[]);
         let operation_id = reaches_runtime.then(OperationId::generate);
         let gate = state.mutations.runtime();
-        if reaches_runtime {
+        let pass = if reaches_runtime {
             gate.check(RuntimeCandidate {
+                background: None,
                 change: DomainChange::Clash {
                     candidate: std::sync::Arc::new(next.clone()),
                 },
                 staged: Default::default(),
             })
             .await
-            .map_err(|error| ConfigError::runtime_check_failure(ConfigDomain::Clash, error))?;
-        }
+            .map_err(|error| ConfigError::runtime_check_failure(ConfigDomain::Clash, error))?
+        } else {
+            CheckPass::default()
+        };
         let result = state.manager.replace_if_version(version, next).await;
         match result {
             Ok(ReplaceIfVersionResult::Replaced) => {
@@ -118,13 +159,17 @@ impl ClashConfigActor {
                 }
                 Ok(snapshot)
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
-                domain: ConfigDomain::Clash,
-                expected: *version.as_ref(),
-                actual: *actual_version.as_ref(),
-            }
-            .fail(),
-            Err(error) => Err(ConfigError::commit_failure(ConfigDomain::Clash, error)),
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(pass
+                .keep_for(ConfigError::VersionConflict {
+                    domain: ConfigDomain::Clash,
+                    expected: *version.as_ref(),
+                    actual: *actual_version.as_ref(),
+                    candidate_snapshot_id: None,
+                })
+                .await),
+            Err(error) => Err(pass
+                .keep_for(ConfigError::commit_failure(ConfigDomain::Clash, error))
+                .await),
         }
     }
 }
@@ -143,6 +188,7 @@ impl Actor for ClashConfigActor {
             mutations: args.mutations,
             manager: args.manager,
             shutdown: args.shutdown,
+            outcomes: OwnerOutcomes::default(),
         })
     }
 
@@ -165,16 +211,28 @@ impl Actor for ClashConfigActor {
                     .fail(),
                 );
             }
-            ClashConfigActorMessage::Patch { patch, reply } => {
-                let _ = reply.send(Self::patch(state, patch).await);
+            ClashConfigActorMessage::Patch {
+                patch,
+                attribution,
+                reply,
+            } => {
+                let _ = reply.send(Self::patch(state, patch, attribution).await);
             }
-            ClashConfigActorMessage::PatchOverrides { patch, reply } => {
+            ClashConfigActorMessage::PatchOverrides {
+                patch,
+                attribution,
+                reply,
+            } => {
                 let mut next = state.manager.snapshot_handle().load().state.clone();
                 next.overrides.apply(patch);
-                let _ = reply.send(Self::commit(state, next).await);
+                let _ = reply.send(Self::commit(state, next, attribution).await);
             }
-            ClashConfigActorMessage::Replace { state: next, reply } => {
-                let _ = reply.send(Self::commit(state, next).await);
+            ClashConfigActorMessage::Replace {
+                state: next,
+                attribution,
+                reply,
+            } => {
+                let _ = reply.send(Self::commit(state, next, attribution).await);
             }
         }
         Ok(())

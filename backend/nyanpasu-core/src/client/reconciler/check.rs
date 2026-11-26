@@ -12,14 +12,15 @@ use super::{
 };
 use crate::{
     client::{
-        candidate_inspection::{CandidateEvidence, CandidateStore},
+        candidate_inspection::{CandidateEvidence, CandidateSource, CandidateStore},
         core_lifecycle::ports::RuntimePreparationPort,
         ports::SessionPortResolver,
         runtime::RuntimeRevisionAllocator,
+        runtime_inspection::CandidateStage,
     },
     state::mutation::{
         DomainChange,
-        ports::{RuntimeCandidate, RuntimeGate},
+        ports::{CheckPass, KeepChecked, RuntimeCandidate, RuntimeGate},
     },
 };
 
@@ -74,20 +75,38 @@ impl CandidateCheck {
         &self,
         error: RuntimeError,
         candidate: Option<Box<CandidateEvidence>>,
+        source: Option<CandidateSource>,
     ) -> RuntimeError {
         let Some(candidate) = candidate else {
             return error;
         };
-        match self.candidates.save(*candidate).await {
+        match self.candidates.save((*candidate).from_source(source)).await {
             Some(id) => error.with_candidate_snapshot_id(id),
             None => error,
         }
     }
 }
 
+/// A candidate the core accepted, kept only if its source then fails to
+/// commit it.
+struct Prechecked {
+    candidates: Arc<CandidateStore>,
+    candidate: CandidateEvidence,
+}
+
+#[async_trait::async_trait]
+impl KeepChecked for Prechecked {
+    async fn keep(
+        self: Box<Self>,
+    ) -> Option<nyanpasu_runtime_values::candidate::CandidateSnapshotId> {
+        self.candidates.save(self.candidate).await
+    }
+}
+
 #[async_trait::async_trait]
 impl RuntimeGate for CandidateCheck {
-    async fn check(&self, candidate: RuntimeCandidate) -> Result<(), Arc<RuntimeError>> {
+    async fn check(&self, candidate: RuntimeCandidate) -> Result<CheckPass, Arc<RuntimeError>> {
+        let source = candidate.background.as_ref().map(CandidateSource::profile);
         let app = match &candidate.change {
             DomainChange::Application { candidate, .. } => candidate.as_ref().clone(),
             _ => self.application.load().state.clone(),
@@ -115,7 +134,7 @@ impl RuntimeGate for CandidateCheck {
         let prepared = match self.preparation.prepare_candidate_inputs(inputs).await {
             Ok(prepared) => prepared,
             Err(PrepareFailure { error, candidate }) => {
-                return Err(Arc::new(self.keep(error, candidate).await));
+                return Err(Arc::new(self.keep(error, candidate, source).await));
             }
         };
         let failure = match self.preparation.core_spec(&prepared.snapshot.target_core) {
@@ -132,8 +151,14 @@ impl RuntimeGate for CandidateCheck {
                 .await
             {
                 RuntimeCheckOutcome::Passed => {
+                    let candidate = CandidateEvidence::of_snapshot(&prepared.snapshot)
+                        .at(CandidateStage::Prechecked)
+                        .from_source(source);
                     self.workflow.checked(prepared);
-                    return Ok(());
+                    return Ok(CheckPass::new(Prechecked {
+                        candidates: self.candidates.clone(),
+                        candidate,
+                    }));
                 }
                 RuntimeCheckOutcome::Rejected { kind, message } => {
                     RuntimeError::CoreRejectedConfig {
@@ -151,7 +176,7 @@ impl RuntimeGate for CandidateCheck {
         // Every refusal of a built candidate leaves through here.
         let candidate = CandidateEvidence::of_snapshot(&prepared.snapshot);
         Err(Arc::new(
-            self.keep(failure, Some(Box::new(candidate))).await,
+            self.keep(failure, Some(Box::new(candidate)), source).await,
         ))
     }
 

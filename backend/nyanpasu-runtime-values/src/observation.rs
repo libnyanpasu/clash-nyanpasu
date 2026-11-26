@@ -111,6 +111,8 @@ impl From<&ConfigurationStatus> for ConfigurationStatusSummary {
             runtime,
             effects,
             sources,
+            // They name candidates and carry text; a summary has neither.
+            refused_changes: _,
             active,
             recent_operations,
         } = status;
@@ -129,10 +131,12 @@ impl From<&ConfigurationStatus> for ConfigurationStatusSummary {
 
 impl From<&RuntimeConvergence> for RuntimeConvergenceSummary {
     fn from(runtime: &RuntimeConvergence) -> Self {
+        // A summary never names a kept candidate.
         let RuntimeConvergence {
             health,
             operation_id,
             message,
+            candidate_snapshot_id: _,
         } = runtime;
         Self {
             health: *health,
@@ -208,13 +212,23 @@ impl From<&SourceStatus> for SourceSummary {
 impl From<&SourceOutcome> for SourceOutcomeSummary {
     fn from(outcome: &SourceOutcome) -> Self {
         match outcome {
-            SourceOutcome::Committed { operation_id } => Self::Committed {
+            SourceOutcome::Committed {
+                operation_id,
+                deferred: _,
+            } => Self::Committed {
                 operation_id: operation_id.clone(),
             },
             // Free-form reasons and messages can quote the failing request's URL.
             SourceOutcome::Superseded { reason: _ } => Self::Superseded,
-            SourceOutcome::Failed { message: _ } => Self::Failed,
-            SourceOutcome::Rejected { code, message: _ } => Self::Rejected {
+            SourceOutcome::Failed {
+                message: _,
+                candidate_snapshot_id: _,
+            } => Self::Failed,
+            SourceOutcome::Rejected {
+                code,
+                message: _,
+                candidate_snapshot_id: _,
+            } => Self::Rejected {
                 code: match code.as_str() {
                     SourceOutcome::SUBSCRIPTION_REJECTED => SourceRejection::SubscriptionRejected,
                     SourceOutcome::EXTERNAL_SOURCE_REJECTED => {
@@ -504,6 +518,14 @@ mod tests {
         for sentinel in SENTINELS {
             assert!(!text.contains(sentinel), "{sentinel} leaked: {text}");
         }
+        assert!(!text.contains(CANDIDATE), "a kept candidate leaked: {text}");
+    }
+
+    /// The ID of a kept candidate, which only full status names.
+    const CANDIDATE: &str = "sentinelcandidate0001";
+
+    fn candidate() -> Option<crate::candidate::CandidateSnapshotId> {
+        Some(crate::candidate::CandidateSnapshotId::parse(CANDIDATE).unwrap())
     }
 
     fn hostile() -> String {
@@ -534,6 +556,7 @@ mod tests {
                 health: ConvergenceHealth::RetryScheduled,
                 operation_id: Some("op-1".into()),
                 message: Some(hostile()),
+                candidate_snapshot_id: candidate(),
             },
             effects: vec![EffectConvergence {
                 kind: EffectKind::SystemProxy,
@@ -550,7 +573,10 @@ mod tests {
                     profile: profile.clone(),
                     name: hostile(),
                     origin: SourceOrigin::ScheduledRefresh,
-                    outcome: SourceOutcome::Failed { message: hostile() },
+                    outcome: SourceOutcome::Failed {
+                        message: hostile(),
+                        candidate_snapshot_id: candidate(),
+                    },
                     health: ConvergenceHealth::Blocked,
                     at: 7,
                 },
@@ -580,11 +606,17 @@ mod tests {
                     outcome: SourceOutcome::Rejected {
                         code: hostile(),
                         message: hostile(),
+                        candidate_snapshot_id: candidate(),
                     },
                     health: ConvergenceHealth::Blocked,
                     at: 10,
                 },
             ],
+            refused_changes: vec![crate::configuration::RefusedBackgroundChange {
+                origin: crate::configuration::BackgroundChangeOrigin::SyncClash,
+                message: hostile(),
+                candidate_snapshot_id: candidate(),
+            }],
             active: Some("op-2".into()),
             recent_operations: vec![OperationStatus {
                 operation_id: "op-3".into(),

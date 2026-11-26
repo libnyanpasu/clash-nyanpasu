@@ -237,10 +237,14 @@ pub enum ProfilesError {
     Materialization {
         operation: MaterializationOperation,
         source: ProfileFileError,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     VersionConflict {
         expected: u64,
         actual: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     Commit {
         /// The profile the change was about, when it was about one.
@@ -309,7 +313,10 @@ pub enum DegradationReason {
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
-    MaterializationDeferred,
+    MaterializationDeferred {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     CleanupDeferred,
     ProfileAutoActivationFailed {
         profile: ProfileId,
@@ -324,9 +331,15 @@ pub enum DegradationReason {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommitAborted {
     /// The yaml write failed; nothing committed.
-    WriteConfig {},
+    WriteConfig {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// The write failed and so did the recovery of what the transaction staged.
-    RecoverAfterWriteFailure {},
+    RecoverAfterWriteFailure {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// Candidate validation refused the change.
     RuntimeRefused { errors: Vec<Arc<RuntimeError>> },
     /// Candidate validation could not return a verdict.
@@ -682,6 +695,8 @@ pub enum ConfigError {
         domain: ConfigDomain,
         expected: u64,
         actual: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     Commit {
         domain: ConfigDomain,

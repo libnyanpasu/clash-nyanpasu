@@ -1,6 +1,6 @@
 //! The session-local identity of a candidate build kept for inspection.
 
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -9,9 +9,12 @@ use specta::Type;
 /// Names one candidate build in the running session's inspection index: 21
 /// characters of the URL-safe nanoid alphabet. It is never a file name and
 /// grants no read; only the index of the session that issued it resolves it.
+///
+/// One pointer wide, so the errors that can name a candidate grow by no
+/// more than that.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct CandidateSnapshotId(String);
+pub struct CandidateSnapshotId(Arc<String>);
 
 /// A string that is not a candidate snapshot ID.
 #[derive(Debug, Snafu)]
@@ -34,7 +37,7 @@ impl CandidateSnapshotId {
         {
             return Err(InvalidCandidateSnapshotId);
         }
-        Ok(Self(value))
+        Ok(Self(Arc::new(value)))
     }
 
     #[must_use]
@@ -59,7 +62,7 @@ impl TryFrom<String> for CandidateSnapshotId {
 
 impl From<CandidateSnapshotId> for String {
     fn from(value: CandidateSnapshotId) -> Self {
-        value.0
+        Arc::unwrap_or_clone(value.0)
     }
 }
 
@@ -72,6 +75,11 @@ impl Type for CandidateSnapshotId {
 #[cfg(test)]
 mod tests {
     use super::CandidateSnapshotId;
+
+    #[test]
+    fn an_id_is_one_pointer_wide() {
+        assert_eq!(size_of::<Option<CandidateSnapshotId>>(), size_of::<usize>());
+    }
 
     #[test]
     fn only_ids_of_the_nanoid_shape_decode() {

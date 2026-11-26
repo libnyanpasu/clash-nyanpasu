@@ -7259,8 +7259,8 @@ dependencies = [
 name = "nyanpasu-diagnose"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "gpu-info",
+ "jiff 1.0.1",
  "nyanpasu-config",
  "serde",
  "serde_json",
@@ -7627,7 +7627,6 @@ dependencies = [
  "atomicwrites",
  "axum",
  "base64 0.23.1",
- "chrono",
  "clash-api",
  "dirs 7.0.0",
  "futures",
@@ -7637,6 +7636,7 @@ dependencies = [
  "inventory",
  "ipnet",
  "jiff 0.2.46",
+ "jiff 1.0.1",
  "mockall",
  "nyanpasu-config",
  "nyanpasu-contracts",

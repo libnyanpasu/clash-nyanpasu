@@ -173,7 +173,7 @@ impl Archive {
             .map_err(|e| e.to_string())?
             .sync_all()
             .map_err(|e| e.to_string())?;
-        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let stamp = jiff::ZonedDateTime::now().strftime("%Y%m%d-%H%M%S");
         let mut index = 0;
         let mut temporary = self.temporary;
         let path = loop {

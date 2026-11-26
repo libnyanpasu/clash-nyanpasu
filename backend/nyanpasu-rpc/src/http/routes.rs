@@ -316,7 +316,10 @@ async fn http_logs_archive(
                 bytes.truncate(count);
                 Ok(Some((bytes, (file, _archive))))
             });
-            let file_name = format!("{}-log.zip", chrono::Local::now().format("%Y-%m-%d"));
+            let file_name = format!(
+                "{}-log.zip",
+                jiff_http::ZonedDateTime::now().strftime("%Y-%m-%d")
+            );
             Response::builder()
                 .header("content-type", "application/zip")
                 .header(

@@ -23,7 +23,7 @@ local-server = [
 http = [
   'dep:axum',
   'dep:hyper-util',
-  'dep:chrono',
+  'dep:jiff-http',
   'dep:futures',
   'dep:ipnet',
   'dep:ractor',
@@ -77,7 +77,7 @@ clash-api = { workspace = true }
 anyhow = '1.0'
 async-trait = '0.1.77'
 base64 = '0.23'
-chrono = { version = '0.4', optional = true }
+jiff-http = { package = 'jiff', version = '1', optional = true }
 dirs = '7'
 futures = { version = '0.3', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }

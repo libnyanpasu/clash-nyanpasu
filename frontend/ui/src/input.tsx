@@ -18,12 +18,12 @@ export const inputContainerVariants = cva(
     'px-4 py-4 outline-hidden',
     // TODO: size variants, fix this
     'flex items-center justify-between h-14',
-    'dark:text-on-surface',
+    'text-on-surface',
   ],
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
+        filled: 'rounded-t bg-surface-container-highest',
         // outlined use inputLabelFieldsetVariants
         outlined: '',
       },
@@ -97,7 +97,7 @@ export const inputLabelVariants = cva(
     variants: {
       variant: {
         filled: [
-          'group-data-[state=open]:top-2 group-data-[state=open]:dark:text-surface',
+          'group-data-[state=open]:top-2',
           'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
           'peer-focus:top-2 peer-focus:text-xs',
         ],
@@ -106,9 +106,6 @@ export const inputLabelVariants = cva(
           'group-data-[state=open]:text-sm',
           'group-data-[state=open]:text-primary',
           'peer-focus:-top-2 peer-focus:text-sm',
-
-          'dark:group-data-[state=open]:text-inverse-primary',
-          'dark:group-data-[state=closed]:text-primary-container',
 
           // "before:absolute before:inset-0 before:content-['']",
           // "before:-z-10 before:-mx-1",
@@ -152,7 +149,7 @@ export const inputLineVariants = cva('', {
         'after:absolute after:inset-x-0 after:bottom-0 after:z-10',
         "after:scale-x-0 after:border-b-2 after:opacity-0 after:content-['']",
         'after:transition-all after:duration-200',
-        'after:border-primary dark:after:border-on-primary-container',
+        'after:border-primary',
         // sync parent group state, state from radix-ui
         'group-data-[state=open]:border-b-0',
         'group-data-[state=open]:after:scale-x-100',
@@ -190,11 +187,6 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
         'group-data-[state=open]:border-primary',
         'peer-not-focus:border-outline-variant',
         'peer-focus:border-primary',
-        // dark must be prefixed
-        'dark:group-data-[state=closed]:border-outline-variant',
-        'dark:group-data-[state=open]:border-primary-container',
-        'dark:peer-not-focus:border-outline-variant',
-        'dark:peer-focus:border-primary-container',
       ],
     },
   },

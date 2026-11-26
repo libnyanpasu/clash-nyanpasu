@@ -82,7 +82,10 @@ export const Catch = ({ error }: ErrorComponentProps) => {
   return (
     <RootPlatformBoundary>
       <div
-        className={cn('h-dvh bg-black text-white', 'flex flex-col gap-4 p-4')}
+        className={cn(
+          'bg-surface text-on-surface h-dvh',
+          'flex flex-col gap-4 p-4',
+        )}
       >
         <div
           className="fixed top-0 left-0 z-10 h-6 w-full"
@@ -106,14 +109,14 @@ export const Catch = ({ error }: ErrorComponentProps) => {
 
         <div className="flex items-center gap-2">
           <button
-            className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+            className="bg-surface-container-high text-on-surface cursor-pointer px-3 py-2"
             onClick={() => window.location.reload()}
           >
             Reload Resource
           </button>
 
           <button
-            className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+            className="bg-surface-container-high text-on-surface cursor-pointer px-3 py-2"
             onClick={() => appWindow?.close()}
           >
             Close Window
@@ -287,7 +290,9 @@ function BootstrapErrorFallback({
   useEffect(reportWindowReady, [])
 
   return (
-    <div className={cn('flex h-dvh flex-col gap-4 bg-black p-4 text-white')}>
+    <div
+      className={cn('bg-surface text-on-surface flex h-dvh flex-col gap-4 p-4')}
+    >
       <div
         className="fixed top-0 left-0 z-10 h-6 w-full"
         data-tauri-drag-region
@@ -299,7 +304,7 @@ function BootstrapErrorFallback({
       <div>
         <button
           type="button"
-          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+          className="bg-surface-container-high text-on-surface cursor-pointer px-3 py-2"
           onClick={retry}
         >
           Retry

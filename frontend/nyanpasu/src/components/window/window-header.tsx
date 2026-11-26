@@ -8,7 +8,7 @@ export default function WindowHeader({
   return (
     <div
       className={cn(
-        'bg-surface-container dark:bg-surface-container-low text-on-surface flex h-10 w-full',
+        'bg-surface-container-high dark:bg-surface-container text-on-surface flex h-10 w-full',
         className,
       )}
       data-slot="app-header"

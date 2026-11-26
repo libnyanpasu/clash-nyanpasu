@@ -80,8 +80,8 @@ const formatBytes = (bytes: number) => parseTraffic(bytes).join(' ')
 function LoadingBody() {
   return (
     <div className="flex flex-1 flex-col justify-center gap-3" aria-busy="true">
-      <div className="bg-surface-variant h-6 w-2/3 animate-pulse rounded" />
-      <div className="bg-surface-variant h-3 w-full animate-pulse rounded" />
+      <div className="bg-surface-container-high h-6 w-2/3 animate-pulse rounded" />
+      <div className="bg-surface-container-high h-3 w-full animate-pulse rounded" />
       <span className="sr-only">
         {m.dashboard_widget_traffic_report_loading()}
       </span>
@@ -164,7 +164,7 @@ function RecentTrafficContent({
   const total = usageTotalBytes(report.total)
 
   return (
-    <div className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-2 overflow-hidden rounded-[var(--w-radius-inner)] px-4 py-2">
+    <div className="bg-surface-container-high flex min-h-0 flex-1 flex-col justify-center gap-2 overflow-hidden rounded-[var(--w-radius-inner)] px-4 py-2">
       <WidgetMeta>{m.dashboard_widget_traffic_report_total_label()}</WidgetMeta>
       <WidgetMetric
         className="overflow-hidden text-[length:var(--w-text-metric)] whitespace-nowrap"
@@ -370,7 +370,7 @@ function TrafficRankingRow({
         }
       >
         <span
-          className="bg-surface-variant text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-full"
+          className="bg-surface-container-high text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-full"
           aria-hidden="true"
         >
           <Icon className="size-4" />
@@ -401,7 +401,7 @@ function TrafficRankingRow({
   return (
     <div
       className={cn(
-        'bg-surface-variant/30 text-on-surface flex flex-col rounded-[var(--w-radius-inner)]',
+        'bg-surface-container-high text-on-surface flex flex-col rounded-[var(--w-radius-inner)]',
         compact ? 'gap-0.5 px-3 py-1' : 'gap-1 px-4 py-3',
         expanded ? 'min-h-0 flex-1 justify-between' : 'shrink-0',
       )}

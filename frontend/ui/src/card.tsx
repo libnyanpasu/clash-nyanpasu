@@ -6,8 +6,8 @@ import { cn } from '@nyanpasu/utils'
 export const cardVariants = cva('rounded-3xl text-on-surface overflow-hidden', {
   variants: {
     variant: {
-      basic: ['shadow-sm', 'bg-surface-container-low'],
-      raised: ['shadow-sm', 'bg-surface-container-high'],
+      basic: ['bg-surface-container-lowest dark:bg-surface-container'],
+      raised: ['bg-surface-container-high'],
       outline: ['bg-surface', 'border border-outline-variant'],
     },
   },

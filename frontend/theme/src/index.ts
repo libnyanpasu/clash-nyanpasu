@@ -2,6 +2,7 @@ import { kebabCase } from 'es-toolkit'
 import {
   argbFromHex,
   Blend,
+  Contrast,
   Hct,
   hexFromArgb,
   SchemeContent,
@@ -17,6 +18,14 @@ import {
 } from '@material/material-color-utilities'
 
 export { hexFromArgb } from '@material/material-color-utilities'
+
+export function getHctTone(argb: number): number {
+  return Hct.fromInt(argb).tone
+}
+
+export function getContrastRatio(argbA: number, argbB: number): number {
+  return Contrast.ratioOfTones(getHctTone(argbA), getHctTone(argbB))
+}
 
 export const DEFAULT_COLOR = '#3e64a7'
 
@@ -253,30 +262,34 @@ const syntaxCssVars = (theme: Theme, mode: ResolvedThemeMode) =>
     })
     .join('')
 
-export function generateThemeCssVars(theme: Theme): string {
-  let lightCssVars = ':root{'
-  let darkCssVars = ':root.dark{'
+export function generateThemeCssVarsForMode(
+  theme: Theme,
+  mode: ResolvedThemeMode,
+): string {
+  const scheme = getThemeScheme(theme, mode)
+  let vars = ''
 
-  for (const mode of [ThemeMode.LIGHT, ThemeMode.DARK] as const) {
-    const scheme = getThemeScheme(theme, mode)
-
-    for (const [key, value] of Object.entries(scheme)) {
-      const cssVar = `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
-
-      if (mode === ThemeMode.LIGHT) {
-        lightCssVars += cssVar
-      } else {
-        darkCssVars += cssVar
-      }
-    }
+  for (const [key, value] of Object.entries(scheme)) {
+    vars += `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
   }
 
-  lightCssVars += `${SYNTAX_CSS_VARIABLE_PREFIX}background: transparent;`
-  lightCssVars += syntaxCssVars(theme, ThemeMode.LIGHT)
-  darkCssVars += syntaxCssVars(theme, ThemeMode.DARK)
+  vars += `${SYNTAX_CSS_VARIABLE_PREFIX}background: transparent;`
+  vars += syntaxCssVars(theme, mode)
 
-  lightCssVars += '}'
-  darkCssVars += '}'
+  return vars
+}
+
+export function generateScopedThemeCssVars(
+  theme: Theme,
+  scopeSelector: string,
+  mode: ResolvedThemeMode,
+): string {
+  return `${scopeSelector}{${generateThemeCssVarsForMode(theme, mode)}}`
+}
+
+export function generateThemeCssVars(theme: Theme): string {
+  const lightCssVars = `:root{${generateThemeCssVarsForMode(theme, ThemeMode.LIGHT)}}`
+  const darkCssVars = `:root.dark{${generateThemeCssVarsForMode(theme, ThemeMode.DARK)}}`
 
   return lightCssVars + darkCssVars
 }

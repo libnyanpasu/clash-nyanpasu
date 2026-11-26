@@ -119,10 +119,16 @@ Search `@nyanpasu/ui` before implementing an interactive UI control. Its public 
 uses a root `index.ts` entry (`import { Button, Card } from '@nyanpasu/ui'`)
 and component subpaths for lazy loading. Compose those components in app features
 and pages.
-The visual result must follow Material You and the project's existing typography,
-spacing, shape, motion, and semantic color tokens (`primary`, `surface`,
-`on-surface`, etc.). Preserve
-dark-mode, focus, disabled, loading, and keyboard behavior; avoid a parallel design system.
+The visual result must follow Material 3 Expressive (M3E), Android 17 surface
+and adaptive design conventions, and the project's typography, spacing, shape,
+motion, and semantic color tokens (`primary`, `surface`, `surface-container-*`,
+`on-surface`, etc.). When designing or refactoring frontend UI, consult the
+workspace agent skills in
+[`.agents/skills/m3-expressive-ui/SKILL.md`](../../.agents/skills/m3-expressive-ui/SKILL.md)
+and
+[`.agents/skills/modern-web-guidance/SKILL.md`](../../.agents/skills/modern-web-guidance/SKILL.md).
+Preserve dark-mode, focus, disabled, loading, and keyboard behavior; avoid a
+parallel design system.
 
 Use `cva()` from `class-variance-authority` for reusable class definitions, including
 styles without variants. Name these definitions in camelCase with a `Variants`

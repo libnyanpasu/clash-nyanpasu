@@ -245,22 +245,22 @@ mod tests {
 fn print_version_info() {
     use crate::consts::*;
     use ansi_str::AnsiStr;
-    use chrono::{DateTime, Utc};
     use colored::*;
+    use jiff::Timestamp;
     use timeago::Formatter;
     let build_info = &BUILD_INFO;
 
-    let now = Utc::now();
+    let now = Timestamp::now();
     let formatter = Formatter::new();
-    let commit_time = formatter.convert_chrono(
-        DateTime::parse_from_rfc3339(build_info.commit_date).unwrap(),
-        now,
-    );
+    let time_ago = |value: &str| {
+        let then = value.parse::<Timestamp>().unwrap();
+        std::time::Duration::try_from(now.duration_since(then))
+            .map(|duration| formatter.convert(duration))
+            .unwrap_or_else(|_| "???".to_owned())
+    };
+    let commit_time = time_ago(build_info.commit_date);
     let commit_time_width = commit_time.len() + build_info.commit_date.len() + 3;
-    let build_time = formatter.convert_chrono(
-        DateTime::parse_from_rfc3339(build_info.build_date).unwrap(),
-        now,
-    );
+    let build_time = time_ago(build_info.build_date);
     let build_time_width = build_time.len() + build_info.build_date.len() + 3;
     let commit_info_width = build_info.commit_hash.len() + build_info.commit_author.len() + 4;
     let col_width = commit_info_width

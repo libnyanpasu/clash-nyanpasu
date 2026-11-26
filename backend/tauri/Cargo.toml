@@ -18,7 +18,7 @@ doctest = false
 tauri-build = { version = '2.1', features = [] }
 serde = '1'
 serde_json = { version = '1.0', features = ['preserve_order'] }
-chrono = '0.4'
+jiff = '1'
 rustc_version = '0.4'
 semver = '1.0'
 toml = '1'
@@ -93,10 +93,13 @@ oneshot = '0.2'
 futures = '0.3'
 futures-util = '0.3'
 glob = '0.3.1'
-timeago = '0.6'
+timeago = { version = '0.6', default-features = false, features = [
+  'translations',
+  'isolang'
+] }
 anyhow = '1.0'
-chrono = { version = '0.4', features = ['serde'] }
-time = { version = '0.3', features = ['formatting', 'parsing', 'serde'] }
+jiff = '1'
+time = { version = '0.3', features = ['formatting'] }
 once_cell = '1.19.0'
 async-trait = '0.1.77'
 thiserror = { workspace = true }

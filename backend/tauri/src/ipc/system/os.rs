@@ -1,7 +1,6 @@
 //! The desktop-only `system.os` commands. The shared ones are in
 //! `nyanpasu_rpc::commands::system::os`.
 
-use chrono::Local;
 use log::debug;
 use nyanpasu_config::profile::ProfileId;
 use nyanpasu_core::client::NyanpasuClient;
@@ -127,7 +126,7 @@ pub async fn collect_logs(
 ) -> Result {
     let archive =
         nyanpasu_rpc::commands::archive::logs_archive((*paths).clone(), (*client).clone()).await?;
-    let now = Local::now().format("%Y-%m-%d");
+    let now = jiff::ZonedDateTime::now().strftime("%Y-%m-%d");
     let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
     builder

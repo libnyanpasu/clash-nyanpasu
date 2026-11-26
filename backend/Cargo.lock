@@ -1889,7 +1889,6 @@ dependencies = [
  "boa_utils",
  "bolt-load",
  "camino",
- "chrono",
  "clap",
  "clash-api",
  "colored",
@@ -1914,6 +1913,7 @@ dependencies = [
  "indexmap 2.14.2",
  "inventory",
  "itertools 0.15.0",
+ "jiff 1.0.1",
  "log",
  "md-5",
  "mime",
@@ -7809,11 +7809,11 @@ dependencies = [
  "async-trait",
  "boa_engine",
  "boa_utils",
- "chrono",
  "clap",
  "flexi_logger",
  "futures",
  "inventory",
+ "jiff 1.0.1",
  "mlua",
  "nyanpasu-config",
  "nyanpasu-contracts",
@@ -13110,7 +13110,6 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46c29b13d230e9cd58513d38701a661fc06e1215398937532a2d938ecca6f219"
 dependencies = [
- "chrono",
  "isolang",
 ]
 

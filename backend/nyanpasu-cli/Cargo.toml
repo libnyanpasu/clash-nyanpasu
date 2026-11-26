@@ -30,12 +30,24 @@ ipnet = '2.12'
 keyring = '4'
 # `query` is optional in reqwest 0.13 and no other dependency of this package turns it on, so
 # the sidecar build (`cargo build -p nyanpasu-cli`, without dev-dependencies) needs it.
-reqwest = { workspace = true, features = ['query'] }
+# Declare features directly instead of inheriting workspace `charset`/`http2`/`stream` and
+# tokio `full`, keeping the standalone CLI binary small.
+reqwest = { version = '0.13', default-features = false, features = [
+  'json',
+  'query',
+  'rustls',
+  'system-proxy',
+] }
 rustls = '0.23'
 serde = { version = '1', features = ['derive'] }
 serde_json = '1'
 snafu = { workspace = true }
-tokio = { workspace = true }
+tokio = { version = '1.54.1', default-features = false, features = [
+  'macros',
+  'rt',
+  'signal',
+  'sync',
+] }
 toml = '1'
 uuid = { version = '1', features = ['v4'] }
 

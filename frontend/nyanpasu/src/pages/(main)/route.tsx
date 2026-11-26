@@ -48,7 +48,7 @@ function RouteComponent() {
               <div
                 className={cn(
                   'flex h-12 shrink-0 items-center gap-2 px-3',
-                  'bg-surface-container dark:bg-surface-container-low',
+                  'bg-surface-container-high dark:bg-surface-container',
                 )}
                 data-slot="app-navbar"
               >
@@ -62,7 +62,7 @@ function RouteComponent() {
               <div
                 className={cn(
                   'flex h-16 shrink-0 items-center gap-2 px-3',
-                  'bg-surface-container dark:bg-surface-container-low',
+                  'bg-surface-container-high dark:bg-surface-container',
                   'justify-between',
                 )}
                 data-slot="app-navbar-mobile"

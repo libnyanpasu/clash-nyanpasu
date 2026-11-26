@@ -6224,7 +6224,7 @@ version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
 dependencies = [
- "sha2 0.11.1",
+ "sha2 0.11.2",
 ]
 
 [[package]]
@@ -6233,7 +6233,7 @@ version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
 dependencies = [
- "sha2 0.11.1",
+ "sha2 0.11.2",
 ]
 
 [[package]]
@@ -7074,7 +7074,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "similar",
  "slab",
  "snafu 0.9.2",
@@ -7106,7 +7106,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1 0.11.0",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "snafu 0.9.2",
  "specta",
  "strum",
@@ -7175,7 +7175,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "snafu 0.9.2",
  "specta",
  "struct-patch",
@@ -7505,7 +7505,7 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "snafu 0.9.2",
  "specta",
  "sysinfo",
@@ -7593,7 +7593,7 @@ dependencies = [
  "nyanpasu-persistence",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "snafu 0.9.2",
  "tempfile",
  "yaml_serde 0.10.7 (git+https://github.com/libnyanpasu/yaml-serde.git?rev=17f2267d811a6371bd316e4bb46ccb7a9b39f4fa)",
@@ -7863,7 +7863,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "snafu 0.9.2",
  "socket2",
  "tempfile",
@@ -7973,7 +7973,7 @@ dependencies = [
  "reqwest 0.13.5",
  "semver 1.0.28",
  "serde",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "smol-cancellation-token",
  "snafu 0.9.2",
  "specta",
@@ -10415,7 +10415,7 @@ dependencies = [
  "log",
  "percent-encoding",
  "sha1 0.11.0",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "windows-sys 0.61.2",
 ]
 
@@ -11027,7 +11027,7 @@ dependencies = [
  "num",
  "once_cell",
  "serde",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "zbus 5.19.0",
 ]
 
@@ -11391,9 +11391,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
+checksum = "5b0e5c7d67bc53f435386b2130fdc900488c5703770f6d8a4633060e34288a27"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
@@ -12454,7 +12454,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "syn 2.0.119",
  "tauri-utils",
  "thiserror 2.0.21",

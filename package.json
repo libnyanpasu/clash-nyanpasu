@@ -112,7 +112,7 @@
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@inlang/paraglide-js": "3.2.2",
     "@tauri-apps/cli": "2.12.6",
-    "@types/node": "26.6.10",
+    "@types/node": "26.6.11",
     "@vitejs/plugin-react": "6.3.0",
     "@vitest/browser-playwright": "5.1.2",
     "knip": "6.48.0",

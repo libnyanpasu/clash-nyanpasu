@@ -160,6 +160,7 @@ impl RuntimeReconciler {
                     .map(Output::Handoff)
                     .map_err(|failure| RuntimeError::ApplyRuntime {
                         failure: crate::client::runtime_error::core_failure(failure.error),
+                        candidate_snapshot_id: None,
                     }),
             };
             self.converge(&mut round, operation_id, trigger).await;
@@ -229,7 +230,11 @@ impl RuntimeReconciler {
         round.conclusion = conclude(diagnostic);
         let error = Arc::try_unwrap(error)
             .expect("only the round and its attempt retained the command error");
-        if let RuntimeError::CoreRolledBack { reason } = error {
+        if let RuntimeError::CoreRolledBack {
+            reason,
+            candidate_snapshot_id,
+        } = error
+        {
             RuntimeError::ApplyRuntime {
                 failure: crate::client::runtime_error::core_failure(
                     nyanpasu_core_manager::CoreError::new(
@@ -241,6 +246,7 @@ impl RuntimeReconciler {
                         false,
                     ),
                 ),
+                candidate_snapshot_id,
             }
         } else {
             error

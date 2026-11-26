@@ -785,7 +785,7 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
     match error {
         RuntimeError::ShuttingDown => PublicRuntimeError::ShuttingDown,
         RuntimeError::OwnerUnresponsive { .. } => PublicRuntimeError::OwnerUnresponsive,
-        RuntimeError::ApplyRuntime { failure } => PublicRuntimeError::ApplyRuntime {
+        RuntimeError::ApplyRuntime { failure, .. } => PublicRuntimeError::ApplyRuntime {
             core_kind: failure.kind,
         },
         RuntimeError::StopCore { failure } => PublicRuntimeError::StopCore {
@@ -825,14 +825,14 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
         RuntimeError::ConfigurationNotInEffect { .. } => {
             PublicRuntimeError::ConfigurationNotInEffect
         }
-        RuntimeError::BuildRuntime { source } => PublicRuntimeError::BuildRuntime {
+        RuntimeError::BuildRuntime { source, .. } => PublicRuntimeError::BuildRuntime {
             source: project_runtime_build_error(source),
         },
         RuntimeError::PublishRuntime { .. } => PublicRuntimeError::PublishRuntime,
         RuntimeError::ResolvePort { source } => PublicRuntimeError::ResolvePort {
             source: project_port_resolve_error(source),
         },
-        RuntimeError::ResolveCoreBinary { source } => {
+        RuntimeError::ResolveCoreBinary { source, .. } => {
             let core = match source {
                 nyanpasu_runtime_values::core_spec::CoreSpecError::FindCoreBinary {
                     core, ..
@@ -866,11 +866,11 @@ fn project_runtime_error(error: &RuntimeError) -> PublicRuntimeError {
                 core_kind: *core_kind,
             }
         }
-        RuntimeError::CheckUnavailable { reason } => PublicRuntimeError::CheckUnavailable {
+        RuntimeError::CheckUnavailable { reason, .. } => PublicRuntimeError::CheckUnavailable {
             reason: project_check_unavailable(reason),
         },
         RuntimeError::CoreRolledBack { .. } => PublicRuntimeError::CoreRolledBack,
-        RuntimeError::SubmissionUnobserved { failure } => {
+        RuntimeError::SubmissionUnobserved { failure, .. } => {
             PublicRuntimeError::SubmissionUnobserved {
                 core_kind: failure.kind,
             }

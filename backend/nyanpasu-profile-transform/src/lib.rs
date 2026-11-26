@@ -3,8 +3,9 @@
 mod runtime_builder;
 
 pub use runtime_builder::{
-    ConfigNotMappingSnafu, RuntimeBuildError, RuntimeBuildInput, RuntimeBuildLog, RuntimeBuilder,
-    SerializeFinalConfigSnafu, StartScriptRunnerSnafu, builtin_transforms_for,
+    BuildCandidate, BuildFailure, ConfigNotMappingSnafu, RuntimeBuildError, RuntimeBuildInput,
+    RuntimeBuildLog, RuntimeBuilder, SerializeFinalConfigSnafu, StartScriptRunnerSnafu,
+    builtin_transforms_for,
 };
 
 mod chain;

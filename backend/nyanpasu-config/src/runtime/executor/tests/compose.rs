@@ -107,7 +107,19 @@ fn disabled_transform_engine_is_a_structured_pipeline_failure() {
                 &overrides,
                 &[],
             );
-            let error = execute(&inputs, &content, &runner).unwrap_err();
+            let failure = execute(&inputs, &content, &runner).unwrap_err();
+            // The stopped build names the transform it could not run.
+            assert_eq!(
+                failure
+                    .partial
+                    .as_ref()
+                    .and_then(|partial| partial.failed_step.clone()),
+                Some(crate::runtime::executor::HaltedStep::Transform {
+                    profile_id: pid("script")
+                }),
+                "{host}"
+            );
+            let error = failure.error;
             assert!(
                 matches!(
                     error,
@@ -122,4 +134,107 @@ fn disabled_transform_engine_is_a_structured_pipeline_failure() {
             );
         }
     }
+}
+
+#[test]
+fn a_member_that_cannot_be_read_keeps_the_members_before_it() {
+    use super::{
+        orders::base_inputs,
+        support::{
+            FakeScriptRunner, MapContentSource, composition_item, config_file_item, profiles_with,
+        },
+    };
+    use crate::runtime::{
+        executor::{ExecutionTarget, RuntimePipelineError, execute},
+        snapshot::OperatorTag,
+    };
+
+    let profiles = profiles_with(
+        Some("composition"),
+        &[],
+        &[],
+        vec![
+            composition_item("composition", Some("base"), &["first", "second"], &[]),
+            config_file_item("base", "base.yaml", &[]),
+            config_file_item("first", "first.yaml", &[]),
+            config_file_item("second", "second.yaml", &[]),
+        ],
+    );
+    let content = MapContentSource::from_pairs(&[
+        ("base.yaml", "proxies: []"),
+        ("first.yaml", "proxies: [{name: a}]"),
+    ]);
+    let overrides = super::builtin::fixed_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("composition")),
+        &overrides,
+        &[],
+    );
+    let failure = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap_err();
+    assert!(
+        matches!(&failure.error, RuntimePipelineError::ContentSource { profile, .. } if *profile == pid("second")),
+        "{:?}",
+        failure.error
+    );
+    let partial = failure.partial.expect("the first member completed");
+    assert_eq!(
+        partial.failed_step,
+        Some(crate::runtime::executor::HaltedStep::Profile {
+            profile_id: pid("second")
+        })
+    );
+    let tags: Vec<_> = partial.graph.nodes.iter().map(|node| &node.tag).collect();
+    assert!(matches!(
+        tags[partial.graph.root_id as usize],
+        OperatorTag::CompositionRoot { .. }
+    ));
+    assert!(matches!(
+        tags[partial.last_node as usize],
+        OperatorTag::ExtendProxiesStep { contributor_profile_id, .. } if *contributor_profile_id == pid("first")
+    ));
+    for id in ["base", "first"] {
+        assert!(tags.iter().any(
+            |tag| matches!(tag, OperatorTag::FileConfigRoot { profile_id, .. } if *profile_id == pid(id))
+        ));
+    }
+    // The failed member produced no output, so it has no node.
+    assert!(!tags.iter().any(|tag| matches!(
+        tag,
+        OperatorTag::FileConfigRoot { profile_id, .. } if *profile_id == pid("second")
+    )));
+    assert_eq!(
+        partial.graph.restore(partial.last_node).unwrap()["proxies"],
+        json!([{ "name": "a" }])
+    );
+}
+
+#[test]
+fn a_selected_file_that_cannot_be_read_has_no_completed_steps() {
+    use super::{
+        orders::base_inputs,
+        support::{FakeScriptRunner, MapContentSource, config_file_item, profiles_with},
+    };
+    use crate::runtime::executor::{ExecutionTarget, execute};
+
+    let profiles = profiles_with(
+        Some("selected"),
+        &[],
+        &[],
+        vec![config_file_item("selected", "selected.yaml", &[])],
+    );
+    let overrides = super::builtin::fixed_overrides();
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("selected")),
+        &overrides,
+        &[],
+    );
+    let failure = execute(
+        &inputs,
+        &MapContentSource::from_pairs(&[]),
+        &FakeScriptRunner::default(),
+    )
+    .unwrap_err();
+    assert!(failure.partial.is_none());
 }

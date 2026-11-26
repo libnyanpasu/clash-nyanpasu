@@ -64,14 +64,15 @@ mod tests {
 
     #[test]
     fn a_runtime_error_reaches_the_frontend_with_the_cores_own_kind() {
-        let failure = nyanpasu_runtime_values::runtime_error::ApplyRuntimeSnafu.into_error(
-            nyanpasu_runtime_values::runtime_error::CoreFailure {
+        let failure = RuntimeError::ApplyRuntime {
+            failure: nyanpasu_runtime_values::runtime_error::CoreFailure {
                 kind: Some(nyanpasu_core_manager::CoreErrorKind::ApplyFailed),
                 message: "the core kept the previous configuration".into(),
                 retryable: false,
                 operation_id: None,
             },
-        );
+            candidate_snapshot_id: None,
+        };
         let wire = wire(failure);
 
         assert_eq!(
@@ -91,7 +92,8 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(IpcError::from(RuntimeError::ConfigurationNotInEffect {
-                reason: "waiting for a stable runtime".into()
+                reason: "waiting for a stable runtime".into(),
+                candidate_snapshot_id: None,
             }))
             .unwrap()["kind"],
             json!({ "domain": "runtime", "error": { "kind": "configuration_not_in_effect", "reason": "waiting for a stable runtime" } })
@@ -435,8 +437,16 @@ mod tests {
                 let commit = &source_error["source"];
                 assert_eq!(commit["kind"], "runtime_refused");
                 assert!(commit.get("runtime").is_none());
+                // The steps before the unavailable engine are kept for inspection.
+                let mut errors = commit["errors"].clone();
+                let kept = errors[0]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("candidate_snapshot_id")
+                    .expect("the completed steps are kept");
+                assert_eq!(kept.as_str().map(str::len), Some(21));
                 assert_eq!(
-                    commit["errors"],
+                    errors,
                     serde_json::json!([{
                         "kind": "build_runtime", "source": {
                             "kind": "run_pipeline", "source": {

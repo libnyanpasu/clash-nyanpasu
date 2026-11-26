@@ -2,10 +2,52 @@ use super::super::runtime;
 use nyanpasu_runtime_values::check::RuntimeCheckUnavailable;
 
 use async_trait::async_trait;
-use nyanpasu_config::runtime::executor::{PortError, ScriptRunner};
-use nyanpasu_profile_transform::RuntimeBuildError;
+use nyanpasu_config::{
+    application::ClashCore,
+    runtime::executor::{PortError, ScriptRunner},
+};
+use nyanpasu_profile_transform::{BuildFailure, RuntimeBuildError};
 use nyanpasu_runtime_values::{core_spec::CoreSpecError, publish::PublishRuntimeError};
 use std::sync::Arc;
+
+/// A failed build, with the candidate it had produced when it failed after
+/// the pipeline recorded any step.
+#[derive(Debug)]
+pub struct RuntimeBuildFailure {
+    pub error: RuntimeBuildError,
+    pub(in crate::client) candidate:
+        Option<Box<crate::client::candidate_inspection::CandidateEvidence>>,
+}
+
+impl From<RuntimeBuildError> for RuntimeBuildFailure {
+    fn from(error: RuntimeBuildError) -> Self {
+        Self {
+            error,
+            candidate: None,
+        }
+    }
+}
+
+impl RuntimeBuildFailure {
+    pub(in crate::client) fn of_build(
+        revision: runtime::RuntimeRevision,
+        target_core: ClashCore,
+        failure: BuildFailure,
+    ) -> Self {
+        let BuildFailure { error, candidate } = failure;
+        let candidate = candidate.map(|candidate| {
+            Box::new(
+                crate::client::candidate_inspection::CandidateEvidence::of_build(
+                    revision,
+                    target_core,
+                    candidate,
+                    &error,
+                ),
+            )
+        });
+        Self { error, candidate }
+    }
+}
 
 /// Builds a script runner on the blocking thread that will use and drop it.
 pub type ScriptRunnerFactory = dyn Fn() -> Result<Box<dyn ScriptRunner>, PortError> + Send + Sync;
@@ -29,7 +71,7 @@ pub trait RuntimeBuildPort: Send + Sync + 'static {
         inputs: super::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildError>;
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, RuntimeBuildFailure>;
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot)
     -> Result<(), PublishRuntimeError>;
 }

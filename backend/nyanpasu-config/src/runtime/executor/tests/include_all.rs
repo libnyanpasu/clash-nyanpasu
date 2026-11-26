@@ -230,7 +230,7 @@ fn disabled_transform_engine_is_a_structured_pipeline_failure() {
                 &overrides,
                 &[],
             );
-            let error = execute(&inputs, &content, &runner).unwrap_err();
+            let error = execute(&inputs, &content, &runner).unwrap_err().error;
             assert!(
                 matches!(
                     error,

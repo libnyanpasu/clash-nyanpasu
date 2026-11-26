@@ -3,12 +3,13 @@ use nyanpasu_config::redact::redact_config;
 use std::sync::Arc;
 
 use nyanpasu_config::{
+    application::ClashCore,
     profile::ProfileId,
     runtime::{
-        executor::{StepLog, StepLogEntry, StepLogLevel},
+        executor::{PipelineHalt, StepLog, StepLogEntry, StepLogLevel},
         snapshot::{
             BuiltinStepKind, Idx, OperatorTag, SnapshotBuildError, SnapshotDiffHunk,
-            StoredConfigSnapshotsGraph, changed_fields_between,
+            StoredConfigSnapshotsGraph, changed_fields_between, persistence::CandidateArchive,
         },
     },
 };
@@ -16,9 +17,13 @@ use serde::Serialize;
 use snafu::{OptionExt, ResultExt, ensure};
 
 use super::{NyanpasuClient, runtime::RuntimeSnapshot};
-use nyanpasu_runtime_values::runtime_error::{
-    ConvertRuntimeConfigSnafu, NoRuntimeConfigSnafu, RuntimeError, RuntimeNodeNotFoundSnafu,
-    RuntimeSnapshotChangedSnafu, SerializeRuntimeConfigSnafu,
+use crate::actor_v2::facade::AppliedConfigBinding;
+use nyanpasu_runtime_values::{
+    candidate::CandidateSnapshotId,
+    runtime_error::{
+        ConvertRuntimeConfigSnafu, NoRuntimeConfigSnafu, RuntimeError, RuntimeNodeNotFoundSnafu,
+        RuntimeSnapshotChangedSnafu, SerializeRuntimeConfigSnafu,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -56,6 +61,17 @@ pub struct RuntimeInspection {
     /// later node and never this one.
     pub final_id: u32,
     pub nodes: Vec<RuntimeInspectionNode>,
+}
+
+/// A candidate kept after a failed change, as the inspection viewer shows it.
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct CandidateInspection {
+    /// `snapshot_id` is the candidate's ID; `final_id` is its built document,
+    /// or the last step a stopped build completed.
+    pub inspection: RuntimeInspection,
+    /// Which step a stopped build could not run, which has no node, and
+    /// why. `None` when the build finished.
+    pub halted: Option<PipelineHalt>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -134,16 +150,94 @@ impl RuntimeSnapshot {
         snapshot
     }
 
+    fn inspection_view(&self) -> InspectionView<'_> {
+        InspectionView {
+            inspection_id: &self.inspection_id,
+            revision: self.revision.get(),
+            target_core: &self.target_core,
+            graph: &self.inspection.graph,
+            final_id: self.inspection.final_node,
+            step_logs: &self.inspection.step_logs,
+            applied_binding: self.applied_binding.as_ref(),
+            effective: self.effective.as_deref(),
+            origin: GraphOrigin::Recorded,
+        }
+    }
+
+    fn final_node(&self) -> (Idx, Option<ProfileId>) {
+        self.inspection_view().final_node()
+    }
+
+    fn config_json(&self) -> serde_json::Value {
+        restored(self.inspection_view().config_json())
+    }
+
+    fn inspection_summary(&self) -> RuntimeInspection {
+        self.inspection_view().inspection_summary()
+    }
+
+    fn inspection_content(
+        &self,
+        snapshot_id: &str,
+        node_id: u32,
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
+        self.inspection_view()
+            .inspection_content(snapshot_id, node_id)
+    }
+}
+
+/// Where a viewed graph came from, which decides what a failed replay means.
+#[derive(Debug, Clone, Copy)]
+enum GraphOrigin {
+    /// Recorded by this process's executor, which checked every replay.
+    Recorded,
+    /// Decoded from a kept candidate: a node that does not replay means the
+    /// kept copy is no longer usable.
+    Archived,
+}
+
+/// The projections' borrowed input, shared by live builds and kept candidates.
+struct InspectionView<'a> {
+    inspection_id: &'a str,
+    revision: u64,
+    target_core: &'a ClashCore,
+    graph: &'a StoredConfigSnapshotsGraph,
+    final_id: Idx,
+    step_logs: &'a [StepLog],
+    applied_binding: Option<&'a AppliedConfigBinding>,
+    effective: Option<&'a EffectiveInspection>,
+    origin: GraphOrigin,
+}
+
+impl<'a> InspectionView<'a> {
+    fn candidate(id: &'a str, archive: &'a CandidateArchive) -> Self {
+        Self {
+            inspection_id: id,
+            revision: archive.revision,
+            target_core: &archive.target_core,
+            graph: &archive.graph,
+            final_id: archive.final_node,
+            step_logs: &archive.step_logs,
+            applied_binding: None,
+            effective: None,
+            origin: GraphOrigin::Archived,
+        }
+    }
+
+    fn replayed<T>(&self, result: Result<T, SnapshotBuildError>) -> Result<T, RuntimeError> {
+        match self.origin {
+            GraphOrigin::Recorded => Ok(restored(result)),
+            GraphOrigin::Archived => result.map_err(|error| {
+                tracing::debug!(%error, "a kept candidate node does not replay");
+                RuntimeError::RuntimeSnapshotChanged
+            }),
+        }
+    }
+
     /// The node whose config is the built document, with its selected profile.
     fn final_node(&self) -> (Idx, Option<ProfileId>) {
-        let id = self.inspection.final_node;
-        let selected_profile_id = match self
-            .inspection
-            .graph
-            .nodes
-            .get(id as usize)
-            .map(|node| &node.tag)
-        {
+        let id = self.final_id;
+        let selected_profile_id = match self.graph.nodes.get(id as usize).map(|node| &node.tag) {
             Some(
                 OperatorTag::BuiltinStep {
                     selected_profile_id,
@@ -162,15 +256,14 @@ impl RuntimeSnapshot {
     /// The built document as JSON, restored from the graph rather than
     /// re-parsed from `config_text`, so the view keeps the converter's
     /// semantics instead of acquiring the YAML parser's limits.
-    fn config_json(&self) -> serde_json::Value {
+    fn config_json(&self) -> Result<serde_json::Value, SnapshotBuildError> {
         let (final_node, _) = self.final_node();
-        restored(self.inspection.graph.restore(final_node))
+        self.graph.restore(final_node)
     }
 
     fn max_log_level(&self, tag: &OperatorTag) -> Option<StepLogLevel> {
         let key = tag.node_key();
-        self.inspection
-            .step_logs
+        self.step_logs
             .iter()
             .filter(|log| log.key == key)
             .flat_map(|log| &log.entries)
@@ -179,7 +272,7 @@ impl RuntimeSnapshot {
     }
 
     fn inspection_summary(&self) -> RuntimeInspection {
-        let graph = &self.inspection.graph;
+        let graph = self.graph;
         let (final_id, _) = self.final_node();
         let mut nodes: Vec<_> = graph
             .nodes
@@ -201,7 +294,7 @@ impl RuntimeSnapshot {
             })
             .collect();
         // The core's view is projected as the final node's last child.
-        if let Some(effective) = &self.effective {
+        if let Some(effective) = self.effective {
             let id = nodes.len() as u32;
             nodes[effective.parent as usize].next.push(id);
             let max_log_level = self.max_log_level(&effective.tag);
@@ -215,7 +308,7 @@ impl RuntimeSnapshot {
             });
         }
         RuntimeInspection {
-            snapshot_id: self.inspection_id.clone(),
+            snapshot_id: self.inspection_id.to_owned(),
             applied: false,
             effective_pending: self.applied_binding.is_some() && self.effective.is_none(),
             effective_revision: self
@@ -227,7 +320,7 @@ impl RuntimeSnapshot {
                         .as_ref()
                         .map(|binding| binding.revision.clone())
                 }),
-            revision: self.revision.get().to_string(),
+            revision: self.revision.to_string(),
             target_core: self.target_core.to_string(),
             root_id: graph.root_id,
             final_id,
@@ -244,19 +337,22 @@ impl RuntimeSnapshot {
             self.inspection_id == snapshot_id,
             RuntimeSnapshotChangedSnafu
         );
-        let graph = &self.inspection.graph;
-        let (tag, config, parent) = match &self.effective {
+        let graph = self.graph;
+        let (tag, config, parent) = match self.effective {
             Some(effective) if node_id as usize == graph.nodes.len() => (
                 &effective.tag,
                 document_json(&effective.config.config)?,
-                Some((effective.parent, restored(graph.restore(effective.parent)))),
+                Some((
+                    effective.parent,
+                    self.replayed(graph.restore(effective.parent))?,
+                )),
             ),
             _ => {
                 let node = graph
                     .nodes
                     .get(node_id as usize)
                     .context(RuntimeNodeNotFoundSnafu { node_id })?;
-                let (config, parent) = restored(graph.restore_with_parent(node_id));
+                let (config, parent) = self.replayed(graph.restore_with_parent(node_id))?;
                 (&node.tag, config, parent)
             }
         };
@@ -278,7 +374,6 @@ impl RuntimeSnapshot {
                 .transpose()?,
             yaml,
             logs: self
-                .inspection
                 .step_logs
                 .iter()
                 .filter(|log| log.key == key)
@@ -306,6 +401,45 @@ impl NyanpasuClient {
         self.recover_effective_snapshot().await;
         let snapshot = self.promoted_runtime().await?;
         Some(self.inspect_snapshot(&snapshot).await)
+    }
+
+    /// The candidate kept for a failed change in this session.
+    ///
+    /// # Errors
+    /// [`RuntimeError::RuntimeSnapshotChanged`] when this session no longer
+    /// keeps it.
+    pub async fn inspect_candidate_runtime(
+        &self,
+        id: &CandidateSnapshotId,
+    ) -> Result<CandidateInspection, RuntimeError> {
+        let key = id.to_string();
+        self.inner
+            .candidates
+            .inspect(id, move |archive| {
+                Ok(CandidateInspection {
+                    inspection: InspectionView::candidate(&key, archive).inspection_summary(),
+                    halted: archive.halted.clone(),
+                })
+            })
+            .await
+    }
+
+    /// One node of a kept candidate; only that node and its parent replay.
+    ///
+    /// # Errors
+    /// The stale-snapshot or missing-node error when it is unavailable.
+    pub async fn inspect_candidate_node(
+        &self,
+        id: &CandidateSnapshotId,
+        node_id: u32,
+    ) -> Result<RuntimeInspectionContent, RuntimeError> {
+        let key = id.to_string();
+        self.inner
+            .candidates
+            .inspect(id, move |archive| {
+                InspectionView::candidate(&key, archive).inspection_content(&key, node_id)
+            })
+            .await
     }
 
     pub async fn inspect_applied_runtime(&self) -> Option<RuntimeInspection> {
@@ -434,6 +568,112 @@ pub(crate) mod tests {
                 inspection: Arc::new(inspection_data()),
             },
         )
+    }
+
+    #[tokio::test]
+    async fn a_kept_candidate_projects_like_a_live_build_until_it_is_dropped() {
+        use crate::client::candidate_inspection::CandidateEvidence;
+        let dir = tempfile::tempdir().unwrap();
+        let client = crate::client::test_support::facade::test_client(&dir).await;
+        let mut candidate = snapshot();
+        let mut graph = ConfigSnapshotsBuilder::new_root(
+            Arc::new(
+                serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "rule"})).unwrap(),
+            ),
+            OperatorTag::BareRoot,
+        );
+        let tag = OperatorTag::BuiltinStep {
+            selected_profile_id: None,
+            step: BuiltinStepKind::Defaults,
+        };
+        graph
+            .push(
+                tag.clone(),
+                Arc::new(
+                    serde_json::from_value::<ConfigValue>(serde_json::json!({"mode": "global"}))
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let (graph, final_node) = graph.build_stored_with_current().unwrap();
+        candidate.inspection = Arc::new(RuntimeInspectionData {
+            graph,
+            final_node,
+            step_logs: vec![StepLog {
+                key: tag.node_key(),
+                entries: vec![StepLogEntry::new(StepLogLevel::Warn, "candidate log")],
+            }],
+        });
+        let id = client
+            .inner
+            .candidates
+            .save(CandidateEvidence::of_snapshot(&candidate))
+            .await
+            .unwrap();
+        candidate.inspection_id = id.to_string();
+        let expected = serde_json::to_value(candidate.inspection_summary()).unwrap();
+        let expected_node = serde_json::to_value(
+            candidate
+                .inspection_content(id.as_str(), final_node)
+                .unwrap(),
+        )
+        .unwrap();
+
+        let inspection = client.inspect_candidate_runtime(&id).await.unwrap();
+        assert!(inspection.halted.is_none());
+        assert_eq!(
+            serde_json::to_value(&inspection.inspection).unwrap(),
+            expected
+        );
+        assert_eq!(inspection.inspection.snapshot_id, id.as_str());
+        // A kept candidate is no live snapshot.
+        assert!(matches!(
+            client.inspect_runtime_node(id.as_str(), final_node).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        let content = client
+            .inspect_candidate_node(&id, final_node)
+            .await
+            .unwrap();
+        assert_eq!(serde_json::to_value(&content).unwrap(), expected_node);
+        assert!(!content.diff.unwrap().hunks.is_empty());
+        assert_eq!(content.logs[0].level, StepLogLevel::Warn);
+        assert!(matches!(
+            client.inspect_candidate_node(&id, u32::MAX).await,
+            Err(RuntimeError::RuntimeNodeNotFound { node_id: u32::MAX })
+        ));
+        client.inner.candidates.release();
+        assert!(matches!(
+            client.inspect_candidate_runtime(&id).await,
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+    }
+
+    #[test]
+    fn a_kept_node_that_no_longer_replays_reads_as_changed() {
+        use nyanpasu_config::runtime::snapshot::persistence::CandidateArchive;
+        let data = inspection_data();
+        let mut graph = data.graph.clone();
+        // A node whose delta cannot replay: its parent link is gone.
+        graph.nodes.push(graph.nodes[0].clone());
+        let archive = CandidateArchive {
+            format_version: 1,
+            revision: 1,
+            target_core: ClashCore::default(),
+            graph,
+            final_node: 0,
+            step_logs: Vec::new(),
+            halted: Some(PipelineHalt {
+                step: None,
+                reason: "stopped".into(),
+            }),
+        };
+        let view = InspectionView::candidate("id", &archive);
+        assert!(matches!(
+            view.replayed(Err::<(), _>(SnapshotBuildError::MissingRoot { root_id: 1 })),
+            Err(RuntimeError::RuntimeSnapshotChanged)
+        ));
+        assert_eq!(view.inspection_summary().final_id, 0);
     }
 
     #[test]

@@ -106,6 +106,8 @@ command | get_transparent_proxy_status | sensitive_read | query | desktop |  |
 command | get_transparent_proxy_status_summary | read | query | desktop |  |
 command | import_profile | profile | mutation | desktop,http,local |  | elevation,os_integration,presentation
 command | inspect_applied_runtime | sensitive_read | query | desktop,http |  |
+command | inspect_candidate_node | sensitive_read | query | desktop |  |
+command | inspect_candidate_runtime | sensitive_read | query | desktop |  |
 command | inspect_runtime | sensitive_read | query | desktop,http |  |
 command | inspect_runtime_node | sensitive_read | query | desktop,http |  |
 command | inspect_updater | sensitive_read | query | desktop,http |  |

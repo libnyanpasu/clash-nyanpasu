@@ -2,7 +2,9 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_runtime_values::{mutation::ConfigDomain, runtime::Degradation};
+use nyanpasu_runtime_values::{
+    mutation::ConfigDomain, runtime::Degradation, runtime_error::RuntimeError,
+};
 use nyanpasu_state_engine::Version;
 
 use super::{mutation::RoundRecord, plan::Conclusion};
@@ -42,12 +44,10 @@ impl Default for ReconcilerStatus {
             active: None,
             seen: EngineVersions::default(),
             conclusion: Conclusion::Unknown {
-                cause: Arc::new(
-                    nyanpasu_runtime_values::runtime_error::ConfigurationNotInEffectSnafu {
-                        reason: "runtime reconciliation has not started".to_owned(),
-                    }
-                    .build(),
-                ),
+                cause: Arc::new(RuntimeError::ConfigurationNotInEffect {
+                    reason: "runtime reconciliation has not started".to_owned(),
+                    candidate_snapshot_id: None,
+                }),
             },
             degradations: Vec::new(),
             maintenance: None,

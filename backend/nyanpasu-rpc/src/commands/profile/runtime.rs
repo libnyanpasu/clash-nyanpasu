@@ -4,6 +4,7 @@ nyanpasu_rpc::namespace!(expose = [http]);
 
 use nyanpasu_core::client::NyanpasuClient;
 use nyanpasu_profile_transform::PostProcessingOutput;
+use nyanpasu_runtime_values::candidate::CandidateSnapshotId;
 
 use crate::{error::Result, registry::RpcState};
 
@@ -75,4 +76,27 @@ pub async fn inspect_runtime_node(
     node_id: u32,
 ) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
     Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
+}
+
+/// A candidate kept after a failed configuration change in this session. It
+/// holds content that was never committed and unredacted step logs, so only
+/// the desktop reaches it.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[specta::specta]
+pub async fn inspect_candidate_runtime(
+    client: RpcState<'_, NyanpasuClient>,
+    snapshot_id: CandidateSnapshotId,
+) -> Result<nyanpasu_core::client::runtime_inspection::CandidateInspection> {
+    Ok(client.inspect_candidate_runtime(&snapshot_id).await?)
+}
+
+/// One node of a kept candidate; desktop only, like the candidate itself.
+#[nyanpasu_rpc::rpc(query, expose = [], sensitive)]
+#[specta::specta]
+pub async fn inspect_candidate_node(
+    client: RpcState<'_, NyanpasuClient>,
+    snapshot_id: CandidateSnapshotId,
+    node_id: u32,
+) -> Result<nyanpasu_core::client::runtime_inspection::RuntimeInspectionContent> {
+    Ok(client.inspect_candidate_node(&snapshot_id, node_id).await?)
 }

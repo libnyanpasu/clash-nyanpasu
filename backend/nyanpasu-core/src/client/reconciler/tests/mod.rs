@@ -9,6 +9,7 @@ use crate::{
     },
 };
 mod applications;
+mod candidates;
 mod closing;
 mod commit_first;
 mod connection_policy;
@@ -85,13 +86,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, ports::RuntimeBuildFailure> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping.into());
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)

@@ -8,7 +8,7 @@ use nyanpasu_config::application::{
 use nyanpasu_migration::modules::application::ApplicationFormat;
 use nyanpasu_runtime_values::{
     mutation::{CommitAborted, ConfigDomain},
-    runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
+    runtime_error::RuntimeError,
 };
 use nyanpasu_state_engine::{PersistentStateManagerSetup, StateSnapshot, Version};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -193,13 +193,11 @@ async fn runtime_patch_checks_persists_publishes_effects_then_notifies() {
 // Guards propagating gate rejection before replace_if_version.
 #[tokio::test]
 async fn rejected_check_preserves_bytes_version_and_notifications() {
-    let error = Arc::new(
-        CoreRejectedConfigSnafu {
-            core_kind: Some(nyanpasu_core_manager::CoreErrorKind::InvalidConfig),
-            message: "invalid candidate",
-        }
-        .build(),
-    );
+    let error = Arc::new(RuntimeError::CoreRejectedConfig {
+        core_kind: Some(nyanpasu_core_manager::CoreErrorKind::InvalidConfig),
+        message: "invalid candidate".into(),
+        candidate_snapshot_id: None,
+    });
     let f = fixture(Some(error)).await;
     let before = f.client.snapshot();
     let bytes = std::fs::read(&f.path).unwrap();
@@ -261,16 +259,14 @@ async fn language_patch_persists_without_runtime_work() {
 // Guards classifying an unavailable check as RuntimeFailed without touching runtime or source.
 #[tokio::test]
 async fn unavailable_check_is_failed_and_preserves_the_source() {
-    let error = Arc::new(
-        nyanpasu_runtime_values::runtime_error::CheckUnavailableSnafu {
-            reason: nyanpasu_runtime_values::check::RuntimeCheckUnavailable::Backend {
-                kind: Some(nyanpasu_core_manager::CoreErrorKind::BackendUnavailable),
-                message: "check unavailable".into(),
-                retryable: true,
-            },
-        }
-        .build(),
-    );
+    let error = Arc::new(RuntimeError::CheckUnavailable {
+        reason: nyanpasu_runtime_values::check::RuntimeCheckUnavailable::Backend {
+            kind: Some(nyanpasu_core_manager::CoreErrorKind::BackendUnavailable),
+            message: "check unavailable".into(),
+            retryable: true,
+        },
+        candidate_snapshot_id: None,
+    });
     let f = fixture(Some(error)).await;
     let before = f.client.snapshot().version;
     let bytes = std::fs::read(&f.path).unwrap();

@@ -1157,14 +1157,18 @@ fn usize_to_idx(node_id: usize) -> Result<Idx, SnapshotBuildError> {
 #[cfg(feature = "snapshot-persistence")]
 pub mod persistence {
     use std::{
-        io::{Cursor, Read},
+        io::{self, Cursor, Read, Write},
         sync::Arc,
     };
 
     use serde::{Deserialize, Serialize};
     use thiserror::Error;
 
-    use super::StoredConfigSnapshotsGraph;
+    use super::{Idx, StoredConfigSnapshotsGraph};
+    use crate::{
+        application::ClashCore,
+        runtime::executor::{PipelineHalt, StepLog},
+    };
 
     pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 3;
     /// Decompression ceiling, guarding against zstd decompression bombs.
@@ -1176,6 +1180,142 @@ pub mod persistence {
         /// Diagnostic only; never used for compatibility decisions.
         pub crate_version: Arc<str>,
         pub graph: StoredConfigSnapshotsGraph,
+    }
+
+    /// Version of the session-scoped candidate archive.
+    pub const CANDIDATE_ARCHIVE_VERSION: u16 = 1;
+
+    /// A candidate build kept for inspection during one session.
+    #[derive(Debug, Clone, PartialEq, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct CandidateArchive {
+        pub format_version: u16,
+        pub revision: u64,
+        pub target_core: ClashCore,
+        pub graph: StoredConfigSnapshotsGraph,
+        /// The built document's node, or the last completed node of a build
+        /// that stopped.
+        pub final_node: Idx,
+        pub step_logs: Vec<StepLog>,
+        /// Which step a stopped build could not run, and why; `None` for a
+        /// finished build.
+        pub halted: Option<PipelineHalt>,
+    }
+
+    /// The borrowed form [`write_candidate_archive`] encodes, so saving never
+    /// copies the graph. Its fields serialize exactly as [`CandidateArchive`].
+    #[derive(Debug, Serialize)]
+    pub struct CandidateArchiveRef<'a> {
+        pub format_version: u16,
+        pub revision: u64,
+        pub target_core: &'a ClashCore,
+        pub graph: &'a StoredConfigSnapshotsGraph,
+        pub final_node: Idx,
+        pub step_logs: &'a [StepLog],
+        pub halted: Option<&'a PipelineHalt>,
+    }
+
+    /// Counts what passes through and refuses the write that would exceed `limit`.
+    struct LimitedWriter<W> {
+        inner: W,
+        written: u64,
+        limit: u64,
+        exceeded: bool,
+    }
+
+    impl<W> LimitedWriter<W> {
+        fn new(inner: W, limit: u64) -> Self {
+            Self {
+                inner,
+                written: 0,
+                limit,
+                exceeded: false,
+            }
+        }
+    }
+
+    impl<W: Write> Write for LimitedWriter<W> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.written + buf.len() as u64 > self.limit {
+                self.exceeded = true;
+                return Err(io::Error::other("archive size limit exceeded"));
+            }
+            let written = self.inner.write(buf)?;
+            self.written += written as u64;
+            Ok(written)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.inner.flush()
+        }
+    }
+
+    /// Encodes `archive` into `writer` and returns the bytes written. It stops
+    /// as soon as the compressed output would exceed `max_encoded_bytes`, or
+    /// the body would exceed what decoding accepts, so an oversized build is
+    /// never fully written.
+    ///
+    /// # Errors
+    /// Returns [`SnapshotPersistError::EncodeLimitExceeded`] at either limit,
+    /// otherwise serialization, compression or write failures. `writer` may
+    /// hold a partial archive afterwards.
+    pub fn write_candidate_archive<W: Write>(
+        archive: &CandidateArchiveRef<'_>,
+        writer: W,
+        max_encoded_bytes: u64,
+    ) -> Result<u64, SnapshotPersistError> {
+        let mut compressed = LimitedWriter::new(writer, max_encoded_bytes);
+        let mut encode = || -> Result<(), SnapshotPersistError> {
+            let mut encoder = zstd::stream::write::Encoder::new(&mut compressed, 3)?;
+            let mut body = LimitedWriter::new(&mut encoder, MAX_ARCHIVE_DECODED_BYTES);
+            let written = rmp_serde::encode::write_named(&mut body, archive);
+            if body.exceeded {
+                return Err(SnapshotPersistError::EncodeLimitExceeded);
+            }
+            written?;
+            encoder.finish()?.flush()?;
+            Ok(())
+        };
+        match encode() {
+            Err(_) if compressed.exceeded => Err(SnapshotPersistError::EncodeLimitExceeded),
+            Err(error) => Err(error),
+            Ok(()) => Ok(compressed.written),
+        }
+    }
+
+    /// Decodes a candidate archive and checks its graph's shape. Node configs
+    /// are not replayed here: a projection restores only the nodes it shows.
+    ///
+    /// # Errors
+    /// Rejects unsupported versions, oversized, trailing or malformed data, an
+    /// invalid graph shape and a final node outside the graph.
+    pub fn read_candidate_archive(
+        reader: impl Read,
+    ) -> Result<CandidateArchive, SnapshotPersistError> {
+        let body = decode_body(reader)?;
+        let mut decoder = rmp_serde::Deserializer::new(Cursor::new(&body));
+        let archive = CandidateArchive::deserialize(&mut decoder)?;
+        if decoder.position() != body.len() as u64 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "trailing candidate archive data",
+            )
+            .into());
+        }
+        if archive.format_version != CANDIDATE_ARCHIVE_VERSION {
+            return Err(SnapshotPersistError::UnsupportedVersion {
+                found: archive.format_version,
+                expected: CANDIDATE_ARCHIVE_VERSION,
+            });
+        }
+        archive.graph.validate_tree_shape()?;
+        if archive.final_node as usize >= archive.graph.nodes.len() {
+            return Err(super::SnapshotBuildError::MissingRoot {
+                root_id: archive.final_node as usize,
+            }
+            .into());
+        }
+        Ok(archive)
     }
 
     #[derive(Debug, Error)]
@@ -1190,6 +1330,8 @@ pub mod persistence {
         UnsupportedVersion { found: u16, expected: u16 },
         #[error("decoded snapshot archive exceeds {max_bytes} bytes")]
         DecodeLimitExceeded { max_bytes: u64 },
+        #[error("the archive exceeds its size limit")]
+        EncodeLimitExceeded,
         #[error(transparent)]
         Graph(#[from] super::SnapshotBuildError),
     }
@@ -1206,8 +1348,8 @@ pub mod persistence {
         Ok(zstd::stream::encode_all(body.as_slice(), 3)?)
     }
 
-    pub fn decode_archive(bytes: &[u8]) -> Result<SnapshotArchive, SnapshotPersistError> {
-        let decoder = zstd::stream::read::Decoder::new(Cursor::new(bytes))?;
+    fn decode_body(reader: impl Read) -> Result<Vec<u8>, SnapshotPersistError> {
+        let decoder = zstd::stream::read::Decoder::new(reader)?;
         let mut limited = decoder.take(MAX_ARCHIVE_DECODED_BYTES + 1);
         let mut body = Vec::new();
         limited.read_to_end(&mut body)?;
@@ -1216,7 +1358,11 @@ pub mod persistence {
                 max_bytes: MAX_ARCHIVE_DECODED_BYTES,
             });
         }
+        Ok(body)
+    }
 
+    pub fn decode_archive(bytes: &[u8]) -> Result<SnapshotArchive, SnapshotPersistError> {
+        let body = decode_body(Cursor::new(bytes))?;
         let archive: SnapshotArchive = rmp_serde::from_slice(&body)?;
         if archive.format_version != SNAPSHOT_ARCHIVE_VERSION {
             return Err(SnapshotPersistError::UnsupportedVersion {
@@ -2491,5 +2637,126 @@ mod tests {
             );
             assert_restore_matches_materialize(&stored);
         }
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    fn candidate_graph() -> StoredConfigSnapshotsGraph {
+        ConfigSnapshotsBuilder::new_root(value(json!({ "a": 1 })), selected_file_root("primary"))
+            .build_stored()
+            .unwrap()
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    fn halted() -> crate::runtime::executor::PipelineHalt {
+        crate::runtime::executor::PipelineHalt {
+            step: Some(crate::runtime::executor::HaltedStep::Profile {
+                profile_id: pid("second"),
+            }),
+            reason: "member second could not be read".into(),
+        }
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    fn write_candidate(
+        graph: &StoredConfigSnapshotsGraph,
+        final_node: Idx,
+        format_version: u16,
+    ) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        persistence::write_candidate_archive(
+            &persistence::CandidateArchiveRef {
+                format_version,
+                revision: 4,
+                target_core: &crate::application::ClashCore::default(),
+                graph,
+                final_node,
+                step_logs: &[],
+                halted: Some(&halted()),
+            },
+            &mut bytes,
+            u64::MAX,
+        )
+        .unwrap();
+        bytes
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    #[test]
+    fn candidate_archive_round_trip_rejects_corruption_versions_and_invalid_nodes() {
+        use persistence::{CANDIDATE_ARCHIVE_VERSION, read_candidate_archive};
+        let graph = candidate_graph();
+        let bytes = write_candidate(&graph, 0, CANDIDATE_ARCHIVE_VERSION);
+        let archive = read_candidate_archive(bytes.as_slice()).unwrap();
+        assert_eq!(archive.graph, graph);
+        assert_eq!(archive.revision, 4);
+        assert_eq!(archive.halted, Some(halted()));
+
+        assert!(read_candidate_archive(&bytes[..bytes.len() / 2]).is_err());
+        let mut body = rmp_serde::to_vec_named(&persistence::CandidateArchiveRef {
+            format_version: CANDIDATE_ARCHIVE_VERSION,
+            revision: 4,
+            target_core: &crate::application::ClashCore::default(),
+            graph: &graph,
+            final_node: 0,
+            step_logs: &[],
+            halted: None,
+        })
+        .unwrap();
+        body.push(0);
+        let trailing = zstd::stream::encode_all(body.as_slice(), 3).unwrap();
+        assert!(read_candidate_archive(trailing.as_slice()).is_err());
+        assert!(matches!(
+            read_candidate_archive(write_candidate(&graph, 0, 0).as_slice()),
+            Err(persistence::SnapshotPersistError::UnsupportedVersion { .. })
+        ));
+        assert!(
+            read_candidate_archive(
+                write_candidate(&graph, u32::MAX, CANDIDATE_ARCHIVE_VERSION).as_slice()
+            )
+            .is_err()
+        );
+        let mut broken = graph.clone();
+        broken.nodes[0].next = Some(vec![99]);
+        assert!(
+            read_candidate_archive(
+                write_candidate(&broken, 0, CANDIDATE_ARCHIVE_VERSION).as_slice()
+            )
+            .is_err()
+        );
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    #[test]
+    fn candidate_archive_stops_writing_at_its_size_limit() {
+        let graph = candidate_graph();
+        let archive = persistence::CandidateArchiveRef {
+            format_version: persistence::CANDIDATE_ARCHIVE_VERSION,
+            revision: 1,
+            target_core: &crate::application::ClashCore::default(),
+            graph: &graph,
+            final_node: 0,
+            step_logs: &[],
+            halted: None,
+        };
+        let mut written = Vec::new();
+        let size = persistence::write_candidate_archive(&archive, &mut written, u64::MAX).unwrap();
+        assert_eq!(size, written.len() as u64);
+
+        let mut capped = Vec::new();
+        assert!(matches!(
+            persistence::write_candidate_archive(&archive, &mut capped, size - 1),
+            Err(persistence::SnapshotPersistError::EncodeLimitExceeded)
+        ));
+        assert!(capped.len() < written.len());
+    }
+
+    #[cfg(feature = "snapshot-persistence")]
+    #[test]
+    fn candidate_archive_enforces_the_decompression_limit() {
+        let bytes = zstd::stream::encode_all(vec![0; 64 * 1024 * 1024 + 1].as_slice(), 1).unwrap();
+        assert!(matches!(
+            persistence::read_candidate_archive(bytes.as_slice()),
+            Err(persistence::SnapshotPersistError::DecodeLimitExceeded { .. })
+        ));
     }
 }

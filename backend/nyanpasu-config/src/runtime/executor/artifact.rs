@@ -5,9 +5,12 @@ use std::sync::Arc;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::{
-    snapshot::{Idx, SnapshotNodeKey, StoredConfigSnapshotsGraph},
-    value::ConfigValue,
+use crate::{
+    profile::ProfileId,
+    runtime::{
+        snapshot::{Idx, SnapshotNodeKey, StoredConfigSnapshotsGraph},
+        value::ConfigValue,
+    },
 };
 
 /// 1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25).
@@ -68,6 +71,49 @@ pub struct RuntimeArtifact {
     /// Execution failures that the legacy lenient pipeline passed through.
     /// Candidate validation must refuse these even when the final YAML parses.
     pub transform_failures: Vec<TransformFailure>,
+}
+
+/// The steps a halted pipeline completed before the failing one. The failing
+/// step has no node: its output was never produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartialArtifact {
+    pub graph: StoredConfigSnapshotsGraph,
+    /// The last node the pipeline completed.
+    pub last_node: Idx,
+    /// The logs of the completed nodes only.
+    pub step_logs: Vec<StepLog>,
+    /// The step that failed, when the pipeline could name it.
+    pub failed_step: Option<HaltedStep>,
+}
+
+/// The step a stopped pipeline could not complete. It has no node, so this
+/// is what names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HaltedStep {
+    /// Reading a config profile: the selected one, or a composition's base
+    /// or member.
+    Profile { profile_id: ProfileId },
+    /// A transform profile, scoped to a profile or global.
+    Transform { profile_id: ProfileId },
+    /// A built-in transform.
+    BuiltinTransform { name: String },
+}
+
+/// Where and why a stopped build stopped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct PipelineHalt {
+    /// `None` when no step can be named, such as for an internal error.
+    pub step: Option<HaltedStep>,
+    pub reason: String,
+}
+
+/// A pipeline that stopped, with the steps it completed when any node had
+/// been recorded and the recorded graph is valid.
+#[derive(Debug)]
+pub struct PipelineFailure {
+    pub error: super::RuntimePipelineError,
+    pub partial: Option<Box<PartialArtifact>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, specta::Type)]

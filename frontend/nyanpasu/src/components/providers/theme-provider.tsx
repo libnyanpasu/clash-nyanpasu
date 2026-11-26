@@ -13,13 +13,9 @@ import { insertStyle } from '@/utils/styled'
 import { createWindowAdapter } from '@nyanpasu/platform'
 import { useSetting } from '@nyanpasu/query'
 import {
-  alpha,
   createTheme,
-  darken,
   DEFAULT_COLOR,
-  getThemeScheme,
-  hexFromArgb,
-  lighten,
+  isValidThemePalette,
   ThemeMode,
   type ResolvedThemeMode,
   type Theme,
@@ -27,18 +23,31 @@ import {
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
 
-export const THEME_PALETTE_KEY = 'theme-palette-v1' as const
-export const THEME_CSS_VARS_KEY = 'theme-css-vars-v1' as const
+export const THEME_PALETTE_KEY = 'theme-palette-v2' as const
+export const THEME_CSS_VARS_KEY = 'theme-css-vars-v2' as const
 
+// TODO(theme-preload): Theme bootstrap currently relies on a client-side
+// localStorage cache read inside the React tree. Once the preload architecture
+// is designed, unify initial theme/CSS-var injection into either backend
+// webview startup injection or `__root.tsx`'s `beforeLoad` hook.
 const readCachedTheme = () => {
   try {
-    const palette = localStorage.getItem(THEME_PALETTE_KEY)
-    const cssVars = localStorage.getItem(THEME_CSS_VARS_KEY)
+    const rawPalette = localStorage.getItem(THEME_PALETTE_KEY)
+    const rawCssVars = localStorage.getItem(THEME_CSS_VARS_KEY)
 
-    if (palette !== null && cssVars !== null) {
-      return {
-        palette: JSON.parse(palette) as Theme,
-        cssVars: JSON.parse(cssVars) as string,
+    if (rawPalette !== null && rawCssVars !== null) {
+      const palette: unknown = JSON.parse(rawPalette)
+      const cssVars: unknown = JSON.parse(rawCssVars)
+
+      if (
+        isValidThemePalette(palette) &&
+        typeof cssVars === 'string' &&
+        cssVars.includes('--color-md-surface-container-lowest:')
+      ) {
+        return {
+          palette,
+          cssVars,
+        }
       }
     }
   } catch {
@@ -70,23 +79,9 @@ const getSystemThemeMode = () => {
     : ThemeMode.LIGHT
 }
 
-const applyRootStyleVar = (mode: ResolvedThemeMode, themePalette: Theme) => {
-  const root = document.documentElement
-  const scheme = getThemeScheme(themePalette, mode)
-  const secondaryColor = hexFromArgb(scheme.secondary)
-  const primaryColor = hexFromArgb(scheme.primary)
+const applyRootThemeClass = (mode: ResolvedThemeMode) => {
   const reactRootDom = document.getElementById('root')
   const isDarkMode = mode === ThemeMode.DARK
-
-  root.style.setProperty(
-    '--background-color',
-    isDarkMode ? darken(secondaryColor, 0.95) : lighten(secondaryColor, 0.95),
-  )
-  root.style.setProperty(
-    '--scroller-color',
-    isDarkMode ? '#54545480' : '#90939980',
-  )
-  root.style.setProperty('--background-color-alpha', alpha(primaryColor, 0.1))
 
   if (reactRootDom) {
     reactRootDom.classList.toggle(ThemeMode.DARK, isDarkMode)
@@ -276,8 +271,8 @@ export function ExperimentalThemeProvider({
   }, [resolvedThemeMode, effectiveMode])
 
   useEffect(() => {
-    applyRootStyleVar(currentThemeMode, theme.palette)
-  }, [theme.palette, currentThemeMode])
+    applyRootThemeClass(currentThemeMode)
+  }, [currentThemeMode])
 
   const color = themeColor.value || DEFAULT_COLOR
 

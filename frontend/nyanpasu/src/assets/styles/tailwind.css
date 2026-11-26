@@ -75,19 +75,33 @@
     1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
   --custom-text-shadow-none: none;
 
-  /* Material Design 3 Color System */
+  /* Material Design 3 Expressive Color System */
   --color-primary: var(--color-md-primary);
   --color-on-primary: var(--color-md-on-primary);
   --color-primary-container: var(--color-md-primary-container);
   --color-on-primary-container: var(--color-md-on-primary-container);
+  --color-primary-fixed: var(--color-md-primary-fixed);
+  --color-primary-fixed-dim: var(--color-md-primary-fixed-dim);
+  --color-on-primary-fixed: var(--color-md-on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--color-md-on-primary-fixed-variant);
   --color-secondary: var(--color-md-secondary);
   --color-on-secondary: var(--color-md-on-secondary);
   --color-secondary-container: var(--color-md-secondary-container);
   --color-on-secondary-container: var(--color-md-on-secondary-container);
+  --color-secondary-fixed: var(--color-md-secondary-fixed);
+  --color-secondary-fixed-dim: var(--color-md-secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--color-md-on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(
+    --color-md-on-secondary-fixed-variant
+  );
   --color-tertiary: var(--color-md-tertiary);
   --color-on-tertiary: var(--color-md-on-tertiary);
   --color-tertiary-container: var(--color-md-tertiary-container);
   --color-on-tertiary-container: var(--color-md-on-tertiary-container);
+  --color-tertiary-fixed: var(--color-md-tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--color-md-tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--color-md-on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--color-md-on-tertiary-fixed-variant);
   --color-error: var(--color-md-error);
   --color-on-error: var(--color-md-on-error);
   --color-error-container: var(--color-md-error-container);
@@ -96,8 +110,16 @@
   --color-on-background: var(--color-md-on-background);
   --color-surface: var(--color-md-surface);
   --color-on-surface: var(--color-md-on-surface);
+  --color-surface-dim: var(--color-md-surface-dim);
+  --color-surface-bright: var(--color-md-surface-bright);
+  --color-surface-container-lowest: var(--color-md-surface-container-lowest);
+  --color-surface-container-low: var(--color-md-surface-container-low);
+  --color-surface-container: var(--color-md-surface-container);
+  --color-surface-container-high: var(--color-md-surface-container-high);
+  --color-surface-container-highest: var(--color-md-surface-container-highest);
   --color-surface-variant: var(--color-md-surface-variant);
   --color-on-surface-variant: var(--color-md-on-surface-variant);
+  --color-surface-tint: var(--color-md-surface-tint);
   --color-outline: var(--color-md-outline);
   --color-outline-variant: var(--color-md-outline-variant);
   --color-shadow: var(--color-md-shadow);
@@ -145,49 +167,20 @@
   --animate-row-enter: row-enter 250ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Custom Mixed Colors (light) */
+/* Transitional surface aliases mapped to canonical M3E surface container roles. */
 @theme {
-  --color-mixed-background: color-mix(
-    in srgb,
-    var(--color-background) 95%,
-    white 5%
-  );
-}
-
-/* Custom Mixed Colors and tool page surfaces (dark) */
-.dark {
-  --color-mixed-background: color-mix(
-    in srgb,
-    var(--color-background) 50%,
-    black 50%
-  );
-  --color-pane: color-mix(in srgb, var(--color-surface) 70%, black 30%);
-  --color-code: color-mix(in srgb, var(--color-surface) 66%, black 34%);
-  --color-tc: #8e9099;
-  --color-ok: #7bdc95;
-  --color-warn: #ffb870;
-}
-
-/* Surfaces and status colours of the tool pages (Global transforms, Inspect). */
-@theme {
-  /* A pane beside the page: a step rail or a library. */
-  --color-pane: color-mix(
-    in srgb,
-    var(--color-surface) 65%,
-    var(--color-surface-variant) 35%
-  );
-
-  /* The ground of code and diff viewers. */
-  --color-code: color-mix(
-    in srgb,
-    var(--color-surface) 92%,
-    var(--color-surface-variant) 8%
-  );
-
-  /* Line numbers and comments inside a viewer. */
+  --color-mixed-background: var(--color-surface);
+  --color-pane: var(--color-surface-container-low);
+  --color-code: var(--color-surface-container-lowest);
   --color-tc: #74777f;
   --color-ok: #1b6d3b;
   --color-warn: #8a5100;
+}
+
+.dark {
+  --color-tc: #8e9099;
+  --color-ok: #7bdc95;
+  --color-warn: #ffb870;
 }
 
 @utility text-shadow-* {

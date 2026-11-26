@@ -135,6 +135,7 @@ command | open_core_dir | system | mutation | desktop | opener |
 command | open_log_session | read | mutation | desktop,http,local |  |
 command | open_logs_dir | system | mutation | desktop | opener |
 command | open_native_file_dialog | system | mutation | desktop | dialog |
+command | open_profile | system | mutation | desktop | opener |
 command | open_remote_access_certificate | remote_admin | mutation | desktop | opener |
 command | open_that | system | mutation | desktop | opener |
 command | open_web_url | system | mutation | desktop | opener |

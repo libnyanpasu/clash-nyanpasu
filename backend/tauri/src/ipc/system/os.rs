@@ -461,7 +461,19 @@ pub async fn view_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> 
     if !path.exists() {
         return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
     }
-    help::open_file(&path)?;
+    help::reveal_in_file_manager(&path)?;
+    Ok(())
+}
+
+#[nyanpasu_rpc::rpc(capabilities(opener), expose = [])]
+#[tauri::command]
+#[specta::specta]
+pub async fn open_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
+    let path = client.get_profile_materialized_path(uid.clone()).await?;
+    if !path.exists() {
+        return Err(ProfileFileMissingSnafu { uid, path: &path }.build().into());
+    }
+    help::open_with_default_app(&path)?;
     Ok(())
 }
 

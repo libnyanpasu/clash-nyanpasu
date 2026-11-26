@@ -1197,6 +1197,8 @@ export function createRpcClient(
       ),
     viewProfile: (uid: ProfileId, options?: InvokeOptions) =>
       __RPC_INVOKE<null>('view_profile', { uid }, options),
+    openProfile: (uid: ProfileId, options?: InvokeOptions) =>
+      __RPC_INVOKE<null>('open_profile', { uid }, options),
     saveProfileFile: (
       uid: ProfileId,
       fileData: string,

@@ -1009,6 +1009,7 @@
   "profile_detail_not_found": "This profile no longer exists",
   "profile_detail_loading": "Loading profile",
   "profile_detail_more_actions": "More actions",
+  "profile_detail_open_file": "Open file",
   "profile_detail_show_in_file_manager": "Show in file manager",
   "profile_detail_edit_content": "Edit content",
   "profile_detail_section_subscription": "Subscription",

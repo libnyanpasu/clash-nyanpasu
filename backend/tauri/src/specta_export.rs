@@ -231,6 +231,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             commands::profile::store::patch_remote_profile_options,
             commands::profile::store::replace_profile_definition,
             ipc::system::os::view_profile,
+            ipc::system::os::open_profile,
             commands::profile::content::save_profile_file,
             ipc::system::os::set_custom_app_dir,
             ipc::system::service::install_service,

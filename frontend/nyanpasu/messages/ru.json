@@ -985,6 +985,7 @@
   "profile_detail_not_found": "Этот профиль больше не существует",
   "profile_detail_loading": "Загрузка профиля",
   "profile_detail_more_actions": "Дополнительные действия",
+  "profile_detail_open_file": "Открыть файл",
   "profile_detail_show_in_file_manager": "Показать в файловом менеджере",
   "profile_detail_edit_content": "Редактировать содержимое",
   "profile_detail_section_subscription": "Подписка",

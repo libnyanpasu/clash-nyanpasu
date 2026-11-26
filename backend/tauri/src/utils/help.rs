@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use display_info::DisplayInfo;
 use fast_image_resize::{
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
@@ -27,81 +27,16 @@ pub fn get_uid(prefix: &str) -> String {
     format!("{prefix}{id}")
 }
 
-type Opener = fn(&Path) -> std::io::Result<()>;
-
-/// How [`open_file`] tries to show a file, in order.
-const FILE_OPENERS: &[(&str, Opener)] = &[
-    ("VS Code", open_with_vscode),
-    ("default app", open_with_default_app),
-    #[cfg(windows)]
-    ("Notepad", open_with_notepad),
-    ("file manager", reveal_in_file_manager),
-];
-
-/// Opens a file for the user: VS Code when installed, otherwise the default
-/// app, then (Windows) Notepad, then the file manager with the file selected.
-///
-/// Each attempt runs under [`nyanpasu_panics::catch_recoverable`], so a
-/// launcher that panics fails over to the next one instead of ending the
-/// process. Errors only when every attempt fails.
-pub fn open_file(path: &Path) -> Result<()> {
-    let mut failures = Vec::new();
-    for (name, open) in FILE_OPENERS {
-        let failure = match nyanpasu_panics::catch_recoverable(|| open(path)) {
-            Ok(Ok(())) => return Ok(()),
-            Ok(Err(err)) => err.to_string(),
-            Err(panic) => panic.to_string(),
-        };
-        warn!(path = %path.display(), opener = name, "failed to open file: {failure}");
-        failures.push(format!("{name}: {failure}"));
-    }
-    bail!(
-        "failed to open \"{}\" ({})",
-        path.display(),
-        failures.join("; ")
-    )
+/// Open a file using its system association.
+pub fn open_with_default_app(path: &Path) -> Result<()> {
+    nyanpasu_panics::catch_recoverable(|| tauri_plugin_opener::open_path(path, None::<&str>))??;
+    Ok(())
 }
 
-fn open_with_vscode(path: &Path) -> std::io::Result<()> {
-    #[cfg(target_os = "macos")]
-    let code = "Visual Studio Code";
-    #[cfg(windows)]
-    let code = "code.cmd";
-    #[cfg(all(not(windows), not(target_os = "macos")))]
-    let code = "code";
-
-    let code_path = which::which(code).map_err(std::io::Error::other)?;
-    log::debug!(target: "app", "find VScode `{}`", code_path.display());
-    #[cfg(not(windows))]
-    {
-        crate::utils::open::with(path, code)
-    }
-    #[cfg(windows)]
-    {
-        use std::ffi::OsString;
-        let mut buf = OsString::with_capacity(path.as_os_str().len() + 2);
-        buf.push("\"");
-        buf.push(path.as_os_str());
-        buf.push("\"");
-
-        open::with_detached(buf, code)
-    }
-}
-
-fn open_with_default_app(path: &Path) -> std::io::Result<()> {
-    tauri_plugin_opener::open_path(path, None::<&str>).map_err(std::io::Error::other)
-}
-
-#[cfg(windows)]
-fn open_with_notepad(path: &Path) -> std::io::Result<()> {
-    std::process::Command::new("notepad.exe")
-        .arg(path)
-        .spawn()
-        .map(drop)
-}
-
-fn reveal_in_file_manager(path: &Path) -> std::io::Result<()> {
-    tauri_plugin_opener::reveal_item_in_dir(path).map_err(std::io::Error::other)
+/// Reveal a file in its parent directory without opening it.
+pub fn reveal_in_file_manager(path: &Path) -> Result<()> {
+    nyanpasu_panics::catch_recoverable(|| tauri_plugin_opener::reveal_item_in_dir(path))??;
+    Ok(())
 }
 
 /// Resolve the UI language from the OS locale, as the canonical i18n key.

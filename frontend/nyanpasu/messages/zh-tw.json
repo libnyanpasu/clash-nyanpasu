@@ -982,6 +982,7 @@
   "profile_detail_not_found": "該設定檔已不存在",
   "profile_detail_loading": "正在載入設定檔",
   "profile_detail_more_actions": "更多操作",
+  "profile_detail_open_file": "開啟檔案",
   "profile_detail_show_in_file_manager": "在檔案管理員中顯示",
   "profile_detail_edit_content": "編輯內容",
   "profile_detail_section_subscription": "訂閱",

@@ -137,6 +137,7 @@ open_core_dir | desktop | opener | - | mutation | system:write
 open_log_session | desktop,http,local | - | - | mutation | logs:read
 open_logs_dir | desktop | opener | - | mutation | system:write
 open_native_file_dialog | desktop | dialog | - | mutation | system:write
+open_profile | desktop | opener | - | mutation | system:write
 open_remote_access_certificate | desktop | opener | - | mutation | remote:write
 open_that | desktop | opener | - | mutation | system:write
 open_web_url | desktop | opener | - | mutation | system:write

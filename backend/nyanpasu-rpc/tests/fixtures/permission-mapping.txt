@@ -135,6 +135,7 @@ command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_native_file_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_profile | system:write | system.os |  |  | desktop | tauri/src/ipc/system/os.rs
 command | open_remote_access_certificate | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | open_that | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_web_url | system:write | system.os |  |  | desktop | tauri/src/ipc.rs

@@ -982,6 +982,7 @@
   "profile_detail_not_found": "이 프로필은 더 이상 존재하지 않습니다",
   "profile_detail_loading": "프로필 불러오는 중",
   "profile_detail_more_actions": "추가 작업",
+  "profile_detail_open_file": "파일 열기",
   "profile_detail_show_in_file_manager": "파일 관리자에서 보기",
   "profile_detail_edit_content": "내용 편집",
   "profile_detail_section_subscription": "구독",

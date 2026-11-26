@@ -17,7 +17,7 @@ export default function LibraryColumn({
     <Column
       data-slot="profile-global-library"
       className={cn(
-        'bg-pane @[56rem]:flex-[0.85]',
+        'bg-surface-container-low @[56rem]:flex-[0.85]',
         'shadow-[inset_0_1px_0_var(--color-outline-variant)]',
         '@[56rem]:shadow-[inset_1px_0_0_var(--color-outline-variant)]',
       )}

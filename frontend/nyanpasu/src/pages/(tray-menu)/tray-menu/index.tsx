@@ -169,7 +169,7 @@ const EnvCopyButton = () => {
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleClick(key as CopyEnvOption)}
           >
             {value}
@@ -225,7 +225,7 @@ const OpenDirectoryButton = () => {
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleOpenDirectory(key as DirectoryType)}
           >
             {value}
@@ -271,7 +271,7 @@ const RestartButton = () => {
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleRestart(key as RestartType)}
           >
             {value}

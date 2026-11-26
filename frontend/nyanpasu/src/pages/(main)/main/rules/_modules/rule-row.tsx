@@ -75,7 +75,7 @@ export function RulesHeader({
     <div
       className={cn(
         ruleGridVariants(),
-        'bg-surface-variant/20 border-outline-variant/40 h-10 border-b',
+        'bg-surface-container-high border-outline-variant/40 h-10 border-b',
       )}
       data-slot="rules-header"
     >

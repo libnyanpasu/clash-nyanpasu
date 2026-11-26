@@ -29,7 +29,7 @@ const levelChipVariants = cva(
   {
     variants: {
       level: {
-        none: 'bg-surface-variant/40 text-on-surface-variant',
+        none: 'bg-surface-container-high text-on-surface-variant',
         read: 'bg-secondary-container text-on-secondary-container',
         write: 'bg-primary-container text-on-primary-container',
       },

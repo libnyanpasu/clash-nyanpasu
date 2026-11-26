@@ -26,9 +26,13 @@ app-content-container {
 }
 
 app-content {
-  background-color: var(--color-mixed-background);
+  background-color: var(--color-surface-container);
   border-top-left-radius: var(--nyanpasu-content-radius);
   border-bottom-left-radius: var(--nyanpasu-content-radius);
+
+  .dark & {
+    background-color: var(--color-surface);
+  }
 }
 
 /* The navbar wrapper; its `animated-tabs-container` descendant is the tab list. */

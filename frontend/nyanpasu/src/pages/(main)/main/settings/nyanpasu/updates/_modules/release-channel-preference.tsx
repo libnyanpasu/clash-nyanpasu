@@ -45,7 +45,7 @@ export default function ReleaseChannelPreference() {
             !releaseChannel || isChannelLocked || isBusy || mutation.isPending
           }
           type="button"
-          className="bg-surface-variant/30 dark:bg-surface-variant/10 hover:bg-surface-variant/50 flex h-16 w-full cursor-pointer items-center justify-between gap-2 rounded-[20px] p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+          className="bg-surface-container dark:bg-surface-container-high hover:bg-on-surface/8 flex h-16 w-full cursor-pointer items-center justify-between gap-2 rounded-[20px] p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
           <div className="flex min-w-0 flex-col gap-0.5">
             <span>{m.settings_about_channel_title()}</span>

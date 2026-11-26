@@ -73,7 +73,7 @@ export default function ProfileSection({
             type="button"
             className={cn(
               'text-on-surface flex min-w-0 items-center gap-2 rounded-full py-1 pr-3 pl-1',
-              'hover:bg-surface-variant/60 text-left font-medium',
+              'hover:bg-on-surface/8 text-left font-medium',
             )}
             aria-expanded={!heading.collapsed}
             onClick={heading.handleToggle}

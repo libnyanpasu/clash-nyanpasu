@@ -55,7 +55,7 @@ function SortableSource({
           ref={ref}
           tabIndex={disabled ? -1 : 0}
           aria-label={`${m.update_sources_reorder()} ${label}`}
-          className={`bg-surface-variant/30 dark:bg-surface-variant/10 flex min-h-16 items-center gap-2 rounded-[20px] p-4 ${disabled ? '' : 'cursor-grab'} ${isDragging ? 'opacity-60' : ''}`}
+          className={`bg-surface-container dark:bg-surface-container-high flex min-h-16 items-center gap-2 rounded-[20px] p-4 ${disabled ? '' : 'cursor-grab'} ${isDragging ? 'opacity-60' : ''}`}
           data-slot="about-package-source-item"
           data-source={source}
         >
@@ -93,7 +93,7 @@ function FixedSource({
 }) {
   return (
     <div
-      className="bg-surface-variant/30 dark:bg-surface-variant/10 flex min-h-16 items-center gap-2 rounded-[20px] p-4"
+      className="bg-surface-container dark:bg-surface-container-high flex min-h-16 items-center gap-2 rounded-[20px] p-4"
       data-slot="about-package-source-item"
       data-source={source}
     >

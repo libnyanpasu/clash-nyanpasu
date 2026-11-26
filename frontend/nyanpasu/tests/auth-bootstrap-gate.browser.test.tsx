@@ -14,6 +14,10 @@ import {
   PRINCIPAL_MARKER_KEY,
   principalKey,
 } from '@/components/auth/principal-marker'
+import {
+  THEME_CSS_VARS_KEY,
+  THEME_PALETTE_KEY,
+} from '@/components/providers/theme-provider'
 import { RpcFailure } from '@nyanpasu/rpc'
 import { QueryClient } from '@tanstack/react-query'
 
@@ -71,8 +75,8 @@ const kvKey = `nyanpasu-kv-:${btoa('custom-css')}`
 
 function seedPersistedState() {
   localStorage.setItem(kvKey, '"x"')
-  localStorage.setItem('theme-palette-v1', '{}')
-  localStorage.setItem('theme-css-vars-v1', '""')
+  localStorage.setItem(THEME_PALETTE_KEY, '{}')
+  localStorage.setItem(THEME_CSS_VARS_KEY, '""')
   localStorage.setItem(btoa('paraglide-language-cache'), 'zh-cn')
   const style = document.createElement('style')
   style.id = 'nyanpasu-custom-css-item-a'
@@ -129,8 +133,8 @@ test('a changed principal is cleared synchronously before children render', asyn
   function Child() {
     // Rendering is the first moment providers could read stale state.
     seenByChild.kv = localStorage.getItem(kvKey)
-    seenByChild.palette = localStorage.getItem('theme-palette-v1')
-    seenByChild.cssVars = localStorage.getItem('theme-css-vars-v1')
+    seenByChild.palette = localStorage.getItem(THEME_PALETTE_KEY)
+    seenByChild.cssVars = localStorage.getItem(THEME_CSS_VARS_KEY)
     seenByChild.language = localStorage.getItem(
       btoa('paraglide-language-cache'),
     )
@@ -166,7 +170,7 @@ test('the same principal keeps its persisted state', async () => {
 
   await expect.element(screen.getByText('app')).toBeInTheDocument()
   expect(localStorage.getItem(kvKey)).toBe('"x"')
-  expect(localStorage.getItem('theme-palette-v1')).toBe('{}')
+  expect(localStorage.getItem(THEME_PALETTE_KEY)).toBe('{}')
   expect(document.getElementById('nyanpasu-custom-css-item-a')).not.toBeNull()
 })
 

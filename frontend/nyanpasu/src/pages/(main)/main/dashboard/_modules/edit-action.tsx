@@ -24,8 +24,8 @@ export default function EditAction() {
           className={cn(
             'absolute bottom-8 left-1/2 z-10 -translate-x-1/2',
             'flex h-14 min-w-0 items-center justify-between gap-6 px-3',
-            'dark:border-surface-variant/50 border-surface/50 rounded-full border',
-            'dark:bg-surface/30 bg-surface-variant/30 backdrop-blur-lg',
+            'dark:border-outline-variant/50 border-surface/50 rounded-full border',
+            'dark:bg-surface/30 bg-surface-container-high backdrop-blur-lg',
           )}
           data-slot="dashboard-edit-header"
           initial={{

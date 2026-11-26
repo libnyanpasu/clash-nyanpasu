@@ -180,7 +180,7 @@ const ModeCard = ({
         // The sliding indicator paints the selected background.
         selected
           ? 'text-on-primary-container! bg-transparent!'
-          : 'text-on-surface-variant! bg-surface-variant/40! hover:brightness-95',
+          : 'text-on-surface-variant! bg-surface-container-high! hover:brightness-95',
       )}
     >
       {selected && (
@@ -326,7 +326,7 @@ const TrayIconItem = ({
           onClick={handleChangeIcon}
           disabled={disabled}
         >
-          <MaterialShape className="bg-surface-variant size-12 shrink-0">
+          <MaterialShape className="bg-surface-container-high size-12 shrink-0">
             <store.Image className="size-8" mode={mode} version={version} />
           </MaterialShape>
 

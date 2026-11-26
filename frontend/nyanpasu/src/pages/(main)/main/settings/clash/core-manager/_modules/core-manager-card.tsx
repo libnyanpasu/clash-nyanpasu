@@ -423,7 +423,7 @@ export default function CoreManagerCard() {
         <div
           className={cn(
             'relative flex items-center gap-3 overflow-hidden rounded-2xl p-4',
-            'bg-surface-variant',
+            'bg-surface-container-high',
           )}
         >
           <UpdateProgressBar

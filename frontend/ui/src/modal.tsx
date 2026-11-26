@@ -198,12 +198,7 @@ export function ModalOverlay({
     <DialogPrimitive.Overlay {...props} asChild>
       <motion.div
         data-slot="modal-overlay"
-        className={cn(
-          'fixed inset-0 z-50',
-          'backdrop-blur-xl',
-          'bg-on-primary-container/30 dark:bg-on-primary/15',
-          className,
-        )}
+        className={cn('fixed inset-0 z-50', 'bg-scrim/32', className)}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}

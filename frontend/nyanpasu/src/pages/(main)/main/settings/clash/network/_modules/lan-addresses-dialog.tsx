@@ -61,7 +61,7 @@ function ControllerLoopbackNotice({ address }: { address: string | null }) {
     <p
       role="note"
       data-slot="allow-lan-addresses-controller-loopback-notice"
-      className="bg-surface-variant/60 text-on-surface-variant rounded-xl px-4 py-3 text-sm"
+      className="bg-surface-container-high text-on-surface-variant rounded-xl px-4 py-3 text-sm"
     >
       {m.settings_clash_settings_allow_lan_addresses_controller_loopback_notice(
         { address },
@@ -120,7 +120,7 @@ function LanAddressGroupCard({
 }) {
   return (
     <section
-      className="bg-surface-variant/30 flex flex-col gap-2 rounded-2xl p-4"
+      className="bg-surface-container-high flex flex-col gap-2 rounded-2xl p-4"
       data-slot="allow-lan-addresses-group"
     >
       <div className="flex items-baseline justify-between gap-2">

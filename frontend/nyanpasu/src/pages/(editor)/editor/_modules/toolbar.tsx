@@ -60,8 +60,8 @@ function ToolButton({
     <ShortcutTooltip label={label} shortcut={shortcut}>
       <Button
         className={cn(
-          'hover:bg-surface/50 dark:hover:bg-surface-variant/50 size-8',
-          'aria-pressed:bg-surface/70 dark:aria-pressed:bg-surface-variant/70',
+          'hover:bg-surface/50 dark:hover:bg-on-surface/8 size-8',
+          'aria-pressed:bg-surface/70 dark:aria-pressed:bg-on-surface/8',
           className,
         )}
         icon
@@ -78,7 +78,7 @@ export function EditorToolbar({ className, ...props }: ComponentProps<'div'>) {
     <div
       className={cn(
         'flex h-12 shrink-0 items-center gap-2 px-3',
-        'bg-primary-container dark:bg-on-primary',
+        'bg-primary-container text-on-primary-container',
         className,
       )}
       data-slot="editor-header-actions"

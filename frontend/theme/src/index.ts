@@ -4,14 +4,156 @@ import {
   Blend,
   Hct,
   hexFromArgb,
-  themeFromSourceColor,
-  type Theme,
+  SchemeContent,
+  SchemeExpressive,
+  SchemeFidelity,
+  SchemeFruitSalad,
+  SchemeMonochrome,
+  SchemeNeutral,
+  SchemeRainbow,
+  SchemeTonalSpot,
+  SchemeVibrant,
+  type DynamicScheme,
 } from '@material/material-color-utilities'
 
 export { hexFromArgb } from '@material/material-color-utilities'
-export type { Theme } from '@material/material-color-utilities'
 
 export const DEFAULT_COLOR = '#3e64a7'
+
+export type ThemeVariant =
+  | 'tonalSpot'
+  | 'expressive'
+  | 'fidelity'
+  | 'content'
+  | 'neutral'
+  | 'monochrome'
+  | 'vibrant'
+  | 'rainbow'
+  | 'fruitSalad'
+
+export type ThemeSpecVersion = '2025' | '2021'
+
+export type CreateThemeOptions = {
+  variant?: ThemeVariant
+  contrastLevel?: number
+  specVersion?: ThemeSpecVersion
+}
+
+export const DEFAULT_THEME_VARIANT: ThemeVariant = 'tonalSpot'
+export const DEFAULT_THEME_SPEC_VERSION: ThemeSpecVersion = '2025'
+export const DEFAULT_CONTRAST_LEVEL = 0
+
+export const THEME_COLOR_ROLES = [
+  'primary',
+  'onPrimary',
+  'primaryContainer',
+  'onPrimaryContainer',
+  'secondary',
+  'onSecondary',
+  'secondaryContainer',
+  'onSecondaryContainer',
+  'tertiary',
+  'onTertiary',
+  'tertiaryContainer',
+  'onTertiaryContainer',
+  'error',
+  'onError',
+  'errorContainer',
+  'onErrorContainer',
+  'background',
+  'onBackground',
+  'surface',
+  'onSurface',
+  'surfaceDim',
+  'surfaceBright',
+  'surfaceContainerLowest',
+  'surfaceContainerLow',
+  'surfaceContainer',
+  'surfaceContainerHigh',
+  'surfaceContainerHighest',
+  'surfaceVariant',
+  'onSurfaceVariant',
+  'surfaceTint',
+  'outline',
+  'outlineVariant',
+  'shadow',
+  'scrim',
+  'inverseSurface',
+  'inverseOnSurface',
+  'inversePrimary',
+  'primaryFixed',
+  'primaryFixedDim',
+  'onPrimaryFixed',
+  'onPrimaryFixedVariant',
+  'secondaryFixed',
+  'secondaryFixedDim',
+  'onSecondaryFixed',
+  'onSecondaryFixedVariant',
+  'tertiaryFixed',
+  'tertiaryFixedDim',
+  'onTertiaryFixed',
+  'onTertiaryFixedVariant',
+] as const
+
+export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number]
+export type ThemeScheme = Record<ThemeColorRole, number>
+
+export type Theme = {
+  source: number
+  schemes: {
+    light: ThemeScheme
+    dark: ThemeScheme
+  }
+}
+
+const SCHEME_CONSTRUCTORS: Record<ThemeVariant, typeof SchemeTonalSpot> = {
+  tonalSpot: SchemeTonalSpot,
+  expressive: SchemeExpressive,
+  fidelity: SchemeFidelity,
+  content: SchemeContent,
+  neutral: SchemeNeutral,
+  monochrome: SchemeMonochrome,
+  vibrant: SchemeVibrant,
+  rainbow: SchemeRainbow,
+  fruitSalad: SchemeFruitSalad,
+}
+
+function extractScheme(scheme: DynamicScheme): ThemeScheme {
+  const result = {} as ThemeScheme
+
+  for (const role of THEME_COLOR_ROLES) {
+    result[role] = scheme[role]
+  }
+
+  return result
+}
+
+export function isValidThemePalette(value: unknown): value is Theme {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<Theme>
+  if (typeof candidate.source !== 'number' || !candidate.schemes) {
+    return false
+  }
+
+  for (const mode of ['light', 'dark'] as const) {
+    const scheme = candidate.schemes[mode] as
+      Partial<Record<ThemeColorRole, unknown>> | undefined
+    if (!scheme || typeof scheme !== 'object') {
+      return false
+    }
+
+    for (const role of THEME_COLOR_ROLES) {
+      if (typeof scheme[role] !== 'number') {
+        return false
+      }
+    }
+  }
+
+  return true
+}
 
 export enum ThemeMode {
   LIGHT = 'light',
@@ -112,22 +254,22 @@ const syntaxCssVars = (theme: Theme, mode: ResolvedThemeMode) =>
     .join('')
 
 export function generateThemeCssVars(theme: Theme): string {
-  const { schemes } = theme
   let lightCssVars = ':root{'
   let darkCssVars = ':root.dark{'
 
-  Object.entries(schemes).forEach(([mode, scheme]) => {
-    const inputScheme =
-      typeof scheme.toJSON === 'function' ? scheme.toJSON() : scheme
+  for (const mode of [ThemeMode.LIGHT, ThemeMode.DARK] as const) {
+    const scheme = getThemeScheme(theme, mode)
 
-    Object.entries(inputScheme).forEach(([key, value]) => {
-      if (mode === 'light') {
-        lightCssVars += `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
+    for (const [key, value] of Object.entries(scheme)) {
+      const cssVar = `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
+
+      if (mode === ThemeMode.LIGHT) {
+        lightCssVars += cssVar
       } else {
-        darkCssVars += `--color-md-${kebabCase(key)}: ${hexFromArgb(value)};`
+        darkCssVars += cssVar
       }
-    })
-  })
+    }
+  }
 
   lightCssVars += `${SYNTAX_CSS_VARIABLE_PREFIX}background: transparent;`
   lightCssVars += syntaxCssVars(theme, ThemeMode.LIGHT)
@@ -139,17 +281,41 @@ export function generateThemeCssVars(theme: Theme): string {
   return lightCssVars + darkCssVars
 }
 
-export function createTheme(color: string) {
-  const theme = themeFromSourceColor(argbFromHex(color || DEFAULT_COLOR))
+export function createTheme(color: string, options: CreateThemeOptions = {}) {
+  const {
+    variant = DEFAULT_THEME_VARIANT,
+    contrastLevel = DEFAULT_CONTRAST_LEVEL,
+    specVersion = DEFAULT_THEME_SPEC_VERSION,
+  } = options
+  const source = argbFromHex(color || DEFAULT_COLOR)
+  const sourceHct = Hct.fromInt(source)
+  const SchemeCtor = SCHEME_CONSTRUCTORS[variant]
+
+  const palette: Theme = {
+    source,
+    schemes: {
+      light: extractScheme(
+        new SchemeCtor(sourceHct, false, contrastLevel, specVersion),
+      ),
+      dark: extractScheme(
+        new SchemeCtor(sourceHct, true, contrastLevel, specVersion),
+      ),
+    },
+  }
 
   return {
-    palette: JSON.parse(JSON.stringify(theme)) as Theme,
-    cssVars: generateThemeCssVars(theme),
+    palette,
+    cssVars: generateThemeCssVars(palette),
   }
 }
 
-export function getThemeScheme(theme: Theme, mode: ResolvedThemeMode) {
-  const scheme = theme.schemes[mode]
+export function getThemeScheme(
+  theme: Theme,
+  mode: ResolvedThemeMode,
+): ThemeScheme {
+  const scheme = theme.schemes[mode] as ThemeScheme & {
+    toJSON?: () => ThemeScheme
+  }
 
   return typeof scheme.toJSON === 'function' ? scheme.toJSON() : scheme
 }

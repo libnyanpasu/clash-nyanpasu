@@ -83,7 +83,7 @@ function CreditRow({
 
         <span
           className={cn(
-            'bg-surface-variant/60 dark:bg-surface-variant/30 max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
+            'bg-surface-container-highest max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
             !pkg.license && 'text-on-surface-variant',
           )}
           data-slot="credits-row-license"

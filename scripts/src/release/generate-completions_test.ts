@@ -12,7 +12,7 @@ import {
 test('resolveHostCompletionBinary locates host release and dev binaries', () => {
   assert.deepStrictEqual(
     resolveHostCompletionBinary('/repo', 'release', 'linux'),
-    path.join('/repo', 'backend/target/release/nyanpasu-cli'),
+    path.join('/repo', 'backend/target/release-cli/nyanpasu-cli'),
   )
   assert.deepStrictEqual(
     resolveHostCompletionBinary('/repo', 'dev', 'win32'),

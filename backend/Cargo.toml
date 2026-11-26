@@ -140,6 +140,15 @@ codegen-units = 1
 lto = true
 opt-level = 's'
 
+# Size-focused release profile for standalone CLI sidecar binaries that do not
+# need unwinding or symbol tables.
+[profile.release-cli]
+inherits = 'release'
+opt-level = 'z'
+lto = 'fat'
+panic = 'abort'
+strip = 'symbols'
+
 # Keep source-level backtraces without emitting full variable and type DWARF.
 # Full debug info makes the app test binaries exceed 1 GiB and dominates app
 # relinks with linker and filesystem work.

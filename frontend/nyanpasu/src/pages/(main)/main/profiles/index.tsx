@@ -19,7 +19,7 @@ function RouteComponent() {
     <AppContentScrollArea
       className={cn(
         // Opaque, unlike the desktop sidebar: route transitions overlap pages.
-        'bg-surface-container dark:bg-surface',
+        'bg-surface-container-low dark:bg-surface',
         'z-50 w-full flex-1 [&>div>div]:block!',
       )}
       data-slot="profiles-sidebar-scroll-area"

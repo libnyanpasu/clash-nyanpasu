@@ -80,7 +80,7 @@ export function DetailPanelSlot({
 }
 
 const detailPanelVariants = cva(
-  'bg-surface-container dark:bg-surface flex min-h-0 min-w-0 flex-col outline-none',
+  'bg-surface-container-low dark:bg-surface flex min-h-0 min-w-0 flex-col outline-none',
   {
     variants: {
       layout: {

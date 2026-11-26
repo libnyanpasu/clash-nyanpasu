@@ -434,7 +434,7 @@ function RouteComponent() {
           {narrowHeader && searchOpen && (
             <motion.div
               key="proxies-search-overlay"
-              className="bg-surface-container dark:bg-surface absolute inset-y-0 right-0 z-20 flex items-center px-1"
+              className="bg-surface-container-low dark:bg-surface absolute inset-y-0 right-0 z-20 flex items-center px-1"
               data-slot="proxies-node-search-overlay"
               style={{ left: searchOverlayLeft }}
               initial={{ clipPath: searchOverlayClip, opacity: 0.4 }}

@@ -97,7 +97,8 @@ const mount = async (
   })
   const container = document.createElement('div')
   container.style.width = '640px'
-  container.className = 'bg-surface-container dark:bg-surface text-on-surface'
+  container.className =
+    'bg-surface-container-low dark:bg-surface text-on-surface'
   document.body.append(container)
   const root = createRoot(container)
   const route = createRootRoute({

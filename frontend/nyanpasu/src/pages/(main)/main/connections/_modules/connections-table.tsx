@@ -342,7 +342,7 @@ function ConnectionsTable<TRow extends RowData>({
                       key={header.id}
                       colSpan={header.colSpan}
                       className={cn(
-                        'group/th bg-surface-container dark:bg-surface sticky top-0 z-20 h-10 p-0',
+                        'group/th bg-surface-container-low dark:bg-surface sticky top-0 z-20 h-10 p-0',
                         'border-outline-variant/25 border-b',
                       )}
                       style={{ width: header.getSize() + extraWidthPerColumn }}

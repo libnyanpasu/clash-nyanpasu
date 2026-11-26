@@ -13,7 +13,7 @@ export default function GroupHeader({
     <div
       className={cn(
         'sticky top-0 z-10 transition-[padding] duration-500',
-        'bg-surface-container dark:bg-surface',
+        'bg-surface-container-low dark:bg-surface',
         'flex flex-col',
         'pr-4 pl-2 md:pl-4',
         'group-data-[scroll-direction=down]/proxies-content:pr-6',

@@ -145,7 +145,7 @@ function createLogsRouter() {
       <TooltipProvider>
         <ContextMenuProvider>
           <div
-            className="bg-surface-container dark:bg-surface flex flex-col"
+            className="bg-surface-container-low dark:bg-surface flex flex-col"
             style={{ height: 850, width: 1350 }}
           >
             <Profiler id="app" onRender={onProfilerRender}>

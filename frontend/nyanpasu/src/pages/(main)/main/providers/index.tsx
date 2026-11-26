@@ -65,7 +65,7 @@ const GroupTitle = ({ children }: PropsWithChildren) => {
     <div
       className={cn(
         'sticky top-0 z-10 pl-1 text-lg font-semibold',
-        'text-secondary bg-surface-container dark:bg-surface flex h-16 items-center justify-between',
+        'text-secondary bg-surface-container-low dark:bg-surface flex h-16 items-center justify-between',
       )}
       data-slot="providers-group-title"
     >

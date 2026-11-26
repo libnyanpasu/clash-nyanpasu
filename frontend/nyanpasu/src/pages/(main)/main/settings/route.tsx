@@ -17,7 +17,7 @@ function RouteComponent() {
   return (
     <Sidebar data-slot="settings-container">
       <SidebarContent
-        className="bg-surface-container dark:bg-surface border-outline-variant/30 min-w-72 border-r [&>div>div]:block!"
+        className="bg-surface-container-low dark:bg-surface border-outline-variant/30 min-w-72 border-r [&>div>div]:block!"
         data-slot="settings-sidebar-scroll-area"
       >
         <SettingsNavigate />

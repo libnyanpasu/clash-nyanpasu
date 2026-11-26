@@ -33,7 +33,7 @@ function RouteComponent() {
         <div
           className={cn(
             'flex max-h-dvh min-h-dvh flex-col overflow-hidden',
-            'bg-surface-container dark:bg-surface',
+            'bg-surface-container-low dark:bg-surface',
           )}
           data-slot="app-root"
           data-app-version={packageJson.version}
@@ -48,7 +48,7 @@ function RouteComponent() {
               <div
                 className={cn(
                   'flex h-12 shrink-0 items-center gap-2 px-3',
-                  'bg-surface-container-high dark:bg-surface-container-low',
+                  'bg-surface-container dark:bg-surface-container-low',
                 )}
                 data-slot="app-navbar"
               >
@@ -62,7 +62,7 @@ function RouteComponent() {
               <div
                 className={cn(
                   'flex h-16 shrink-0 items-center gap-2 px-3',
-                  'bg-surface-container-high dark:bg-surface-container-low',
+                  'bg-surface-container dark:bg-surface-container-low',
                   'justify-between',
                 )}
                 data-slot="app-navbar-mobile"

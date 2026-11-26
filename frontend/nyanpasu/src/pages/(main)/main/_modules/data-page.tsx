@@ -65,7 +65,7 @@ export function DataPage({
   return (
     <DataPageBottomInsetContext.Provider value={bottomInset}>
       <section
-        className="bg-surface-container dark:bg-surface @container relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        className="bg-surface-container-low dark:bg-surface @container relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         data-slot="data-page"
         aria-label={title}
         style={

@@ -7,6 +7,7 @@ use super::{
 };
 use anyhow::Result;
 use nyanpasu_config::application::{WindowCloseOverride, WindowCloseSettings};
+use nyanpasu_runtime_values::candidate::CandidateSnapshotId;
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
@@ -244,6 +245,51 @@ impl AppWindow for EditorWindow {
 
     fn close_override(&self, settings: &WindowCloseSettings) -> WindowCloseOverride {
         settings.editor
+    }
+}
+
+/// The viewer of one candidate a failed change kept in this session.
+#[derive(Debug, Clone)]
+pub(crate) struct CandidateConfigWindow {
+    label: String,
+}
+
+impl CandidateConfigWindow {
+    /// The candidate's ID is validated on the wire, so it is safe in a
+    /// label and a query string.
+    pub(crate) fn for_snapshot(snapshot_id: &CandidateSnapshotId) -> (Self, Option<WindowParams>) {
+        (
+            Self {
+                label: format!("candidate-config-{snapshot_id}"),
+            },
+            WindowParamsBuilder::new()
+                .param("id", snapshot_id.as_str())
+                .build(),
+        )
+    }
+}
+
+impl AppWindow for CandidateConfigWindow {
+    fn label(&self) -> &str {
+        &self.label
+    }
+    fn title(&self) -> &str {
+        "Clash Nyanpasu - Candidate config"
+    }
+    fn url(&self) -> &str {
+        "/candidate-config"
+    }
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .default_size(1100.0, 720.0)
+            .min_size(400.0, 500.0)
+            .center(true)
+    }
+    /// A candidate lives only as long as this session keeps it, so a closed
+    /// viewer is destroyed and never shows a candidate again from hiding.
+    fn close_override(&self, _settings: &WindowCloseSettings) -> WindowCloseOverride {
+        WindowCloseOverride::Destroy
     }
 }
 
@@ -501,6 +547,44 @@ mod tests {
         );
         assert_eq!(css.geometry_key(), profile.geometry_key());
         assert_eq!(TrayMenuWindow { cursor: None }.geometry_key(), None);
+    }
+
+    #[test]
+    fn a_candidate_window_reuses_its_label() {
+        use crate::window::table::{Opened, WindowTable};
+        let id = "a_-012345678901234567";
+        let (window, params) =
+            CandidateConfigWindow::for_snapshot(&CandidateSnapshotId::parse(id).unwrap());
+        assert_eq!(window.label(), format!("candidate-config-{id}"));
+        assert_eq!(
+            window.url_with_params(params.as_ref()),
+            format!("/candidate-config?id={id}")
+        );
+        let mut table = WindowTable::default();
+        assert_eq!(
+            table.open(window.label(), window.config().singleton, ()),
+            Opened::Build(window.label().to_owned())
+        );
+        assert_eq!(
+            table.open(window.label(), window.config().singleton, ()),
+            Opened::Existing(window.label().to_owned())
+        );
+    }
+
+    #[test]
+    fn a_candidate_window_is_destroyed_on_close_whatever_the_settings() {
+        let (window, _) = CandidateConfigWindow::for_snapshot(
+            &CandidateSnapshotId::parse("a_-012345678901234567").unwrap(),
+        );
+        let settings = WindowCloseSettings {
+            global: nyanpasu_config::application::WindowCloseBehavior::Hide,
+            editor: WindowCloseOverride::Hide,
+            ..Default::default()
+        };
+        assert_eq!(
+            window.close_override(&settings).resolve(settings.global),
+            nyanpasu_config::application::WindowCloseBehavior::Destroy
+        );
     }
 
     #[test]

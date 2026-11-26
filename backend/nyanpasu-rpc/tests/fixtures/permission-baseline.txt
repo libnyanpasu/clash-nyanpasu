@@ -130,6 +130,7 @@ command | mutate_proxies | proxy:write |  | mutation | desktop,http |  | present
 command | open_app_config_dir | system:write |  | mutation | desktop | opener |
 command | open_app_data_dir | system:write |  | mutation | desktop | opener |
 command | open_backups_dir | system:write |  | mutation | desktop | opener |
+command | open_candidate_config_window | system:write |  | mutation | desktop | window |
 command | open_core_dir | system:write |  | mutation | desktop | opener |
 command | open_log_session | logs:read |  | mutation | desktop,http,local |  |
 command | open_logs_dir | system:write |  | mutation | desktop | opener |

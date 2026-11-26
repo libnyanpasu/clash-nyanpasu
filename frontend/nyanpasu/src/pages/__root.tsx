@@ -22,6 +22,7 @@ import { m } from '@/paraglide/messages'
 import { queryClient, rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import {
+  degradationCandidateId,
   degradationReasonMessage,
   publicDegradationReasonMessage,
 } from '@/utils/ipc-error'
@@ -247,9 +248,18 @@ function MutationDegradationNotifier({
           ),
         )
         .join('; ')
+      // Public degradations never name a candidate.
+      const candidate = degradations
+        .map((degradation) =>
+          'message' in degradation
+            ? degradationCandidateId(degradation.reason)
+            : undefined,
+        )
+        .find((id) => id !== undefined)
       message(m.mutation_degraded_summary({ items }), {
         title: m.mutation_degraded_title(),
         kind: 'warning',
+        candidate,
       }).catch((error) => {
         console.error('[mutation-degradation] failed to show warning', error)
       })

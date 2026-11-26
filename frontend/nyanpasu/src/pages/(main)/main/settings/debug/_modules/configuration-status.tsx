@@ -4,6 +4,7 @@ import { ErrorMessage } from '@/components/error-message'
 import { m } from '@/paraglide/messages'
 import { commands, events, queries } from '@/services/rpc'
 import { effectFailureMessage } from '@/utils/ipc-error'
+import { usePlatform } from '@nyanpasu/platform/react'
 import {
   acceptConfigurationStatus,
   attentionSources,
@@ -13,9 +14,11 @@ import {
   sourceMessage,
 } from '@nyanpasu/query'
 import {
+  type BackgroundChangeOrigin,
   type ConfigurationStatus,
   type ConvergenceHealth,
   type EffectKind,
+  type SourceOutcome,
 } from '@nyanpasu/rpc/types'
 import {
   useMutation,
@@ -63,6 +66,19 @@ function effectLabel(kind: EffectKind) {
   return labels[kind]()
 }
 
+function originLabel(origin: BackgroundChangeOrigin) {
+  const labels = {
+    sync_application: m.configuration_refused_sync_application,
+    sync_clash: m.configuration_refused_sync_clash,
+    sync_profiles: m.configuration_refused_sync_profiles,
+    action_clash_mode: m.configuration_refused_action_clash_mode,
+    action_system_proxy: m.configuration_refused_action_system_proxy,
+    action_tun_mode: m.configuration_refused_action_tun_mode,
+    action_transparent_proxy: m.configuration_refused_action_transparent_proxy,
+  }
+  return labels[origin]()
+}
+
 const CONFIGURATION_MUTATIONS = new Set<unknown>([
   'patchAppConfig',
   'patchSystemSettings',
@@ -88,6 +104,33 @@ const CONFIGURATION_MUTATIONS = new Set<unknown>([
 
 const STATUS_KEY = ['getConfigurationStatus']
 
+function sourceCandidate(outcome: SourceOutcome) {
+  switch (outcome.kind) {
+    case 'failed':
+    case 'rejected':
+      return outcome.candidate_snapshot_id
+    case 'committed':
+      return outcome.deferred?.candidate_snapshot_id
+    case 'superseded':
+      return undefined
+  }
+}
+
+/** Opens the candidate a failure kept; only the desktop can show it. */
+const CandidateAction = ({ id }: { id?: string | null }) => {
+  const { surface } = usePlatform()
+  if (!id || surface !== 'desktop') return null
+
+  return (
+    <Button
+      variant="stroked"
+      onClick={() => commands.openCandidateConfigWindow(id)}
+    >
+      {m.inspect_candidate_view()}
+    </Button>
+  )
+}
+
 const StatusItem = ({
   label,
   health,
@@ -95,6 +138,7 @@ const StatusItem = ({
   message,
   retry,
   busy,
+  candidate,
 }: {
   label: string
   health: ConvergenceHealth
@@ -104,6 +148,8 @@ const StatusItem = ({
   message?: string | null
   retry?: () => void
   busy?: boolean
+  /** The candidate the current failure kept for inspection. */
+  candidate?: string | null
 }) => (
   <SettingsCard>
     <SettingsCardContent>
@@ -121,6 +167,8 @@ const StatusItem = ({
             </ItemLabelDescription>
           )}
         </ItemLabel>
+
+        <CandidateAction id={candidate} />
 
         {retry && (
           <Button variant="stroked" disabled={busy} onClick={retry}>
@@ -200,6 +248,7 @@ export default function ConfigurationStatus() {
 
   const sources = status ? attentionSources(status) : []
   const operations = status?.recent_operations.slice(0, 8) ?? []
+  const refused = status?.refused_changes ?? []
 
   return (
     <div data-slot="configuration-status-container" aria-live="polite">
@@ -235,6 +284,7 @@ export default function ConfigurationStatus() {
             label={m.configuration_runtime()}
             health={status.runtime.health}
             message={status.runtime.message}
+            candidate={status.runtime.candidate_snapshot_id}
             retry={
               status.runtime.health !== 'healthy' || status.maintenance
                 ? () => retry.mutate(undefined)
@@ -272,6 +322,25 @@ export default function ConfigurationStatus() {
                 label={source.name}
                 health={source.health}
                 message={sourceMessage(source)}
+                candidate={sourceCandidate(source.outcome)}
+              />
+            ))}
+          </SettingsGroup>
+        </>
+      )}
+
+      {refused.length > 0 && (
+        <>
+          <SettingsLabel>{m.configuration_refused_changes()}</SettingsLabel>
+
+          <SettingsGroup>
+            {refused.map((change) => (
+              <StatusItem
+                key={change.origin}
+                label={originLabel(change.origin)}
+                health="blocked"
+                message={change.message}
+                candidate={change.candidate_snapshot_id}
               />
             ))}
           </SettingsGroup>

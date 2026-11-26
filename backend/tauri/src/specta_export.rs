@@ -265,6 +265,7 @@ pub(crate) fn build_specta_builder() -> (String, tauri_specta::Builder<tauri::Wr
             ipc::system::window::create_debug_tray_menu_window,
             ipc::system::window::simulate_crash,
             ipc::system::window::create_editor_window,
+            ipc::system::window::open_candidate_config_window,
             ipc::system::window::report_window_ready,
             ipc::system::os::copy_clash_env,
             ipc::system::window::quit_application,
@@ -896,6 +897,8 @@ mod tests {
         assert!(!mutations.contains("inspectCandidateRuntime:"));
         assert!(queries.contains("inspectCandidateNode:"));
         assert!(!mutations.contains("inspectCandidateNode:"));
+        assert!(mutations.contains("openCandidateConfigWindow:"));
+        assert!(!queries.contains("openCandidateConfigWindow:"));
         for name in [
             "checkAppUpdate:",
             "downloadAppUpdate:",

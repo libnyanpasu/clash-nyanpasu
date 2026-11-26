@@ -9,6 +9,7 @@ import {
 import { isIpcError, rpcDomainError, RpcFailure } from '@nyanpasu/rpc'
 import type { NativeDialogButtons, NativeDialogKind } from '@nyanpasu/rpc/types'
 import { formatError } from './index'
+import { candidateSnapshotId } from './ipc-error'
 import { profileDialogLabel, profileMessageParts } from './profile-label'
 
 export type NotificationOptions = {
@@ -60,8 +61,13 @@ export type MessageOptions = {
   kind?: NativeDialogKind
   buttons?: MessageButtons
   okLabel?: string
-  /** The caught error; a failed command adds a copy-details button. */
+  /**
+   * The caught error; a failed command adds a copy-details button, and one
+   * that kept a candidate adds a button that opens it on the desktop.
+   */
   error?: unknown
+  /** A kept candidate to offer when there is no error to name it. */
+  candidate?: string
 }
 
 const nativeButtons = (
@@ -180,8 +186,10 @@ export const message = async (
     dialog?.okLabel,
     m.common_close(),
   )
-  if (details !== undefined) {
-    return showErrorMessage(value, dialog, copyLabel, details)
+  // Only the desktop can open a kept candidate; the browser returned above.
+  const candidate = dialog?.candidate ?? candidateSnapshotId(error)
+  if (details !== undefined || candidate !== undefined) {
+    return showErrorMessage(value, dialog, copyLabel, details, candidate)
   }
 
   const title =
@@ -202,21 +210,34 @@ const showErrorMessage = async (
   value: string,
   dialog: MessageOptions | undefined,
   copyLabel: string,
-  details: string,
+  details: string | undefined,
+  candidate: string | undefined,
 ) => {
   const title = dialog?.title
     ? `Clash Nyanpasu - ${dialog.title}`
     : 'Clash Nyanpasu'
-  const buttons: NativeDialogButtons = {
-    type: 'ok_cancel_custom',
-    ok: copyLabel,
-    cancel: m.common_close(),
-  }
+  const viewLabel = m.inspect_candidate_view()
+  const close = m.common_close()
+  const buttons: NativeDialogButtons =
+    candidate === undefined
+      ? { type: 'ok_cancel_custom', ok: copyLabel, cancel: close }
+      : details === undefined
+        ? { type: 'ok_cancel_custom', ok: viewLabel, cancel: close }
+        : {
+            type: 'yes_no_cancel_custom',
+            yes: viewLabel,
+            no: copyLabel,
+            cancel: close,
+          }
   const result = await commands.showNativeMessageDialog(
     value,
     title,
     dialog?.kind ?? 'info',
     buttons,
   )
-  if (result === copyLabel) await writeClipboardText(details)
+  if (candidate !== undefined && result === viewLabel) {
+    await commands.openCandidateConfigWindow(candidate)
+  } else if (details !== undefined && result === copyLabel) {
+    await writeClipboardText(details)
+  }
 }

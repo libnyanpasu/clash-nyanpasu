@@ -6,6 +6,7 @@ import { RestrictedContent } from '@/components/auth/restricted-content'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
+import { formatError } from '@/utils'
 import { ask, message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
 import { useLockFn } from '@nyanpasu/hooks'
@@ -91,7 +92,16 @@ function RouteComponent() {
         return
       }
 
-      await content.upsert.mutateAsync(editorValue)
+      try {
+        await content.upsert.mutateAsync(editorValue)
+      } catch (error) {
+        // The one dialog for this failure; it offers a kept candidate.
+        await message(m.editor_save_failed({ error: formatError(error) }), {
+          kind: 'error',
+          error,
+        })
+        return
+      }
 
       if (close) {
         await currentWindow?.close()

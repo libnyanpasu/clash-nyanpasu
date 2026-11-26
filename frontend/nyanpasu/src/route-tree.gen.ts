@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './pages/__root'
 import { Route as mainRouteRouteImport } from './pages/(main)/route'
 import { Route as editorEditorRouteRouteImport } from './pages/(editor)/editor/route'
+import { Route as inspectorCandidateConfigRouteRouteImport } from './pages/(inspector)/candidate-config/route'
 import { Route as trayMenuTrayMenuRouteRouteImport } from './pages/(tray-menu)/tray-menu/route'
+import { Route as inspectorCandidateConfigIndexRouteImport } from './pages/(inspector)/candidate-config/index'
 import { Route as mainMainIndexRouteImport } from './pages/(main)/main/index'
 import { Route as mainMainConnectionsRouteRouteImport } from './pages/(main)/main/connections/route'
 import { Route as mainMainDashboardRouteRouteImport } from './pages/(main)/main/dashboard/route'
@@ -90,11 +92,23 @@ const editorEditorRouteRoute = editorEditorRouteRouteImport.update({
   path: '/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const inspectorCandidateConfigRouteRoute =
+  inspectorCandidateConfigRouteRouteImport.update({
+    id: '/(inspector)/candidate-config',
+    path: '/candidate-config',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const trayMenuTrayMenuRouteRoute = trayMenuTrayMenuRouteRouteImport.update({
   id: '/(tray-menu)/tray-menu',
   path: '/tray-menu',
   getParentRoute: () => rootRouteImport,
 } as any)
+const inspectorCandidateConfigIndexRoute =
+  inspectorCandidateConfigIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => inspectorCandidateConfigRouteRoute,
+  } as any)
 const mainMainIndexRoute = mainMainIndexRouteImport.update({
   id: '/main/',
   path: '/main/',
@@ -488,6 +502,7 @@ const mainMainSettingsSystemProxyNetworkRulesIndexRoute =
 export interface FileRoutesByFullPath {
   '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
+  '/candidate-config': typeof inspectorCandidateConfigRouteRouteWithChildren
   '/tray-menu': typeof trayMenuTrayMenuRouteRouteWithChildren
   '/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
   '/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
@@ -499,6 +514,7 @@ export interface FileRoutesByFullPath {
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
   '/main/topology': typeof mainMainTopologyRouteRouteWithChildren
   '/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
+  '/candidate-config/': typeof inspectorCandidateConfigIndexRoute
   '/main/': typeof mainMainIndexRoute
   '/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
@@ -561,6 +577,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof mainRouteRouteWithChildren
   '/editor': typeof editorEditorRouteRouteWithChildren
+  '/candidate-config': typeof inspectorCandidateConfigIndexRoute
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
@@ -620,6 +637,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(main)': typeof mainRouteRouteWithChildren
   '/(editor)/editor': typeof editorEditorRouteRouteWithChildren
+  '/(inspector)/candidate-config': typeof inspectorCandidateConfigRouteRouteWithChildren
   '/(tray-menu)/tray-menu': typeof trayMenuTrayMenuRouteRouteWithChildren
   '/(main)/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
   '/(main)/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
@@ -631,6 +649,7 @@ export interface FileRoutesById {
   '/(main)/main/settings': typeof mainMainSettingsRouteRouteWithChildren
   '/(main)/main/topology': typeof mainMainTopologyRouteRouteWithChildren
   '/(tray-menu)/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
+  '/(inspector)/candidate-config/': typeof inspectorCandidateConfigIndexRoute
   '/(main)/main/': typeof mainMainIndexRoute
   '/(tray-menu)/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/(main)/main/profiles/global': typeof mainMainProfilesGlobalRouteRoute
@@ -695,6 +714,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/editor'
+    | '/candidate-config'
     | '/tray-menu'
     | '/main/connections'
     | '/main/dashboard'
@@ -706,6 +726,7 @@ export interface FileRouteTypes {
     | '/main/settings'
     | '/main/topology'
     | '/tray-menu/proxies'
+    | '/candidate-config/'
     | '/main/'
     | '/tray-menu/'
     | '/main/profiles/global'
@@ -768,6 +789,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/editor'
+    | '/candidate-config'
     | '/main'
     | '/tray-menu'
     | '/main/profiles/global'
@@ -826,6 +848,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/(main)'
     | '/(editor)/editor'
+    | '/(inspector)/candidate-config'
     | '/(tray-menu)/tray-menu'
     | '/(main)/main/connections'
     | '/(main)/main/dashboard'
@@ -837,6 +860,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings'
     | '/(main)/main/topology'
     | '/(tray-menu)/tray-menu/proxies'
+    | '/(inspector)/candidate-config/'
     | '/(main)/main/'
     | '/(tray-menu)/tray-menu/'
     | '/(main)/main/profiles/global'
@@ -900,6 +924,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   mainRouteRoute: typeof mainRouteRouteWithChildren
   editorEditorRouteRoute: typeof editorEditorRouteRouteWithChildren
+  inspectorCandidateConfigRouteRoute: typeof inspectorCandidateConfigRouteRouteWithChildren
   trayMenuTrayMenuRouteRoute: typeof trayMenuTrayMenuRouteRouteWithChildren
 }
 
@@ -919,12 +944,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof editorEditorRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(inspector)/candidate-config': {
+      id: '/(inspector)/candidate-config'
+      path: '/candidate-config'
+      fullPath: '/candidate-config'
+      preLoaderRoute: typeof inspectorCandidateConfigRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(tray-menu)/tray-menu': {
       id: '/(tray-menu)/tray-menu'
       path: '/tray-menu'
       fullPath: '/tray-menu'
       preLoaderRoute: typeof trayMenuTrayMenuRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/(inspector)/candidate-config/': {
+      id: '/(inspector)/candidate-config/'
+      path: '/'
+      fullPath: '/candidate-config/'
+      preLoaderRoute: typeof inspectorCandidateConfigIndexRouteImport
+      parentRoute: typeof inspectorCandidateConfigRouteRoute
     }
     '/(main)/main/': {
       id: '/(main)/main/'
@@ -1716,6 +1755,20 @@ const editorEditorRouteRouteChildren: editorEditorRouteRouteChildren = {
 const editorEditorRouteRouteWithChildren =
   editorEditorRouteRoute._addFileChildren(editorEditorRouteRouteChildren)
 
+interface inspectorCandidateConfigRouteRouteChildren {
+  inspectorCandidateConfigIndexRoute: typeof inspectorCandidateConfigIndexRoute
+}
+
+const inspectorCandidateConfigRouteRouteChildren: inspectorCandidateConfigRouteRouteChildren =
+  {
+    inspectorCandidateConfigIndexRoute: inspectorCandidateConfigIndexRoute,
+  }
+
+const inspectorCandidateConfigRouteRouteWithChildren =
+  inspectorCandidateConfigRouteRoute._addFileChildren(
+    inspectorCandidateConfigRouteRouteChildren,
+  )
+
 interface trayMenuTrayMenuProxiesGroupRouteRouteChildren {
   trayMenuTrayMenuProxiesGroupNameRoute: typeof trayMenuTrayMenuProxiesGroupNameRoute
 }
@@ -1767,6 +1820,8 @@ const trayMenuTrayMenuRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   mainRouteRoute: mainRouteRouteWithChildren,
   editorEditorRouteRoute: editorEditorRouteRouteWithChildren,
+  inspectorCandidateConfigRouteRoute:
+    inspectorCandidateConfigRouteRouteWithChildren,
   trayMenuTrayMenuRouteRoute: trayMenuTrayMenuRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport

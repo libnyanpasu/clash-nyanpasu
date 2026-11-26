@@ -1684,6 +1684,13 @@ export function createQueryBindings(rpc: RpcClient) {
           uid: Parameters<typeof commands.createEditorWindow>[1]
         }) => commands.createEditorWindow(input.windowType, input.uid),
       }),
+    openCandidateConfigWindow: () =>
+      mutationOptions({
+        mutationKey: ['openCandidateConfigWindow'],
+        mutationFn: (input: {
+          snapshotId: Parameters<typeof commands.openCandidateConfigWindow>[0]
+        }) => commands.openCandidateConfigWindow(input.snapshotId),
+      }),
     reportWindowReady: () =>
       mutationOptions({
         mutationKey: ['reportWindowReady'],
@@ -1861,6 +1868,7 @@ export function createQueryBindings(rpc: RpcClient) {
     createDebugTrayMenuWindow: () => ['createDebugTrayMenuWindow'],
     simulateCrash: () => ['simulateCrash'],
     createEditorWindow: () => ['createEditorWindow'],
+    openCandidateConfigWindow: () => ['openCandidateConfigWindow'],
     reportWindowReady: () => ['reportWindowReady'],
     copyClashEnv: () => ['copyClashEnv'],
     quitApplication: () => ['quitApplication'],

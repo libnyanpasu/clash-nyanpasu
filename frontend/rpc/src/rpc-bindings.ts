@@ -1360,6 +1360,13 @@ export function createRpcClient(
       options?: InvokeOptions,
     ) =>
       __RPC_INVOKE<null>('create_editor_window', { windowType, uid }, options),
+    /**  Opens the candidate a failed change kept, one window per candidate. */
+    openCandidateConfigWindow: (snapshotId: string, options?: InvokeOptions) =>
+      __RPC_INVOKE<null>(
+        'open_candidate_config_window',
+        { snapshotId },
+        options,
+      ),
     /**
      *  The calling window has rendered. Its label comes from the invoking webview,
      *  so a window can only report itself.

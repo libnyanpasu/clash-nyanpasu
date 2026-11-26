@@ -197,7 +197,7 @@ export function SnapshotStatus({ snapshot }: { snapshot: RuntimeInspection }) {
       data-slot="inspect-status"
       data-applied={snapshot.applied || undefined}
       className={cn(
-        'bg-surface-variant text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
+        'bg-surface-container-high text-on-surface-variant hidden h-7 min-w-0 items-center gap-1.5',
         'rounded-lg px-2.5 text-xs font-medium whitespace-nowrap @3xl:order-3 @3xl:inline-flex',
         // Shrinks before the controls wrap onto a second row.
         '@3xl:max-w-max @3xl:flex-1 @3xl:basis-0',

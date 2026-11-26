@@ -117,7 +117,7 @@ function DnsYamlEditor() {
         <textarea
           className={cn(
             'h-[60vh] w-full resize-none rounded-lg p-3',
-            'bg-surface-variant/30 dark:bg-surface text-on-surface',
+            'bg-surface-container-highest text-on-surface',
             'font-mono text-sm outline-hidden',
             'focus-visible:ring-primary focus-visible:ring-2',
           )}

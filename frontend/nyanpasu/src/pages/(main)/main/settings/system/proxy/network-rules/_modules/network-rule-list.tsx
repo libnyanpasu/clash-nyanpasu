@@ -42,7 +42,7 @@ const ruleActionVariants = cva(
     variants: {
       action: {
         enable: 'bg-secondary-container text-on-secondary-container',
-        disable: 'bg-surface-variant/60 text-on-surface-variant',
+        disable: 'bg-surface-container-high text-on-surface-variant',
       },
     },
   },

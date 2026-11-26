@@ -70,7 +70,7 @@ export default function CoreAgentSkillCard({
         </ItemLabelDescription>
 
         <p
-          className="bg-surface-variant/30 rounded-xl p-3 text-sm leading-6 wrap-anywhere select-text"
+          className="bg-surface-container-high rounded-xl p-3 text-sm leading-6 wrap-anywhere select-text"
           data-slot="core-agent-skill-prompt"
         >
           {prompt}

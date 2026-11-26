@@ -80,7 +80,7 @@ const stateClass = (state: NetworkTransparentProxyObjectState) =>
     state === 'foreign' && 'bg-tertiary-container text-on-tertiary-container',
     state === 'read_error' && 'bg-error-container text-on-error-container',
     state === 'not_applicable' &&
-      'bg-surface-variant/40 text-on-surface-variant',
+      'bg-surface-container-high text-on-surface-variant',
   )
 
 const ObjectRow = ({
@@ -139,7 +139,7 @@ const DiagnosticsBody = ({
               ? 'bg-error-container text-on-error-container'
               : applied
                 ? 'bg-secondary-container text-on-secondary-container'
-                : 'bg-surface-variant/40 text-on-surface-variant',
+                : 'bg-surface-container-high text-on-surface-variant',
           )}
         >
           {diagnostics.stale
@@ -325,7 +325,7 @@ const BypassFlag = ({ label, active }: { label: string; active: boolean }) => (
       'rounded-full px-2 py-0.5 text-xs',
       active
         ? 'bg-secondary-container text-on-secondary-container'
-        : 'bg-surface-variant/40 text-on-surface-variant line-through',
+        : 'bg-surface-container-high text-on-surface-variant line-through',
     )}
   >
     {label}

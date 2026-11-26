@@ -35,7 +35,7 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
             })}
           </div>
 
-          <div className="text-sm text-zinc-500">
+          <div className="text-on-surface-variant text-sm">
             {data.vehicleType}/{data.type}
           </div>
         </div>
@@ -63,7 +63,7 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
 
         <div className="flex-1" />
 
-        <div className="hover:bg-surface-variant text-secondary rounded-full px-3 py-2 text-xs font-semibold">
+        <div className="hover:bg-on-surface/8 text-secondary rounded-full px-3 py-2 text-xs font-semibold">
           {m.profile_subscription_updated_at({
             updated: formatRelativeTime(
               data.updatedAt,

@@ -239,7 +239,7 @@ export default function StepDetail({
         role="tabpanel"
         data-slot="inspect-step-panel"
         data-tab={tab}
-        className="bg-code flex min-h-0 flex-1 flex-col"
+        className="bg-surface-container-lowest flex min-h-0 flex-1 flex-col"
         onKeyDown={handleKeyDown}
       >
         {content.isPending && <StepPanelSkeleton />}

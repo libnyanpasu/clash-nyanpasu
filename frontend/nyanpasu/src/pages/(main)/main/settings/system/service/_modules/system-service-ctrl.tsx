@@ -137,7 +137,7 @@ const ServiceDetailRawJson = ({ code }: { code: string }) => {
     <div
       ref={ref}
       className={cn(
-        'bg-surface-variant/30 rounded-xl p-3 text-xs select-text',
+        'bg-surface-container-high rounded-xl p-3 text-xs select-text',
         '[&_.shiki]:bg-transparent! [&_.shiki_span]:bg-transparent!',
         '[&_pre]:font-mono [&_pre]:leading-relaxed [&_pre]:wrap-anywhere [&_pre]:whitespace-pre-wrap',
       )}
@@ -398,7 +398,7 @@ const ServicePromptCode = ({ code }: { code: string }) => {
   const className = cn(
     'overflow-clip rounded select-text',
     '[&>pre]:overflow-auto [&>pre]:p-2',
-    '[&>pre]:bg-surface-variant! dark:[&>pre]:bg-black!',
+    '[&>pre]:bg-surface-container-lowest!',
   )
 
   if (highlighted?.code !== code) {

@@ -15,7 +15,7 @@ const dotVariants = cva('absolute top-1/2 -translate-x-1/2 -translate-y-1/2', {
   variants: {
     lane: { main: '', branch: '' },
     shape: {
-      start: 'bg-pane size-2.5 rounded-full border-2',
+      start: 'bg-surface-container-low size-2.5 rounded-full border-2',
       merge: 'size-2.5 rotate-45 rounded-[2px]',
       fork: 'size-2.5 rounded-[3px]',
       step: 'size-2 rounded-full',

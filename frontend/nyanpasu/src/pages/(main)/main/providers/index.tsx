@@ -43,7 +43,7 @@ const NavigateButton = ({
         'dark:bg-surface!',
         'shadow-none',
         'hover:shadow-none',
-        'hover:bg-surface-variant/30',
+        'hover:bg-on-surface/8',
         className,
       )}
       asChild
@@ -65,7 +65,7 @@ const GroupTitle = ({ children }: PropsWithChildren) => {
     <div
       className={cn(
         'sticky top-0 z-10 pl-1 text-lg font-semibold',
-        'text-secondary bg-mixed-background flex h-16 items-center justify-between',
+        'text-secondary bg-surface-container dark:bg-surface flex h-16 items-center justify-between',
       )}
       data-slot="providers-group-title"
     >
@@ -104,16 +104,16 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
         <div className="flex items-center justify-between gap-2">
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
-          <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
+          <div className="text-on-surface text-xs text-nowrap">
             {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 
-        <div className="text-xs text-zinc-500">
+        <div className="text-on-surface-variant text-xs">
           {data.vehicleType}/{data.type}
         </div>
 
-        <div className="flex flex-1 flex-col gap-2 text-xs text-zinc-500">
+        <div className="text-on-surface-variant flex flex-1 flex-col gap-2 text-xs">
           {hasSubscriptionInfo && (
             <>
               <LinearProgress value={progress} />
@@ -132,7 +132,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="bg-surface-variant text-secondary rounded-full px-2 py-1 text-[10px]">
+          <div className="bg-surface-container-highest text-secondary rounded-full px-2 py-1 text-[10px]">
             {m.providers_proxies_proxy_count_label({
               count: data.proxyCount,
             })}
@@ -172,17 +172,17 @@ const Rules = ({ data }: { data: ClashRulesProviderQueryItem }) => {
         <div className="flex items-center justify-between gap-2">
           <TextMarquee className="text-sm font-medium">{data.name}</TextMarquee>
 
-          <div className="text-xs text-nowrap text-zinc-700 dark:text-zinc-300">
+          <div className="text-on-surface text-xs text-nowrap">
             {formatRelativeTime(data.updatedAt, Date.now(), getLocale())}
           </div>
         </div>
 
-        <div className="text-xs text-zinc-500">
+        <div className="text-on-surface-variant text-xs">
           {data.vehicleType}/{data.type}
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="bg-surface-variant text-secondary rounded-full px-2 py-1 text-[10px]">
+          <div className="bg-surface-container-highest text-secondary rounded-full px-2 py-1 text-[10px]">
             {m.providers_rules_rule_count_label({
               count: data.ruleCount ?? 0,
             })}

@@ -46,7 +46,7 @@ const widgetEntryAddVariants = cva('size-9 shrink-0 shadow-none', {
   variants: {
     placed: {
       true: 'bg-secondary-container text-on-secondary-container hover:bg-secondary-container',
-      false: 'bg-surface-variant text-on-surface hover:bg-surface-variant',
+      false: 'bg-surface-container-high text-on-surface hover:bg-on-surface/8',
     },
   },
 })
@@ -76,11 +76,11 @@ function WidgetPreviewCard({
       data-slot="widget-sheet-entry"
       data-placed={placed || undefined}
       className={cn(
-        'bg-surface-variant/25 border-outline-variant/40 flex min-w-0 flex-col overflow-hidden rounded-3xl border',
+        'bg-surface-container-high border-outline-variant/40 flex min-w-0 flex-col overflow-hidden rounded-3xl border',
         'hover:border-outline-variant transition-colors',
       )}
     >
-      <div className="bg-surface-variant/35 relative h-40 w-full shrink-0 overflow-hidden p-3">
+      <div className="bg-surface-container-high relative h-40 w-full shrink-0 overflow-hidden p-3">
         <WidgetPreview definition={definition} />
 
         <span className="bg-surface/80 text-on-surface-variant absolute top-2.5 right-2.5 rounded-full px-2 py-0.5 text-xs tabular-nums backdrop-blur-sm">

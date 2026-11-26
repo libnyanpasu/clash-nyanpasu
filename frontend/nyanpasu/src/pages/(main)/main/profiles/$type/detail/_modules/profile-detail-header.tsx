@@ -34,7 +34,7 @@ export default function ProfileDetailHeader({
   return (
     <header
       data-slot="profile-detail-header"
-      className="bg-mixed-background sticky top-0 z-10 flex h-16 items-center gap-4"
+      className="bg-surface-container dark:bg-surface sticky top-0 z-10 flex h-16 items-center gap-4"
     >
       <Button
         icon

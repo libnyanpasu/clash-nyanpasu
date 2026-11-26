@@ -55,7 +55,7 @@ export function ProvidersTitle({
       <div
         className={cn(
           'group sticky top-0 z-10',
-          'bg-mixed-background',
+          'bg-surface-container dark:bg-surface',
           'flex items-center gap-4',
           'h-16 px-4',
           className,

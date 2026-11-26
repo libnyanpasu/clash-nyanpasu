@@ -23,7 +23,7 @@ export const ProfileCardChip = ({
   <span
     className={cn(
       'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap',
-      'bg-surface-variant/60 text-on-surface-variant backdrop-blur-md',
+      'bg-surface-container-highest text-on-surface-variant backdrop-blur-md',
       className,
     )}
     {...props}
@@ -117,7 +117,7 @@ export default function ProfileCardFeatures({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              className="bg-surface-variant/60 text-on-surface-variant inline-flex h-auto min-w-0 items-center gap-1 px-3 py-1 text-xs font-bold backdrop-blur-md"
+              className="bg-surface-container-highest text-on-surface-variant inline-flex h-auto min-w-0 items-center gap-1 px-3 py-1 text-xs font-bold backdrop-blur-md"
             >
               <LayersOutlineRounded className="size-3.5" aria-hidden />
               {m.profile_card_transform_count({ count: transforms.length })}

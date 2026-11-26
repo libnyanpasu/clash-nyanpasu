@@ -24,11 +24,11 @@ const NavigateButton = ({
       className={cn(
         'h-16 w-full rounded-2xl',
         'flex flex-col items-start justify-center gap-2',
-        'data-[active=true]:bg-surface-variant/80',
+        'data-[active=true]:bg-surface-container-highest',
         'data-[active=false]:bg-transparent',
         'data-[active=false]:shadow-none',
         'data-[active=false]:hover:shadow-none',
-        'data-[active=false]:hover:bg-surface-variant/30',
+        'data-[active=false]:hover:bg-on-surface/8',
         className,
       )}
       asChild
@@ -68,7 +68,7 @@ const SidebarNavigate = () => {
                 >
                   <div className="text-sm font-medium">{data.name}</div>
 
-                  <TextMarquee className="text-xs text-zinc-500">
+                  <TextMarquee className="text-on-surface-variant text-xs">
                     {data.type}
                   </TextMarquee>
                 </Link>
@@ -95,7 +95,7 @@ const SidebarNavigate = () => {
               >
                 <div className="text-sm font-medium">{data.name}</div>
 
-                <TextMarquee className="text-xs text-zinc-500">
+                <TextMarquee className="text-on-surface-variant text-xs">
                   {data.type}
                 </TextMarquee>
               </Link>
@@ -132,7 +132,7 @@ function RouteComponent() {
           }}
         >
           <SidebarContent
-            className="bg-surface-variant/10 [&>div>div]:block!"
+            className="bg-surface-container-high [&>div>div]:block!"
             data-slot="providers-sidebar-scroll-area"
           >
             <SidebarNavigate />

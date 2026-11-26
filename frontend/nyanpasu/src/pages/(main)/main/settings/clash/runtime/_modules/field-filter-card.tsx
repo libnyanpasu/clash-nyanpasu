@@ -79,9 +79,9 @@ const FieldButton = ({
       className={cn(
         'flex h-12 items-center justify-between gap-2 rounded-2xl pr-3',
         'data-[enabled=true]:bg-primary-container',
-        'data-[enabled=true]:dark:bg-surface-variant',
+        'data-[enabled=true]:dark:bg-surface-container-highest',
         'data-[enabled=false]:bg-primary-container/50',
-        'data-[enabled=false]:dark:bg-surface-variant/10',
+        'data-[enabled=false]:dark:bg-surface-container-high',
       )}
       disabled={disabled}
       onClick={() => blockTask.execute()}
@@ -117,7 +117,7 @@ const ItemButton = ({
         <Button
           className={cn(
             'relative h-20 w-full min-w-0 rounded-3xl',
-            'bg-primary-container dark:bg-surface-variant/30',
+            'bg-primary-container dark:bg-surface-container-high',
             'flex flex-col items-start justify-center gap-0.5 pr-8',
           )}
         >

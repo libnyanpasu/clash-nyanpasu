@@ -60,7 +60,7 @@ export default function DelayTestButton({
               'transition-colors',
               'backdrop-blur',
               'data-[loading=false]:bg-primary-container/35',
-              'data-[loading=false]:dark:bg-on-primary/35',
+              'data-[loading=false]:dark:bg-primary-container/35',
               'data-[success=true]:bg-green-500/30',
               'data-[success=true]:dark:bg-green-700/50',
             )}

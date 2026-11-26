@@ -229,7 +229,7 @@ function FileLogsContent({ source, showLogbook }: FileLogsProps) {
                   <Suspense
                     fallback={
                       <div
-                        className="bg-surface-variant/30 h-40 animate-pulse rounded-xl"
+                        className="bg-surface-container-high h-40 animate-pulse rounded-xl"
                         aria-busy="true"
                       />
                     }

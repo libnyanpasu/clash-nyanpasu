@@ -1,18 +1,19 @@
 # Frontend package boundaries
 
-The frontend workspace has nine private source packages:
+The frontend workspace has ten private source packages:
 
-| Package               | Owns                                                              | Dependency boundary                                                        |
-| --------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `@nyanpasu/constants` | Immutable values shared across packages                           | No app imports or runtime services                                         |
-| `@nyanpasu/utils`     | Pure reusable helpers such as `cn` and `chains`                   | No React, Tauri, or app imports                                            |
-| `@nyanpasu/hooks`     | Browser and React hooks, including shared breakpoints             | Depends on constants; no app imports                                       |
-| `@nyanpasu/platform`  | Runtime snapshots, platform matching, and browser/native adapters | Native access is provided lazily; React bindings use the `./react` subpath |
-| `@nyanpasu/rpc`       | Generated operation bindings and transport adapters               | Select transports from `@nyanpasu/platform`; no React dependency           |
-| `@nyanpasu/query`     | Query/mutation hooks, providers, and application data access      | Depends on RPC and platform; receive the RPC client/context explicitly     |
-| `@nyanpasu/theme`     | Theme computation and shared theme assets                         | No app or route dependencies                                               |
-| `@nyanpasu/ui`        | Reusable presentational controls and primitives                   | No app, platform, RPC, or query imports                                    |
-| `@nyanpasu/nyanpasu`  | Desktop/browser application composition                           | Owns routes, providers, Vite plugins, and Paraglide                        |
+| Package               | Owns                                                               | Dependency boundary                                                        |
+| --------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `@nyanpasu/constants` | Immutable values shared across packages                            | No app imports or runtime services                                         |
+| `@nyanpasu/utils`     | Pure reusable helpers such as `cn` and `chains`                    | No React, Tauri, or app imports                                            |
+| `@nyanpasu/hooks`     | Browser and React hooks, including shared breakpoints              | Depends on constants; no app imports                                       |
+| `@nyanpasu/platform`  | Runtime snapshots, platform matching, and browser/native adapters  | Native access is provided lazily; React bindings use the `./react` subpath |
+| `@nyanpasu/rpc`       | Generated operation bindings and transport adapters                | Select transports from `@nyanpasu/platform`; no React dependency           |
+| `@nyanpasu/query`     | Query/mutation hooks, providers, and application data access       | Depends on RPC and platform; receive the RPC client/context explicitly     |
+| `@nyanpasu/theme`     | Theme computation, shared Tailwind tokens, and design-as-code spec | No app or route dependencies                                               |
+| `@nyanpasu/ui`        | Reusable presentational controls, primitives, and UI utility CSS   | No app, platform, RPC, or query imports                                    |
+| `@nyanpasu/gallery`   | Standalone M3E/A17 UI Gallery and living design-language guide     | Pure consumer of `@nyanpasu/ui` and `@nyanpasu/theme`; no app/RPC/Tauri    |
+| `@nyanpasu/nyanpasu`  | Desktop/browser application composition                            | Owns routes, providers, Vite plugins, and Paraglide                        |
 
 Dependencies flow from the app into these capabilities, not back into the app.
 The permission types (`Resource`, `Access`, `Permission`, `Grant`, `Role`) come from

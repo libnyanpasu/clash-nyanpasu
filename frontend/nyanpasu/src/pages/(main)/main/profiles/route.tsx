@@ -64,7 +64,7 @@ function ProfilesLayout() {
       <ProfilesDndProvider>
         <Sidebar data-slot="profiles-container">
           <SidebarContent
-            className="bg-surface-variant/50 min-w-72 dark:bg-transparent [&>div>div]:block!"
+            className="bg-surface-container dark:bg-surface border-outline-variant/30 min-w-72 border-r [&>div>div]:block!"
             data-slot="profiles-sidebar-scroll-area"
           >
             <ReadOnlyScope permissions={['profile:write']} banner={false}>

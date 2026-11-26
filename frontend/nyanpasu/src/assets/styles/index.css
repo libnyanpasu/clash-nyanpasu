@@ -48,7 +48,3 @@ body {
 *::-webkit-scrollbar-track {
   margin-block: 15px;
 }
-
-.bg-inherit-allow-fallback {
-  background-color: var(--fallback-bg, inherit);
-}

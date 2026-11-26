@@ -10,6 +10,7 @@ import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import ProxiesDndProvider from '@/pages/(main)/main/proxies/_modules/proxies-dnd-provider'
 import ProxiesLayoutProvider from '@/pages/(main)/main/proxies/_modules/proxies-layout-provider'
 import ProxiesNavigate from '@/pages/(main)/main/proxies/_modules/proxies-navigate'
+import { Route as ProxiesRoute } from '@/pages/(main)/main/proxies/route'
 import { m } from '@/paraglide/messages'
 import { ask, message } from '@/utils/notification'
 import type {
@@ -207,6 +208,7 @@ const renderAt = async (
       createRoute({
         getParentRoute: () => rootRoute,
         path: '/main/proxies/group/$name',
+        validateSearch: ProxiesRoute.options.validateSearch,
       }),
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
@@ -216,7 +218,7 @@ const renderAt = async (
 
   await expect.element(groupLink('Alpha')).toBeInTheDocument()
 
-  return { view, layouts, created, writes }
+  return { view, layouts, created, writes, router }
 }
 
 const groupLink = (name: string) =>
@@ -835,4 +837,15 @@ test('escape cancels a drag without a commit and the item can be picked up again
 
   await expect.poll(() => layouts).toHaveLength(1)
   expect(layouts[0].ungrouped).toEqual(['Alpha', 'Charlie', 'Bravo'])
+})
+
+test('switching groups keeps the proxies search', async () => {
+  const { router } = await renderAt('/main/proxies/group/Alpha?q=x')
+
+  await groupLink('Bravo').click()
+
+  await expect
+    .poll(() => router.state.location.pathname)
+    .toBe('/main/proxies/group/Bravo')
+  expect(router.state.location.search).toEqual({ q: 'x' })
 })

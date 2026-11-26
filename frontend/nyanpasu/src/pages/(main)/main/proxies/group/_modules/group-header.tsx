@@ -30,6 +30,7 @@ export default function GroupHeader({
         <BackButton
           className="shrink-0"
           data-slot="proxies-group-back-button"
+          search={(previous) => ({ q: previous.q })}
         />
 
         {children}

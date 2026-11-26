@@ -96,10 +96,7 @@ export function FabMenuTrigger({
           'duration-300 ease-[cubic-bezier(0.2,0,0,1)]',
           // Animate to half the 56px FAB height; `rounded-full` (9999px) would
           // finish its visible change within the first frames.
-          open && [
-            'rounded-[28px]',
-            'bg-primary text-on-primary dark:bg-primary dark:text-on-primary',
-          ],
+          open && ['rounded-[28px]', 'bg-primary text-on-primary'],
           className,
         )}
         {...props}

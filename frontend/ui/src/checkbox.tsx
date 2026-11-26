@@ -12,7 +12,7 @@ export function Checkbox({
       data-slot="checkbox"
       className={cn(
         'inline-grid size-5 shrink-0 place-content-center rounded-sm',
-        'border-on-surface-variant cursor-pointer border-2 transition-colors',
+        'border-outline cursor-pointer border-2 transition-colors',
         'data-[state=checked]:border-primary data-[state=checked]:bg-primary',
         'data-[state=checked]:text-on-primary',
         'focus-visible:outline-primary outline-none focus-visible:outline-2',

@@ -28,7 +28,7 @@ const navigationListItemVariants = cva([
   'group/navigation-list-item',
   'h-auto min-h-16 w-full justify-start rounded-3xl px-4 py-2.5',
   'flex items-center gap-3 text-left',
-  'bg-surface text-on-surface dark:bg-surface dark:text-on-surface',
+  'bg-surface text-on-surface',
   // A state layer over the item's own fill instead of the button's hover fill.
   'data-[active=false]:hover:bg-surface',
   'hover:shadow-[inset_0_0_0_100px] hover:shadow-on-surface/8',
@@ -62,7 +62,7 @@ const navigationListItemIconVariants = cva(
         blue: 'bg-blue-container text-on-blue-container',
         purple: 'bg-purple-container text-on-purple-container',
         pink: 'bg-pink-container text-on-pink-container',
-        neutral: 'bg-surface-variant text-on-surface-variant',
+        neutral: 'bg-surface-container-highest text-on-surface-variant',
       },
     },
   },

@@ -22,18 +22,17 @@ export const navigationSidebarVariants = cva(
 )
 
 export const navigationSidebarItemVariants = cva(
-  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-2xl p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary dark:text-on-surface-variant',
+  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-2xl p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
   {
     variants: {
       open: {
         true: [
           'h-11',
           'data-[active=true]:bg-secondary-container data-[active=true]:text-on-secondary-container',
-          'dark:data-[active=true]:bg-secondary-container dark:data-[active=true]:text-on-secondary-container',
-          'data-[active=false]:bg-transparent data-[active=false]:hover:bg-on-surface/8 dark:data-[active=false]:hover:bg-on-surface/8',
+          'data-[active=false]:bg-transparent data-[active=false]:hover:bg-on-surface/8',
         ],
         false:
-          'h-18 bg-transparent hover:bg-transparent data-[active=true]:text-on-secondary-container dark:bg-transparent dark:hover:bg-transparent dark:data-[active=true]:text-on-secondary-container',
+          'h-18 bg-transparent hover:bg-transparent data-[active=true]:text-on-secondary-container',
       },
     },
   },

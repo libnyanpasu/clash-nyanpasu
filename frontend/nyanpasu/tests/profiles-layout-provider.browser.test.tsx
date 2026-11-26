@@ -132,7 +132,7 @@ async function setup(
 
 function document_createContainer() {
   const container = globalThis.document.createElement('div')
-  container.className = 'bg-mixed-background text-on-surface'
+  container.className = 'bg-surface-container dark:bg-surface text-on-surface'
   globalThis.document.body.append(container)
   return container
 }

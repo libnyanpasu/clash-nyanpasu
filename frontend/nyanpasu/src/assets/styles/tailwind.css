@@ -167,20 +167,14 @@
   --animate-row-enter: row-enter 250ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Transitional surface aliases mapped to canonical A17 / M3E surface roles.
-   Light uses surface-container backdrop under pure-white surface-container-lowest
-   cards; dark uses near-black surface backdrop under lifted surface-container cards. */
+/* Status palette colors that stay fixed across the tonal surface ladder. */
 @theme {
-  --color-mixed-background: var(--color-surface-container);
-  --color-pane: var(--color-surface-container-low);
-  --color-code: var(--color-surface-container-lowest);
   --color-tc: #74777f;
   --color-ok: #1b6d3b;
   --color-warn: #8a5100;
 }
 
 .dark {
-  --color-mixed-background: var(--color-surface);
   --color-tc: #8e9099;
   --color-ok: #7bdc95;
   --color-warn: #ffb870;

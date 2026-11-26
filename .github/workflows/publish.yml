@@ -69,7 +69,7 @@ jobs:
         run: pnpm run test:release
 
       - name: Install git-cliff
-        uses: taiki-e/install-action@v2.90.8
+        uses: taiki-e/install-action@v2.90.11
         with:
           tool: git-cliff
 

@@ -202,4 +202,62 @@ describe('frontend package boundaries', () => {
       ),
     )
   })
+
+  it('keeps @nyanpasu/gallery decoupled from app, RPC, query, platform, and Tauri', () => {
+    const issues = checkFrontendBoundaries(
+      [
+        {
+          ...sharedPackage('@nyanpasu/gallery', {
+            dependencies: {
+              '@nyanpasu/nyanpasu': 'workspace:^',
+              '@nyanpasu/rpc': 'workspace:^',
+            },
+            sources: [
+              {
+                path: 'frontend/gallery/src/main.tsx',
+                imports: ['@nyanpasu/query', '@tauri-apps/api/core'],
+              },
+            ],
+          }),
+          role: 'app' as const,
+        },
+        {
+          ...sharedPackage('@nyanpasu/nyanpasu'),
+          role: 'app' as const,
+        },
+        sharedPackage('@nyanpasu/rpc'),
+        sharedPackage('@nyanpasu/query'),
+      ],
+      root,
+    )
+
+    assert(
+      issues.some((issue) =>
+        issue.includes(
+          '@nyanpasu/gallery: dependency on @nyanpasu/nyanpasu crosses its package boundary',
+        ),
+      ),
+    )
+    assert(
+      issues.some((issue) =>
+        issue.includes(
+          '@nyanpasu/gallery: dependency on @nyanpasu/rpc crosses its package boundary',
+        ),
+      ),
+    )
+    assert(
+      issues.some((issue) =>
+        issue.includes(
+          '@nyanpasu/gallery: import @nyanpasu/query crosses its package boundary',
+        ),
+      ),
+    )
+    assert(
+      issues.some((issue) =>
+        issue.includes(
+          '@nyanpasu/gallery: import @tauri-apps/api/core crosses its package boundary',
+        ),
+      ),
+    )
+  })
 })

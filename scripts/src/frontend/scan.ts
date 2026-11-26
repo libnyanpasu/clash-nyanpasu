@@ -42,7 +42,12 @@ async function sourceFiles(directory: string): Promise<string[]> {
 }
 
 function roleFor(pathFromRoot: string): FrontendPackageRole {
-  if (pathFromRoot === 'frontend/nyanpasu') return 'app'
+  if (
+    pathFromRoot === 'frontend/nyanpasu' ||
+    pathFromRoot === 'frontend/gallery'
+  ) {
+    return 'app'
+  }
   return 'shared'
 }
 

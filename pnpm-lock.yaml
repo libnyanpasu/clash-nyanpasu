@@ -314,6 +314,73 @@ importers:
 
   frontend/constants: {}
 
+  frontend/gallery:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@internationalized/date':
+        specifier: 3.12.4
+        version: 3.12.4
+      '@nyanpasu/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@nyanpasu/theme':
+        specifier: workspace:^
+        version: link:../theme
+      '@nyanpasu/ui':
+        specifier: workspace:^
+        version: link:../ui
+      '@nyanpasu/utils':
+        specifier: workspace:^
+        version: link:../utils
+      class-variance-authority:
+        specifier: 0.7.1
+        version: 0.7.1
+      es-toolkit:
+        specifier: 1.53.2
+        version: 1.53.2
+      motion:
+        specifier: 14.14.0
+        version: 14.14.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react:
+        specifier: 19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@csstools/normalize.css':
+        specifier: 12.1.1
+        version: 12.1.1
+      '@iconify/json':
+        specifier: 2.2.562
+        version: 2.2.562
+      '@tailwindcss/vite':
+        specifier: 4.3.5
+        version: 4.3.5(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      '@types/node':
+        specifier: 26.6.11
+        version: 26.6.11
+      '@types/react':
+        specifier: 19.3.3
+        version: 19.3.3
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.3)
+      '@vitejs/plugin-react':
+        specifier: 6.3.0
+        version: 6.3.0(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      tailwindcss:
+        specifier: 4.3.5
+        version: 4.3.5
+      unplugin-icons:
+        specifier: 24.0.0
+        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vite:
+        specifier: 8.4.0
+        version: 8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
+
   frontend/hooks:
     dependencies:
       '@nyanpasu/constants':
@@ -4546,9 +4613,6 @@ packages:
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
 
-  confbox@0.2.2:
-    resolution: {integrity: sha512-1NB+BKqhtNipMsov4xI/NnhCKp9XG9NamYp5PVm9klAT0fsrNPjaFICsCFhNhwZJKNh7zB/3q8qXz0E9oaMNtQ==}
-
   confbox@0.2.4:
     resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
 
@@ -5024,9 +5088,6 @@ packages:
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
-
-  exsolve@1.0.7:
-    resolution: {integrity: sha512-VO5fQUzZtI6C+vx4w/4BWJpg3s/5l+6pRQEHzFRM8WFi4XffSP1Z+4qi7GbjWbvRQEbdIco5mIMq+zX4rPuLrw==}
 
   exsolve@1.1.1:
     resolution: {integrity: sha512-9U/jZUgjnSGyntRr6y5Muu1MJcwFl6kPu7k8qLF0IMNfLqvw0NZ4nnVDq0RVoZ0RvCyumib4Ez3KYrVfilrw+g==}
@@ -5723,9 +5784,6 @@ packages:
     resolution: {integrity: sha512-lKwV/1brpG6mBUFHtb7NUmtABCb2WZZmm2wNiOA5hAb8VdCS4B3dtMWyvcoViccwAW/COERjXLt0zP1zXUN26g==}
     engines: {node: '>=10'}
 
-  mlly@1.8.0:
-    resolution: {integrity: sha512-l8D9ODSRWLe2KHJSifWGwBqpTZXIXTeo8mlKjY+E2HAakaTeNpqAyBZ8GSqLzHgw4XmHmC8whvpjJNMbFZN7/g==}
-
   mlly@1.8.2:
     resolution: {integrity: sha512-d+ObxMQFmbt10sretNDytwt85VrbkhhUA/JBGm1MPaWJ65Cl4wOgLaB1NYvJSZ0Ef03MMEU/0xpPMXUIQ29UfA==}
 
@@ -5977,9 +6035,6 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
-
-  pkg-types@2.3.0:
-    resolution: {integrity: sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==}
 
   pkg-types@2.3.1:
     resolution: {integrity: sha512-y+ichcgc2LrADuhLNAx8DFjVfgz91pRxfZdI3UDhxHvcVEZsenLO+7XaU5vOp0u/7V/wZ+plyuQxtrDlZJ+yeg==}
@@ -6681,9 +6736,6 @@ packages:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
     hasBin: true
-
-  ufo@1.6.1:
-    resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -10718,8 +10770,6 @@ snapshots:
 
   confbox@0.1.8: {}
 
-  confbox@0.2.2: {}
-
   confbox@0.2.4: {}
 
   connect-history-api-fallback@1.6.0: {}
@@ -11207,8 +11257,6 @@ snapshots:
 
   expect-type@1.4.0: {}
 
-  exsolve@1.0.7: {}
-
   exsolve@1.1.1: {}
 
   ext@1.7.0:
@@ -11678,8 +11726,8 @@ snapshots:
 
   local-pkg@1.2.1:
     dependencies:
-      mlly: 1.8.0
-      pkg-types: 2.3.0
+      mlly: 1.8.2
+      pkg-types: 2.3.1
       quansync: 0.2.11
 
   lodash-es@4.18.1: {}
@@ -12117,13 +12165,6 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
-  mlly@1.8.0:
-    dependencies:
-      acorn: 8.18.0
-      pathe: 2.0.3
-      pkg-types: 1.3.1
-      ufo: 1.6.1
-
   mlly@1.8.2:
     dependencies:
       acorn: 8.18.0
@@ -12455,13 +12496,7 @@ snapshots:
   pkg-types@1.3.1:
     dependencies:
       confbox: 0.1.8
-      mlly: 1.8.0
-      pathe: 2.0.3
-
-  pkg-types@2.3.0:
-    dependencies:
-      confbox: 0.2.2
-      exsolve: 1.0.7
+      mlly: 1.8.2
       pathe: 2.0.3
 
   pkg-types@2.3.1:
@@ -13253,8 +13288,6 @@ snapshots:
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
 
-  ufo@1.6.1: {}
-
   ufo@1.6.4: {}
 
   unbash@6.0.4: {}
@@ -13373,11 +13406,12 @@ snapshots:
       '@iconify/utils': 3.1.7
       local-pkg: 1.2.1
       obug: 2.2.1
-      unplugin: 3.3.0(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.7.0(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
     optionalDependencies:
       '@svgr/core': 8.1.0(supports-color@7.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@farmfe/core'
+      - '@rsbuild/core'
       - '@rspack/core'
       - bun-types-no-globals
       - esbuild

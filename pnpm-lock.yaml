@@ -457,8 +457,8 @@ importers:
         specifier: 12.1.1
         version: 12.1.1
       '@iconify/json':
-        specifier: 2.2.561
-        version: 2.2.561
+        specifier: 2.2.562
+        version: 2.2.562
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.58.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -654,8 +654,8 @@ importers:
         version: 19.3.1(react@19.3.1)
     devDependencies:
       '@iconify/json':
-        specifier: 2.2.561
-        version: 2.2.561
+        specifier: 2.2.562
+        version: 2.2.562
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -1700,8 +1700,8 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
-  '@iconify/json@2.2.561':
-    resolution: {integrity: sha512-7fNqKYCmeu/2L9R5y5+EtHfotXP61cJeKvtfXotw/4kocYJ0BQrxUCvfN4RxlXXkoeNf9Ltp/wzOgnXYzltrZA==}
+  '@iconify/json@2.2.562':
+    resolution: {integrity: sha512-F8W7ybxpSLiAr43fiGnFUtzIIgaC5NvmdZEiuuLSSrnUjr3RU/rAtG64Pwa9RbgPaLLzrXNtPSvdrh7TXy6sDA==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -8219,7 +8219,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.561':
+  '@iconify/json@2.2.562':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3

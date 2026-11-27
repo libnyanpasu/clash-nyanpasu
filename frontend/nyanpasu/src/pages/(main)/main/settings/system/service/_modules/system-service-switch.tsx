@@ -1,3 +1,10 @@
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+  ItemTrailing,
+} from '@nyanpasu/ui/item-group'
 import { Switch } from '@nyanpasu/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
 import ServiceFallbackWarning from '@/components/settings/service-fallback-warning'
@@ -7,12 +14,6 @@ import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { usePlatform } from '@nyanpasu/platform/react'
 import { useServiceMode, useSystemService } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 
 export default function SystemServiceSwitch() {
   const serviceMode = useServiceMode()
@@ -58,21 +59,16 @@ export default function SystemServiceSwitch() {
   })
 
   return (
-    <ItemContainer data-slot="system-service-switch-container">
-      <ItemLabel>
-        <ItemLabelText>
-          {m.settings_system_proxy_service_mode_label()}
-        </ItemLabelText>
+    <Item data-slot="system-service-switch-container">
+      <ItemContent>
+        <ItemTitle>{m.settings_system_proxy_service_mode_label()}</ItemTitle>
 
-        <ItemLabelDescription>
+        <ItemDescription>
           {m.settings_system_proxy_service_mode_description()}
-        </ItemLabelDescription>
-      </ItemLabel>
+        </ItemDescription>
+      </ItemContent>
 
-      <div
-        className="flex shrink-0 items-center gap-2"
-        data-slot="system-service-switch-control"
-      >
+      <ItemTrailing data-slot="system-service-switch-control">
         <ServiceFallbackWarning />
 
         <Tooltip>
@@ -93,7 +89,7 @@ export default function SystemServiceSwitch() {
             </TooltipContent>
           )}
         </Tooltip>
-      </div>
-    </ItemContainer>
+      </ItemTrailing>
+    </Item>
   )
 }

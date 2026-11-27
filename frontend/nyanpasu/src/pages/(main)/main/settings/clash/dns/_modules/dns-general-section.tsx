@@ -1,4 +1,23 @@
+import { useState } from 'react'
+import {
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
 import { Input } from '@nyanpasu/ui/input'
+import {
+  Item,
+  ItemAction,
+  ItemContent,
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+  ItemSwitch,
+  ItemTitle,
+  ItemTrailing,
+} from '@nyanpasu/ui/item-group'
 import {
   Select,
   SelectContent,
@@ -6,19 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@nyanpasu/ui/select'
-import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { useClashSetting } from '@nyanpasu/query'
 import type { EnhancedMode, FakeIpFilterMode } from '@nyanpasu/rpc/types'
 import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
 } from '../../../../_modules/settings-card'
 import { useDnsDraft, type DnsValues } from './dns-draft'
 import { StringListField } from './list-fields'
@@ -59,30 +71,67 @@ function DnsSwitch({
   }
 
   return (
-    <SettingsCard data-slot="dns-switch-card">
-      <SettingsCardContent>
-        <ItemContainer>
-          <ItemLabel>
-            <ItemLabelText>{label}</ItemLabelText>
-
-            {description && (
-              <ItemLabelDescription>{description}</ItemLabelDescription>
-            )}
-          </ItemLabel>
-
-          <Switch
-            aria-label={label}
-            checked={locked || draft.dns[field]}
-            disabled={locked}
-            onCheckedChange={(checked) => updateDns({ [field]: checked })}
-          />
-        </ItemContainer>
-      </SettingsCardContent>
-    </SettingsCard>
+    <ItemSwitch
+      data-slot="dns-switch-card"
+      title={label}
+      description={description}
+      checked={locked || draft.dns[field]}
+      disabled={locked}
+      onCheckedChange={(checked) => updateDns({ [field]: checked })}
+    />
   )
 }
 
-/** A text `dns` key that may be left unset. */
+function DnsTextFieldDialog({
+  field,
+  label,
+  placeholder,
+}: {
+  field: 'listen' | 'fake-ip-range' | 'fake-ip-range6'
+  label: string
+  placeholder: string
+}) {
+  const { setOpen } = useDialog()
+  const { draft, updateDns } = useDnsDraft()
+  const current = draft.dns[field] ?? ''
+  const [value, setValue] = useState(current)
+
+  const handleSubmit = () => {
+    updateDns({ [field]: value.trim() || null })
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          data-slot="dns-text-field-card"
+          title={label}
+          description={current || placeholder}
+        />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title={label}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_cancel()}
+        onOpen={() => setValue(draft.dns[field] ?? '')}
+        onSubmit={handleSubmit}
+      >
+        <Input
+          variant="underlined"
+          aria-label={label}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          autoFocus
+        />
+      </FormDialogContent>
+    </>
+  )
+}
+
+/** A text `dns` key edited in an A17 FormDialog and left unset when empty. */
 function DnsTextField({
   field,
   label,
@@ -92,25 +141,20 @@ function DnsTextField({
   label: string
   placeholder: string
 }) {
-  const { draft, updateDns, reads } = useDnsDraft()
+  const { reads } = useDnsDraft()
 
   if (!reads(field)) {
     return null
   }
 
   return (
-    <SettingsCard data-slot="dns-text-field-card">
-      <SettingsCardContent>
-        <Input
-          label={label}
-          value={draft.dns[field] ?? ''}
-          placeholder={placeholder}
-          onChange={(event) =>
-            updateDns({ [field]: event.target.value.trim() || null })
-          }
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+    <Dialog>
+      <DnsTextFieldDialog
+        field={field}
+        label={label}
+        placeholder={placeholder}
+      />
+    </Dialog>
   )
 }
 
@@ -121,41 +165,37 @@ function EnhancedModeSelect() {
     features.enhanced_mode.kind === 'values' ? features.enhanced_mode.value : []
 
   return (
-    <SettingsCard data-slot="dns-enhanced-mode-card">
-      <SettingsCardContent>
-        <ItemContainer>
-          <ItemLabel>
-            <ItemLabelText>
-              {m.settings_clash_dns_enhanced_mode_label()}
-            </ItemLabelText>
-          </ItemLabel>
+    <Item data-slot="dns-enhanced-mode-card">
+      <ItemContent>
+        <ItemTitle>{m.settings_clash_dns_enhanced_mode_label()}</ItemTitle>
+      </ItemContent>
 
-          <Select
-            variant="chip"
-            value={draft.dns['enhanced-mode']}
-            onValueChange={(value) =>
-              updateDns({ 'enhanced-mode': value as EnhancedMode })
-            }
+      <ItemTrailing>
+        <Select
+          variant="chip"
+          value={draft.dns['enhanced-mode']}
+          onValueChange={(value) =>
+            updateDns({ 'enhanced-mode': value as EnhancedMode })
+          }
+        >
+          <SelectTrigger
+            aria-label={m.settings_clash_dns_enhanced_mode_label()}
           >
-            <SelectTrigger
-              aria-label={m.settings_clash_dns_enhanced_mode_label()}
-            >
-              <SelectValue>
-                {ENHANCED_MODE_LABELS[draft.dns['enhanced-mode']]}
-              </SelectValue>
-            </SelectTrigger>
+            <SelectValue>
+              {ENHANCED_MODE_LABELS[draft.dns['enhanced-mode']]}
+            </SelectValue>
+          </SelectTrigger>
 
-            <SelectContent>
-              {modes.map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  {ENHANCED_MODE_LABELS[mode]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </ItemContainer>
-      </SettingsCardContent>
-    </SettingsCard>
+          <SelectContent>
+            {modes.map((mode) => (
+              <SelectItem key={mode} value={mode}>
+                {ENHANCED_MODE_LABELS[mode]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </ItemTrailing>
+    </Item>
   )
 }
 
@@ -170,10 +210,14 @@ function FakeIpSettings() {
   const filterMode = draft.dns['fake-ip-filter-mode']
 
   return (
-    <div data-slot="dns-fake-ip-settings">
-      <SettingsLabel>{m.settings_clash_dns_fake_ip_label()}</SettingsLabel>
+    <ItemSection data-slot="dns-fake-ip-settings">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_dns_fake_ip_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <DnsTextField
           field="fake-ip-range"
           label={m.settings_clash_dns_fake_ip_range_label()}
@@ -187,43 +231,41 @@ function FakeIpSettings() {
         />
 
         {reads('fake-ip-filter-mode') && (
-          <SettingsCard data-slot="dns-fake-ip-filter-mode-card">
-            <SettingsCardContent>
-              <ItemContainer>
-                <ItemLabel>
-                  <ItemLabelText>
-                    {m.settings_clash_dns_fake_ip_filter_mode_label()}
-                  </ItemLabelText>
-                </ItemLabel>
+          <Item data-slot="dns-fake-ip-filter-mode-card">
+            <ItemContent>
+              <ItemTitle>
+                {m.settings_clash_dns_fake_ip_filter_mode_label()}
+              </ItemTitle>
+            </ItemContent>
 
-                <Select
-                  variant="chip"
-                  value={filterMode}
-                  onValueChange={(value) =>
-                    updateDns({
-                      'fake-ip-filter-mode': value as FakeIpFilterMode,
-                    })
-                  }
+            <ItemTrailing>
+              <Select
+                variant="chip"
+                value={filterMode}
+                onValueChange={(value) =>
+                  updateDns({
+                    'fake-ip-filter-mode': value as FakeIpFilterMode,
+                  })
+                }
+              >
+                <SelectTrigger
+                  aria-label={m.settings_clash_dns_fake_ip_filter_mode_label()}
                 >
-                  <SelectTrigger
-                    aria-label={m.settings_clash_dns_fake_ip_filter_mode_label()}
-                  >
-                    <SelectValue>
-                      {FAKE_IP_FILTER_MODE_LABELS[filterMode]()}
-                    </SelectValue>
-                  </SelectTrigger>
+                  <SelectValue>
+                    {FAKE_IP_FILTER_MODE_LABELS[filterMode]()}
+                  </SelectValue>
+                </SelectTrigger>
 
-                  <SelectContent>
-                    {filterModes.map((mode) => (
-                      <SelectItem key={mode} value={mode}>
-                        {FAKE_IP_FILTER_MODE_LABELS[mode]()}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </ItemContainer>
-            </SettingsCardContent>
-          </SettingsCard>
+                <SelectContent>
+                  {filterModes.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {FAKE_IP_FILTER_MODE_LABELS[mode]()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ItemTrailing>
+          </Item>
         )}
 
         <SettingsCard data-slot="dns-fake-ip-filter-card">
@@ -243,8 +285,8 @@ function FakeIpSettings() {
             />
           </SettingsCardContent>
         </SettingsCard>
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
@@ -255,10 +297,14 @@ export default function DnsGeneralSection() {
 
   return (
     <>
-      <div data-slot="dns-general-settings">
-        <SettingsLabel>{m.settings_clash_dns_general_label()}</SettingsLabel>
+      <ItemSection data-slot="dns-general-settings">
+        <ItemSectionHeader>
+          <ItemSectionTitle>
+            {m.settings_clash_dns_general_label()}
+          </ItemSectionTitle>
+        </ItemSectionHeader>
 
-        <SettingsGroup>
+        <ItemGroup>
           <DnsSwitch
             field="enable"
             label={m.settings_clash_dns_enable_label()}
@@ -300,8 +346,8 @@ export default function DnsGeneralSection() {
             field="prefer-h3"
             label={m.settings_clash_dns_prefer_h3_label()}
           />
-        </SettingsGroup>
-      </div>
+        </ItemGroup>
+      </ItemSection>
 
       {draft.dns['enhanced-mode'] === 'fake-ip' && <FakeIpSettings />}
     </>

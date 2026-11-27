@@ -1,15 +1,10 @@
 import { useMemo } from 'react'
-import { Switch } from '@nyanpasu/ui/switch'
+import { ItemSwitch } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashConfig } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 
 export default function IPv6Switch() {
   const { query, upsert } = useClashConfig()
@@ -31,16 +26,12 @@ export default function IPv6Switch() {
   })
 
   return (
-    <ItemContainer data-slot="ipv6-switch-container">
-      <ItemLabel>
-        <ItemLabelText>{m.settings_clash_settings_ipv6_label()}</ItemLabelText>
-      </ItemLabel>
-
-      <Switch
-        checked={Boolean(value)}
-        onCheckedChange={handleIPv6}
-        loading={upsert.isPending}
-      />
-    </ItemContainer>
+    <ItemSwitch
+      data-slot="ipv6-switch-container"
+      title={m.settings_clash_settings_ipv6_label()}
+      checked={Boolean(value)}
+      onCheckedChange={handleIPv6}
+      loading={upsert.isPending}
+    />
   )
 }

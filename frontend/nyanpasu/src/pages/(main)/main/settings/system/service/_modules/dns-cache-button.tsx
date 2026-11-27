@@ -1,18 +1,9 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { Button } from '@nyanpasu/ui/button'
+import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { rpc } from '@/services/rpc'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 
 export default function DnsCacheButton() {
   const handleFlushDnsCache = useLockFn(async () => {
@@ -30,29 +21,11 @@ export default function DnsCacheButton() {
   })
 
   return (
-    <SettingsCard data-slot="dns-cache-button-card">
-      <SettingsCardContent asChild>
-        <Button
-          className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base"
-          onClick={handleFlushDnsCache}
-        >
-          <ItemContainer>
-            <ItemLabel>
-              <ItemLabelText>
-                {m.settings_system_proxy_dns_cache_label()}
-              </ItemLabelText>
-
-              <ItemLabelDescription>
-                {m.settings_system_proxy_dns_cache_description()}
-              </ItemLabelDescription>
-            </ItemLabel>
-
-            <div>
-              <ArrowForwardIosRounded />
-            </div>
-          </ItemContainer>
-        </Button>
-      </SettingsCardContent>
-    </SettingsCard>
+    <ItemAction
+      data-slot="dns-cache-button-card"
+      title={m.settings_system_proxy_dns_cache_label()}
+      description={m.settings_system_proxy_dns_cache_description()}
+      onClick={handleFlushDnsCache}
+    />
   )
 }

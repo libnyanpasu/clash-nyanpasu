@@ -1,32 +1,25 @@
-import { motion } from 'motion/react'
 import { ComponentProps } from 'react'
 import { AnimatedItem } from '@nyanpasu/ui/animated-item'
 import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { ItemGroup, itemSectionTitleVariants } from '@nyanpasu/ui/item-group'
 import { cn } from '@nyanpasu/utils'
 
 export function SettingsLabel({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('text-on-primary-container px-3 py-3 text-sm', className)}
+      className={cn(itemSectionTitleVariants(), 'px-4 pt-3 pb-2', className)}
       data-slot="settings-label"
       {...props}
     />
   )
 }
 
-export function SettingsGroup({ className, ...props }: ComponentProps<'div'>) {
+export function SettingsGroup({
+  className,
+  ...props
+}: ComponentProps<typeof ItemGroup>) {
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1 *:transition-[border-radius]',
-        '[&>*:first-child:not(:only-child)]:rounded-b-extra-small',
-        '[&>*:last-child:not(:only-child)]:rounded-t-extra-small',
-        '[&>*:not(:first-child):not(:last-child)]:rounded-extra-small',
-        className,
-      )}
-      data-slot="settings-group"
-      {...props}
-    />
+    <ItemGroup className={className} data-slot="settings-group" {...props} />
   )
 }
 
@@ -79,7 +72,10 @@ export function SettingsCardContent({
 export function ItemContainer({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex items-center justify-between gap-4', className)}
+      className={cn(
+        'flex w-full min-w-0 items-center justify-between gap-4 whitespace-normal',
+        className,
+      )}
       data-slot="settings-card-content-item-container"
       {...props}
     />
@@ -89,7 +85,10 @@ export function ItemContainer({ className, ...props }: ComponentProps<'div'>) {
 export function ItemLabel({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex flex-col gap-0.5', className)}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col gap-0.5 text-left',
+        className,
+      )}
       data-slot="settings-card-content-item-label"
       {...props}
     />

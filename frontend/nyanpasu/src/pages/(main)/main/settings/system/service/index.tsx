@@ -1,3 +1,9 @@
+import {
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+} from '@nyanpasu/ui/item-group'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { RestrictedContent } from '@/components/auth/restricted-content'
@@ -5,12 +11,6 @@ import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { Platform, PlatformWindows } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../_modules/settings-card'
 import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import DnsCacheButton from './_modules/dns-cache-button'
 import SilentLaunchSwitch from './_modules/slient-launch-switch'
@@ -25,61 +25,57 @@ export const Route = createFileRoute('/(main)/main/settings/system/service/')({
 
 const SystemService = () => {
   return (
-    <div data-slot="system-service-container">
-      <SettingsLabel>
-        {m.settings_system_proxy_system_service_ctrl_label()}
-      </SettingsLabel>
+    <ItemSection data-slot="system-service-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_system_proxy_system_service_ctrl_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <SystemServiceSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
+      <ItemGroup>
+        <SystemServiceSwitch />
 
         <SystemServiceCtrl />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const SystemLaunch = () => {
   return (
-    <div data-slot="system-launch-container">
-      <SettingsLabel>{m.settings_system_proxy_launch_label()}</SettingsLabel>
+    <ItemSection data-slot="system-launch-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_system_proxy_launch_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <AutoLaunchSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
+      <ItemGroup>
+        <AutoLaunchSwitch />
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <SilentLaunchSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
-      </SettingsGroup>
-    </div>
+        <SilentLaunchSwitch />
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const SystemTools = () => {
   return (
-    <div data-slot="system-tools-container">
-      <SettingsLabel>
-        {m.settings_system_proxy_system_tools_label()}
-      </SettingsLabel>
+    <ItemSection data-slot="system-tools-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_system_proxy_system_tools_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <DnsCacheButton />
 
         <PlatformWindows>
           <UwpToolsButton />
         </PlatformWindows>
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 

@@ -729,7 +729,7 @@ mod tests {
             field: "overrides.allow_lan",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    allow_lan: Some(true),
+                    allow_lan: Some(ManageableField::Managed(true)),
                     ..ClashGuardOverridesPatch::default()
                 })
             },
@@ -769,7 +769,7 @@ mod tests {
             field: "overrides.tcp_concurrent",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    tcp_concurrent: Some(ManageableField::Unmanaged),
+                    tcp_concurrent: Some(ManageableField::Managed(true)),
                     ..ClashGuardOverridesPatch::default()
                 })
             },
@@ -779,7 +779,7 @@ mod tests {
             field: "overrides.ipv6",
             candidate: || {
                 overrides_patch(ClashGuardOverridesPatch {
-                    ipv6: Some(true),
+                    ipv6: Some(ManageableField::Managed(true)),
                     ..ClashGuardOverridesPatch::default()
                 })
             },

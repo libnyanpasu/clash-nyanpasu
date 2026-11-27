@@ -9,11 +9,11 @@ import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
+import ManagedGuardFieldSelector from '../_modules/managed-guard-field-selector'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
 import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
 import LatencyTestConfig from './_modules/latency-test-config'
-import ManagedGuardFieldSelector from './_modules/managed-guard-field-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/clash/core/')({
   component: RouteComponent,

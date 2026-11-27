@@ -5,7 +5,7 @@ use std::sync::{
 
 use axum::{Router, extract::State, http::StatusCode, routing::delete};
 use futures_util::FutureExt;
-use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, Mode};
+use nyanpasu_config::clash::config::overrides::{ClashGuardOverridesPatch, ManageableField, Mode};
 use nyanpasu_core_manager::{CoreError, OperationId};
 use nyanpasu_ipc::api::{
     core::v2::{CoreApiConnection, OperationInfo},
@@ -259,7 +259,7 @@ async fn disabled_policy_and_non_mode_patches_do_not_close_connections() {
         let outcome = f
             .client
             .patch_runtime_overrides(ClashGuardOverridesPatch {
-                ipv6: Some(true),
+                ipv6: Some(ManageableField::Managed(true)),
                 ..Default::default()
             })
             .await
@@ -414,7 +414,7 @@ async fn lifecycle_work_cannot_overtake_pending_interruption() {
             tokio::spawn(async move {
                 client
                     .patch_runtime_overrides(ClashGuardOverridesPatch {
-                        ipv6: Some(true),
+                        ipv6: Some(ManageableField::Managed(true)),
                         ..Default::default()
                     })
                     .await
@@ -1094,7 +1094,7 @@ async fn unchanged_mode_with_another_override_applies_without_interruption() {
         .client
         .patch_runtime_overrides(ClashGuardOverridesPatch {
             mode: Some(mode),
-            ipv6: Some(true),
+            ipv6: Some(ManageableField::Managed(true)),
             ..Default::default()
         })
         .await
@@ -1621,7 +1621,7 @@ async fn a_synced_change_to_the_same_setting_clears_the_tray_row() {
     let current = inner.clash_config.snapshot();
     let mut next = current.state.clone();
     next.overrides.apply(ClashGuardOverridesPatch {
-        allow_lan: Some(true),
+        allow_lan: Some(ManageableField::Managed(true)),
         ..Default::default()
     });
     let merged = nyanpasu_config::sync::project_clash(&next).unwrap();
@@ -2220,7 +2220,7 @@ async fn a_settings_change_to_the_same_setting_clears_the_tray_row() {
     // Another override from the settings page leaves it.
     f.client
         .patch_runtime_overrides(ClashGuardOverridesPatch {
-            allow_lan: Some(true),
+            allow_lan: Some(ManageableField::Managed(true)),
             ..Default::default()
         })
         .await

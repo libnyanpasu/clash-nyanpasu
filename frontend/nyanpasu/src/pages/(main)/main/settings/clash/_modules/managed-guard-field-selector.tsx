@@ -11,7 +11,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
-import { useClashConfig, useClashSettings } from '@nyanpasu/query'
+import {
+  useClashAccess,
+  useClashConfig,
+  useClashSettings,
+} from '@nyanpasu/query'
 import type { ManageableField } from '@nyanpasu/rpc/types'
 import {
   ItemContainer,
@@ -20,15 +24,18 @@ import {
   ItemLabelText,
   SettingsCard,
   SettingsCardContent,
-} from '../../../../_modules/settings-card'
+} from '../../../_modules/settings-card'
 
-type ManagedGuardField = 'unified-delay' | 'tcp-concurrent'
+type ManagedGuardField =
+  'unified-delay' | 'tcp-concurrent' | 'ipv6' | 'allow-lan'
 
 type ManagedGuardOption = 'unmanaged' | 'enabled' | 'disabled'
 
 const FIELD_LABELS = {
   'unified-delay': m.settings_clash_settings_unified_delay_label,
   'tcp-concurrent': m.settings_clash_settings_tcp_concurrent_label,
+  ipv6: m.settings_clash_settings_ipv6_label,
+  'allow-lan': m.settings_clash_settings_allow_lan_label,
 } satisfies Record<ManagedGuardField, () => string>
 
 const OPTION_LABELS = {
@@ -52,7 +59,8 @@ const toField = (option: ManagedGuardOption): ManageableField<boolean> =>
 
 /**
  * A runtime config field Nyanpasu either forces to a value or leaves to the
- * profiles, so a subscription or Merge transform can set it.
+ * profiles, so a subscription or Merge transform can set it. `allow-lan` is
+ * the controller exposure and is written through its own request.
  */
 export default function ManagedGuardFieldSelector({
   field,
@@ -62,7 +70,8 @@ export default function ManagedGuardFieldSelector({
   const { query: clashSettings } = useClashSettings()
   const overrides = clashSettings.data?.overrides
 
-  const { upsert } = useClashConfig()
+  const { upsert: upsertSettings } = useClashConfig()
+  const { upsert: upsertAccess } = useClashAccess()
 
   const current = useMemo(() => {
     const value = overrides?.[field]
@@ -71,7 +80,11 @@ export default function ManagedGuardFieldSelector({
 
   const handleChange = useLockFn(async (option: ManagedGuardOption) => {
     try {
-      await upsert.mutateAsync({ [field]: toField(option) })
+      if (field === 'allow-lan') {
+        await upsertAccess.mutateAsync({ 'allow-lan': toField(option) })
+      } else {
+        await upsertSettings.mutateAsync({ [field]: toField(option) })
+      }
     } catch (error) {
       message(`Update ${field} failed!\n Error: ${formatError(error)}`, {
         title: 'Error',

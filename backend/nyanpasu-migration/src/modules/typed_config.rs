@@ -523,6 +523,10 @@ fn current_revision() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    fn managed(value: bool) -> Value {
+        yaml_serde::from_str(&format!("{{kind: managed, value: {value}}}")).unwrap()
+    }
+
     use super::*;
     use crate::{
         fake_hotkey_store::FakeHotkeyStoreOpener, legacy_schema::WindowState as LegacyWindowState,
@@ -725,9 +729,9 @@ mod tests {
         let repaired: ClashConfig = read_typed(&ctx.clash_config_path());
         let overrides = yaml_serde::to_value(&repaired.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
-        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&managed(true)));
         assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(true)));
     }
 
     #[test]
@@ -977,8 +981,8 @@ mod tests {
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
         let overrides = yaml_serde::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
-        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&managed(true)));
         assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
         assert_eq!(
             overrides.get("log-level"),
@@ -997,8 +1001,8 @@ mod tests {
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
         let overrides = yaml_serde::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
-        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&managed(true)));
         assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
         assert_eq!(
             overrides.get("log-level"),
@@ -1027,8 +1031,8 @@ mod tests {
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
         let overrides = yaml_serde::to_value(&clash.overrides).unwrap();
         let overrides = overrides.as_mapping().unwrap();
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
-        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&managed(true)));
         assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
         assert_eq!(
             overrides.get("log-level"),
@@ -1050,7 +1054,7 @@ mod tests {
         assert_eq!(clash.mixed_port.start_port, 7890);
         assert_eq!(clash.external_controller.host.to_string(), "127.0.0.1");
         assert_eq!(clash.external_controller.port.start_port, 19090);
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(true)));
     }
 
     #[test]
@@ -1073,7 +1077,7 @@ mod tests {
             overrides.get("log-level"),
             Some(&Value::String("info".into()))
         );
-        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(false)));
-        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(false)));
+        assert_eq!(overrides.get("allow-lan"), Some(&managed(false)));
+        assert_eq!(overrides.get("ipv6"), Some(&managed(false)));
     }
 }

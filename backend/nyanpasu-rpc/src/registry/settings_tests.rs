@@ -529,7 +529,7 @@ fn scope_boundary_cases() -> Vec<(&'static str, Resource, Value, Value)> {
         (
             "patch_runtime_overrides",
             Resource::Settings,
-            json!({"patch": {"ipv6": true}}),
+            json!({"patch": {"ipv6": {"kind": "managed", "value": true}}}),
             json!({"mode": "global"}),
         ),
         (
@@ -657,7 +657,7 @@ async fn the_whole_override_record_and_kebab_case_keys_are_refused_without_a_com
     for (name, patch, key) in [
         (
             "patch_runtime_overrides",
-            json!({"allow-lan": false}),
+            json!({"allow-lan": {"kind": "unmanaged"}}),
             "allow-lan",
         ),
         (
@@ -667,7 +667,7 @@ async fn the_whole_override_record_and_kebab_case_keys_are_refused_without_a_com
         ),
         (
             "patch_runtime_access",
-            json!({"ipv6": false, "secret": "x"}),
+            json!({"ipv6": {"kind": "unmanaged"}, "secret": "x"}),
             "ipv6",
         ),
     ] {

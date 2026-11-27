@@ -37,12 +37,14 @@ static TUN_OVERRIDES: MigrateTunOverrides = MigrateTunOverrides;
 static TUN_MIPS: MigrateTunMips = MigrateTunMips;
 static SCRIPT_MODE: MigrateScriptMode = MigrateScriptMode;
 static DNS_CONTROL: MigrateDnsControl = MigrateDnsControl;
-static STEPS: [&dyn MigrationStep; 5] = [
+static MANAGEABLE_ACCESS_FIELDS: MigrateManageableAccessFields = MigrateManageableAccessFields;
+static STEPS: [&dyn MigrationStep; 6] = [
     &MANAGEABLE_GUARD_FIELDS,
     &TUN_OVERRIDES,
     &TUN_MIPS,
     &SCRIPT_MODE,
     &DNS_CONTROL,
+    &MANAGEABLE_ACCESS_FIELDS,
 ];
 
 /// Revisions up to here were written without a stamp. Frozen: nothing before
@@ -54,7 +56,7 @@ pub struct ClashConfigDocument;
 
 impl StampedDocument for ClashConfigDocument {
     const DOCUMENT: &'static str = "clash_config";
-    const SCHEMA_REVISION: u64 = 5;
+    const SCHEMA_REVISION: u64 = 6;
 }
 
 /// How the running app reads and writes `clash-config.yaml`.
@@ -126,6 +128,14 @@ pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError
     if revision < DNS_CONTROL.revision() {
         add_dns_control(&mut payload);
     }
+    if revision < MANAGEABLE_ACCESS_FIELDS.revision() {
+        manage_access_fields(&mut payload).map_err(|source| {
+            MigrationCheckError::MigrateClashOverrides {
+                path: path.to_owned(),
+                source: Box::new(source),
+            }
+        })?;
+    }
     yaml_serde::from_value(Value::Mapping(payload)).map_err(|source| MigrationCheckError::Parse {
         path: path.to_path_buf(),
         source,
@@ -133,7 +143,7 @@ pub(crate) fn read_typed(path: &Path) -> Result<ClashConfig, MigrationCheckError
 }
 
 const OVERRIDES_KEY: &str = "overrides";
-const MANAGEABLE_GUARD_KEYS: [&str; 2] = ["unified-delay", "tcp-concurrent"];
+pub(crate) const MANAGEABLE_GUARD_KEYS: [&str; 2] = ["unified-delay", "tcp-concurrent"];
 
 /// Turns the boolean `unified-delay` and `tcp-concurrent` overrides into
 /// managed fields holding the same value, so the runtime config keeps what
@@ -192,15 +202,19 @@ fn manage_guard_fields(payload: &mut Mapping) -> Result<(), Error> {
         }
         .fail();
     };
-    manage_override_fields(overrides)
+    manage_override_fields(overrides, &MANAGEABLE_GUARD_KEYS)
 }
 
-/// The conversion of [`MigrateManageableGuardFields`] on the overrides
-/// mapping itself, which the legacy conversion shares. A field already in the
-/// managed shape is left alone: `typed_config` may have written the file at
-/// head before this step runs on it.
-pub(crate) fn manage_override_fields(overrides: &mut Mapping) -> Result<(), Error> {
-    for key in MANAGEABLE_GUARD_KEYS {
+/// The conversion of [`MigrateManageableGuardFields`] and
+/// [`MigrateManageableAccessFields`] on the overrides mapping itself, which the
+/// legacy conversion shares. A field already in the managed shape is left
+/// alone: `typed_config` may have written the file at head before a step runs
+/// on it.
+pub(crate) fn manage_override_fields(
+    overrides: &mut Mapping,
+    keys: &[&'static str],
+) -> Result<(), Error> {
+    for &key in keys {
         let Some(value) = overrides.get_mut(key) else {
             continue;
         };
@@ -468,6 +482,68 @@ fn add_dns_control(payload: &mut Mapping) {
     }
 }
 
+pub(crate) const MANAGEABLE_ACCESS_KEYS: [&str; 2] = ["allow-lan", "ipv6"];
+
+/// Turns the boolean `allow-lan` and `ipv6` overrides into managed fields
+/// holding the same value, so the runtime config keeps what it had. Either can
+/// then be left to the profiles.
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateManageableAccessFields;
+
+impl MigrationStep for MigrateManageableAccessFields {
+    fn id(&self) -> &'static str {
+        "clash_config/manageable_access_fields"
+    }
+
+    fn module(&self) -> &'static str {
+        "clash_config"
+    }
+
+    fn revision(&self) -> u64 {
+        6
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateManageableAccessFields"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> Result<(), super::super::OperationError> {
+        (|| -> Result<(), Error> {
+            let path = ctx.clash_config_path();
+            let file = read_document(&path, ClashConfigDocument::DOCUMENT)?
+                .context(FindDocumentSnafu { path: &path })?;
+            let mut payload = file.payload;
+            manage_access_fields(&mut payload)?;
+            write::write_document(
+                &path,
+                ClashConfigDocument::DOCUMENT,
+                self.revision(),
+                payload,
+                None,
+            )
+            .map_err(Into::into)
+        })()
+        .map_err(Into::into)
+    }
+}
+
+fn manage_access_fields(payload: &mut Mapping) -> Result<(), Error> {
+    let Some(overrides) = payload.get_mut(OVERRIDES_KEY) else {
+        return Ok(());
+    };
+    let Some(overrides) = overrides.as_mapping_mut() else {
+        return ReadMappingSnafu {
+            field: OVERRIDES_KEY,
+        }
+        .fail();
+    };
+    manage_override_fields(overrides, &MANAGEABLE_ACCESS_KEYS)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -567,6 +643,64 @@ mod tests {
         let mut config = payload("overrides:\n  tcp-concurrent: yes please\n");
 
         assert!(manage_guard_fields(&mut config).is_err());
+    }
+
+    #[test]
+    fn access_booleans_become_managed_with_the_same_value() {
+        let mut config = payload(
+            "overrides:\n  allow-lan: false\n  ipv6: true\n  \
+             unified-delay: {kind: unmanaged}\n",
+        );
+
+        manage_access_fields(&mut config).unwrap();
+
+        assert_eq!(
+            config,
+            payload(
+                "overrides:\n  allow-lan: {kind: managed, value: false}\n  \
+                 ipv6: {kind: managed, value: true}\n  unified-delay: {kind: unmanaged}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn access_fields_already_in_the_managed_shape_are_left_alone() {
+        let src = "overrides:\n  allow-lan: {kind: unmanaged}\n  \
+                   ipv6: {kind: managed, value: false}\n";
+        let mut config = payload(src);
+
+        manage_access_fields(&mut config).unwrap();
+
+        assert_eq!(config, payload(src));
+    }
+
+    #[test]
+    fn reading_a_revision_5_file_manages_the_access_fields() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("clash-config.yaml");
+        let Value::Mapping(mut revision_5) = yaml_serde::to_value(ClashConfig::default()).unwrap()
+        else {
+            unreachable!("the clash config serializes as a mapping");
+        };
+        let overrides = revision_5
+            .get_mut(OVERRIDES_KEY)
+            .and_then(Value::as_mapping_mut)
+            .unwrap();
+        overrides.insert("allow-lan".into(), true.into());
+        overrides.insert("ipv6".into(), false.into());
+        write::write_document(&path, ClashConfigDocument::DOCUMENT, 5, revision_5, None).unwrap();
+
+        let config = read_typed(&path).unwrap();
+        let overrides = serde_json::to_value(&config.overrides).unwrap();
+
+        assert_eq!(
+            overrides["allow-lan"],
+            serde_json::json!({"kind": "managed", "value": true})
+        );
+        assert_eq!(
+            overrides["ipv6"],
+            serde_json::json!({"kind": "managed", "value": false})
+        );
     }
 
     #[test]

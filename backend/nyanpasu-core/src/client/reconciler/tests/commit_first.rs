@@ -168,7 +168,9 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
         async move {
             client
                 .patch_runtime_overrides(ClashGuardOverridesPatch {
-                    ipv6: Some(true),
+                    ipv6: Some(
+                        nyanpasu_config::clash::config::overrides::ManageableField::Managed(true),
+                    ),
                     ..Default::default()
                 })
                 .await
@@ -190,7 +192,12 @@ async fn committed_rebuild_failure_stays_blocked_until_explicit_retry() {
     client
         .inner
         .clash_config
-        .patch_overrides(serde_json::from_value(serde_json::json!({"allow-lan": true})).unwrap())
+        .patch_overrides(
+            serde_json::from_value(
+                serde_json::json!({"allow-lan": {"kind": "managed", "value": true}}),
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     builder.release.notify_one();
@@ -612,7 +619,11 @@ async fn application_runtime_save_commits_while_clash_application_is_held() {
             client
                 .patch_runtime_overrides(
                     nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
-                        ipv6: Some(true),
+                        ipv6: Some(
+                            nyanpasu_config::clash::config::overrides::ManageableField::Managed(
+                                true,
+                            ),
+                        ),
                         ..Default::default()
                     },
                 )
@@ -797,7 +808,9 @@ async fn queued_commits_apply_only_the_latest_target() {
         async move {
             client
                 .patch_runtime_overrides(ClashGuardOverridesPatch {
-                    ipv6: Some(true),
+                    ipv6: Some(
+                        nyanpasu_config::clash::config::overrides::ManageableField::Managed(true),
+                    ),
                     ..Default::default()
                 })
                 .await
@@ -807,14 +820,19 @@ async fn queued_commits_apply_only_the_latest_target() {
     let second = client
         .inner
         .clash_config
-        .patch_overrides(serde_json::from_value(serde_json::json!({"allow-lan": true})).unwrap())
+        .patch_overrides(
+            serde_json::from_value(
+                serde_json::json!({"allow-lan": {"kind": "managed", "value": true}}),
+            )
+            .unwrap(),
+        )
         .await
         .unwrap();
     let latest = client
         .inner
         .clash_config
         .patch_overrides(ClashGuardOverridesPatch {
-            ipv6: Some(false),
+            ipv6: Some(nyanpasu_config::clash::config::overrides::ManageableField::Managed(false)),
             ..Default::default()
         })
         .await
@@ -863,7 +881,7 @@ async fn startup_and_retry_do_not_independently_check_committed_targets() {
     endpoint.set_failure(Some("queue_full"));
     let saved = client
         .patch_runtime_overrides(ClashGuardOverridesPatch {
-            ipv6: Some(true),
+            ipv6: Some(nyanpasu_config::clash::config::overrides::ManageableField::Managed(true)),
             ..Default::default()
         })
         .await

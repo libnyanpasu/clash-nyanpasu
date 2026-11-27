@@ -7,7 +7,7 @@ import {
   rpcWrapper,
   type RpcHandler,
 } from '../../query/tests/rpc-test-utils'
-import AllowLanSwitch from '../src/pages/(main)/main/settings/clash/network/_modules/allow-lan-switch'
+import AllowLanSettings from '../src/pages/(main)/main/settings/clash/network/_modules/allow-lan-settings'
 import { AllPermissions, withPermissions } from './all-permissions'
 
 const mocks = vi.hoisted(() => ({
@@ -51,6 +51,7 @@ async function mount(
         host: '0.0.0.0',
         port: { kind: 'fixed', start_port: 9090 },
       },
+      overrides: { 'allow-lan': { kind: 'unmanaged' } },
     }),
     get_clash_info: () => ({
       port: 7890,
@@ -65,7 +66,7 @@ async function mount(
   const Wrapper = rpcWrapper(testRpc.rpc, client)
   const view = await render(
     <Wrapper>
-      <AllowLanSwitch />
+      <AllowLanSettings />
     </Wrapper>,
     { wrapper },
   )

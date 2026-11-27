@@ -532,7 +532,7 @@ mod tests {
         assert!(!projection.payload.contains_key("mixed_port"));
 
         let mut remote = projection.clone();
-        remote.payload[OVERRIDES]["ipv6"] = json!(true);
+        remote.payload[OVERRIDES]["ipv6"] = json!({"kind": "managed", "value": true});
         let applied = apply_clash(&config, &remote).unwrap();
         assert_eq!(applied.overrides.secret(), config.overrides.secret());
         assert_eq!(project_clash(&applied).unwrap(), remote);

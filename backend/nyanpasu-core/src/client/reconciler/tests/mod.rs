@@ -814,7 +814,9 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
     assert!(f.client.promoted_runtime().await.is_some());
     let outcome = f
         .client
-        .patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":true})))
+        .patch_runtime_overrides(override_patch(
+            serde_json::json!({"ipv6":{"kind":"managed","value":true}}),
+        ))
         .await
         .unwrap();
     assert_eq!(
@@ -823,7 +825,7 @@ async fn an_unknown_apply_keeps_the_product_and_allows_source_commits() {
     );
     assert_eq!(
         serde_json::to_value(f.client.get_clash_config().await.unwrap().overrides).unwrap()["ipv6"],
-        true
+        serde_json::json!({"kind": "managed", "value": true})
     );
     assert_eq!(f.endpoint.submissions(), 1);
 }
@@ -881,14 +883,17 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
         disable_mode_interruption(&client).await;
         let (left, right) = tokio::join!(
             client.patch_runtime_overrides(override_patch(serde_json::json!({"mode":"global"}))),
-            client.patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":true})))
+            client.patch_runtime_overrides(override_patch(serde_json::json!({"ipv6":{"kind":"managed","value":true}})))
         );
         assert!(left.unwrap().degradations().is_empty());
         assert!(right.unwrap().degradations().is_empty());
         let saved =
             serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
         assert_eq!(saved["mode"], "global");
-        assert_eq!(saved["ipv6"], true);
+        assert_eq!(
+            saved["ipv6"],
+            serde_json::json!({"kind": "managed", "value": true})
+        );
         let applied = client.inner.reconciler.runtime().promoted.unwrap();
         assert_eq!(applied.config()["mode"].as_str(), Some("global"));
         assert_eq!(applied.config()["ipv6"].as_bool(), Some(true));
@@ -905,14 +910,20 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
         );
 
         let third = client
-            .patch_runtime_overrides(override_patch(serde_json::json!({"allow-lan": true})))
+            .patch_runtime_overrides(override_patch(serde_json::json!({"allow-lan": {"kind": "managed", "value": true}})))
             .await;
         assert!(third.unwrap().degradations().is_empty());
         let saved =
             serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
         assert_eq!(saved["mode"], "global");
-        assert_eq!(saved["ipv6"], true);
-        assert_eq!(saved["allow-lan"], true);
+        assert_eq!(
+            saved["ipv6"],
+            serde_json::json!({"kind": "managed", "value": true})
+        );
+        assert_eq!(
+            saved["allow-lan"],
+            serde_json::json!({"kind": "managed", "value": true})
+        );
         let applied = client.inner.reconciler.runtime().promoted.unwrap();
         assert_eq!(applied.config()["allow-lan"].as_bool(), Some(true));
         assert_eq!(endpoint.submissions(), concurrent_submissions + 1);

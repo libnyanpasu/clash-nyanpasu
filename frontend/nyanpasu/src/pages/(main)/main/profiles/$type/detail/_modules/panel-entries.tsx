@@ -1,5 +1,5 @@
-import { cva } from 'class-variance-authority'
 import { useEffect, useRef } from 'react'
+import { ItemGroup } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
 import {
@@ -11,16 +11,9 @@ import {
 } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { isChainProfile, isProxyProfile } from '../../../_modules/utils'
-import { SettingsGroup } from '../../../../_modules/settings-card'
 import { type DetailPanelKind } from './detail-panel'
 import { DetailRow } from './detail-section'
 import { mergeSyncRuns, runStatus } from './sync-history-run'
-
-const entryRowVariants = cva([
-  // The row whose panel is open reads as the selected one.
-  'data-selected:bg-secondary-container data-selected:hover:bg-secondary-container',
-  'dark:data-selected:bg-secondary-container dark:data-selected:hover:bg-secondary-container',
-])
 
 /** The text under a row's label, kept to one line. */
 function EntrySummary({ children }: { children: string }) {
@@ -65,10 +58,8 @@ function TransformsEntry({
     <DetailRow
       label={m.profile_chain_editor_title()}
       description={summary && <EntrySummary>{summary}</EntrySummary>}
-      aria-current={selected || undefined}
-      data-selected={selected || undefined}
+      selected={selected}
       data-panel="transforms"
-      className={entryRowVariants()}
       onClick={onOpen}
     />
   )
@@ -111,10 +102,8 @@ function SyncEntry({
     <DetailRow
       label={m.profile_sync_history_title()}
       description={<EntrySummary>{summary}</EntrySummary>}
-      aria-current={selected || undefined}
-      data-selected={selected || undefined}
+      selected={selected}
       data-panel="sync"
-      className={entryRowVariants()}
       onClick={onOpen}
     />
   )
@@ -158,7 +147,7 @@ export default function PanelEntries({
   }
 
   return (
-    <SettingsGroup ref={groupRef} data-slot="profile-detail-panel-entries">
+    <ItemGroup ref={groupRef} data-slot="profile-detail-panel-entries">
       {hasTransforms && (
         <TransformsEntry
           profile={profile}
@@ -174,6 +163,6 @@ export default function PanelEntries({
           onOpen={() => open('sync')}
         />
       )}
-    </SettingsGroup>
+    </ItemGroup>
   )
 }

@@ -63,7 +63,7 @@ function UserAgentEditorForm({
             <div className="space-y-2">
               <Input
                 label={m.profile_user_agent_label()}
-                variant="outlined"
+                variant="underlined"
                 {...field}
               />
 

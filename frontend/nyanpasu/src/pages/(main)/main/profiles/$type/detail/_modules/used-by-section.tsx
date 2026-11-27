@@ -1,12 +1,9 @@
+import { Item } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { isConfigItem, scopedTransformsOf } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../../_modules/consts'
-import {
-  SettingsCard,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 import { DetailRow, DetailSection } from './detail-section'
 
 /**
@@ -50,11 +47,12 @@ export default function UsedBySection({
       )}
 
       {hosts.length === 0 && !isGlobal && (
-        <SettingsCard data-slot="profile-detail-used-by-empty">
-          <SettingsCardContent className="text-on-surface-variant py-4 text-sm">
-            {m.profile_detail_used_by_empty()}
-          </SettingsCardContent>
-        </SettingsCard>
+        <Item
+          data-slot="profile-detail-used-by-empty"
+          className="text-on-surface-variant py-4 text-sm"
+        >
+          {m.profile_detail_used_by_empty()}
+        </Item>
       )}
     </DetailSection>
   )

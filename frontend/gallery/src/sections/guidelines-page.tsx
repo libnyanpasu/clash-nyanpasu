@@ -136,8 +136,8 @@ export function GuidelinesPage() {
       />
 
       <GuidelineComparison
-        title="5. Single-Line Inline Button Layout vs. Wrapped Icon + Label"
-        rule="Button defaults to inline-flex items-center justify-center gap-2 whitespace-nowrap with non-shrinking icons so labels and trailing/leading icons stay on one line. Only opt into whitespace-normal for intentional multi-line controls."
+        title="5. Single-Line Inline Button & Tab Layout vs. Wrapped Icon + Label"
+        rule="Button, SegmentedButtonItem, and AnimatedTabsItem default to inline/flex single-line layout (items-center justify-center whitespace-nowrap) with non-shrinking icons so labels and icons stay on one line. Only opt into whitespace-normal for intentional multi-line controls."
         doTitle="Single-line inline-flex button"
         doNote="Label and icon align horizontally on one line without extra flex classes at every call site."
         doDemo={

@@ -1,8 +1,15 @@
+import CheckCircleRounded from '~icons/material-symbols/check-circle-rounded'
 import DeleteRounded from '~icons/material-symbols/delete-rounded'
+import DescriptionRounded from '~icons/material-symbols/description-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
+import HelpRounded from '~icons/material-symbols/help-rounded'
+import LanguageRounded from '~icons/material-symbols/language-rounded'
 import MoreVertRounded from '~icons/material-symbols/more-vert-rounded'
 import NotificationsRounded from '~icons/material-symbols/notifications-rounded'
+import PaletteRounded from '~icons/material-symbols/palette-rounded'
+import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import ShareRounded from '~icons/material-symbols/share-rounded'
+import TuneRounded from '~icons/material-symbols/tune-rounded'
 import { useState } from 'react'
 import {
   Button,
@@ -19,10 +26,18 @@ import {
   DrawerHandle,
   DrawerTitle,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPillTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   LinearProgress,
   Modal,
@@ -77,6 +92,10 @@ export function OverlaysFeedbackPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [snackbarOpen, setSnackbarOpen] = useState(false)
   const [progress, setProgress] = useState(62)
+  const [sysProxy, setSysProxy] = useState(true)
+  const [tunMode, setTunMode] = useState(false)
+  const [proxyMode, setProxyMode] = useState('rule')
+  const [themeChoice, setThemeChoice] = useState('system')
 
   return (
     <div className="flex flex-col gap-6" data-slot="gallery-overlays-page">
@@ -230,6 +249,165 @@ export function OverlaysFeedbackPage() {
           </div>
         </SpecimenCard>
       </div>
+
+      <SpecimenCard
+        title="DropdownMenu (Launcher Variant & A17 Pill Trigger)"
+        description="Grouped asymmetric pill rows (28px outer, 8px inner corners) with spring-rotated chevron trigger, nested launcher submenus, checkboxes, and radio groups."
+        slots={[
+          'dropdown-menu-pill-trigger',
+          'dropdown-menu-content',
+          'dropdown-menu-group',
+          'dropdown-menu-item',
+        ]}
+        code={`<DropdownMenu variant="launcher" align="start">
+  <DropdownMenuPillTrigger>
+    <SettingsRounded className="size-5" />
+    <span>Settings</span>
+  </DropdownMenuPillTrigger>
+  <DropdownMenuContent sideOffset={6}>
+    <DropdownMenuGroup>
+      <DropdownMenuItem>
+        <DescriptionRounded className="size-5" />
+        <span>Import Profile</span>
+      </DropdownMenuItem>
+    </DropdownMenuGroup>
+    <DropdownMenuGroup>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <TuneRounded className="size-5" />
+          <span>Proxy Settings</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>
+          <DropdownMenuGroup>
+            <DropdownMenuCheckboxItem checked>System Proxy</DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </DropdownMenuGroup>
+  </DropdownMenuContent>
+</DropdownMenu>`}
+      >
+        <div className="flex flex-wrap items-center gap-4">
+          <DropdownMenu variant="launcher" align="start">
+            <DropdownMenuPillTrigger>
+              <SettingsRounded className="size-5 shrink-0" />
+              <span>Trebuchet</span>
+            </DropdownMenuPillTrigger>
+            <DropdownMenuContent sideOffset={6}>
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <DescriptionRounded className="size-5 shrink-0" />
+                  <span>Import Local Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <CheckCircleRounded className="size-5 shrink-0" />
+                  <span>Check Connectivity</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuGroup>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <PaletteRounded className="size-5 shrink-0" />
+                    <span>Theme Mode</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={themeChoice}
+                      onValueChange={setThemeChoice}
+                    >
+                      <DropdownMenuRadioItem value="light">
+                        Light
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="dark">
+                        Dark
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="system">
+                        System
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <TuneRounded className="size-5 shrink-0" />
+                    <span>Proxy Settings</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuGroup>
+                      <DropdownMenuCheckboxItem
+                        checked={sysProxy}
+                        onCheckedChange={setSysProxy}
+                      >
+                        System Proxy
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={tunMode}
+                        onCheckedChange={setTunMode}
+                      >
+                        TUN Mode
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuGroup>
+
+                    <DropdownMenuRadioGroup
+                      value={proxyMode}
+                      onValueChange={setProxyMode}
+                    >
+                      <DropdownMenuRadioItem value="rule">
+                        Rule Mode
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="global">
+                        Global Mode
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="direct">
+                        Direct Mode
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuItem>
+                  <LanguageRounded className="size-5 shrink-0" />
+                  <span>Language</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <HelpRounded className="size-5 shrink-0" />
+                  <span>Documentation</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu variant="launcher" align="start">
+            <DropdownMenuTrigger asChild>
+              <Button variant="stroked">Launcher from Button</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={6}>
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <EditRounded className="size-5 shrink-0" />
+                  <span>Edit configuration</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <ShareRounded className="size-5 shrink-0" />
+                  <span>Export YAML</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuGroup>
+                <DropdownMenuItem className="text-error">
+                  <DeleteRounded className="size-5 shrink-0" />
+                  <span>Delete profile</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </SpecimenCard>
 
       <SpecimenCard
         title="Progress Indicators, Tooltips & Snackbar"

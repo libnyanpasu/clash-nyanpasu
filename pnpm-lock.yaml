@@ -484,8 +484,8 @@ importers:
         specifier: 4.9.1
         version: 4.9.1(supports-color@7.2.0)
       mermaid:
-        specifier: 12.3.0
-        version: 12.3.0
+        specifier: 12.4.0
+        version: 12.4.0
       monaco-editor:
         specifier: 0.58.0
         version: 0.58.0
@@ -5671,8 +5671,8 @@ packages:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
 
-  mermaid@12.3.0:
-    resolution: {integrity: sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==}
+  mermaid@12.4.0:
+    resolution: {integrity: sha512-j2gvsGUFeS/53WdYLl9H5G2YtMZX9G/PlCvV3E5Pf4j5XSnK19DwazU6wki7OTcKeYKed7+qujRDLhy8NV2zBg==}
     engines: {node: '>=22.12.0'}
 
   meta-json-schema@1.19.34:
@@ -11933,7 +11933,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  mermaid@12.3.0:
+  mermaid@12.4.0:
     dependencies:
       '@braintree/sanitize-url': 7.1.2
       '@iconify/utils': 3.1.7

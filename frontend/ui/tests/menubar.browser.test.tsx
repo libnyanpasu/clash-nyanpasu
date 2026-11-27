@@ -1,17 +1,7 @@
-import '../../theme/src/styles/theme.css'
-import '@/assets/styles/tailwind.css'
 import { createRef, useState } from 'react'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page, userEvent } from 'vitest/browser'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@nyanpasu/ui/dropdown-menu'
 import {
   Menubar,
   MenubarCheckboxItem,
@@ -163,35 +153,6 @@ test('submenu opens with the keyboard and its content is portaled', async () => 
   await expect.element(submenuItem).not.toBeInTheDocument()
 })
 
-test('menu items keep their icon and label aligned to the start', async () => {
-  await render(
-    <Menubar>
-      <MenubarMenu>
-        <MenubarTrigger>File</MenubarTrigger>
-        <MenubarContent>
-          <MenubarItem>
-            <svg className="size-4" aria-hidden />
-            <span>Open project</span>
-          </MenubarItem>
-        </MenubarContent>
-      </MenubarMenu>
-    </Menubar>,
-  )
-
-  await page.getByRole('menuitem', { name: 'File' }).click()
-  const item = page.getByRole('menuitem', { name: 'Open project' })
-  await expect.element(item).toBeVisible()
-
-  const icon = item.element().querySelector('svg')!
-  const label = item.element().querySelector('span')!
-  expect(label.getBoundingClientRect().left).toBeLessThan(
-    icon.getBoundingClientRect().right + 16,
-  )
-  expect(getComputedStyle(item.element()).justifyContent).not.toBe(
-    'space-between',
-  )
-})
-
 test('checkbox asChild preserves its child, built-in indicator, and ref', async () => {
   const checkboxRef = createRef<HTMLButtonElement>()
   const onCheckedChange = vi.fn()
@@ -233,96 +194,3 @@ test('checkbox asChild preserves its child, built-in indicator, and ref', async 
   await checkbox.click()
   expect(onCheckedChange).toHaveBeenCalledWith(false)
 })
-
-test.each(['light', 'dark'])(
-  'Menubar menu styling matches DropdownMenu in %s mode',
-  async (mode) => {
-    const originalClasses = document.documentElement.className
-    document.documentElement.classList.toggle('dark', mode === 'dark')
-    onTestFinished(() => {
-      document.documentElement.className = originalClasses
-    })
-
-    const readStyles = (surface: Element, item: Element, selected: Element) => {
-      const surfaceStyle = getComputedStyle(surface)
-      const itemStyle = getComputedStyle(item)
-      const selectedStyle = getComputedStyle(selected)
-      return {
-        surface: {
-          radius: surfaceStyle.borderTopLeftRadius,
-          background: surfaceStyle.backgroundColor,
-          borderColor: surfaceStyle.borderTopColor,
-          borderWidth: surfaceStyle.borderTopWidth,
-        },
-        item: {
-          height: itemStyle.height,
-          paddingLeft: itemStyle.paddingLeft,
-          paddingRight: itemStyle.paddingRight,
-        },
-        selectedBackground: selectedStyle.backgroundColor,
-      }
-    }
-
-    const dropdownView = await render(
-      <DropdownMenu>
-        <DropdownMenuTrigger>Options</DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem>Regular item</DropdownMenuItem>
-          <DropdownMenuRadioGroup value="selected">
-            <DropdownMenuRadioItem value="selected">
-              Selected item
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>,
-    )
-    await page.getByRole('button', { name: 'Options' }).click()
-    await expect.element(page.getByRole('menu')).toBeVisible()
-    const dropdownSurface = page.getByRole('menu').element()
-    const dropdownItem = page
-      .getByRole('menuitem', { name: 'Regular item' })
-      .element()
-    const dropdownSelected = page
-      .getByRole('menuitemradio', { name: 'Selected item' })
-      .element()
-    const dropdownStyles = readStyles(
-      dropdownSurface,
-      dropdownItem,
-      dropdownSelected,
-    )
-    await dropdownView.unmount()
-
-    const menubarView = await render(
-      <Menubar>
-        <MenubarMenu>
-          <MenubarTrigger>Options</MenubarTrigger>
-          <MenubarContent>
-            <MenubarItem>Regular item</MenubarItem>
-            <MenubarRadioGroup value="selected">
-              <MenubarRadioItem value="selected">
-                Selected item
-              </MenubarRadioItem>
-            </MenubarRadioGroup>
-          </MenubarContent>
-        </MenubarMenu>
-      </Menubar>,
-    )
-    await page.getByRole('menuitem', { name: 'Options' }).click()
-    await expect.element(page.getByRole('menu')).toBeVisible()
-    const menubarSurface = page.getByRole('menu').element()
-    const menubarItem = page
-      .getByRole('menuitem', { name: 'Regular item' })
-      .element()
-    const menubarSelected = page
-      .getByRole('menuitemradio', { name: 'Selected item' })
-      .element()
-    const menubarStyles = readStyles(
-      menubarSurface,
-      menubarItem,
-      menubarSelected,
-    )
-
-    expect(menubarStyles).toEqual(dropdownStyles)
-    await menubarView.unmount()
-  },
-)

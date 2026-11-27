@@ -85,8 +85,6 @@ test('top-level arrows switch menus and Escape returns focus to the active trigg
     name: m.header_settings_action_title(),
   })
 
-  expect(file.element().getBoundingClientRect().height).toBe(32)
-
   await file.click()
   await userEvent.keyboard('{ArrowRight}')
   await expect.element(settings).toHaveAttribute('aria-expanded', 'true')

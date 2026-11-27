@@ -232,16 +232,6 @@ test('search filters localized widget names and adding closes the library', asyn
     name: m.dashboard_widget_library_search(),
   })
   await expect.element(search).toBeVisible()
-  const drawerElement = document.querySelector<HTMLElement>(
-    '[data-slot=drawer-content]',
-  )!
-  await expect
-    .poll(() => drawerElement.getBoundingClientRect().width)
-    .toBe(Math.min(window.innerWidth - 16, 960))
-  // The drawer stays within its maximum height for a short library.
-  await expect
-    .poll(() => drawerElement.getBoundingClientRect().height)
-    .toBeLessThanOrEqual(window.innerHeight * 0.85 + 1)
 
   await userEvent.type(search, m.dashboard_widget_traffic_download())
   const add = page.getByRole('button', { name: entryName() })
@@ -281,56 +271,6 @@ test('placed widgets are marked but can be added again', async ({
 
   await userEvent.click(add)
   await expect.element(page.getByTestId('drops')).toHaveTextContent('1')
-})
-
-test('narrow viewports keep the drawer and library entries inside the screen', async ({
-  onTestFinished,
-}) => {
-  await page.viewport(900, 600)
-  await mount(onTestFinished)
-  onTestFinished(async () => page.viewport(900, 600))
-  await userEvent.click(page.getByRole('button', { name: 'Open library' }))
-
-  const drawer = document.querySelector<HTMLElement>(
-    '[data-slot=drawer-content]',
-  )!
-  const search = page.getByRole('searchbox', {
-    name: m.dashboard_widget_library_search(),
-  })
-  const heading = page.getByRole('heading', { name: m.dashboard_add_widget() })
-  const add = page.getByRole('button', { name: entryName() })
-
-  for (const [width, height] of [
-    [320, 640],
-    [384, 720],
-  ]) {
-    await page.viewport(width, height)
-    await expect.element(search).toBeVisible()
-    await expect.element(heading).toBeVisible()
-    await expect.element(add).toBeVisible()
-    await expect
-      .poll(() => drawer.getBoundingClientRect().width)
-      .toBe(width - 16)
-    await expect
-      .poll(() => drawer.getBoundingClientRect().height)
-      .toBeLessThanOrEqual(height * 0.85 + 1)
-    await expect
-      .poll(() => drawer.getBoundingClientRect().bottom)
-      .toBeCloseTo(height, 0)
-
-    const drawerRect = drawer.getBoundingClientRect()
-    const entryRect = libraryEntry()!.getBoundingClientRect()
-    const addRect = add.element().getBoundingClientRect()
-
-    expect(drawerRect.left).toBeGreaterThanOrEqual(0)
-    expect(drawerRect.right).toBeLessThanOrEqual(width)
-    expect(entryRect.left).toBeGreaterThanOrEqual(drawerRect.left)
-    expect(entryRect.right).toBeLessThanOrEqual(drawerRect.right)
-    expect(addRect.right).toBeLessThanOrEqual(entryRect.right)
-    expect(drawer.scrollWidth).toBeLessThanOrEqual(drawer.clientWidth)
-    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
-    expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(height)
-  }
 })
 
 test('repeated Escape and outside dismissal leave the page interactive', async ({

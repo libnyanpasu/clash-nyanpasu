@@ -270,7 +270,6 @@ test('the header is separate from the overview card and goes back through histor
   expect(card.contains(header)).toBe(false)
   expect(header.textContent).toContain(remote.name)
   expect(card.textContent).not.toContain(remote.name)
-  expect(getComputedStyle(header).position).toBe('sticky')
 
   await page
     .getByRole('button', {

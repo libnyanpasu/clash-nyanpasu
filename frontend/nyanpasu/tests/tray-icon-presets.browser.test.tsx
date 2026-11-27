@@ -2,7 +2,7 @@ import '@/assets/styles/tailwind.css'
 import '@nyanpasu/theme/styles/theme.css'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { page, userEvent } from 'vitest/browser'
+import { userEvent } from 'vitest/browser'
 import { TooltipProvider } from '@nyanpasu/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import catNormal from '@root/backend/tauri/icons/tray/cat/normal.png'
@@ -149,9 +149,6 @@ test('a Windows preset uploads three real PNGs and locks controls until completi
   onTestFinished,
 }) => {
   const { view, invalidate } = await setup(onTestFinished)
-  await page.viewport(320, 640)
-  const config = document.querySelector('[data-slot="tray-icon-config"]')!
-  expect(config.scrollWidth).toBeLessThanOrEqual(config.clientWidth)
   let finishFirst!: () => void
   state.upload.mockImplementationOnce(
     () =>

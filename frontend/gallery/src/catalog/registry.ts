@@ -134,6 +134,8 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'chip',
       'hct',
       'color',
+      'color-scheme',
+      'swatch',
     ],
     uiModules: [
       'input',
@@ -146,6 +148,7 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'slider',
       'chip',
       'hct-color-picker',
+      'color-scheme-swatch',
     ],
   },
   {

@@ -20,7 +20,7 @@ slint = { version = '=1.19.0', default-features = false, features = [
 # menu support, and muda 0.21 defines the same Objective-C classes as the muda
 # 0.20 Tauri links, so macOS builds of the application fail to link. Slint's
 # internal crates only stay compatible within a release, hence the exact pin.
-i-slint-backend-winit = { version = '=1.19.0', default-features = false, features = [
+i-slint-backend-winit = { version = '=1.19.1', default-features = false, features = [
   'renderer-software',
 ] }
 humansize = '2'
@@ -36,7 +36,7 @@ snafu = { workspace = true }
 # do not link it at all: a GL driver costs the widget about 45 MB of working set
 # on Windows and about 54 MiB on macOS.
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-i-slint-backend-winit = { version = '=1.19.0', default-features = false, features = [
+i-slint-backend-winit = { version = '=1.19.1', default-features = false, features = [
   'renderer-femtovg',
   'x11',
   'wayland',

@@ -135,6 +135,7 @@ command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_native_file_dialog | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_profile | system:write | system.os |  |  | desktop | tauri/src/ipc/system/os.rs
 command | open_remote_access_certificate | remote:write | remote |  |  | desktop | tauri/src/ipc/remote.rs
 command | open_that | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_web_url | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
@@ -188,6 +189,7 @@ command | set_clash_ws_recording | traffic:write | traffic.connections |  |  | d
 command | set_custom_app_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | set_global_transforms | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_hotkeys | system:write | system.hotkeys |  |  | desktop | nyanpasu-rpc/src/commands/storage.rs
+command | set_profile_file_opener | system:write | system.os |  |  | desktop | tauri/src/ipc/system/os.rs
 command | set_profile_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_profile_valid_fields | profile:write | profile.store |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs
 command | set_proxy_group_layout | profile:write | profile.layout |  |  | desktop,http | nyanpasu-rpc/src/commands/profiles.rs

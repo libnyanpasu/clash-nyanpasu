@@ -4,11 +4,12 @@ import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import useCustomCss from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
-import { usePlatform } from '@nyanpasu/platform/react'
+import { PlatformDesktop, usePlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsLinkRow } from '../../_modules/settings-link-row'
 import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import LanguageSelector from './_modules/language-selector'
+import ProfileFileOpenerSelector from './_modules/profile-file-opener-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
 
@@ -45,6 +46,23 @@ const ThemeModeSettings = () => {
         <ThemeColorConfig />
       </SettingsGroup>
     </div>
+  )
+}
+
+const FileHandlingSettings = () => {
+  return (
+    <PlatformDesktop>
+      <ReadOnlyScope permissions={['system:write']}>
+        <div data-slot="file-handling-settings-container">
+          <SettingsLabel>
+            {m.settings_user_interface_file_handling_group()}
+          </SettingsLabel>
+          <SettingsGroup>
+            <ProfileFileOpenerSelector />
+          </SettingsGroup>
+        </div>
+      </ReadOnlyScope>
+    </PlatformDesktop>
   )
 }
 
@@ -121,6 +139,8 @@ function RouteComponent() {
           <LanguageSettings />
 
           <ThemeModeSettings />
+
+          <FileHandlingSettings />
 
           <CustomCssEntries />
         </div>

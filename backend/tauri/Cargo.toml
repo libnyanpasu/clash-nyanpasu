@@ -168,7 +168,6 @@ nanoid = '0.5.0'
 # System Utilities
 dunce = '1.0.4'  # for cross platform path normalization
 runas = { workspace = true }
-which = '8'
 open = '5.0.1'
 sysinfo = '0.39'
 os_pipe = '1.2.1'

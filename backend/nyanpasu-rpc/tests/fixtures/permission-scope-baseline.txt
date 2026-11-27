@@ -135,6 +135,7 @@ command | open_core_dir | system | mutation | desktop | opener |
 command | open_log_session | read | mutation | desktop,http,local |  |
 command | open_logs_dir | system | mutation | desktop | opener |
 command | open_native_file_dialog | system | mutation | desktop | dialog |
+command | open_profile | system | mutation | desktop | opener |
 command | open_remote_access_certificate | remote_admin | mutation | desktop | opener |
 command | open_that | system | mutation | desktop | opener |
 command | open_web_url | system | mutation | desktop | opener |
@@ -188,6 +189,7 @@ command | set_clash_ws_recording | settings | mutation | desktop,http |  |
 command | set_custom_app_dir | system | mutation | desktop | dialog,lifecycle,elevation |
 command | set_global_transforms | profile | mutation | desktop,http |  | elevation,os_integration,presentation
 command | set_hotkeys | system | mutation | desktop |  | hotkey
+command | set_profile_file_opener | system | mutation | desktop | opener |
 command | set_profile_layout | profile | mutation | desktop,http |  | presentation
 command | set_profile_valid_fields | profile | mutation | desktop,http |  | elevation,os_integration,presentation
 command | set_proxy_group_layout | profile | mutation | desktop,http |  | presentation

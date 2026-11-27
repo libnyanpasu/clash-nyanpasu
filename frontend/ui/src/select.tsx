@@ -29,7 +29,7 @@ export const selectTriggerVariants = cva(
       variant: {
         filled: 'rounded-t-extra-small bg-surface-container-highest',
         // outlined use selectValuePlaceholderFieldsetVariants
-        outlined: '',
+        outlined: 'h-16 pt-2 pb-0',
         // compact pill that sits at the end of a menu row
         chip: [launcherMenuChipClassName, 'gap-1'],
       },
@@ -122,8 +122,9 @@ export const selectValuePlaceholderVariants = cva(
           'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
         ],
         outlined: [
-          'group-data-[state=open]:-top-2',
-          'group-data-[state=open]:text-sm',
+          'top-6',
+          'group-data-[state=open]:top-0',
+          'group-data-[state=open]:text-xs',
           'group-data-[state=open]:text-primary',
         ],
         chip: 'hidden',
@@ -142,7 +143,7 @@ export const selectValuePlaceholderVariants = cva(
       {
         variant: 'outlined',
         focus: true,
-        className: '-top-2 text-sm',
+        className: 'top-0 text-xs',
       },
     ],
     defaultVariants: {
@@ -164,7 +165,7 @@ export const selectValuePlaceholderFieldsetVariants = cva(
         // only for outlined variant
         filled: 'hidden',
         outlined: [
-          'absolute inset-0 text-left',
+          'absolute inset-x-0 top-2 bottom-0 text-left',
           'rounded-extra-small transition-all duration-200',
           // may open border width will be 1.5, idk
           'group-data-[state=closed]:border',
@@ -195,7 +196,7 @@ export const selectValuePlaceholderLegendVariants = cva('', {
     variant: {
       // only for outlined variant
       filled: 'hidden',
-      outlined: 'invisible ml-2 px-2 text-sm h-0',
+      outlined: 'invisible ml-2 px-2 text-xs h-0',
       chip: 'hidden',
     },
     haveValue: {

@@ -1,5 +1,8 @@
 import BoltRounded from '~icons/material-symbols/bolt-rounded'
+import Brightness6Rounded from '~icons/material-symbols/brightness-6-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
+import ShieldRounded from '~icons/material-symbols/shield-rounded'
+import WifiRounded from '~icons/material-symbols/wifi-rounded'
 import { useState } from 'react'
 import {
   AnimatedItem,
@@ -12,6 +15,13 @@ import {
   CircleSVG,
   EmptyState,
   HighlightText,
+  ItemAction,
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+  ItemSplitSwitch,
+  ItemSwitch,
   Kbd,
   LazyImage,
   SearchField,
@@ -32,6 +42,11 @@ export function SurfacesDataPage() {
   const [series, setSeries] = useState(INITIAL_SERIES)
   const [highlightQuery, setHighlightQuery] = useState('tokyo')
   const [animatedKey, setAnimatedKey] = useState(0)
+  const [autoLaunch, setAutoLaunch] = useState(true)
+  const [silentLaunch, setSilentLaunch] = useState(false)
+  const [proxyGuard, setProxyGuard] = useState(false)
+  const [extraDim, setExtraDim] = useState(true)
+  const [lastAction, setLastAction] = useState<string>('None yet')
 
   const pushSample = () => {
     setSeries((current) => {
@@ -54,6 +69,10 @@ export function SurfacesDataPage() {
         description="Tonal cards without shadow clutter, D3 Catmull-Rom sparklines, search highlighting, auto-marquee overflow text, keyboard badges, circular meters, and empty states."
         badges={[
           'Card',
+          'ItemGroup',
+          'ItemAction',
+          'ItemSwitch',
+          'ItemSplitSwitch',
           'Sparkline',
           'HighlightText',
           'TextMarquee',
@@ -64,6 +83,128 @@ export function SurfacesDataPage() {
           'AnimatedItem',
         ]}
       />
+
+      <SpecimenCard
+        title="ItemGroup, ItemAction, ItemSwitch & ItemSplitSwitch (Android 17)"
+        description="Grouped settings and detail rows with asymmetric outer/inner radii, strict left-aligned content, disabled states, full-row switch labels, and two-target split switch rows that block detail entry while off."
+        defaultSurface="canvas"
+        slots={[
+          'item-section',
+          'item-group',
+          'item-action',
+          'item-switch',
+          'item-split-switch',
+        ]}
+        controls={
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-on-surface-variant">
+              Last detail action:{' '}
+              <strong className="text-on-surface font-medium">
+                {lastAction}
+              </strong>
+            </span>
+            <span className="text-on-surface-variant">
+              Toggle a split switch off to verify its detail entry is blocked.
+            </span>
+          </div>
+        }
+        code={`<ItemSection>
+  <ItemSectionHeader>
+    <ItemSectionTitle>Proxy Guard</ItemSectionTitle>
+  </ItemSectionHeader>
+  <ItemGroup>
+    <ItemSplitSwitch
+      leading={<ShieldRounded />}
+      title="System Proxy Guard"
+      description={enabled ? 'Enabled · Every 10s' : 'Disabled'}
+      checked={enabled}
+      onCheckedChange={setEnabled}
+      onAction={openDetail}
+    />
+  </ItemGroup>
+</ItemSection>`}
+      >
+        <div className="mx-auto flex max-w-2xl flex-col gap-4">
+          <ItemSection>
+            <ItemSectionHeader>
+              <ItemSectionTitle>Network Preferences</ItemSectionTitle>
+            </ItemSectionHeader>
+
+            <ItemGroup>
+              <ItemAction
+                title="Network preferences"
+                description="Do not turn on WLAN automatically"
+                showChevron={false}
+                onClick={() => setLastAction('Opened Network preferences')}
+              />
+              <ItemAction
+                title="Non-carrier data usage"
+                description="0 B used between Oct 30 and Nov 27"
+                showChevron={false}
+                disabled
+                onClick={() => setLastAction('Should never fire')}
+              />
+            </ItemGroup>
+          </ItemSection>
+
+          <ItemSection>
+            <ItemSectionHeader>
+              <ItemSectionTitle>Startup</ItemSectionTitle>
+            </ItemSectionHeader>
+
+            <ItemGroup>
+              <ItemSwitch
+                title="Launch on startup"
+                checked={autoLaunch}
+                onCheckedChange={setAutoLaunch}
+              />
+              <ItemSwitch
+                title="Start in background"
+                description="Minimize window to tray when launched automatically"
+                checked={silentLaunch}
+                onCheckedChange={setSilentLaunch}
+              />
+            </ItemGroup>
+          </ItemSection>
+
+          <ItemSection>
+            <ItemSectionHeader>
+              <ItemSectionTitle>Two-Target Switch + Detail</ItemSectionTitle>
+            </ItemSectionHeader>
+
+            <ItemGroup>
+              <ItemSplitSwitch
+                leading={<ShieldRounded />}
+                title="System Proxy Guard"
+                description={
+                  proxyGuard
+                    ? 'Enabled · Check every 10s (click row to configure)'
+                    : 'Disabled · Turn on to configure guard interval & bypass'
+                }
+                checked={proxyGuard}
+                onCheckedChange={setProxyGuard}
+                onAction={() =>
+                  setLastAction('Entered System Proxy Guard detail')
+                }
+              />
+              <ItemSplitSwitch
+                leading={<Brightness6Rounded />}
+                title="Extra Dim"
+                description="Make screen dimmer than minimum brightness"
+                checked={extraDim}
+                onCheckedChange={setExtraDim}
+                onAction={() => setLastAction('Entered Extra Dim detail')}
+              />
+              <ItemSwitch
+                leading={<WifiRounded />}
+                leadingVariant="tonal"
+                title="Enable WLAN"
+                defaultChecked={false}
+              />
+            </ItemGroup>
+          </ItemSection>
+        </div>
+      </SpecimenCard>
 
       <SpecimenCard
         title="Card Variants (Basic, Raised, Outline)"

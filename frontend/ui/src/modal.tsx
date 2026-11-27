@@ -53,12 +53,87 @@ export const useModal = () => {
   return { open, setOpen }
 }
 
-function ModalPlaceholder({ layoutId }: { layoutId: string }) {
+type PointerOrigin = {
+  x: number
+  y: number
+  size: number
+}
+
+export type ModalOriginMode = 'auto' | 'element' | 'pointer'
+
+// Triggers wider than a compact button (such as list rows) morph from the
+// pointer click position in `auto` mode instead of jumping from row center.
+const WIDE_TRIGGER_THRESHOLD_PX = 160
+const POINTER_ANCHOR_MAX_SIZE_PX = 48
+
+function resolvePointerOrigin(
+  element: HTMLElement,
+  clientX: number,
+  clientY: number,
+  origin: ModalOriginMode,
+): PointerOrigin | null {
+  if (origin === 'element') {
+    return null
+  }
+
+  const rect = element.getBoundingClientRect()
+  if (origin === 'auto' && rect.width <= WIDE_TRIGGER_THRESHOLD_PX) {
+    return null
+  }
+
+  const size = Math.min(
+    POINTER_ANCHOR_MAX_SIZE_PX,
+    rect.height || POINTER_ANCHOR_MAX_SIZE_PX,
+    rect.width || POINTER_ANCHOR_MAX_SIZE_PX,
+  )
+  const half = size / 2
+  const x = Math.min(
+    Math.max(clientX - rect.left, half),
+    Math.max(half, rect.width - half),
+  )
+  const y = Math.min(
+    Math.max(clientY - rect.top, half),
+    Math.max(half, rect.height - half),
+  )
+
+  return { x, y, size }
+}
+
+function ModalPlaceholder({
+  layoutId,
+  pointerOrigin,
+}: {
+  layoutId: string
+  pointerOrigin?: PointerOrigin | null
+}) {
   const { open } = useModalContext()
+
+  if (pointerOrigin) {
+    return (
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        data-slot="modal-trigger-placeholder-container"
+      >
+        <motion.div
+          style={{
+            position: 'absolute',
+            left: pointerOrigin.x - pointerOrigin.size / 2,
+            top: pointerOrigin.y - pointerOrigin.size / 2,
+            width: pointerOrigin.size,
+            height: pointerOrigin.size,
+          }}
+          data-slot="modal-trigger-placeholder"
+          layoutDependency={open}
+          layout
+          layoutId={layoutId}
+        />
+      </div>
+    )
+  }
 
   return (
     <div
-      className="@container-[size] absolute inset-0 -z-10 flex items-center justify-center"
+      className="@container-[size] pointer-events-none absolute inset-0 -z-10 flex items-center justify-center"
       data-slot="modal-trigger-placeholder-container"
     >
       <motion.div
@@ -82,11 +157,17 @@ export function ModalTrigger({
   className,
   children,
   asChild,
+  origin = 'auto',
+  onPointerDown,
   onClick,
   ...props
-}: ComponentProps<typeof DialogPrimitive.Trigger>) {
+}: ComponentProps<typeof DialogPrimitive.Trigger> & {
+  /** Animation origin: `auto` uses the click point on wide rows and element center on compact buttons. */
+  origin?: ModalOriginMode
+}) {
   const { setLayoutId, registerTrigger, originRef } = useModalContext()
   const layoutId = useId()
+  const [pointerOrigin, setPointerOrigin] = useState<PointerOrigin | null>(null)
 
   useEffect(() => registerTrigger(layoutId), [layoutId, registerTrigger])
 
@@ -100,9 +181,25 @@ export function ModalTrigger({
     <DialogPrimitive.Trigger
       {...props}
       asChild
+      onPointerDown={(event) => {
+        onPointerDown?.(event)
+        if (!event.defaultPrevented) {
+          setPointerOrigin(
+            resolvePointerOrigin(
+              event.currentTarget,
+              event.clientX,
+              event.clientY,
+              origin,
+            ),
+          )
+        }
+      }}
       onClick={(event) => {
         onClick?.(event)
         if (!event.defaultPrevented) {
+          if (event.detail === 0) {
+            setPointerOrigin(null)
+          }
           originRef.current = event.currentTarget
           setLayoutId(layoutId)
         }
@@ -113,7 +210,7 @@ export function ModalTrigger({
       <Comp className={cn('relative', childClassName, className)}>
         <Slot.Slottable>{children}</Slot.Slottable>
 
-        <ModalPlaceholder layoutId={layoutId} />
+        <ModalPlaceholder layoutId={layoutId} pointerOrigin={pointerOrigin} />
       </Comp>
     </DialogPrimitive.Trigger>
   )

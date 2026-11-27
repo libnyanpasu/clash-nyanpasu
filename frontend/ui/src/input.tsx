@@ -26,10 +26,26 @@ export const inputContainerVariants = cva(
         filled: 'rounded-t-extra-small bg-surface-container-highest',
         // outlined use inputLabelFieldsetVariants
         outlined: '',
+        underlined: 'h-12 bg-transparent px-0 py-2',
+      },
+      haveLabel: {
+        true: '',
+        false: '',
       },
     },
+    compoundVariants: [
+      {
+        variant: 'outlined',
+        haveLabel: true,
+        // Keep the notched border at top-2 and the floating label at top-0
+        // inside the container box so overflow-hidden / scroll ancestors never
+        // clip the label.
+        className: 'h-16 pt-2 pb-0',
+      },
+    ],
     defaultVariants: {
       variant: 'filled',
+      haveLabel: false,
     },
   },
 )
@@ -48,6 +64,7 @@ export const inputVariants = cva(
       variant: {
         filled: '',
         outlined: '',
+        underlined: 'text-base',
       },
       haveValue: {
         true: '',
@@ -70,6 +87,17 @@ export const inputVariants = cva(
       },
       {
         variant: 'filled',
+        haveLabel: true,
+        className: 'focus:mt-3!',
+      },
+      {
+        variant: 'underlined',
+        haveValue: true,
+        haveLabel: true,
+        className: 'mt-3!',
+      },
+      {
+        variant: 'underlined',
         haveLabel: true,
         className: 'focus:mt-3!',
       },
@@ -102,15 +130,17 @@ export const inputLabelVariants = cva(
           'peer-focus:top-2 peer-focus:text-xs',
         ],
         outlined: [
-          'group-data-[state=open]:-top-2',
-          'group-data-[state=open]:text-sm',
+          'top-6',
+          'group-data-[state=open]:top-0',
+          'group-data-[state=open]:text-xs',
           'group-data-[state=open]:text-primary',
-          'peer-focus:-top-2 peer-focus:text-sm',
-
-          // "before:absolute before:inset-0 before:content-['']",
-          // "before:-z-10 before:-mx-1",
-          // "before:bg-transparent ",
-          // "before:inline-block",
+          'peer-focus:top-0 peer-focus:text-xs peer-focus:text-primary',
+        ],
+        underlined: [
+          'left-0 top-3 text-on-surface-variant',
+          'group-data-[state=open]:top-0',
+          'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
+          'peer-focus:top-0 peer-focus:text-xs peer-focus:text-primary',
         ],
       },
       focus: {
@@ -127,7 +157,12 @@ export const inputLabelVariants = cva(
       {
         variant: 'outlined',
         focus: true,
-        className: '-top-2 text-sm',
+        className: 'top-0 text-xs',
+      },
+      {
+        variant: 'underlined',
+        focus: true,
+        className: 'top-0 text-xs',
       },
     ],
     defaultVariants: {
@@ -160,6 +195,21 @@ export const inputLineVariants = cva('', {
       ],
       // hidden line for outlined variant
       outlined: 'hidden',
+      underlined: [
+        'absolute inset-x-0 bottom-0 w-full border-b border-b-outline',
+        'transition-all duration-200',
+        'after:absolute after:inset-x-0 after:bottom-0 after:z-10',
+        "after:scale-x-0 after:border-b-2 after:opacity-0 after:content-['']",
+        'after:transition-all after:duration-200',
+        'after:border-primary',
+        'group-data-[state=open]:border-b-0',
+        'group-data-[state=open]:after:scale-x-100',
+        'group-data-[state=open]:after:opacity-100',
+        'peer-focus:border-b-0',
+        'peer-focus:after:scale-x-100',
+        'peer-focus:after:opacity-100',
+        'peer-aria-invalid:border-b-error peer-aria-invalid:after:border-error',
+      ],
     },
   },
   defaultVariants: {
@@ -174,8 +224,9 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
     variant: {
       // only for outlined variant
       filled: 'hidden',
+      underlined: 'hidden',
       outlined: [
-        'absolute inset-0 text-left',
+        'absolute inset-x-0 top-2 bottom-0 text-left',
         'rounded-extra-small transition-all duration-200',
         // may open border width will be 1.5, idk
         'group-data-[state=closed]:border',
@@ -204,7 +255,8 @@ export const inputLabelLegendVariants = cva('', {
     variant: {
       // only for outlined variant
       filled: 'hidden',
-      outlined: 'invisible ml-2 px-2 text-sm h-0',
+      underlined: 'hidden',
+      outlined: 'invisible ml-2 px-2 text-xs h-0',
     },
     haveValue: {
       true: '',
@@ -252,13 +304,14 @@ export const InputContainer = ({
   className,
   ...props
 }: ComponentProps<'div'>) => {
-  const { variant } = useInputContext()
+  const { variant, haveLabel } = useInputContext()
 
   return (
     <div
       className={cn(
         inputContainerVariants({
           variant,
+          haveLabel,
         }),
         className,
       )}

@@ -138,7 +138,6 @@ export function OverviewPage({
 
               <Button
                 variant="flat"
-                className="gap-2"
                 onClick={() => onNavigate('foundations/colors')}
               >
                 <span>Explore Color System</span>
@@ -200,7 +199,7 @@ export function OverviewPage({
 
             <Button
               variant="stroked"
-              className="w-full justify-center gap-2"
+              className="w-full"
               onClick={() => onNavigate('foundations/surfaces')}
             >
               <span>Inspect all {SURFACE_LADDER.length} surface tiers</span>

@@ -63,7 +63,7 @@ export function ActionsPage() {
 
       <SpecimenCard
         title="Button Variants & State Matrix"
-        description="Reserve flat and fab for one primary CTA per screen. Toggle loading and disabled states to verify Spinner overlay and 12%/38% disabled semantics."
+        description="Buttons default to single-line inline-flex layout (items-center justify-center gap-2 whitespace-nowrap) so labels and icons stay aligned without wrapping. Reserve flat and fab for one primary CTA per screen, and opt into whitespace-normal only for explicit multi-line buttons."
         slots={['button-content', 'button-loading']}
         controls={
           <div className="flex flex-wrap items-center gap-6 text-xs font-medium">
@@ -78,7 +78,8 @@ export function ActionsPage() {
           </div>
         }
         code={`<Button variant="flat" loading={loading} disabled={disabled}>
-  Save Profile
+  <SaveRounded className="size-4" />
+  <span>Save Profile</span>
 </Button>
 <Button variant="fab" icon aria-label="Add">
   <AddRounded className="size-6" />
@@ -99,12 +100,7 @@ export function ActionsPage() {
                   Label
                 </Button>
 
-                <Button
-                  variant={variant}
-                  loading={loading}
-                  disabled={disabled}
-                  className="inline-flex items-center gap-2"
-                >
+                <Button variant={variant} loading={loading} disabled={disabled}>
                   <SaveRounded className="size-4" />
                   <span>With Icon</span>
                 </Button>

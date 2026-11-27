@@ -1,3 +1,4 @@
+import ArrowForwardRounded from '~icons/material-symbols/arrow-forward-rounded'
 import CheckRounded from '~icons/material-symbols/check-rounded'
 import EditRounded from '~icons/material-symbols/edit-rounded'
 import ShareRounded from '~icons/material-symbols/share-rounded'
@@ -130,6 +131,35 @@ export function GuidelinesPage() {
               <ShareRounded className="size-4" />
               <span>Share link</span>
             </div>
+          </div>
+        }
+      />
+
+      <GuidelineComparison
+        title="5. Single-Line Inline Button Layout vs. Wrapped Icon + Label"
+        rule="Button defaults to inline-flex items-center justify-center gap-2 whitespace-nowrap with non-shrinking icons so labels and trailing/leading icons stay on one line. Only opt into whitespace-normal for intentional multi-line controls."
+        doTitle="Single-line inline-flex button"
+        doNote="Label and icon align horizontally on one line without extra flex classes at every call site."
+        doDemo={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="flat">
+              <span>Explore Color System</span>
+              <ArrowForwardRounded className="size-4" />
+            </Button>
+            <Button variant="stroked">
+              <span>Inspect surface tiers</span>
+              <ArrowForwardRounded className="size-4" />
+            </Button>
+          </div>
+        }
+        dontTitle="Inline-block / wrapped button content"
+        dontNote="Block-level SVG icons drop onto a second line and clip inside the fixed 40px pill height."
+        dontDemo={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="flat" className="inline-block whitespace-normal">
+              <span>Explore Color System</span>
+              <ArrowForwardRounded className="size-4" />
+            </Button>
           </div>
         }
       />

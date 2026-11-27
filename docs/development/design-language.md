@@ -51,6 +51,7 @@ In light mode, pure-white `surface-container-lowest` cards float crisply over a 
 - **Active navigation and selection pills:** Use `bg-secondary-container text-on-secondary-container` for active navbar tabs, navigation rail items, and selected list rows. Reserve `bg-primary text-on-primary` and `bg-primary-container text-on-primary-container` for primary CTAs, FABs, and active toggles.
 - **State layers:** Use `hover:bg-on-surface/8` for neutral interactive hover states instead of swapping to `bg-surface-variant` or `bg-primary-container`. Use `bg-on-surface/12` and `text-on-surface/38` for disabled controls.
 - **Outline roles:** Use `border-outline-variant` (or `/40`–`/50`) for decorative dividers and subtle card/menu frames. Use `border-outline` for meaningful interactive boundaries such as outlined buttons, text fields, checkboxes, and unchecked switches.
+- **Button layout:** `Button` defaults to `inline-flex items-center justify-center gap-2 whitespace-nowrap` with non-shrinking icons (`[&_svg]:shrink-0`) so icon + label buttons stay on a single line without wrapping. Opt into `whitespace-normal` only for explicit multi-line controls.
 
 ## Android 17 frosted translucency
 

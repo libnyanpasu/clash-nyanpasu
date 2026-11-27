@@ -139,7 +139,7 @@ export function ExpressiveChoice({
                   </div>
                   {selected?.description && (
                     <div
-                      className="mt-1 line-clamp-2 text-xs font-normal opacity-80 [@container_expressive-choice_(max-height:110px)]:hidden"
+                      className="mt-1 line-clamp-2 text-xs font-normal whitespace-normal opacity-80 [@container_expressive-choice_(max-height:110px)]:hidden"
                       data-slot="expressive-choice-description"
                     >
                       {selected.description}

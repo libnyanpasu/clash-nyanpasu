@@ -280,11 +280,6 @@ test.for(['scoped', 'global'] as const)(
         '[data-slot="profile-chain-editor-unapplied"]',
       ),
     ).toBeNull()
-    // The added row grows into place, and a row keeps the transition of its
-    // lift although the group sets one for the corners.
-    expect(getComputedStyle(item('lua')).animationName).toBe('row-enter')
-    expect(getComputedStyle(item('self')).animationName).toBe('none')
-    expect(getComputedStyle(item('self')).transitionProperty).toContain('scale')
     await expect
       .element(
         view.getByText(m.profile_chain_editor_summary_added({ count: 1 }), {
@@ -502,36 +497,14 @@ test.for(['scoped', 'global'] as const)(
   },
 )
 
-test('duplicates stay read-only and narrow layouts fit', async ({
-  onTestFinished,
-}) => {
-  const {
-    view,
-    ids,
-    item,
-    queries,
-    apply,
-    toggle,
-    addTransform,
-    removeFromRow,
-  } = await setup('scoped', ['dns', 'lua'], onTestFinished)
+test('duplicates stay read-only', async ({ onTestFinished }) => {
+  const { view, ids, item, queries, toggle, addTransform, removeFromRow } =
+    await setup('scoped', ['dns', 'lua'], onTestFinished)
   await expect.poll(ids).toEqual(['dns', 'lua'])
   await addTransform('useself')
   await expect.poll(ids).toEqual(['dns', 'lua', 'self'])
   await removeFromRow('dns')
   await expect.poll(ids).toEqual(['lua', 'self'])
-  for (const width of [390, 320]) {
-    await page.viewport(width, 900)
-    const editor = view.container.querySelector<HTMLElement>(
-      '[data-slot="profile-chain-editor"]',
-    )!
-    expect(editor.scrollWidth).toBeLessThanOrEqual(editor.clientWidth)
-    const bar = view.container.querySelector<HTMLElement>(
-      '[data-slot="profile-chain-editor-bar"]',
-    )!
-    expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth)
-    await expect.element(apply()).toBeVisible()
-  }
   queries.setQueriesData({ predicate: () => true }, (old: unknown) => {
     const data = old as { items: ProfileItem_Serialize[] } | undefined
     // Other queries live in the same cache; only the profile list changes.

@@ -1,5 +1,3 @@
-import '@/assets/styles/tailwind.css'
-import '@nyanpasu/theme/styles/theme.css'
 import { expect, test } from 'vitest'
 import { render } from 'vitest-browser-react'
 import {

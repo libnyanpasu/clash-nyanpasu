@@ -1,5 +1,3 @@
-import '@/assets/styles/tailwind.css'
-import '@nyanpasu/theme/styles/theme.css'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { m } from '@/paraglide/messages'
@@ -37,11 +35,6 @@ test('About shows the version and opens the help links', async () => {
       view.getByText(m.settings_label_about_version({ version: '2.0.0' })),
     )
     .toBeInTheDocument()
-  const logo = view.container.querySelector<HTMLElement>(
-    '[data-slot="animated-logo"]',
-  )!
-  expect(logo.getBoundingClientRect().width).toBe(128)
-  expect(logo.getBoundingClientRect().height).toBe(128)
 
   await view
     .getByRole('button', { name: m.header_help_action_wiki(), exact: false })

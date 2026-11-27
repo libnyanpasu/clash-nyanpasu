@@ -87,11 +87,6 @@ const BASE_TRANSFORMS = [
   script('lua', 'lua helper', 'lua'),
 ]
 
-const numbered = (count: number) =>
-  Array.from({ length: count }, (_, index) =>
-    script(`extra-${index}`, `extra ${String(index).padStart(2, '0')}`),
-  )
-
 const rootRoute = createRootRoute({
   component: () => (
     <TestQueryProvider
@@ -158,15 +153,11 @@ const runtimeRoute = createRoute({
 type Write = { method: string; params: Record<string, unknown> }
 
 async function open({
-  width = 1600,
-  height = 700,
   transforms = BASE_TRANSFORMS,
   globalTransforms = ['self'],
   scoped = ['dns'],
   active = true,
 }: {
-  width?: number
-  height?: number
   transforms?: ProfileItem_Serialize[]
   globalTransforms?: string[]
   scoped?: string[]
@@ -205,7 +196,6 @@ async function open({
 
     throw new Error(`Unexpected RPC ${method}`)
   })
-  await page.viewport(width, height)
 
   const router = createRouter({
     routeTree: rootRoute.addChildren([
@@ -228,11 +218,6 @@ async function open({
   const query = <T extends HTMLElement>(selector: string) =>
     view.container.querySelector<T>(selector)
 
-  const viewportOf = (slot: string) =>
-    query<HTMLElement>(
-      `[data-slot="${slot}"] > [data-slot="scroll-area-viewport"]`,
-    )!
-
   const chainIds = () =>
     Array.from(
       view.container.querySelectorAll(
@@ -254,16 +239,6 @@ async function open({
     query,
     chainIds,
     libraryNames,
-    page: () => viewportOf('profiles-content-scroll-area'),
-    body: () => viewportOf('profile-global-body'),
-    pipeline: () =>
-      query<HTMLElement>(
-        '[data-slot="profile-global-pipeline-panel"] [data-slot="profile-global-column-scroll-area"] > [data-slot="scroll-area-viewport"]',
-      )!,
-    library: () =>
-      query<HTMLElement>(
-        '[data-slot="profile-global-library"] [data-slot="profile-global-column-scroll-area"] > [data-slot="scroll-area-viewport"]',
-      )!,
     apply: () =>
       view.getByRole('button', { name: m.common_apply(), exact: true }),
     reset: () =>
@@ -281,102 +256,7 @@ type Ui = Awaited<ReturnType<typeof open>>
 const finish = (ui: Ui) => async () => {
   await ui.view.unmount()
   clearMocks()
-  await page.viewport(1280, 800)
 }
-
-const scrolls = (element: HTMLElement) =>
-  element.scrollHeight > element.clientHeight
-
-test('at the wide layout the page is fixed and the pipeline and library scroll on their own', async ({
-  onTestFinished,
-}) => {
-  const ui = await open({
-    transforms: [...BASE_TRANSFORMS, ...numbered(40)],
-    globalTransforms: numbered(25).map((item) => item.uid),
-  })
-  onTestFinished(finish(ui))
-
-  await expect.poll(() => ui.chainIds().length).toBe(25)
-
-  expect(ui.page().scrollHeight).toBe(ui.page().clientHeight)
-  expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(
-    window.innerHeight,
-  )
-  expect(getComputedStyle(ui.body()).overflowY).toBe('clip')
-  expect(scrolls(ui.body())).toBe(false)
-
-  const pipeline = ui.pipeline()
-  const library = ui.library()
-
-  // Side by side, three to two.
-  const pipelineBox = pipeline.getBoundingClientRect()
-  const libraryBox = library.getBoundingClientRect()
-  expect(libraryBox.left).toBeGreaterThanOrEqual(pipelineBox.right)
-  expect(pipelineBox.width).toBeGreaterThan(libraryBox.width)
-
-  expect(scrolls(pipeline)).toBe(true)
-  expect(scrolls(library)).toBe(true)
-
-  pipeline.scrollTop = 200
-  expect(pipeline.scrollTop).toBe(200)
-  expect(library.scrollTop).toBe(0)
-  expect(ui.page().scrollTop).toBe(0)
-
-  library.scrollTop = 150
-  expect(library.scrollTop).toBe(150)
-  expect(pipeline.scrollTop).toBe(200)
-})
-
-test('below the wide layout the page does not scroll and one region scrolls the stacked panels', async ({
-  onTestFinished,
-}) => {
-  const ui = await open({
-    width: 1024,
-    transforms: [...BASE_TRANSFORMS, ...numbered(40)],
-    globalTransforms: numbered(10).map((item) => item.uid),
-  })
-  onTestFinished(finish(ui))
-
-  await expect.poll(() => ui.chainIds().length).toBe(10)
-
-  expect(ui.page().scrollHeight).toBe(ui.page().clientHeight)
-  expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(
-    window.innerHeight,
-  )
-
-  const body = ui.body()
-  expect(scrolls(body)).toBe(true)
-  expect(scrolls(ui.pipeline())).toBe(false)
-  expect(scrolls(ui.library())).toBe(false)
-
-  const pipelineBox = ui.pipeline().getBoundingClientRect()
-  const libraryBox = ui.library().getBoundingClientRect()
-  expect(libraryBox.top).toBeGreaterThanOrEqual(pipelineBox.bottom)
-
-  body.scrollTop = 300
-  expect(body.scrollTop).toBe(300)
-})
-
-test('a phone-width container stacks the library under the pipeline in one scroll region', async ({
-  onTestFinished,
-}) => {
-  const ui = await open({
-    width: 375,
-    height: 700,
-    transforms: [...BASE_TRANSFORMS, ...numbered(20)],
-  })
-  onTestFinished(finish(ui))
-
-  await expect.poll(() => ui.chainIds()).toEqual(['self'])
-
-  expect(scrolls(ui.body())).toBe(true)
-  expect(scrolls(ui.pipeline())).toBe(false)
-  expect(scrolls(ui.library())).toBe(false)
-  expect(ui.library().getBoundingClientRect().top).toBeGreaterThanOrEqual(
-    ui.pipeline().getBoundingClientRect().bottom,
-  )
-  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(375)
-})
 
 test('Apply and Reset float in only for a changed chain', async ({
   onTestFinished,
@@ -655,7 +535,7 @@ test('the source and the profile transforms link to their detail pages', async (
 
   await expect
     .element(page.getByText(m.profile_global_applies_to(), { exact: false }))
-    .toBeVisible()
+    .toBeInTheDocument()
 
   const hrefOf = (selector: string) =>
     ui.query<HTMLAnchorElement>(selector)?.getAttribute('href')

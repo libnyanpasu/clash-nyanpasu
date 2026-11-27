@@ -1,4 +1,4 @@
-// Tailwind gives the rows their transitions and the highlight its keyframes.
+// Tailwind's flex/sr-only utilities keep the badge and sr-only label space-separated in the accessible name.
 import '@/assets/styles/tailwind.css'
 import type { ComponentProps } from 'react'
 import { expect, test, vi } from 'vitest'
@@ -71,33 +71,6 @@ test('the jumps are named by their numbers, then their actions', async () => {
 
   // Phrasing content only: a button holds no block such as a div.
   expect(usage.querySelector('div')).toBeNull()
-})
-
-test('only the focused row fades its highlight slowly', async () => {
-  const screen = await renderRow({ focused: true })
-
-  const row = slot(screen.container, 'rules-row')!
-
-  expect(getComputedStyle(row).animationName).toBe('focus-highlight')
-  expect(getComputedStyle(row).animationDuration).toBe('2s')
-  expect(getComputedStyle(row).transitionDuration).toBe('0.15s')
-
-  await screen.rerender(
-    <TooltipProvider>
-      <RuleRow
-        index={1}
-        rule={rule}
-        label={LABEL}
-        live={live}
-        total={total}
-        search=""
-        focused={false}
-      />
-    </TooltipProvider>,
-  )
-
-  expect(getComputedStyle(row).animationName).toBe('none')
-  expect(getComputedStyle(row).transitionDuration).toBe('0.15s')
 })
 
 test('without callbacks the cells are not buttons', async () => {

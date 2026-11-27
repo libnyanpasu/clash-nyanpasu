@@ -1,21 +1,16 @@
-import { Switch } from '@nyanpasu/ui/switch'
+import { ItemSwitch } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useSetting } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 
 export default function SilentLaunchSwitch() {
   const silentStart = useSetting('enable_silent_start')
 
-  const handleSilentStart = useLockFn(async () => {
+  const handleSilentStart = useLockFn(async (next: boolean) => {
     try {
-      await silentStart.upsert(!silentStart.value)
+      await silentStart.upsert(next)
     } catch (error) {
       message(
         `Activation Silent Start failed!\n Error: ${formatError(error)}`,
@@ -29,18 +24,12 @@ export default function SilentLaunchSwitch() {
   })
 
   return (
-    <ItemContainer data-slot="silent-launch-switch-container">
-      <ItemLabel>
-        <ItemLabelText>
-          {m.settings_system_proxy_silent_start_label()}
-        </ItemLabelText>
-      </ItemLabel>
-
-      <Switch
-        checked={Boolean(silentStart.value)}
-        onCheckedChange={handleSilentStart}
-        loading={silentStart.isPending}
-      />
-    </ItemContainer>
+    <ItemSwitch
+      data-slot="silent-launch-switch-container"
+      title={m.settings_system_proxy_silent_start_label()}
+      checked={Boolean(silentStart.value)}
+      onCheckedChange={handleSilentStart}
+      loading={silentStart.isPending}
+    />
   )
 }

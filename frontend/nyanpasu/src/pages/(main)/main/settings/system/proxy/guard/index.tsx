@@ -1,15 +1,11 @@
 import { AnimatePresence } from 'motion/react'
+import { AnimatedItem } from '@nyanpasu/ui/animated-item'
+import { ItemGroup } from '@nyanpasu/ui/item-group'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { useSetting } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-  SettingsGroup,
-} from '../../../../_modules/settings-card'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
@@ -33,27 +29,29 @@ function RouteComponent() {
       <div className="space-y-4 px-4 pb-4">
         <div data-slot="proxy-guard-container">
           <ReadOnlyScope permissions={['system:write']} banner={false}>
-            <SettingsGroup>
-              <SettingsCard>
-                <SettingsCardContent>
-                  <ProxyGuardSwitch />
-                </SettingsCardContent>
-              </SettingsCard>
+            <ItemGroup>
+              <ProxyGuardSwitch />
 
               <AnimatePresence initial={false}>
                 {value && (
-                  <SettingsCard asChild>
-                    <SettingsCardAnimatedItem>
-                      <SettingsCardContent>
-                        <ProxyGuardConfig />
+                  <AnimatedItem
+                    key="proxy-guard-interval"
+                    className="rounded-extra-large *:rounded-[inherit]!"
+                  >
+                    <ProxyGuardConfig />
+                  </AnimatedItem>
+                )}
 
-                        <ProxyBypassConfig />
-                      </SettingsCardContent>
-                    </SettingsCardAnimatedItem>
-                  </SettingsCard>
+                {value && (
+                  <AnimatedItem
+                    key="proxy-guard-bypass"
+                    className="rounded-extra-large *:rounded-[inherit]!"
+                  >
+                    <ProxyBypassConfig />
+                  </AnimatedItem>
                 )}
               </AnimatePresence>
-            </SettingsGroup>
+            </ItemGroup>
           </ReadOnlyScope>
         </div>
       </div>

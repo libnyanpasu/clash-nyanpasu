@@ -1,5 +1,6 @@
 import { AnimatePresence } from 'motion/react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
+import { ItemGroup } from '@nyanpasu/ui/item-group'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { PlatformDesktop } from '@nyanpasu/platform/react'
@@ -9,7 +10,6 @@ import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
-  SettingsGroup,
 } from '../../../../_modules/settings-card'
 import NetworkAutomationStatus from './_modules/network-automation-status'
 import NetworkAutomationSwitch from './_modules/network-automation-switch'
@@ -29,12 +29,8 @@ function NetworkRules() {
   const { policy } = useNetworkAutomation()
 
   return (
-    <SettingsGroup>
-      <SettingsCard>
-        <SettingsCardContent>
-          <NetworkAutomationSwitch />
-        </SettingsCardContent>
-      </SettingsCard>
+    <ItemGroup>
+      <NetworkAutomationSwitch />
 
       <AnimatePresence initial={false}>
         {policy?.enabled && (
@@ -59,7 +55,7 @@ function NetworkRules() {
           </SettingsCard>
         )}
       </AnimatePresence>
-    </SettingsGroup>
+    </ItemGroup>
   )
 }
 

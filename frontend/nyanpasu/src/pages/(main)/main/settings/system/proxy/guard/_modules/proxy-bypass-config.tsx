@@ -1,15 +1,21 @@
-import { AnimatePresence } from 'motion/react'
-import { ChangeEvent, useCallback, useEffect } from 'react'
+import { useCallback, useId } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
+import {
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
 import { Input } from '@nyanpasu/ui/input'
+import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useSystemSetting } from '@nyanpasu/query'
-import { SettingsCardAnimatedItem } from '../../../../../_modules/settings-card'
 
 const DEFAULT_BYPASS =
   'localhost;127.;192.168.;10.;' +
@@ -21,6 +27,16 @@ const formSchema = z.object({
 })
 
 export default function ProxyBypassConfig() {
+  return (
+    <Dialog>
+      <ProxyBypassConfigForm />
+    </Dialog>
+  )
+}
+
+function ProxyBypassConfigForm() {
+  const { setOpen } = useDialog()
+  const errorId = useId()
   const systemProxyBypass = useSystemSetting('system_proxy_bypass')
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -30,17 +46,13 @@ export default function ProxyBypassConfig() {
     },
   })
 
-  useEffect(() => {
-    form.setValue('systemProxyBypass', systemProxyBypass.value)
-  }, [systemProxyBypass.value, form])
-
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      await systemProxyBypass.upsert(data.systemProxyBypass || DEFAULT_BYPASS)
+      const next = data.systemProxyBypass || DEFAULT_BYPASS
+      await systemProxyBypass.upsert(next)
 
-      form.reset({
-        systemProxyBypass: data.systemProxyBypass || DEFAULT_BYPASS,
-      })
+      form.reset({ systemProxyBypass: next })
+      setOpen(false)
     } catch (error) {
       message(formatError(error), {
         title: 'Error',
@@ -56,54 +68,66 @@ export default function ProxyBypassConfig() {
     })
   }, [systemProxyBypass.value, form])
 
-  return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-      <Controller
-        control={form.control}
-        name="systemProxyBypass"
-        render={({ field }) => {
-          const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-            field.onChange(event.target.value)
-          }
+  const { isDirty, isSubmitting } = form.formState
 
-          return (
-            <>
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          title={m.settings_system_proxy_proxy_bypass_label()}
+          description={
+            <span className="block truncate">
+              {systemProxyBypass.value || DEFAULT_BYPASS}
+            </span>
+          }
+        />
+      </DialogTrigger>
+
+      <FormDialogContent
+        size="lg"
+        title={m.settings_system_proxy_proxy_bypass_label()}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_close()}
+        submitting={isSubmitting}
+        submitDisabled={!isDirty}
+        extraActions={
+          <Button
+            type="button"
+            variant="basic"
+            onClick={handleReset}
+            disabled={!isDirty || isSubmitting}
+          >
+            {m.common_reset()}
+          </Button>
+        }
+        onOpen={handleReset}
+        onSubmit={handleSubmit}
+      >
+        <Controller
+          control={form.control}
+          name="systemProxyBypass"
+          render={({ field }) => (
+            <div className="flex flex-col gap-2">
               <Input
-                variant="outlined"
-                label={m.settings_system_proxy_proxy_bypass_label()}
+                variant="underlined"
+                aria-label={m.settings_system_proxy_proxy_bypass_label()}
+                aria-invalid={!!form.formState.errors.systemProxyBypass}
+                aria-describedby={
+                  form.formState.errors.systemProxyBypass ? errorId : undefined
+                }
                 value={field.value ?? ''}
-                onChange={handleChange}
+                onChange={(event) => field.onChange(event.target.value)}
+                autoFocus
               />
 
-              {form.formState.errors.systemProxyBypass && (
-                <SettingsCardAnimatedItem className="text-error">
-                  {form.formState.errors.systemProxyBypass.message}
-                </SettingsCardAnimatedItem>
-              )}
-            </>
-          )
-        }}
-      />
-
-      <AnimatePresence initial={false}>
-        {form.formState.isDirty && (
-          <SettingsCardAnimatedItem>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" onClick={handleReset}>
-                {m.common_reset()}
-              </Button>
-
-              <Button
-                variant="raised"
-                onClick={handleSubmit}
-                loading={form.formState.isSubmitting}
-              >
-                {m.common_apply()}
-              </Button>
+              <FormDialogError
+                id={errorId}
+                message={form.formState.errors.systemProxyBypass?.message}
+              />
             </div>
-          </SettingsCardAnimatedItem>
-        )}
-      </AnimatePresence>
-    </form>
+          )}
+        />
+      </FormDialogContent>
+    </>
   )
 }

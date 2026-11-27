@@ -9,7 +9,7 @@ workflows:
         - 'maxim-lobanov/setup-xcode@v1.7.0'
         - 'pnpm/action-setup@v6.1.1'
         - 'swatinem/rust-cache@v2.9.3'
-        - 'taiki-e/install-action@v2.90.8'
+        - 'taiki-e/install-action@v2.90.11'
     '.github/workflows/daily.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.4.0'
@@ -23,7 +23,7 @@ workflows:
         - 'cargo-bins/cargo-binstall@v1.28.0'
         - 'pnpm/action-setup@v6.1.1'
         - 'swatinem/rust-cache@v2.9.3'
-        - 'taiki-e/install-action@v2.90.8'
+        - 'taiki-e/install-action@v2.90.11'
     '.github/workflows/deps-build-macos.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
@@ -31,14 +31,14 @@ workflows:
         - 'maxim-lobanov/setup-xcode@v1.7.0'
         - 'pnpm/action-setup@v6.1.1'
         - 'swatinem/rust-cache@v2.9.3'
-        - 'taiki-e/install-action@v2.90.8'
+        - 'taiki-e/install-action@v2.90.11'
     '.github/workflows/deps-build-windows-nsis.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'actions/upload-artifact@v7.0.2'
         - 'pnpm/action-setup@v6.1.1'
         - 'swatinem/rust-cache@v2.9.3'
-        - 'taiki-e/install-action@v2.90.8'
+        - 'taiki-e/install-action@v2.90.11'
     '.github/workflows/deps-create-updater.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
@@ -75,7 +75,7 @@ workflows:
         - 'actions/setup-node@v7.1.0'
         - 'pnpm/action-setup@v6.1.1'
         - 'softprops/action-gh-release@v3.0.4'
-        - 'taiki-e/install-action@v2.90.8'
+        - 'taiki-e/install-action@v2.90.11'
     '.github/workflows/sourceforge-backfill-release.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
@@ -196,8 +196,8 @@ dependencies:
         commit: 'sha1-d1527c8f67ef9af357290475d4af4b0fab8f12e0'
         owner_id: 580492
         repo_id: 298565987
-    'taiki-e/install-action@v2.90.8':
-        ref: 'v2.90.8'
-        commit: 'sha1-fe3acb53a98b62c772db35de75ce0e4595e7ca8c'
+    'taiki-e/install-action@v2.90.11':
+        ref: 'v2.90.11'
+        commit: 'sha1-073e1fd0bc889c9aee68dbaaa927cde1b5653a83'
         owner_id: 43724913
         repo_id: 442947557

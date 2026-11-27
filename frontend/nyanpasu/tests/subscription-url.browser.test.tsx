@@ -111,9 +111,11 @@ async function mount(
 
 /** Imports what the dialog suggests, as a remote subscription. */
 async function confirmImport(view: Awaited<ReturnType<typeof render>>) {
-  await view
-    .getByRole('button', { name: m.profile_import_url_confirm() })
-    .click()
+  const confirmButton = view.getByRole('button', {
+    name: m.profile_import_url_confirm(),
+  })
+  await confirmButton.click()
+  await expect.element(confirmButton).not.toBeInTheDocument()
 }
 
 test('quick import submits legal loopback URLs unchanged and rejects invalid schemes', async ({

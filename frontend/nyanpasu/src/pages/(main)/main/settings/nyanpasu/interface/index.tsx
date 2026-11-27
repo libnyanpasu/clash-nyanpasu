@@ -1,3 +1,9 @@
+import {
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+} from '@nyanpasu/ui/item-group'
 import { CUSTOM_CSS_PRESETS } from '@/assets/custom-css-presets'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
@@ -7,7 +13,6 @@ import { m } from '@/paraglide/messages'
 import { PlatformDesktop, usePlatform } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsLinkRow } from '../../_modules/settings-link-row'
-import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import LanguageSelector from './_modules/language-selector'
 import ProfileFileOpenerSelector from './_modules/profile-file-opener-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
@@ -21,31 +26,35 @@ export const Route = createFileRoute(
 
 const LanguageSettings = () => {
   return (
-    <div data-slot="language-settings-container">
-      <SettingsLabel>
-        {m.settings_user_interface_language_group()}
-      </SettingsLabel>
+    <ItemSection data-slot="language-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_user_interface_language_group()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <LanguageSelector />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const ThemeModeSettings = () => {
   return (
-    <div data-slot="theme-mode-settings-container">
-      <SettingsLabel>
-        {m.settings_user_interface_theme_mode_group()}
-      </SettingsLabel>
+    <ItemSection data-slot="theme-mode-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_user_interface_theme_mode_group()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <ThemeModeSelector />
 
         <ThemeColorConfig />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
@@ -53,14 +62,17 @@ const FileHandlingSettings = () => {
   return (
     <PlatformDesktop>
       <ReadOnlyScope permissions={['system:write']}>
-        <div data-slot="file-handling-settings-container">
-          <SettingsLabel>
-            {m.settings_user_interface_file_handling_group()}
-          </SettingsLabel>
-          <SettingsGroup>
+        <ItemSection data-slot="file-handling-settings-container">
+          <ItemSectionHeader>
+            <ItemSectionTitle>
+              {m.settings_user_interface_file_handling_group()}
+            </ItemSectionTitle>
+          </ItemSectionHeader>
+
+          <ItemGroup>
             <ProfileFileOpenerSelector />
-          </SettingsGroup>
-        </div>
+          </ItemGroup>
+        </ItemSection>
       </ReadOnlyScope>
     </PlatformDesktop>
   )
@@ -77,12 +89,14 @@ const CustomCssPresetsEntry = () => {
   ).length
 
   return (
-    <div data-slot="custom-css-presets-section">
-      <SettingsLabel>
-        {m.settings_user_interface_custom_css_presets_group()}
-      </SettingsLabel>
+    <ItemSection data-slot="custom-css-presets-section">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_user_interface_custom_css_presets_group()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <SettingsLinkRow
           to="/main/settings/nyanpasu/interface/presets"
           title={m.settings_user_interface_custom_css_presets_group()}
@@ -91,8 +105,8 @@ const CustomCssPresetsEntry = () => {
           )}
           data-slot="custom-css-presets-entry"
         />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
@@ -100,12 +114,14 @@ const CustomCssItemsEntry = () => {
   const customCss = useCustomCss()
 
   return (
-    <div data-slot="custom-css-items-section">
-      <SettingsLabel>
-        {m.settings_user_interface_custom_css_group()}
-      </SettingsLabel>
+    <ItemSection data-slot="custom-css-items-section">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_user_interface_custom_css_group()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <SettingsLinkRow
           to="/main/settings/nyanpasu/interface/custom-css"
           title={m.settings_user_interface_custom_css_group()}
@@ -114,8 +130,8 @@ const CustomCssItemsEntry = () => {
           })}
           data-slot="custom-css-items-entry"
         />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 

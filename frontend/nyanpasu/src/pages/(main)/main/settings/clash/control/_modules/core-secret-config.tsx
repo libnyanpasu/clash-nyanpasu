@@ -1,21 +1,17 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import ContentCopyRounded from '~icons/material-symbols/content-copy-rounded'
-import { AnimatePresence } from 'motion/react'
-import { ChangeEvent } from 'react'
+import { useId } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Input } from '@nyanpasu/ui/input'
 import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-  useModal,
-} from '@nyanpasu/ui/modal'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@nyanpasu/ui/tooltip'
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
+import { Input } from '@nyanpasu/ui/input'
+import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { writeClipboardText } from '@/utils/clipboard'
@@ -27,15 +23,6 @@ import {
   useClashInfo,
   useRuntimeProfile,
 } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 
 const formSchema = z.object({
   coreSecret: z.string(),
@@ -43,14 +30,15 @@ const formSchema = z.object({
 
 export default function CoreSecretConfig() {
   return (
-    <Modal>
+    <Dialog>
       <CoreSecretConfigForm />
-    </Modal>
+    </Dialog>
   )
 }
 
 function CoreSecretConfigForm() {
-  const { setOpen } = useModal()
+  const { setOpen } = useDialog()
+  const errorId = useId()
 
   const { data, refetch } = useClashInfo()
 
@@ -117,118 +105,58 @@ function CoreSecretConfigForm() {
   })
 
   return (
-    <SettingsCard data-slot="core-secret-config-card">
-      <>
-        <SettingsCardContent asChild>
-          <ModalTrigger asChild>
-            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
-              <ItemContainer>
-                <ItemLabel>
-                  <ItemLabelText>
-                    {m.settings_clash_settings_core_secret_label()}
-                  </ItemLabelText>
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          data-slot="core-secret-config-card"
+          title={m.settings_clash_settings_core_secret_label()}
+          description={data?.secret}
+        />
+      </DialogTrigger>
 
-                  <ItemLabelDescription>{data?.secret}</ItemLabelDescription>
-                </ItemLabel>
+      <FormDialogContent
+        title={m.settings_clash_settings_core_secret_label_edit()}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_close()}
+        submitting={form.formState.isSubmitting}
+        extraActions={
+          <Button
+            type="button"
+            variant="basic"
+            onClick={handleCopyClick}
+            disabled={!data?.secret || form.formState.isSubmitting}
+          >
+            <ContentCopyRounded className="size-5" aria-hidden />
+            <span>{m.common_copy()}</span>
+          </Button>
+        }
+        onOpen={() => form.reset({ coreSecret: data?.secret || '' })}
+        onSubmit={handleSubmit}
+      >
+        <Controller
+          control={form.control}
+          name="coreSecret"
+          render={({ field }) => {
+            const error = form.formState.errors.coreSecret
 
-                <div className="flex items-center gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="raised"
-                        className="hover:bg-inverse-on-surface"
-                        icon
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleCopyClick()
-                        }}
-                        asChild
-                      >
-                        <span>
-                          <ContentCopyRounded />
-                        </span>
-                      </Button>
-                    </TooltipTrigger>
-
-                    <TooltipContent>{m.common_copy()}</TooltipContent>
-                  </Tooltip>
-
-                  <ArrowForwardIosRounded />
-                </div>
-              </ItemContainer>
-            </Button>
-          </ModalTrigger>
-        </SettingsCardContent>
-
-        <ModalContent
-          dismissible={!form.formState.isSubmitting}
-          onOpenAutoFocus={() => form.reset({ coreSecret: data?.secret || '' })}
-        >
-          <Card className="flex min-w-96 flex-col">
-            <CardHeader>
-              <ModalTitle>
-                {m.settings_clash_settings_core_secret_label_edit()}
-              </ModalTitle>
-            </CardHeader>
-
-            <CardContent asChild>
-              <form
-                className="flex flex-col gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  handleSubmit(event)
-                }}
-              >
-                <Controller
-                  control={form.control}
-                  name="coreSecret"
-                  render={({ field }) => {
-                    const handleChange = (
-                      event: ChangeEvent<HTMLInputElement>,
-                    ) => {
-                      field.onChange(event.target.value)
-                    }
-
-                    return (
-                      <>
-                        <Input
-                          variant="outlined"
-                          label={m.settings_clash_settings_core_secret_label()}
-                          value={field.value ?? ''}
-                          onChange={handleChange}
-                        />
-
-                        <AnimatePresence>
-                          {form.formState.errors.coreSecret && (
-                            <SettingsCardAnimatedItem className="text-error">
-                              {form.formState.errors.coreSecret.message}
-                            </SettingsCardAnimatedItem>
-                          )}
-                        </AnimatePresence>
-                      </>
-                    )
-                  }}
+            return (
+              <>
+                <Input
+                  variant="underlined"
+                  label={m.settings_clash_settings_core_secret_label()}
+                  aria-label={m.settings_clash_settings_core_secret_label()}
+                  value={field.value ?? ''}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? errorId : undefined}
                 />
-              </form>
-            </CardContent>
 
-            <CardFooter className="gap-2">
-              <Button
-                variant="flat"
-                onClick={handleSubmit}
-                loading={form.formState.isSubmitting}
-                disabled={form.formState.isSubmitting}
-              >
-                {m.common_apply()}
-              </Button>
-
-              <ModalClose disabled={form.formState.isSubmitting}>
-                {m.common_close()}
-              </ModalClose>
-            </CardFooter>
-          </Card>
-        </ModalContent>
-      </>
-    </SettingsCard>
+                <FormDialogError id={errorId} message={error?.message} />
+              </>
+            )
+          }}
+        />
+      </FormDialogContent>
+    </>
   )
 }

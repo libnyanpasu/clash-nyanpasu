@@ -1,9 +1,14 @@
+import {
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+} from '@nyanpasu/ui/item-group'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
 import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
 import BreakWhenProxyChangeSelector from './_modules/break-when-proxy-change-selector'
@@ -17,43 +22,55 @@ export const Route = createFileRoute('/(main)/main/settings/clash/core/')({
 
 const CoreBehaviorSettings = () => {
   return (
-    <div data-slot="core-behavior-settings-container">
-      <SettingsLabel>{m.settings_clash_core_behavior_label()}</SettingsLabel>
+    <ItemSection data-slot="core-behavior-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_core_behavior_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <ManagedGuardFieldSelector field="unified-delay" />
 
         <ManagedGuardFieldSelector field="tcp-concurrent" />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const LatencyTestSettings = () => {
   return (
-    <div data-slot="latency-test-settings-container">
-      <SettingsLabel>{m.settings_clash_latency_test_label()}</SettingsLabel>
+    <ItemSection data-slot="latency-test-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_latency_test_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <LatencyTestConfig />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const ConnectionSettings = () => {
   return (
-    <div data-slot="connection-settings-container">
-      <SettingsLabel>{m.settings_clash_core_connections_label()}</SettingsLabel>
+    <ItemSection data-slot="connection-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_core_connections_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <BreakWhenProxyChangeSelector />
 
         <BreakWhenProfileChangeSwitch />
 
         <BreakWhenModeChangeSwitch />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 

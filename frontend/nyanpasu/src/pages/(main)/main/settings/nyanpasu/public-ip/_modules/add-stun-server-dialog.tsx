@@ -1,16 +1,13 @@
 import AddRounded from '~icons/material-symbols/add-rounded'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Input, NumericInput } from '@nyanpasu/ui/input'
 import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalDescription,
-  ModalTitle,
-  ModalTrigger,
-} from '@nyanpasu/ui/modal'
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+} from '@nyanpasu/ui/dialog'
+import { Input, NumericInput } from '@nyanpasu/ui/input'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { useClashSetting, useStunServerTest } from '@nyanpasu/query'
@@ -88,6 +85,7 @@ export default function AddStunServerDialog({
   /** Resolves whether the server was saved. */
   onAdd: (server: StunServer) => Promise<boolean>
 }) {
+  const formErrorId = useId()
   const [host, setHost] = useState('')
   const [port, setPort] = useState<number | null>(DEFAULT_STUN_PORT)
   const [added, setAdded] = useState(false)
@@ -123,16 +121,19 @@ export default function AddStunServerDialog({
           : null
   const canAdd = Boolean(trimmedHost) && portValid && formError == null
   const test = serverTest.data
+  const testError = serverTest.error ? formatError(serverTest.error) : undefined
 
   const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setHost('')
-      setPort(DEFAULT_STUN_PORT)
-      setAdded(false)
-      discardTest()
-    } else {
+    if (!next) {
       submission.current += 1
     }
+  }
+
+  const handleOpen = () => {
+    setHost('')
+    setPort(DEFAULT_STUN_PORT)
+    setAdded(false)
+    discardTest()
   }
 
   const handleAdd = async () => {
@@ -158,117 +159,86 @@ export default function AddStunServerDialog({
   }
 
   return (
-    <Modal onOpenChange={handleOpenChange}>
-      <ModalTrigger asChild>
+    <Dialog onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
         <Button variant="raised" className="flex items-center gap-1 px-4">
           <AddRounded className="size-6" aria-hidden />
 
           <span>{m.settings_public_ip_stun_add()}</span>
         </Button>
-      </ModalTrigger>
+      </DialogTrigger>
 
-      <ModalContent>
-        <Card
-          className="w-[28rem] max-w-full"
-          data-slot="add-stun-server-dialog"
-        >
-          <CardHeader>
-            <ModalTitle>{m.settings_public_ip_stun_add_title()}</ModalTitle>
-          </CardHeader>
-
-          <CardContent className="flex flex-col gap-4">
-            <ModalDescription className="text-on-surface-variant text-sm">
-              {m.settings_public_ip_stun_add_description()}
-            </ModalDescription>
-
-            <form
-              className="flex gap-2"
-              data-slot="add-stun-server-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                handleAdd()
+      <FormDialogContent
+        title={m.settings_public_ip_stun_add_title()}
+        description={m.settings_public_ip_stun_add_description()}
+        submitLabel={m.settings_public_ip_stun_add_confirm()}
+        cancelLabel={
+          added ? m.settings_public_ip_stun_added_done() : m.common_cancel()
+        }
+        submitDisabled={serverTest.isPending || added || !canAdd}
+        onOpen={handleOpen}
+        onSubmit={handleAdd}
+      >
+        <div className="flex flex-col gap-4" data-slot="add-stun-server-dialog">
+          <div className="flex gap-2" data-slot="add-stun-server-form">
+            <Input
+              variant="underlined"
+              className="flex-1"
+              label={m.settings_public_ip_stun_host()}
+              aria-label={m.settings_public_ip_stun_host()}
+              value={host}
+              disabled={added}
+              autoFocus
+              spellCheck={false}
+              aria-invalid={Boolean(formError)}
+              aria-describedby={formError ? formErrorId : undefined}
+              onChange={(event) => {
+                setHost(event.target.value)
+                discardTest()
               }}
-            >
-              <Input
-                className="flex-1"
-                label={m.settings_public_ip_stun_host()}
-                aria-label={m.settings_public_ip_stun_host()}
-                value={host}
-                disabled={added}
-                autoFocus
-                spellCheck={false}
-                onChange={(event) => {
-                  setHost(event.target.value)
-                  discardTest()
-                }}
-              />
+            />
 
-              <NumericInput
-                className="w-28"
-                label={m.settings_public_ip_stun_port()}
-                aria-label={m.settings_public_ip_stun_port()}
-                value={port}
-                min={1}
-                max={65535}
-                decimalScale={0}
-                allowNegative={false}
-                disabled={added}
-                onChange={(value) => {
-                  setPort(value)
-                  discardTest()
-                }}
-              />
-            </form>
+            <NumericInput
+              variant="underlined"
+              className="w-28"
+              label={m.settings_public_ip_stun_port()}
+              aria-label={m.settings_public_ip_stun_port()}
+              value={port}
+              min={1}
+              max={65535}
+              decimalScale={0}
+              allowNegative={false}
+              disabled={added}
+              aria-invalid={Boolean(formError)}
+              aria-describedby={formError ? formErrorId : undefined}
+              onChange={(value) => {
+                setPort(value)
+                discardTest()
+              }}
+            />
+          </div>
 
-            {formError && (
-              <p className="text-error text-sm" role="alert">
-                {formError}
-              </p>
-            )}
+          <FormDialogError id={formErrorId} message={formError} />
 
-            {tunEnabled && (
-              <p className="text-on-surface-variant text-sm">
-                {m.settings_public_ip_stun_tun_warning()}
-              </p>
-            )}
+          {tunEnabled && (
+            <p className="text-on-surface-variant text-sm">
+              {m.settings_public_ip_stun_tun_warning()}
+            </p>
+          )}
 
-            {serverTest.error && (
-              <p className="text-error text-sm" role="alert">
-                {formatError(serverTest.error)}
-              </p>
-            )}
+          <FormDialogError message={testError} />
 
-            {test && <TestResults test={test} />}
+          {test && <TestResults test={test} />}
 
-            {test && !answeredAny(test.capabilities) && (
-              <p className="text-error text-sm" role="alert">
-                {m.settings_public_ip_stun_result_none()}
-              </p>
-            )}
-          </CardContent>
-
-          <CardFooter className="gap-1">
-            {added ? (
-              <ModalClose variant="flat">
-                {m.settings_public_ip_stun_added_done()}
-              </ModalClose>
-            ) : (
-              <>
-                <ModalClose>{m.common_cancel()}</ModalClose>
-
-                <Button
-                  variant="flat"
-                  disabled={!canAdd}
-                  loading={serverTest.isPending}
-                  onClick={handleAdd}
-                >
-                  {m.settings_public_ip_stun_add_confirm()}
-                </Button>
-              </>
-            )}
-          </CardFooter>
-        </Card>
-      </ModalContent>
-    </Modal>
+          <FormDialogError
+            message={
+              test && !answeredAny(test.capabilities)
+                ? m.settings_public_ip_stun_result_none()
+                : undefined
+            }
+          />
+        </div>
+      </FormDialogContent>
+    </Dialog>
   )
 }

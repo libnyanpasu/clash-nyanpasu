@@ -42,7 +42,7 @@ export const itemGroupVariants = cva([
 
 export const itemVariants = cva(
   [
-    'relative flex min-h-16 w-full min-w-0 items-center gap-4 px-5 py-3.5 text-left',
+    'relative flex min-h-18 w-full min-w-0 items-center gap-4 px-5 py-5 text-left',
     'rounded-extra-large overflow-hidden',
     'bg-surface-container-lowest dark:bg-surface-container text-on-surface',
     'transition-[background-color,color,border-radius] duration-150 motion-reduce:transition-none',
@@ -138,7 +138,7 @@ export const itemSplitSwitchVariants = cva(
 
 export const itemSplitSwitchActionVariants = cva(
   [
-    'relative z-1 flex min-w-0 flex-1 items-center gap-4 py-3.5 pr-4 pl-5 text-left',
+    'relative z-1 flex min-w-0 flex-1 items-center gap-4 py-5 pr-4 pl-5 text-left',
     'transition-colors duration-150 motion-reduce:transition-none',
   ],
   {
@@ -530,7 +530,7 @@ export function ItemSwitch({
       <label
         htmlFor={switchId}
         className={cn(
-          'relative z-1 flex min-h-16 w-full min-w-0 items-center gap-4 px-5 py-3.5 text-left select-none',
+          'relative z-1 flex min-h-18 w-full min-w-0 items-center gap-4 px-5 py-5 text-left select-none',
           isInert ? 'cursor-not-allowed' : 'cursor-pointer',
         )}
       >

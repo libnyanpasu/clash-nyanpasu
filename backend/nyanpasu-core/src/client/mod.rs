@@ -27,6 +27,7 @@ mod app_lifecycle;
 pub mod app_update;
 pub mod application;
 pub mod artifact_snapshot;
+mod candidate_inspection;
 mod clash_api;
 pub(crate) mod clash_config;
 mod clash_streams;
@@ -51,6 +52,7 @@ mod network_tests;
 pub(crate) mod ports;
 pub mod profiles;
 pub mod reconciler;
+mod refused_changes;
 mod remote_access;
 pub mod runtime;
 pub mod runtime_build;
@@ -338,6 +340,10 @@ struct NyanpasuClientInner {
     paths: PathResolver,
     storage: Arc<dyn StorageSnapshot>,
     reconciler: reconciler::RuntimeReconcilerClient,
+    /// Candidates kept for inspection after a failed change.
+    candidates: Arc<candidate_inspection::CandidateStore>,
+    /// Background changes whose failure kept a candidate, for the status.
+    refused_changes: refused_changes::RefusedChanges,
     core_api: CoreClientV2,
     proxies: crate::proxies::ProxiesClient,
     streams: crate::clash::ws::StreamsClient,
@@ -604,6 +610,9 @@ impl NyanpasuClient {
         let builder = host_adapters.runtime_build;
         let validator: Arc<dyn reconciler::ports::RuntimeValidatorPort> =
             Arc::new(reconciler::adapters::CoreCheckValidator::new(&core_v2));
+        let candidates = Arc::new(candidate_inspection::CandidateStore::new(Arc::new(
+            candidate_inspection::TempCandidateFiles::new(&paths),
+        )));
         let reconciler =
             reconciler::RuntimeReconcilerClient::spawn(reconciler::RuntimeReconcilerArgs {
                 revisions: revisions.clone(),
@@ -620,9 +629,12 @@ impl NyanpasuClient {
                 instance_config_dir,
                 shutdown: shutdown.child_token(),
                 tasks: tasks.clone(),
+                candidates: candidates.clone(),
             })
             .await
             .context(StartWorkflowSnafu)?;
+        // Source owners report the background changes they refuse here.
+        let refused_changes = refused_changes::RefusedChanges::new();
         if let Some(mutations) = mutations {
             let gate: Arc<dyn crate::state::mutation::ports::RuntimeGate> = Arc::new(
                 reconciler::check::CandidateCheck::new(reconciler::check::Args {
@@ -634,13 +646,18 @@ impl NyanpasuClient {
                     revisions,
                     validator,
                     workflow: reconciler.clone(),
+                    candidates: candidates.clone(),
                 }),
             );
+            let outcomes: Arc<dyn crate::state::mutation::ports::OutcomeRecord> =
+                Arc::new(refused_changes.clone());
             mutations
                 .application
-                .connect(notifications.clone(), gate.clone());
-            mutations.clash.connect(notifications.clone(), gate.clone());
-            mutations.profiles.connect(notifications, gate);
+                .connect(notifications.clone(), gate.clone(), outcomes.clone());
+            mutations
+                .clash
+                .connect(notifications.clone(), gate.clone(), outcomes.clone());
+            mutations.profiles.connect(notifications, gate, outcomes);
         }
         let updater = nyanpasu_updater::UpdaterClient::spawn(
             updater_backend_factory(ports.clone()).map_err(|error| match error {
@@ -818,6 +835,8 @@ impl NyanpasuClient {
                 paths,
                 storage,
                 reconciler,
+                candidates,
+                refused_changes,
                 core_api: core_v2,
                 proxies,
                 streams,
@@ -1464,6 +1483,15 @@ impl NyanpasuClient {
         &self,
         patch: NyanpasuAppConfigPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        self.patch_app_config_for(patch, Default::default()).await
+    }
+
+    /// [`Self::patch_app_config`] on behalf of `attribution`.
+    pub(crate) async fn patch_app_config_for(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+        attribution: crate::state::mutation::ports::Attribution,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         if let Some(hotkeys) = patch.hotkeys.as_deref() {
             hotkey::validate_bindings(hotkeys, self.inner.accelerators.as_deref())?;
         }
@@ -1497,7 +1525,7 @@ impl NyanpasuClient {
             return Err(ConfigError::TransparentProxyRequiresServiceMode.into());
         }
         let client = self.inner.application.clone();
-        let committed = client.patch(patch).await?;
+        let committed = client.patch_for(patch, attribution).await?;
         let settled = if committed.reaches_runtime {
             Some(
                 self.inner
@@ -1665,6 +1693,16 @@ impl NyanpasuClient {
         &self,
         patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        self.patch_runtime_overrides_for(patch, Default::default())
+            .await
+    }
+
+    /// [`Self::patch_runtime_overrides`] on behalf of `attribution`.
+    pub(crate) async fn patch_runtime_overrides_for(
+        &self,
+        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+        attribution: crate::state::mutation::ports::Attribution,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let current = self.inner.clash_config.snapshot();
         let nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
             mode,
@@ -1706,7 +1744,11 @@ impl NyanpasuClient {
             }).collect();
             nyanpasu_runtime_values::runtime::MutationOutcome::from_parts((), degradations)
         } else {
-            let committed = self.inner.clash_config.patch_overrides(patch).await?;
+            let committed = self
+                .inner
+                .clash_config
+                .patch_overrides_for(patch, attribution)
+                .await?;
             self.clash_outcome(committed).await
         };
         self.request_proxy_refresh();
@@ -1726,9 +1768,20 @@ impl NyanpasuClient {
         &self,
         patch: ClashConfigPatch,
     ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
+        self.patch_clash_config_for(patch, Default::default()).await
+    }
+
+    /// [`Self::patch_clash_config`] on behalf of `attribution`.
+    pub(crate) async fn patch_clash_config_for(
+        &self,
+        patch: ClashConfigPatch,
+        attribution: crate::state::mutation::ports::Attribution,
+    ) -> Result<nyanpasu_runtime_values::runtime::MutationOutcome<()>> {
         let application = self.inner.application.snapshot().state;
         let client = self.inner.clash_config.clone();
-        let committed = client.patch_validated(&application, patch).await?;
+        let committed = client
+            .patch_validated(&application, patch, attribution)
+            .await?;
         Ok(self.clash_outcome(committed).await)
     }
 
@@ -1761,7 +1814,10 @@ impl NyanpasuClient {
                     message = %degradation.message,
                     "profile commit completed with a degraded side effect",
                 );
-                reconciler::profiles::map_profile_degradation(degradation)
+                reconciler::profiles::map_profile_degradation(
+                    degradation,
+                    report.deferred_candidate.as_ref(),
+                )
             })
             .collect();
         degradations.extend(report.runtime_degradations.clone());
@@ -2390,11 +2446,13 @@ pub(crate) mod tests {
         async fn check(
             &self,
             _: crate::state::mutation::ports::RuntimeCandidate,
-        ) -> std::result::Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>>
-        {
+        ) -> std::result::Result<
+            crate::state::mutation::ports::CheckPass,
+            Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
+        > {
             self.entered.notify_one();
             self.release.notified().await;
-            Ok(())
+            Ok(Default::default())
         }
         fn committed(
             &self,
@@ -2425,6 +2483,7 @@ pub(crate) mod tests {
                 entered: entered.clone(),
                 release: release.clone(),
             }),
+            Arc::new(crate::state::mutation::ports::NoOutcomes),
         );
         let application = ApplicationClient::from_manager(
             mutations,
@@ -3860,7 +3919,7 @@ pub(crate) mod tests {
         });
         (async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher)).await;
-            let (_, _, sources) = client.subscribe_configuration_changes();
+            let (_, _, sources, _, _) = client.subscribe_configuration_changes();
             // The first import becomes current; the second stays deletable.
             client
                 .import_profile(
@@ -4207,6 +4266,7 @@ pub(crate) mod tests {
                 expected: 1,
                 actual: 2,
                 cleanup_failures: Vec::new(),
+                candidate_snapshot_id: None,
             },
             ProfilesError::ProfilesActorStopped,
         ] {

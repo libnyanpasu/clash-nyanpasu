@@ -19,7 +19,7 @@ export function attentionSources<
 export function sourceMessage(source: SourceStatus): string | null {
   switch (source.outcome.kind) {
     case 'committed':
-      return null
+      return source.outcome.deferred?.message ?? null
     case 'superseded':
       return source.outcome.reason
     case 'failed':

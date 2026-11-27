@@ -173,6 +173,28 @@ export function createRpcClient(
         { snapshotId, nodeId },
         options,
       ),
+    /**
+     *  A candidate kept after a failed configuration change in this session. It
+     *  holds content that was never committed and unredacted step logs, so only
+     *  the desktop reaches it.
+     */
+    inspectCandidateRuntime: (snapshotId: string, options?: InvokeOptions) =>
+      __RPC_INVOKE<CandidateInspection_Serialize>(
+        'inspect_candidate_runtime',
+        { snapshotId },
+        options,
+      ),
+    /**  One node of a kept candidate; desktop only, like the candidate itself. */
+    inspectCandidateNode: (
+      snapshotId: string,
+      nodeId: number,
+      options?: InvokeOptions,
+    ) =>
+      __RPC_INVOKE<RuntimeInspectionContent_Serialize>(
+        'inspect_candidate_node',
+        { snapshotId, nodeId },
+        options,
+      ),
     getPostprocessingOutput: (options?: InvokeOptions) =>
       __RPC_INVOKE<PostProcessingOutput>(
         'get_postprocessing_output',
@@ -1338,6 +1360,13 @@ export function createRpcClient(
       options?: InvokeOptions,
     ) =>
       __RPC_INVOKE<null>('create_editor_window', { windowType, uid }, options),
+    /**  Opens the candidate a failed change kept, one window per candidate. */
+    openCandidateConfigWindow: (snapshotId: string, options?: InvokeOptions) =>
+      __RPC_INVOKE<null>(
+        'open_candidate_config_window',
+        { snapshotId },
+        options,
+      ),
     /**
      *  The calling window has rendered. Its label comes from the invoking webview,
      *  so a window can only report itself.
@@ -2860,6 +2889,23 @@ export type ApplicationSettings_Serialize = {
   enable_macos_colored_icons: boolean
 }
 
+/**  Where a change no caller waited on came from. */
+export type BackgroundChangeOrigin =
+  /**  Library sync applying the application settings. */
+  | 'sync_application'
+  /**  Library sync applying the Clash settings. */
+  | 'sync_clash'
+  /**  Library sync applying the profiles. */
+  | 'sync_profiles'
+  /**  A tray item or a global shortcut changing the proxy mode. */
+  | 'action_clash_mode'
+  /**  A tray item or a global shortcut changing the system proxy. */
+  | 'action_system_proxy'
+  /**  A tray item or a global shortcut changing TUN mode. */
+  | 'action_tun_mode'
+  /**  A tray item or a global shortcut changing the transparent proxy. */
+  | 'action_transparent_proxy'
+
 export type BlockedItem = {
   /**  The logical key, or the physical path when it has no valid key. */
   item: string
@@ -2956,6 +3002,52 @@ export type Bytes = {
   upload: number
   download: number
 }
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection =
+  CandidateInspection_Serialize | CandidateInspection_Deserialize
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection_Deserialize = {
+  /**
+   *  `snapshot_id` is the candidate's ID; `final_id` is its built document,
+   *  or the last step a stopped build completed.
+   */
+  inspection: RuntimeInspection_Deserialize
+  /**
+   *  Which step a stopped build could not run, which has no node, and
+   *  why. `None` when the build finished.
+   */
+  halted?: PipelineHalt_Deserialize | null
+  stage: CandidateStage
+}
+
+/**  A candidate kept after a failed change, as the inspection viewer shows it. */
+export type CandidateInspection_Serialize = {
+  /**
+   *  `snapshot_id` is the candidate's ID; `final_id` is its built document,
+   *  or the last step a stopped build completed.
+   */
+  inspection: RuntimeInspection_Serialize
+  /**
+   *  Which step a stopped build could not run, which has no node, and
+   *  why. `None` when the build finished.
+   */
+  halted: PipelineHalt_Serialize | null
+  stage: CandidateStage
+}
+
+/**  How far a kept candidate got; the error that names it says what failed. */
+export type CandidateStage =
+  /**  The build of a change that did not take effect. */
+  | 'built'
+  /**
+   *  The core accepted it in a check, and then the source did not commit
+   *  the change.
+   */
+  | 'prechecked'
+  /**  It took effect, but the files derived from it were not published. */
+  | 'applied_unpublished'
 
 /**
  *  A patch of the controller exposure: whether the core accepts connections from the LAN, and the
@@ -3724,9 +3816,23 @@ export type CommitAborted = CommitAborted_Serialize | CommitAborted_Deserialize
 /**  Why a source transaction did not commit. A source wraps this in its domain error. */
 export type CommitAborted_Deserialize =
   /**  The yaml write failed; nothing committed. */
-  | { kind: 'write_config' }
+  | {
+      kind: 'write_config'
+      /**
+       *  The checked candidate the write was committing, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  The write failed and so did the recovery of what the transaction staged. */
-  | { kind: 'recover_after_write_failure' }
+  | {
+      kind: 'recover_after_write_failure'
+      /**
+       *  The checked candidate the write was committing, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  Candidate validation refused the change. */
   | { kind: 'runtime_refused'; errors: RuntimeError_Deserialize[] }
   /**  Candidate validation could not return a verdict. */
@@ -3735,9 +3841,23 @@ export type CommitAborted_Deserialize =
 /**  Why a source transaction did not commit. A source wraps this in its domain error. */
 export type CommitAborted_Serialize =
   /**  The yaml write failed; nothing committed. */
-  | { kind: 'write_config' }
+  | {
+      kind: 'write_config'
+      /**
+       *  The checked candidate the write was committing, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  The write failed and so did the recovery of what the transaction staged. */
-  | { kind: 'recover_after_write_failure' }
+  | {
+      kind: 'recover_after_write_failure'
+      /**
+       *  The checked candidate the write was committing, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  Candidate validation refused the change. */
   | { kind: 'runtime_refused'; errors: RuntimeError_Serialize[] }
   /**  Candidate validation could not return a verdict. */
@@ -3873,6 +3993,11 @@ export type ConfigError_Deserialize =
       domain: ConfigDomain
       expected: number
       actual: number
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
     }
   | { kind: 'commit'; domain: ConfigDomain; source: CommitAborted_Deserialize }
   | { kind: 'persist_session_state' }
@@ -3903,6 +4028,11 @@ export type ConfigError_Serialize =
       domain: ConfigDomain
       expected: number
       actual: number
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string
     }
   | { kind: 'commit'; domain: ConfigDomain; source: CommitAborted_Serialize }
   | { kind: 'persist_session_state' }
@@ -4013,6 +4143,12 @@ export type ConfigurationStatus_Deserialize = {
   effects: EffectConvergence_Deserialize[]
   /**  The latest background-source receipt per profile. */
   sources: SourceStatus_Deserialize[]
+  /**
+   *  The latest change per origin that no caller waited on and whose
+   *  failure kept a candidate; held for this session only. Left out when
+   *  empty, so the status reads as it did before.
+   */
+  refused_changes?: RefusedBackgroundChange_Deserialize[]
   active?: string | null
   recent_operations: OperationStatus_Deserialize[]
 }
@@ -4025,6 +4161,12 @@ export type ConfigurationStatus_Serialize = {
   effects: EffectConvergence_Serialize[]
   /**  The latest background-source receipt per profile. */
   sources: SourceStatus_Serialize[]
+  /**
+   *  The latest change per origin that no caller waited on and whose
+   *  failure kept a candidate; held for this session only. Left out when
+   *  empty, so the status reads as it did before.
+   */
+  refused_changes?: RefusedBackgroundChange_Serialize[]
   active: string | null
   recent_operations: OperationStatus_Serialize[]
 }
@@ -5182,6 +5324,30 @@ export type CreatedRemoteAccessToken_Serialize = {
   token: string
 }
 
+/**  A committed source whose file could not be completed yet. */
+export type DeferredCompletion =
+  DeferredCompletion_Serialize | DeferredCompletion_Deserialize
+
+/**  A committed source whose file could not be completed yet. */
+export type DeferredCompletion_Deserialize = {
+  message: string
+  /**
+   *  The candidate the committed content was checked with, kept for
+   *  inspection in this session.
+   */
+  candidate_snapshot_id?: string | null
+}
+
+/**  A committed source whose file could not be completed yet. */
+export type DeferredCompletion_Serialize = {
+  message: string
+  /**
+   *  The candidate the committed content was checked with, kept for
+   *  inspection in this session.
+   */
+  candidate_snapshot_id?: string
+}
+
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
 export type Degradation = Degradation_Serialize | Degradation_Deserialize
 
@@ -5209,7 +5375,14 @@ export type DegradationReason_Deserialize =
   | { code: 'proxy_cache_refresh_failed' }
   | { code: 'journal_invalid' }
   | { code: 'jobs_journal_unavailable' }
-  | { code: 'materialization_deferred' }
+  | {
+      code: 'materialization_deferred'
+      /**
+       *  The checked candidate of the committed change whose files are
+       *  still being completed, kept for inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { code: 'cleanup_deferred' }
   | {
       code: 'profile_auto_activation_failed'
@@ -5233,7 +5406,14 @@ export type DegradationReason_Serialize =
   | { code: 'proxy_cache_refresh_failed' }
   | { code: 'journal_invalid' }
   | { code: 'jobs_journal_unavailable' }
-  | { code: 'materialization_deferred' }
+  | {
+      code: 'materialization_deferred'
+      /**
+       *  The checked candidate of the committed change whose files are
+       *  still being completed, kept for inspection in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { code: 'cleanup_deferred' }
   | {
       code: 'profile_auto_activation_failed'
@@ -6004,6 +6184,21 @@ export type GetSysProxyResponse = {
 export type Grant =
   | ({ role: Role } & { permissions?: never })
   | ({ permissions: Partial<{ [key in Resource]: Access }> } & { role?: never })
+
+/**
+ *  The step a stopped pipeline could not complete. It has no node, so this
+ *  is what names it.
+ */
+export type HaltedStep =
+  /**
+   *  Reading a config profile: the selected one, or a composition's base
+   *  or member.
+   */
+  | { kind: 'profile'; profile_id: ProfileId }
+  /**  A transform profile, scoped to a profile or global. */
+  | { kind: 'transform'; profile_id: ProfileId }
+  /**  A built-in transform. */
+  | { kind: 'builtin_transform'; name: string }
 
 /**
  *  What a hotkey does. The strings are the on-disk and on-wire identifiers, so
@@ -8077,6 +8272,23 @@ export type Permission = {
 export type PickPortError =
   { kind: 'port_not_available'; port: number } | { kind: 'no_open_port' }
 
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt = PipelineHalt_Serialize | PipelineHalt_Deserialize
+
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt_Deserialize = {
+  /**  `None` when no step can be named, such as for an internal error. */
+  step?: HaltedStep | null
+  reason: string
+}
+
+/**  Where and why a stopped build stopped. */
+export type PipelineHalt_Serialize = {
+  /**  `None` when no step can be named, such as for an internal error. */
+  step: HaltedStep | null
+  reason: string
+}
+
 /**  The port a resolution was picking for. */
 export type PortField =
   'mixed' | 'http' | 'socks' | 'redir' | 'tproxy' | 'external_controller'
@@ -9523,8 +9735,22 @@ export type ProfilesError_Deserialize =
       kind: 'materialization'
       operation: MaterializationOperation
       source: ProfileFileError
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
     }
-  | { kind: 'version_conflict'; expected: number; actual: number }
+  | {
+      kind: 'version_conflict'
+      expected: number
+      actual: number
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | {
       kind: 'commit'
       /**  The profile the change was about, when it was about one. */
@@ -9583,8 +9809,22 @@ export type ProfilesError_Serialize =
       kind: 'materialization'
       operation: MaterializationOperation
       source: ProfileFileError
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string
     }
-  | { kind: 'version_conflict'; expected: number; actual: number }
+  | {
+      kind: 'version_conflict'
+      expected: number
+      actual: number
+      /**
+       *  The checked candidate the change failed to commit, kept for
+       *  inspection in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | {
       kind: 'commit'
       /**  The profile the change was about, when it was about one. */
@@ -10582,6 +10822,36 @@ export type Rate = {
   download: number
 }
 
+/**
+ *  A change no caller waited on that the configuration check refused, or
+ *  whose commit failed after it, with the candidate it kept while this
+ *  session still holds it.
+ */
+export type RefusedBackgroundChange =
+  RefusedBackgroundChange_Serialize | RefusedBackgroundChange_Deserialize
+
+/**
+ *  A change no caller waited on that the configuration check refused, or
+ *  whose commit failed after it, with the candidate it kept while this
+ *  session still holds it.
+ */
+export type RefusedBackgroundChange_Deserialize = {
+  origin: BackgroundChangeOrigin
+  message: string
+  candidate_snapshot_id?: string | null
+}
+
+/**
+ *  A change no caller waited on that the configuration check refused, or
+ *  whose commit failed after it, with the candidate it kept while this
+ *  session still holds it.
+ */
+export type RefusedBackgroundChange_Serialize = {
+  origin: BackgroundChangeOrigin
+  message: string
+  candidate_snapshot_id?: string
+}
+
 export type ReleaseChannel = 'stable' | 'beta' | 'nightly'
 
 export type ReleaseChannelInfo = {
@@ -11175,12 +11445,16 @@ export type RuntimeConvergence_Deserialize = {
   health: ConvergenceHealth
   operation_id?: string | null
   message?: string | null
+  /**  The candidate the current failure kept for inspection in this session. */
+  candidate_snapshot_id?: string | null
 }
 
 export type RuntimeConvergence_Serialize = {
   health: ConvergenceHealth
   operation_id: string | null
   message: string | null
+  /**  The candidate the current failure kept for inspection in this session. */
+  candidate_snapshot_id?: string
 }
 
 /**  A failure of an operation on the running core or the runtime workflow. */
@@ -11192,7 +11466,15 @@ export type RuntimeError_Deserialize =
   | { kind: 'shutting_down' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  | { kind: 'apply_runtime'; failure: CoreFailure_Deserialize }
+  | {
+      kind: 'apply_runtime'
+      failure: CoreFailure_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'stop_core'; failure: CoreFailure_Deserialize }
   | { kind: 'recover_runtime'; failure: CoreFailure_Deserialize }
   | { kind: 'recover_service_endpoint'; failure: CoreFailure_Deserialize }
@@ -11206,11 +11488,43 @@ export type RuntimeError_Deserialize =
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
   /**  The committed configuration is waiting or has not taken effect. */
-  | { kind: 'configuration_not_in_effect'; reason: string }
-  | { kind: 'build_runtime'; source: RuntimeBuildError_Deserialize }
-  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | {
+      kind: 'configuration_not_in_effect'
+      reason: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
+  | {
+      kind: 'build_runtime'
+      source: RuntimeBuildError_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
+  | {
+      kind: 'publish_runtime'
+      source: PublishRuntimeError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'resolve_port'; source: PortResolveError }
-  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | {
+      kind: 'resolve_core_binary'
+      source: CoreSpecError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError_Deserialize }
   | {
       kind: 'prepare_service_install_prompt'
@@ -11221,12 +11535,41 @@ export type RuntimeError_Deserialize =
       kind: 'core_rejected_config'
       core_kind?: CoreErrorKind | null
       message: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
     }
-  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable_Deserialize }
+  | {
+      kind: 'check_unavailable'
+      reason: RuntimeCheckUnavailable_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  The core restored its own previous configuration. */
-  | { kind: 'core_rolled_back'; reason?: string | null }
+  | {
+      kind: 'core_rolled_back'
+      reason?: string | null
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  The submission ended unobserved, so it may have taken effect. */
-  | { kind: 'submission_unobserved'; failure: CoreFailure_Deserialize }
+  | {
+      kind: 'submission_unobserved'
+      failure: CoreFailure_Deserialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string | null
+    }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }
@@ -11241,7 +11584,15 @@ export type RuntimeError_Serialize =
   | { kind: 'shutting_down' }
   /**  The workflow took the command and never answered, so it may have run. */
   | { kind: 'owner_unresponsive'; operation_id: string }
-  | { kind: 'apply_runtime'; failure: CoreFailure_Serialize }
+  | {
+      kind: 'apply_runtime'
+      failure: CoreFailure_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'stop_core'; failure: CoreFailure_Serialize }
   | { kind: 'recover_runtime'; failure: CoreFailure_Serialize }
   | { kind: 'recover_service_endpoint'; failure: CoreFailure_Serialize }
@@ -11255,11 +11606,43 @@ export type RuntimeError_Serialize =
   /**  The service hosts the runtime; the local host must take it over first. */
   | { kind: 'service_hosts_core' }
   /**  The committed configuration is waiting or has not taken effect. */
-  | { kind: 'configuration_not_in_effect'; reason: string }
-  | { kind: 'build_runtime'; source: RuntimeBuildError_Serialize }
-  | { kind: 'publish_runtime'; source: PublishRuntimeError }
+  | {
+      kind: 'configuration_not_in_effect'
+      reason: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
+  | {
+      kind: 'build_runtime'
+      source: RuntimeBuildError_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
+  | {
+      kind: 'publish_runtime'
+      source: PublishRuntimeError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'resolve_port'; source: PortResolveError }
-  | { kind: 'resolve_core_binary'; source: CoreSpecError }
+  | {
+      kind: 'resolve_core_binary'
+      source: CoreSpecError
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   | { kind: 'install_core_binary'; source: InstallCoreBinaryError_Serialize }
   | {
       kind: 'prepare_service_install_prompt'
@@ -11270,12 +11653,41 @@ export type RuntimeError_Serialize =
       kind: 'core_rejected_config'
       core_kind: CoreErrorKind | null
       message: string
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
     }
-  | { kind: 'check_unavailable'; reason: RuntimeCheckUnavailable_Serialize }
+  | {
+      kind: 'check_unavailable'
+      reason: RuntimeCheckUnavailable_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  The core restored its own previous configuration. */
-  | { kind: 'core_rolled_back'; reason: string | null }
+  | {
+      kind: 'core_rolled_back'
+      reason: string | null
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  The submission ended unobserved, so it may have taken effect. */
-  | { kind: 'submission_unobserved'; failure: CoreFailure_Serialize }
+  | {
+      kind: 'submission_unobserved'
+      failure: CoreFailure_Serialize
+      /**
+       *  The candidate build this failure happened to, kept for inspection
+       *  in this session.
+       */
+      candidate_snapshot_id?: string
+    }
   /**  No runtime configuration has been built yet. */
   | { kind: 'no_runtime_config' }
   | { kind: 'serialize_runtime_config' }
@@ -11704,26 +12116,64 @@ export type SourceOutcomeSummary_Serialize =
   | { kind: 'rejected'; code: SourceRejection }
 
 export type SourceOutcome_Deserialize =
-  | { kind: 'committed'; operation_id?: string | null }
+  | {
+      kind: 'committed'
+      operation_id?: string | null
+      /**
+       *  The committed content's file is not completed yet; maintenance
+       *  retries it.
+       */
+      deferred?: DeferredCompletion_Deserialize | null
+    }
   /**  Its result no longer applied to the profile and was dropped (V31). */
   | { kind: 'superseded'; reason: string }
-  | { kind: 'failed'; message: string }
+  | {
+      kind: 'failed'
+      message: string
+      /**  The candidate the failure kept for inspection in this session. */
+      candidate_snapshot_id?: string | null
+    }
   /**
    *  The content reached the source transaction and was refused; nothing
    *  was committed and an external file is never rewritten (V33).
    */
-  | { kind: 'rejected'; code: string; message: string }
+  | {
+      kind: 'rejected'
+      code: string
+      message: string
+      /**  The candidate the failure kept for inspection in this session. */
+      candidate_snapshot_id?: string | null
+    }
 
 export type SourceOutcome_Serialize =
-  | { kind: 'committed'; operation_id: string | null }
+  | {
+      kind: 'committed'
+      operation_id: string | null
+      /**
+       *  The committed content's file is not completed yet; maintenance
+       *  retries it.
+       */
+      deferred?: DeferredCompletion_Serialize
+    }
   /**  Its result no longer applied to the profile and was dropped (V31). */
   | { kind: 'superseded'; reason: string }
-  | { kind: 'failed'; message: string }
+  | {
+      kind: 'failed'
+      message: string
+      /**  The candidate the failure kept for inspection in this session. */
+      candidate_snapshot_id?: string
+    }
   /**
    *  The content reached the source transaction and was refused; nothing
    *  was committed and an external file is never rewritten (V33).
    */
-  | { kind: 'rejected'; code: string; message: string }
+  | {
+      kind: 'rejected'
+      code: string
+      message: string
+      /**  The candidate the failure kept for inspection in this session. */
+      candidate_snapshot_id?: string
+    }
 
 /**  The refusal reason a source receipt names, from the closed set the source owner raises. */
 export type SourceRejection =

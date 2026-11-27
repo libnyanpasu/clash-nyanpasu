@@ -8,6 +8,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css",
     "./dnd-grid": "./src/dnd-grid/index.ts",
     "./*": "./src/*.tsx"
   },
@@ -32,9 +33,9 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@iconify/json": "2.2.560",
+    "@iconify/json": "2.2.562",
     "@types/d3": "7.4.3",
-    "@types/react": "19.3.0",
+    "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
     "unplugin-icons": "24.0.0"
   },

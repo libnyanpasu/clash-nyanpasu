@@ -364,7 +364,9 @@ fn missing_selected_content_is_strict_error() {
     let ov = overrides();
     let inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("sub-a")), &ov, &[]);
 
-    let error = execute(&inputs, &content, &FakeScriptRunner::default()).unwrap_err();
+    let error = execute(&inputs, &content, &FakeScriptRunner::default())
+        .unwrap_err()
+        .error;
     assert!(matches!(error, RuntimePipelineError::ContentSource { .. }));
 }
 

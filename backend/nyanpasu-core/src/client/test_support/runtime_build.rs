@@ -13,13 +13,12 @@ use nyanpasu_config::{
 };
 use nyanpasu_contracts::profiles::ports::ProfileFsPort;
 use nyanpasu_core_manager::CoreSpec;
-use nyanpasu_profile_transform::{RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder};
 
 use crate::{
     client::{
         reconciler::{
             inputs::{FrozenProfileContent, RuntimeInputs},
-            ports::RuntimeBuildPort,
+            ports::{RuntimeBuildFailure, RuntimeBuildPort},
         },
         runtime,
         runtime::{RuntimePaths, RuntimeRevision, RuntimeSnapshot},
@@ -73,27 +72,15 @@ impl RuntimeBuildPort for TestRuntimeBuildPort {
         inputs: RuntimeInputs,
         resolved_ports: ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<RuntimeSnapshot>, RuntimeBuildError> {
+    ) -> Result<Arc<RuntimeSnapshot>, RuntimeBuildFailure> {
         let built = tokio::task::spawn_blocking(move || {
-            let core = inputs.app.core;
-            let builtin_enabled = inputs.app.enable_builtin_enhanced;
-            let input = RuntimeBuildInput {
-                profiles: inputs.profiles.clone(),
-                app: inputs.app,
-                clash: inputs.clash,
+            crate::client::runtime_build::build_snapshot(
+                revision,
+                inputs,
                 resolved_ports,
-            };
-            let artifact = RuntimeBuilder::build(&input, &inputs.content, &EchoScripts)?;
-            if strict_transforms {
-                RuntimeBuilder::validate_transforms(&artifact)?;
-            }
-            let data = crate::client::artifact_snapshot::runtime_snapshot_data_from_artifact(
-                artifact,
-                &inputs.profiles,
-                core,
-                builtin_enabled,
-            )?;
-            Ok(Arc::new(RuntimeSnapshot::from_data(revision, core, data)))
+                strict_transforms,
+                &EchoScripts,
+            )
         })
         .await;
         nyanpasu_owner_support::blocking::join(built)

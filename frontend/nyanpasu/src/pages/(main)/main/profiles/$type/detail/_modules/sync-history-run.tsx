@@ -368,7 +368,7 @@ export function RunLogs({
   return (
     <div
       data-slot="profile-sync-logs"
-      className="bg-surface-variant/30 flex min-w-0 flex-col overflow-hidden rounded-2xl"
+      className="bg-surface-container-high flex min-w-0 flex-col overflow-hidden rounded-2xl"
     >
       <div className="max-h-80 min-h-32 overflow-auto p-2">
         {logs.isPending ? (

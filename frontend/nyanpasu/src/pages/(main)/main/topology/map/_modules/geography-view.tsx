@@ -48,7 +48,7 @@ const stepOf = (share: number) =>
 
 /** A step's shade as a solid colour: the primary over the land, as on the map. */
 const swatch = (step: number) =>
-  `color-mix(in srgb, var(--color-primary) ${STEP_OPACITY[step] * 100}%, var(--color-surface-variant))`
+  `color-mix(in srgb, var(--color-primary) ${STEP_OPACITY[step] * 100}%, var(--color-surface-container-high))`
 
 const OCEAN =
   'color-mix(in srgb, var(--color-secondary-container) 45%, var(--color-surface))'
@@ -196,7 +196,10 @@ const BaseMap = memo(function BaseMap({ land }: { land: boolean }) {
           />
 
           {/* Borders take the surface colour: a gap that reads in both themes. */}
-          <g className="fill-surface-variant stroke-surface" strokeWidth="0.6">
+          <g
+            className="fill-surface-container-high stroke-surface"
+            strokeWidth="0.6"
+          >
             <path d={worldMap.unassigned} />
             {Object.entries(shapes).map(([code, d]) => (
               <path key={code} d={d} />
@@ -621,7 +624,7 @@ export default function GeographyView({
                           <motion.circle
                             cx={x}
                             cy={y}
-                            className="fill-surface-variant"
+                            className="fill-surface-container-high"
                             initial={false}
                             animate={{ r }}
                             transition={transition}
@@ -835,7 +838,7 @@ export default function GeographyView({
                             </span>
 
                             {geographic && !region.measured && (
-                              <span className="bg-surface-variant text-on-surface-variant shrink-0 rounded-md px-1.5 text-[10px] leading-4">
+                              <span className="bg-surface-container-highest text-on-surface-variant shrink-0 rounded-md px-1.5 text-[10px] leading-4">
                                 {m.topology_geo_basis_resolved()}
                               </span>
                             )}
@@ -849,7 +852,7 @@ export default function GeographyView({
                             </span>
                           </span>
 
-                          <span className="bg-surface-variant block h-1 overflow-hidden rounded-full">
+                          <span className="bg-surface-container-highest block h-1 overflow-hidden rounded-full">
                             <motion.span
                               className={cn(
                                 'block h-full rounded-full',

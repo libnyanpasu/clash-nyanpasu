@@ -11,7 +11,7 @@
     "es-toolkit": "1.53.2",
     "figlet": "1.13.0",
     "globby": "16.2.4",
-    "grammy": "1.46.0",
+    "grammy": "1.48.0",
     "koffi": "3.3.8",
     "octokit": "5.0.5",
     "picocolors": "1.1.1",
@@ -28,7 +28,7 @@
     "@types/adm-zip": "0.6.0",
     "@types/d3": "7.4.3",
     "@types/figlet": "1.12.0",
-    "@types/node": "26.6.6",
+    "@types/node": "26.6.11",
     "@types/semver": "7.8.0",
     "@types/spdx-expression-parse": "4.0.0"
   }

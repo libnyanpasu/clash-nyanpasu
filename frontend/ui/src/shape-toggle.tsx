@@ -32,15 +32,15 @@ export function ShapeToggle({
       disableRipple
       disabled={disabled || loading}
       className={cn(
-        'group focus-visible:ring-primary [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2 dark:bg-transparent dark:hover:bg-transparent',
+        'group focus-visible:ring-primary [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2',
         className,
         compact && 'flex-row justify-start gap-3',
         elastic &&
           'relative isolate overflow-hidden rounded-2xl px-2 py-1 transition-colors duration-200',
         elastic &&
           (active
-            ? 'bg-primary-container text-on-primary-container hover:bg-primary-container dark:bg-primary-container dark:text-on-primary-container dark:hover:bg-primary-container'
-            : 'bg-surface-variant/35 text-on-surface-variant hover:bg-surface-variant/50 dark:bg-surface-variant/35 dark:text-on-surface-variant dark:hover:bg-surface-variant/50'),
+            ? 'bg-primary-container text-on-primary-container hover:bg-primary-container'
+            : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'),
       )}
     >
       <motion.button
@@ -91,11 +91,11 @@ export function ShapeToggle({
               'absolute inset-0 transition-[color,opacity] duration-200',
               elastic
                 ? active
-                  ? 'bg-primary opacity-100'
-                  : 'bg-primary opacity-0'
+                  ? 'bg-primary-container opacity-100'
+                  : 'bg-primary-container opacity-0'
                 : active
-                  ? 'bg-primary'
-                  : 'bg-surface-variant/60',
+                  ? 'bg-primary-container'
+                  : 'bg-surface-container',
             )}
           >
             <span className="absolute inset-0 bg-current opacity-0 transition-opacity group-hover:opacity-8 group-active:opacity-14" />
@@ -105,7 +105,7 @@ export function ShapeToggle({
             animate={{ y: active && !loading && !elastic ? -3 : 0 }}
             className={cn(
               'relative grid aspect-square w-[clamp(1.25rem,40cqi,1.75rem)] place-items-center',
-              active ? 'text-on-primary' : 'text-on-surface-variant',
+              active ? 'text-on-primary-container' : 'text-on-surface-variant',
             )}
             transition={{ duration: reducedMotion ? 0 : 0.3 }}
           >
@@ -123,7 +123,7 @@ export function ShapeToggle({
           </motion.span>
           <motion.span
             className={cn(
-              'text-on-primary absolute',
+              'text-on-primary-container absolute',
               'bottom-[15%] w-[clamp(0.5rem,12cqi,0.75rem)]',
               elastic && 'hidden',
             )}

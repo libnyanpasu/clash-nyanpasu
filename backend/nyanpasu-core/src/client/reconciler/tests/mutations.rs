@@ -76,7 +76,7 @@ impl super::super::ports::RuntimeBuildPort for ParkingBuilder {
         inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, super::super::ports::RuntimeBuildFailure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.park.load(Ordering::SeqCst) {
             self.entered.notify_one();
@@ -120,6 +120,10 @@ pub(super) struct Fixture {
     /// once the token is cancelled.
     pub(super) shutdown: tokio_util::sync::CancellationToken,
     pub(super) tasks: tokio_util::task::TaskTracker,
+    /// The candidates the check keeps when it refuses one.
+    pub(super) candidates: Arc<crate::client::candidate_inspection::CandidateStore>,
+    /// The files the store keeps them in.
+    pub(super) files: Arc<CountingFiles>,
     _dir: tempfile::TempDir,
 }
 
@@ -339,6 +343,10 @@ pub(super) async fn fixture_from(
     );
     let notifications = Arc::new(RecordingNotifications::default());
     let revisions = runtime::RuntimeRevisionAllocator::new();
+    let files = Arc::new(CountingFiles::default());
+    let candidates = Arc::new(crate::client::candidate_inspection::CandidateStore::new(
+        files.clone(),
+    ));
     let client = RuntimeReconcilerClient::spawn_with_ticks(
         RuntimeReconcilerArgs {
             revisions: revisions.clone(),
@@ -358,6 +366,7 @@ pub(super) async fn fixture_from(
             instance_config_dir: Default::default(),
             shutdown: shutdown.clone(),
             tasks: tasks.clone(),
+            candidates: candidates.clone(),
         },
         false,
     )
@@ -376,11 +385,14 @@ pub(super) async fn fixture_from(
             revisions: revisions.clone(),
             validator: Arc::new(adapters::CoreCheckValidator::new(&core)),
             workflow: client.clone(),
+            candidates: candidates.clone(),
         }),
     );
     let application = application_owner(application, gate.clone(), &shutdown, &tasks).await;
     let clash = clash_owner(clash, gate, &shutdown, &tasks).await;
     Fixture {
+        candidates,
+        files,
         client,
         endpoint,
         builder,
@@ -663,7 +675,7 @@ async fn unsupported_engine_is_rejected_before_source_persistence() {
                 panic!("{commit:?}")
             };
             assert_eq!(errors.len(), 1);
-            let RuntimeError::BuildRuntime { source: build } = errors[0].as_ref() else {
+            let RuntimeError::BuildRuntime { source: build, .. } = errors[0].as_ref() else {
                 panic!("{errors:?}")
             };
             let RuntimeBuildError::RunPipeline { source: pipeline } = build else {
@@ -780,6 +792,7 @@ pub(super) async fn application_owner(
     mutations.connect(
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
         gate,
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
     );
     crate::client::application::ApplicationClient::from_manager(
         mutations,
@@ -804,6 +817,7 @@ pub(super) async fn clash_owner(
     mutations.connect(
         Arc::new(crate::client::effects::ports::NoopCommitNotifications),
         gate,
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
     );
     crate::client::clash_config::ClashConfigClient::from_manager(
         mutations,
@@ -821,6 +835,24 @@ pub(super) struct CommittedSource {
     version: nyanpasu_state_engine::Version,
     reaches_runtime: bool,
 }
+/// Temporary files whose creation a test counts, and can refuse as the
+/// store refuses a build too large to keep.
+#[derive(Default)]
+pub(super) struct CountingFiles {
+    pub(super) created: AtomicUsize,
+    pub(super) refuse: AtomicBool,
+}
+
+impl crate::client::candidate_inspection::CandidateFiles for CountingFiles {
+    fn create(&self) -> std::io::Result<std::fs::File> {
+        self.created.fetch_add(1, Ordering::SeqCst);
+        if self.refuse.load(Ordering::SeqCst) {
+            return Err(std::io::Error::other("this candidate cannot be kept"));
+        }
+        tempfile::tempfile()
+    }
+}
+
 #[async_trait::async_trait]
 pub(super) trait SourceOwner {
     type Value: Send;

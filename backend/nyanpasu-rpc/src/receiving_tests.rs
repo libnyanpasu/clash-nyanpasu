@@ -77,6 +77,15 @@ macro_rules! cases {
     };
 }
 
+fn candidate_snapshot_id(
+    present: bool,
+) -> Option<nyanpasu_runtime_values::candidate::CandidateSnapshotId> {
+    present.then(|| {
+        nyanpasu_runtime_values::candidate::CandidateSnapshotId::parse("a_-012345678901234567")
+            .unwrap()
+    })
+}
+
 fn io_source() -> io::Error {
     io::Error::other("operational source retained only on the host")
 }
@@ -98,6 +107,7 @@ cases!(
     },
     ApplyRuntime {
         failure: core_failure(present),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     StopCore {
         failure: core_failure(present),
@@ -133,18 +143,22 @@ cases!(
     ServiceHostsCore,
     ConfigurationNotInEffect {
         reason: "field-7/路徑\\file.yaml".to_owned(),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     BuildRuntime {
         source: runtime_build_error_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     PublishRuntime {
         source: publish_runtime_error_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     ResolvePort {
         source: port_resolve_error_cases(present).remove(0),
     },
     ResolveCoreBinary {
         source: core_spec_error_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     InstallCoreBinary {
         source: install_core_binary_error_cases(present).remove(0),
@@ -162,9 +176,11 @@ cases!(
             None
         },
         message: "field-8/路徑\\file.yaml".to_owned(),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     CheckUnavailable {
         reason: check_unavailable_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     CoreRolledBack {
         reason: if present {
@@ -172,9 +188,11 @@ cases!(
         } else {
             None
         },
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     SubmissionUnobserved {
         failure: core_failure(present),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     NoRuntimeConfig,
     SerializeRuntimeConfig {
@@ -289,11 +307,13 @@ cases!(
     Materialization {
         operation: sample(json!("prepare_file_first")),
         source: profile_file_error_cases(present).remove(0),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     VersionConflict {
         expected: 4,
         actual: 5,
         cleanup_failures: vec![ProfilesError::ShuttingDown],
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     Commit {
         uid: if present {
@@ -378,7 +398,9 @@ cases!(
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
-    MaterializationDeferred,
+    MaterializationDeferred {
+        candidate_snapshot_id: candidate_snapshot_id(present),
+    },
     CleanupDeferred,
     ProfileAutoActivationFailed {
         profile: sample(json!("profile-1")),
@@ -395,9 +417,11 @@ cases!(
     present;
     WriteConfig {
         source: Box::new(io_source()),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     RecoverAfterWriteFailure {
         source: Box::new(io_source()),
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     RuntimeRefused {
         errors: vec![Arc::new(runtime_error_cases(present).remove(0))],
@@ -868,6 +892,7 @@ cases!(
         domain: sample(json!("profiles")),
         expected: 7,
         actual: 8,
+        candidate_snapshot_id: candidate_snapshot_id(present),
     },
     Commit {
         domain: sample(json!("profiles")),

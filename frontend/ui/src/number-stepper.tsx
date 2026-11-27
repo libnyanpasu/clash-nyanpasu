@@ -10,17 +10,18 @@ export type NumberStepperLayout = 'stacked' | 'inline'
 
 const buttonStyles: Record<NumberStepperVariant, string> = {
   outlined:
-    'border border-outline bg-transparent text-on-surface-variant hover:bg-on-surface/8 dark:bg-transparent dark:text-on-surface-variant dark:hover:bg-on-surface/8 disabled:border-on-surface/12 disabled:bg-transparent disabled:hover:bg-transparent dark:disabled:bg-transparent dark:disabled:hover:bg-transparent',
+    'border border-outline bg-transparent text-on-surface-variant hover:bg-on-surface/8 disabled:border-on-surface/12 disabled:bg-transparent disabled:text-on-surface/38 disabled:hover:bg-transparent',
   filled:
-    'bg-primary text-on-primary hover:bg-primary hover:brightness-95 dark:bg-primary dark:text-on-primary dark:hover:bg-primary disabled:bg-on-surface/12 disabled:hover:bg-on-surface/12 disabled:hover:brightness-100 dark:disabled:bg-on-surface/12 dark:disabled:hover:bg-on-surface/12',
+    'bg-primary text-on-primary hover:brightness-95 disabled:bg-on-surface/12 disabled:text-on-surface/38 disabled:hover:bg-on-surface/12 disabled:hover:brightness-100',
   tonal:
-    'bg-secondary-container text-on-secondary-container hover:bg-secondary-container hover:brightness-95 dark:bg-secondary-container dark:text-on-secondary-container dark:hover:bg-secondary-container disabled:bg-on-surface/12 disabled:hover:bg-on-surface/12 disabled:hover:brightness-100 dark:disabled:bg-on-surface/12 dark:disabled:hover:bg-on-surface/12',
+    'bg-secondary-container text-on-secondary-container hover:brightness-95 disabled:bg-on-surface/12 disabled:text-on-surface/38 disabled:hover:bg-on-surface/12 disabled:hover:brightness-100',
 }
 
 const inputStyles: Record<NumberStepperVariant, string> = {
   outlined: 'border-outline bg-transparent',
-  filled: 'border-transparent bg-surface-variant/30',
-  tonal: 'border-transparent bg-secondary-container/40',
+  filled: 'border-transparent bg-surface-container-highest',
+  tonal:
+    'border-transparent bg-secondary-container/40 text-on-secondary-container',
 }
 
 export function NumberStepper({
@@ -99,7 +100,7 @@ export function NumberStepper({
 
   const buttonClassName = cn(
     inline ? 'size-8' : 'size-10',
-    'shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:text-on-surface/38 dark:disabled:text-on-surface/38',
+    'shrink-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:text-on-surface/38',
     buttonStyles[variant],
   )
 

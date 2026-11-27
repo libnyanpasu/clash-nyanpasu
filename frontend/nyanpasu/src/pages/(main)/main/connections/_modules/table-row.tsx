@@ -277,7 +277,7 @@ export const ConnectionDetailModal = memo(function ConnectionDetailModal({
               <ModalTitle>{m.connections_view_details()}</ModalTitle>
 
               {detail.closed && (
-                <span className="bg-surface-variant text-on-surface-variant rounded-full px-2 py-0.5 text-xs">
+                <span className="bg-surface-container-highest text-on-surface-variant rounded-full px-2 py-0.5 text-xs">
                   {m.connections_tab_closed()}
                 </span>
               )}

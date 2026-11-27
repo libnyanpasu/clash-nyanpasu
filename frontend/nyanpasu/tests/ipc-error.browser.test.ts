@@ -1,11 +1,14 @@
 import { expect, test } from 'vitest'
 import { m } from '@/paraglide/messages'
 import {
+  candidateSnapshotId,
+  degradationCandidateId,
   degradationReasonMessage,
   effectFailureMessage,
   ipcErrorMessage,
   publicDegradationReasonMessage,
 } from '@/utils/ipc-error'
+import { RpcFailure } from '@nyanpasu/rpc'
 import type {
   ClashReadError,
   ConfigError,
@@ -18,6 +21,7 @@ import type {
   ProfileSyncReadError,
   RemoteAccessError,
   RuntimeError,
+  RuntimeError_Deserialize,
   ScriptOperation,
   ScriptRuntime,
   StorageOperationError,
@@ -344,6 +348,7 @@ test('unavailable native storage is explained for operations and refused mutatio
         kind: 'core_rejected_config',
         core_kind: 'native_store_unavailable',
         message: 'native storage failed',
+        candidate_snapshot_id: 'ckR8l5YdA2m0Pv3qT9sWx',
       }),
     ),
   ).toBe(`${m.error_runtime_core_rejected_config()} (${reason})`)
@@ -370,6 +375,7 @@ test('a refused mutation says what the runtime lacked or rejected', () => {
         kind: 'core_rejected_config',
         core_kind: 'config_check_failed',
         message: 'unknown proxy type',
+        candidate_snapshot_id: 'nH6r4Qc8K2t7Vz1sM9pLa',
       }),
     ),
   ).toBe(
@@ -1068,4 +1074,127 @@ test('public degradation reasons localize safely without raw host diagnostics', 
   expect(
     publicDegradationReasonMessage({ code: 'local_socket_unavailable' }),
   ).toBe(m.mutation_degradation_reason_local_socket_unavailable())
+})
+
+const appliedFailure: RuntimeError_Deserialize = {
+  kind: 'apply_runtime',
+  failure: { message: 'opaque', retryable: false },
+  candidate_snapshot_id: 'candidate-1',
+}
+const keptCheck: RuntimeError_Deserialize = {
+  kind: 'core_rejected_config',
+  core_kind: 'config_check_failed',
+  message: 'opaque core output',
+  candidate_snapshot_id: 'candidate-1',
+}
+
+test('the kept candidate comes from direct and nested structured errors', () => {
+  expect(candidateSnapshotId(runtime(keptCheck))).toBe('candidate-1')
+  expect(candidateSnapshotId(runtime(appliedFailure))).toBe('candidate-1')
+  expect(
+    candidateSnapshotId(
+      new RpcFailure('update_profile', {
+        kind: 'application_error',
+        message: 'opaque core output',
+        code: 'core_rejected_config',
+        retryable: false,
+        operation_id: null,
+        domain_error: runtime(keptCheck),
+      }),
+    ),
+  ).toBe('candidate-1')
+  const errors: RuntimeError_Deserialize[] = [
+    { kind: 'shutting_down' },
+    keptCheck,
+  ]
+  for (const source of [
+    { kind: 'runtime_refused', errors },
+    { kind: 'runtime_failed', errors },
+    { kind: 'write_config', candidate_snapshot_id: 'candidate-1' },
+    {
+      kind: 'recover_after_write_failure',
+      candidate_snapshot_id: 'candidate-1',
+    },
+  ] as const) {
+    expect(
+      candidateSnapshotId(
+        profiles({ kind: 'commit', uid, path: 'p1.yaml', source }),
+      ),
+    ).toBe('candidate-1')
+    expect(
+      candidateSnapshotId(config({ kind: 'commit', domain: 'clash', source })),
+    ).toBe('candidate-1')
+  }
+  expect(
+    candidateSnapshotId(
+      config({
+        kind: 'version_conflict',
+        domain: 'clash',
+        expected: 1,
+        actual: 2,
+        candidate_snapshot_id: 'candidate-1',
+      }),
+    ),
+  ).toBe('candidate-1')
+})
+
+test('errors that kept no candidate have no inspection entry', () => {
+  const { candidate_snapshot_id: _id, ...unkept } = keptCheck
+  for (const error of [
+    undefined,
+    new Error('core_rejected_config candidate_snapshot_id=candidate-1'),
+    runtime(unkept),
+    runtime({ ...keptCheck, candidate_snapshot_id: null }),
+    runtime({ kind: 'core_rolled_back', reason: 'candidate-1' }),
+    profiles({ kind: 'profile_not_found', uid }),
+    config({
+      kind: 'commit',
+      domain: 'clash',
+      source: { kind: 'write_config' },
+    }),
+    config({
+      kind: 'commit',
+      domain: 'clash',
+      source: {
+        kind: 'runtime_refused',
+        errors: [{ kind: 'shutting_down' }],
+      },
+    }),
+  ])
+    expect(candidateSnapshotId(error)).toBeUndefined()
+})
+
+test('only full degradations that kept a candidate name it', () => {
+  expect(
+    degradationCandidateId({ code: 'runtime_deferred', cause: keptCheck }),
+  ).toBe('candidate-1')
+  expect(
+    degradationCandidateId({
+      code: 'runtime_product_publish_failed',
+      cause: appliedFailure,
+    }),
+  ).toBe('candidate-1')
+  // A first import whose automatic selection the check refused.
+  expect(
+    degradationCandidateId({
+      code: 'profile_auto_activation_failed',
+      profile: uid,
+      cause: {
+        kind: 'commit',
+        source: { kind: 'runtime_refused', errors: [keptCheck] },
+      },
+    }),
+  ).toBe('candidate-1')
+  expect(
+    degradationCandidateId({
+      code: 'materialization_deferred',
+      candidate_snapshot_id: 'candidate-1',
+    }),
+  ).toBe('candidate-1')
+  expect(
+    degradationCandidateId({ code: 'materialization_deferred' }),
+  ).toBeUndefined()
+  expect(
+    degradationCandidateId({ code: 'proxy_cache_refresh_failed' }),
+  ).toBeUndefined()
 })

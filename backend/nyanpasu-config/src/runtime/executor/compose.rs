@@ -11,9 +11,9 @@ use crate::{
 };
 
 use super::{
-    LogSink, apply_transform,
+    Halted, HaltedStep, LogSink, apply_transform,
     artifact::StepLogEntry,
-    error::RuntimePipelineError,
+    or_halt,
     ports::{ProfileContentSource, ScriptRunner},
     scoped::build_scoped_file,
     value_util::{clean_seed, obj_get, obj_insert},
@@ -26,7 +26,7 @@ pub(super) fn run_composition(
     logs: &mut LogSink,
     composition_id: &ProfileId,
     composition: &CompositionConfig,
-) -> Result<(ConfigSnapshotsBuilder, Arc<ConfigValue>), RuntimePipelineError> {
+) -> Result<(ConfigSnapshotsBuilder, Arc<ConfigValue>), Halted> {
     // 规则 1/2：Some(base) → scoped base 起步；None → clean seed。
     let (mut builder, mut working) = match &composition.base {
         Some(base_id) => {
@@ -48,7 +48,10 @@ pub(super) fn run_composition(
                     base: Some(base_id.clone()),
                 },
             );
-            builder.attach_independent_branch(builder.root_node_id(), base.builder)?;
+            or_halt!(
+                builder.attach_independent_branch(builder.root_node_id(), base.builder),
+                builder
+            );
             (builder, working)
         }
         None => {
@@ -67,7 +70,7 @@ pub(super) fn run_composition(
     // 规则 5/6：按声明序；成员先完成 scoped 解析与自身 transforms。
     for (index, member_id) in composition.extend_proxies_from.iter().enumerate() {
         let contributor_index = index as u32;
-        let member = build_scoped_file(
+        let member = match build_scoped_file(
             profiles,
             content,
             runner,
@@ -77,8 +80,31 @@ pub(super) fn run_composition(
                 composition_id: composition_id.clone(),
                 contributor_index,
             },
-        )?;
-        builder.attach_independent_branch(builder.current_node_id(), member.builder)?;
+        ) {
+            Ok(member) => member,
+            Err(Halted {
+                error,
+                builder: member,
+                step,
+            }) => {
+                // The members before it stay; the failed member's own steps
+                // join them when it recorded any.
+                if let Some(member) = member {
+                    let at = builder.current_node_id();
+                    // A branch that does not attach leaves the earlier members.
+                    let _ = builder.attach_independent_branch(at, *member);
+                }
+                return Err(Halted {
+                    error,
+                    builder: Some(Box::new(builder)),
+                    step,
+                });
+            }
+        };
+        or_halt!(
+            builder.attach_independent_branch(builder.current_node_id(), member.builder),
+            builder
+        );
 
         let tag = OperatorTag::ExtendProxiesStep {
             composition_id: composition_id.clone(),
@@ -93,14 +119,19 @@ pub(super) fn run_composition(
             &mut entries,
         ));
         logs.extend(tag.node_key(), entries);
-        builder.push(tag, working.clone())?;
+        or_halt!(builder.push(tag, working.clone()), builder);
     }
 
     // composition 自身 transforms：host=composition、role=Selected（composition
     // 只能被选中，不能作为成员——validate 保证）。
     for (index, transform_id) in composition.transforms.iter().enumerate() {
-        let (next, kind, entries, failed) =
-            apply_transform(profiles, content, runner, transform_id, &working)?;
+        let (next, kind, entries, failed) = or_halt!(
+            apply_transform(profiles, content, runner, transform_id, &working),
+            builder,
+            HaltedStep::Transform {
+                profile_id: transform_id.clone()
+            }
+        );
         let tag = OperatorTag::ScopedTransform {
             host_profile_id: composition_id.clone(),
             role: ConfigExecutionRole::Selected,
@@ -110,7 +141,7 @@ pub(super) fn run_composition(
         };
         logs.failed_profile(transform_id, failed);
         logs.extend(tag.node_key(), entries);
-        builder.push(tag, next.clone())?;
+        or_halt!(builder.push(tag, next.clone()), builder);
         working = next;
     }
 

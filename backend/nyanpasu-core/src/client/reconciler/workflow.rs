@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use nyanpasu_config::clash::config::ClashConfig;
 use nyanpasu_core_manager::OperationId;
-use nyanpasu_runtime_values::runtime_error::RuntimeError;
+use nyanpasu_runtime_values::{candidate::CandidateSnapshotId, runtime_error::RuntimeError};
 use nyanpasu_state_engine::StateSnapshot;
 
 use super::{
@@ -13,6 +13,7 @@ use super::{
     startup::{self, Round, StartupOutcome, StartupReport},
 };
 use crate::client::{
+    candidate_inspection::CandidateStore,
     core_lifecycle::{CoreLifecycleWorkflow, RestartIntent, ServiceOperation},
     runtime,
 };
@@ -24,7 +25,13 @@ pub(super) struct RuntimeReconciler {
     pub lifecycle: CoreLifecycleWorkflow,
     pub attempt: Option<Attempt>,
     pub run: RunIntent,
-    pub pending_product: Option<(Arc<runtime::RuntimeSnapshot>, String)>,
+    /// An applied product whose publication failed, with the reason and the
+    /// candidate kept when it first failed, which its retries name again.
+    pub pending_product: Option<(
+        Arc<runtime::RuntimeSnapshot>,
+        String,
+        Option<CandidateSnapshotId>,
+    )>,
     pub pending_release: Option<String>,
     pub round_degradations: Vec<nyanpasu_runtime_values::runtime::Degradation>,
     pub checked: Option<crate::client::core_lifecycle::ports::PreparedRuntime>,
@@ -32,14 +39,91 @@ pub(super) struct RuntimeReconciler {
     pub service_preferred: bool,
     pub release_owed: bool,
     pub startup: Option<StartupReport>,
+    pub candidates: Arc<CandidateStore>,
+    /// The target that is waiting for the core, with what its first wait
+    /// kept; its retries name that one again.
+    pub waiting_candidate: Option<(String, WaitEvidence)>,
+}
+
+/// What a target's wait for the core kept.
+#[derive(Debug, Clone)]
+pub enum WaitEvidence {
+    /// The wait had no build to keep; a later one with a build keeps it.
+    Nothing,
+    /// The build was kept under this ID.
+    Kept(CandidateSnapshotId),
+    /// The build could not be kept, such as one too large; its later waits
+    /// do not try again.
+    Unkept,
+}
+
+/// `cause`, naming the candidate `id` when one was kept. A cause shared
+/// elsewhere stays as it is.
+pub(super) fn naming(
+    cause: Arc<RuntimeError>,
+    id: Option<CandidateSnapshotId>,
+) -> Arc<RuntimeError> {
+    let Some(id) = id else {
+        return cause;
+    };
+    match Arc::try_unwrap(cause) {
+        Ok(error) => Arc::new(error.with_candidate_snapshot_id(id)),
+        Err(shared) => shared,
+    }
 }
 
 impl RuntimeReconciler {
+    /// Every candidate a later round can report without keeping it again:
+    /// the ones `conclusion` and the pending publication name, the failed
+    /// attempt a round can replay, and the one a waiting target names again.
+    pub(super) fn reportable_candidates(
+        &self,
+        conclusion: &super::Conclusion,
+    ) -> Vec<CandidateSnapshotId> {
+        use super::Conclusion;
+        let reported = match conclusion {
+            Conclusion::Waiting { cause }
+            | Conclusion::NotInEffect { cause }
+            | Conclusion::Unknown { cause } => cause.candidate_snapshot_id(),
+            Conclusion::Converged | Conclusion::Inactive | Conclusion::Closed => None,
+        };
+        let attempt = self
+            .attempt
+            .as_ref()
+            .and_then(|attempt| match &attempt.outcome {
+                super::plan::AttemptOutcome::Refused(cause)
+                | super::plan::AttemptOutcome::Unknown(cause) => cause.candidate_snapshot_id(),
+                super::plan::AttemptOutcome::Applied => None,
+            });
+        let waiting = match &self.waiting_candidate {
+            Some((_, WaitEvidence::Kept(id))) => Some(id),
+            _ => None,
+        };
+        let product = self
+            .pending_product
+            .as_ref()
+            .and_then(|(_, _, kept)| kept.as_ref());
+        let mut ids: Vec<CandidateSnapshotId> = Vec::new();
+        for id in [reported, product, attempt, waiting].into_iter().flatten() {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
+    /// The candidate of the product whose publication is pending.
+    pub(super) fn maintenance_candidate(&self) -> Option<CandidateSnapshotId> {
+        self.pending_product
+            .as_ref()
+            .and_then(|(_, _, kept)| kept.clone())
+    }
+
     pub(super) fn maintenance(&self) -> Option<String> {
         let items: Vec<&str> = self
             .pending_product
             .iter()
-            .map(|(_, error)| error.as_str())
+            .map(|(_, error, _)| error.as_str())
             .chain(self.pending_release.as_deref())
             .collect();
         (!items.is_empty()).then(|| items.join("; "))
@@ -160,6 +244,7 @@ impl RuntimeReconciler {
                     .map(Output::Handoff)
                     .map_err(|failure| RuntimeError::ApplyRuntime {
                         failure: crate::client::runtime_error::core_failure(failure.error),
+                        candidate_snapshot_id: None,
                     }),
             };
             self.converge(&mut round, operation_id, trigger).await;
@@ -215,7 +300,11 @@ impl RuntimeReconciler {
             Conclusion::Unknown { cause } => (cause, |cause| Conclusion::Unknown { cause }),
             _ => unreachable!("only a nonconverged round supplies a command error"),
         };
-        let diagnostic = startup::cause(error.to_string());
+        // The retained diagnostic still names the candidate for the status.
+        let diagnostic = naming(
+            startup::cause(error.to_string()),
+            error.candidate_snapshot_id().cloned(),
+        );
         if let Some(attempt) = &mut self.attempt {
             match &mut attempt.outcome {
                 AttemptOutcome::Refused(cause) | AttemptOutcome::Unknown(cause)
@@ -229,7 +318,11 @@ impl RuntimeReconciler {
         round.conclusion = conclude(diagnostic);
         let error = Arc::try_unwrap(error)
             .expect("only the round and its attempt retained the command error");
-        if let RuntimeError::CoreRolledBack { reason } = error {
+        if let RuntimeError::CoreRolledBack {
+            reason,
+            candidate_snapshot_id,
+        } = error
+        {
             RuntimeError::ApplyRuntime {
                 failure: crate::client::runtime_error::core_failure(
                     nyanpasu_core_manager::CoreError::new(
@@ -241,6 +334,7 @@ impl RuntimeReconciler {
                         false,
                     ),
                 ),
+                candidate_snapshot_id,
             }
         } else {
             error

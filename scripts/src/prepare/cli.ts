@@ -67,12 +67,12 @@ export function planCliCargoBuild(options: {
     'nyanpasu-cli',
     '--bin',
     'nyanpasu-cli',
-    ...(profile === 'release' ? ['--release'] : []),
+    ...(profile === 'release' ? ['--profile', 'release-cli'] : []),
     ...(isCross ? ['--target', sidecarHost] : []),
   ]
 
   const ext = sidecarHost.includes('windows') ? '.exe' : ''
-  const profileDir = profile === 'release' ? 'release' : 'debug'
+  const profileDir = profile === 'release' ? 'release-cli' : 'debug'
   const targetBinaryPath = path.join(
     workspaceRoot,
     'backend/target',

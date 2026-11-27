@@ -217,7 +217,8 @@ const mountDetail = async ({
     history: createMemoryHistory({ initialEntries, initialIndex }),
   })
   const container = document.createElement('div')
-  container.className = 'bg-mixed-background text-on-surface'
+  container.className =
+    'bg-surface-container-low dark:bg-surface text-on-surface'
   document.body.append(container)
   const reactRoot = createRoot(container)
   reactRoot.render(<RouterProvider router={router} />)

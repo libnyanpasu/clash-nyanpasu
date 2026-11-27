@@ -24,7 +24,7 @@ export function LazyImage({
     <>
       <div
         className={cn(
-          'inline-block animate-pulse bg-slate-200 ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-700',
+          'bg-surface-container ring-outline-variant/40 inline-block animate-pulse ring-1',
           className,
           loadingClassName,
           loading || failed ? 'inline-block' : 'hidden',

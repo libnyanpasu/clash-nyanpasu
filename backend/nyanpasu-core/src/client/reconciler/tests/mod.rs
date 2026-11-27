@@ -9,6 +9,7 @@ use crate::{
     },
 };
 mod applications;
+mod candidates;
 mod closing;
 mod commit_first;
 mod connection_policy;
@@ -85,13 +86,13 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
         inputs: crate::client::reconciler::inputs::RuntimeInputs,
         ports: nyanpasu_config::runtime::executor::ResolvedPortBindings,
         strict_transforms: bool,
-    ) -> Result<Arc<runtime::RuntimeSnapshot>, nyanpasu_profile_transform::RuntimeBuildError> {
+    ) -> Result<Arc<runtime::RuntimeSnapshot>, ports::RuntimeBuildFailure> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             self.entered.notify_one();
             self.release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
-            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping);
+            return Err(nyanpasu_profile_transform::RuntimeBuildError::ConfigNotMapping.into());
         }
         self.delegate
             .build(revision, inputs, ports, strict_transforms)
@@ -360,6 +361,7 @@ async fn workflow_graph_with_clients(
             instance_config_dir: Default::default(),
             shutdown,
             tasks: tokio_util::task::TaskTracker::new(),
+            candidates: crate::client::candidate_inspection::CandidateStore::for_tests(),
         },
         schedule_ticks,
     )
@@ -894,7 +896,26 @@ async fn config_writes_preserve_both_fields_and_reconcile_each_committed_patch()
             applied.target_core,
             client.get_app_config().await.unwrap().core
         );
-        assert_eq!(endpoint.submissions(), 2);
+        // Concurrent commits that land before the first reconcile round reads the
+        // snapshot coalesce into a single submission; otherwise each triggers its own.
+        let concurrent_submissions = endpoint.submissions();
+        assert!(
+            (1..=2).contains(&concurrent_submissions),
+            "expected 1 or 2 submissions for concurrent override patches, got {concurrent_submissions}"
+        );
+
+        let third = client
+            .patch_runtime_overrides(override_patch(serde_json::json!({"allow-lan": true})))
+            .await;
+        assert!(third.unwrap().degradations().is_empty());
+        let saved =
+            serde_json::to_value(client.get_clash_config().await.unwrap().overrides).unwrap();
+        assert_eq!(saved["mode"], "global");
+        assert_eq!(saved["ipv6"], true);
+        assert_eq!(saved["allow-lan"], true);
+        let applied = client.inner.reconciler.runtime().promoted.unwrap();
+        assert_eq!(applied.config()["allow-lan"].as_bool(), Some(true));
+        assert_eq!(endpoint.submissions(), concurrent_submissions + 1);
     })
     .await;
 }

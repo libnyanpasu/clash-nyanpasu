@@ -36,6 +36,7 @@ export const CHANGE_RULES: readonly ChangeRule[] = [
       '.husky/**',
       '.vscode/**',
       '.serena/**',
+      '.agents/**',
     ],
     parts: [],
   },

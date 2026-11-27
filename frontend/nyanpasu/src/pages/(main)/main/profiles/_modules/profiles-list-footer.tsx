@@ -4,7 +4,7 @@ import { m } from '@/paraglide/messages'
 
 export const NoMoreProfiles = () => {
   return (
-    <div className="mb-4 flex h-16 items-center justify-center text-center text-sm text-gray-500">
+    <div className="text-on-surface-variant mb-4 flex h-16 items-center justify-center text-center text-sm">
       {m.profile_no_more_profiles()}
     </div>
   )

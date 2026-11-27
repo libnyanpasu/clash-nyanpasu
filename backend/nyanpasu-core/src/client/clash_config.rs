@@ -1,4 +1,4 @@
-use crate::state::mutation::MutationCoordinator;
+use crate::state::mutation::{MutationCoordinator, ports::Attribution};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
@@ -115,8 +115,21 @@ impl ClashConfigClient {
     }
 
     pub async fn patch(&self, patch: ClashConfigPatch) -> Result<ClashConfigSnapshot, ConfigError> {
+        self.patch_for(patch, Attribution::default()).await
+    }
+
+    /// [`Self::patch`] on behalf of `attribution`.
+    pub(crate) async fn patch_for(
+        &self,
+        patch: ClashConfigPatch,
+        attribution: Attribution,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
-            |reply| ClashConfigActorMessage::Patch { patch, reply },
+            |reply| ClashConfigActorMessage::Patch {
+                patch,
+                attribution,
+                reply,
+            },
             None,
         )
         .await
@@ -128,6 +141,7 @@ impl ClashConfigClient {
         &self,
         application: &NyanpasuAppConfig,
         patch: ClashConfigPatch,
+        attribution: Attribution,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
         let mut candidate = self.snapshot().state;
         candidate.apply(patch.clone());
@@ -139,23 +153,50 @@ impl ClashConfigClient {
         {
             return Err(ConfigError::TransparentProxyRequiresServiceMode);
         }
-        self.patch(patch).await
+        self.patch_for(patch, attribution).await
     }
 
     pub async fn patch_overrides(
         &self,
         patch: ClashGuardOverridesPatch,
     ) -> Result<ClashConfigSnapshot, ConfigError> {
+        self.patch_overrides_for(patch, Attribution::default())
+            .await
+    }
+
+    /// [`Self::patch_overrides`] on behalf of `attribution`.
+    pub(crate) async fn patch_overrides_for(
+        &self,
+        patch: ClashGuardOverridesPatch,
+        attribution: Attribution,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
-            |reply| ClashConfigActorMessage::PatchOverrides { patch, reply },
+            |reply| ClashConfigActorMessage::PatchOverrides {
+                patch,
+                attribution,
+                reply,
+            },
             None,
         )
         .await
     }
 
     pub async fn replace(&self, state: ClashConfig) -> Result<ClashConfigSnapshot, ConfigError> {
+        self.replace_for(state, Attribution::default()).await
+    }
+
+    /// [`Self::replace`] on behalf of `attribution`.
+    pub(crate) async fn replace_for(
+        &self,
+        state: ClashConfig,
+        attribution: Attribution,
+    ) -> Result<ClashConfigSnapshot, ConfigError> {
         self.call(
-            |reply| ClashConfigActorMessage::Replace { state, reply },
+            |reply| ClashConfigActorMessage::Replace {
+                state,
+                attribution,
+                reply,
+            },
             None,
         )
         .await

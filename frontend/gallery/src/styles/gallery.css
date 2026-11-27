@@ -1,0 +1,89 @@
+/* stylelint-disable value-keyword-case */
+/* stylelint-disable at-rule-no-unknown */
+/* stylelint-disable custom-property-pattern */
+/* stylelint-disable import-notation */
+
+@import 'tailwindcss';
+@import '@nyanpasu/theme/styles/tokens.css';
+@import '@nyanpasu/ui/styles.css';
+
+@source '../../../ui/src';
+@source '../';
+
+/* Match both root dark mode and scoped split-view dark preview panes. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--color-on-surface);
+  background-color: var(--color-surface-container-low);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root.dark body {
+  background-color: var(--color-surface);
+}
+
+::selection {
+  color: var(--color-on-primary);
+  background-color: var(--color-primary);
+}
+
+* {
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--color-on-surface-variant) 42%,
+      transparent
+    )
+    transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(
+    in srgb,
+    var(--color-on-surface-variant) 42%,
+    transparent
+  );
+  border-radius: 6px;
+}
+
+/* Gallery X-Ray inspector: highlights `data-slot` contracts inside preview stages. */
+[data-xray-slots='true'] [data-slot] {
+  outline: 1px dashed color-mix(in srgb, var(--color-tertiary) 65%, transparent);
+  outline-offset: -1px;
+}
+
+[data-xray-slots='true'] [data-slot]:hover {
+  outline: 1.5px solid var(--color-primary);
+}
+
+/* Live simulation of Android 17 `prefers-reduced-transparency` solid fallback. */
+[data-simulate-reduced-transparency='true'] [data-slot='glass-control-group'],
+[data-simulate-reduced-transparency='true'] [data-glass-surface='true'] {
+  background-color: var(--color-surface-container-high) !important;
+  backdrop-filter: none !important;
+}
+
+.gallery-theme-light {
+  color-scheme: light;
+}
+
+.gallery-theme-dark {
+  color-scheme: dark;
+}

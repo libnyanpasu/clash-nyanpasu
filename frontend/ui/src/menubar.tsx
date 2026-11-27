@@ -11,9 +11,9 @@ import { MenuSurface } from './menu-surface'
 
 export const menubarTriggerVariants = cva([
   'flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 py-2',
-  'text-primary dark:text-primary text-sm font-medium outline-none select-none',
-  'hover:bg-primary-container dark:hover:bg-on-primary',
-  'data-[state=open]:bg-primary-container dark:data-[state=open]:bg-on-primary',
+  'text-primary text-sm font-medium outline-none select-none',
+  'hover:bg-on-surface/8',
+  'data-[state=open]:bg-on-surface/8',
   'transition-colors motion-reduce:transition-none',
   'focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
   'data-[disabled]:pointer-events-none data-[disabled]:opacity-38',
@@ -22,8 +22,8 @@ export const menubarTriggerVariants = cva([
 const menubarItemVariants = cva(
   [
     'relative flex h-12 cursor-pointer items-center justify-start gap-2 p-4 outline-hidden',
-    'hover:bg-surface-variant dark:hover:bg-surface-variant',
-    'data-[highlighted]:bg-surface-variant',
+    'hover:bg-on-surface/8',
+    'data-[highlighted]:bg-on-surface/8',
     'data-[disabled]:pointer-events-none data-[disabled]:opacity-38',
   ],
   {
@@ -31,9 +31,9 @@ const menubarItemVariants = cva(
       indicator: {
         true: [
           'ps-12',
-          'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+          'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
           'data-[state=indeterminate]:bg-primary-container',
-          'dark:data-[state=indeterminate]:bg-on-primary',
+          'data-[state=indeterminate]:text-on-primary-container',
         ],
       },
     },
@@ -180,7 +180,7 @@ export function MenubarRadioItem({
       className={cn(
         menubarItemVariants(),
         'group/menubar-radio-item',
-        'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
@@ -190,10 +190,7 @@ export function MenubarRadioItem({
       </MenubarItemIndicator>
 
       <span className="group-data-[state=checked]/menubar-radio-item:hidden">
-        <Radio
-          className="text-outline-variant dark:text-outline"
-          aria-hidden="true"
-        />
+        <Radio className="text-on-surface-variant" aria-hidden="true" />
       </span>
 
       <Slot.Slottable>{children}</Slot.Slottable>
@@ -211,7 +208,7 @@ export function MenubarSubTrigger({
       data-slot="menubar-sub-trigger"
       className={cn(
         menubarItemVariants(),
-        'data-[state=open]:bg-surface-variant/30 pe-2',
+        'data-[state=open]:bg-on-surface/8 pe-2',
         className,
       )}
       {...props}
@@ -221,7 +218,7 @@ export function MenubarSubTrigger({
       <ArrowRight
         data-slot="menubar-sub-arrow"
         aria-hidden="true"
-        className="text-outline-variant dark:text-outline ms-auto size-6 rtl:rotate-180"
+        className="text-on-surface-variant ms-auto size-6 rtl:rotate-180"
       />
     </MenubarPrimitive.SubTrigger>
   )
@@ -289,7 +286,7 @@ export function MenubarArrow({
   return (
     <MenubarPrimitive.Arrow
       data-slot="menubar-arrow"
-      className={cn('fill-inverse-on-surface dark:fill-surface', className)}
+      className={cn('fill-surface-container-high', className)}
       {...props}
     />
   )

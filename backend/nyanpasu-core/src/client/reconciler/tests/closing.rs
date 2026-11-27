@@ -120,10 +120,15 @@ impl crate::state::mutation::ports::RuntimeGate for HeldCheck {
     async fn check(
         &self,
         _: crate::state::mutation::ports::RuntimeCandidate,
-    ) -> Result<(), Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>> {
+    ) -> Result<
+        crate::state::mutation::ports::CheckPass,
+        Arc<nyanpasu_runtime_values::runtime_error::RuntimeError>,
+    > {
         self.entered.notify_one();
         self.release.notified().await;
-        self.rejection.clone().map_or(Ok(()), Err)
+        self.rejection
+            .clone()
+            .map_or_else(|| Ok(Default::default()), Err)
     }
 
     fn committed(

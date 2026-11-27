@@ -64,7 +64,7 @@ function ProfilesLayout() {
       <ProfilesDndProvider>
         <Sidebar data-slot="profiles-container">
           <SidebarContent
-            className="bg-surface-variant/50 min-w-72 dark:bg-transparent [&>div>div]:block!"
+            className="bg-surface-container-low dark:bg-surface border-outline-variant/30 min-w-72 border-r [&>div>div]:block!"
             data-slot="profiles-sidebar-scroll-area"
           >
             <ReadOnlyScope permissions={['profile:write']} banner={false}>
@@ -85,7 +85,7 @@ function ProfilesLayout() {
               'data-[layout=fill]:[&>[data-slot=scroll-area-viewport]]:overflow-clip!',
               // The tool pages sit on the darker ground so their grouped rows
               // read as raised surfaces.
-              'data-[layout=fill]:dark:bg-mixed-background',
+              'data-[layout=fill]:dark:bg-surface',
             )}
             data-layout={layout}
             data-slot="profiles-content-scroll-area"

@@ -1,4 +1,5 @@
 import { m } from '@/paraglide/messages'
+import { isIpcError, rpcDomainError, RpcFailure } from '@nyanpasu/rpc'
 import type {
   ClashReadError,
   CommitAborted,
@@ -55,6 +56,78 @@ import type {
   TransparentProxyValidationError,
 } from '@nyanpasu/rpc/types'
 import { stepParts, type ProfileLabel } from './profile-label'
+
+/** The candidate a failed runtime operation kept for inspection, if any. */
+export function runtimeCandidateId(error: RuntimeError): string | undefined {
+  return (
+    ('candidate_snapshot_id' in error && error.candidate_snapshot_id) ||
+    undefined
+  )
+}
+
+/** The candidate a degraded change kept, named by its cause. */
+export function degradationCandidateId(
+  reason: DegradationReason,
+): string | undefined {
+  switch (reason.code) {
+    case 'runtime_deferred':
+    case 'runtime_product_publish_failed':
+    case 'service_stop_failed':
+      return runtimeCandidateId(reason.cause)
+    case 'profile_auto_activation_failed':
+      return sourceCandidateId(reason.cause)
+    case 'materialization_deferred':
+      return reason.candidate_snapshot_id || undefined
+    default:
+      return undefined
+  }
+}
+
+/** The candidate a profiles or settings owner kept when it refused a change. */
+function sourceCandidateId(
+  error: ProfilesError | ConfigError,
+): string | undefined {
+  if (error.kind === 'commit') return commitCandidateId(error.source)
+  return (
+    ('candidate_snapshot_id' in error && error.candidate_snapshot_id) ||
+    undefined
+  )
+}
+
+function commitCandidateId(source: CommitAborted): string | undefined {
+  switch (source.kind) {
+    case 'write_config':
+    case 'recover_after_write_failure':
+      return source.candidate_snapshot_id || undefined
+    case 'runtime_refused':
+    case 'runtime_failed':
+      for (const error of source.errors) {
+        const id = runtimeCandidateId(error)
+        if (id) return id
+      }
+      return undefined
+  }
+}
+
+/**
+ * The candidate a failed command kept for inspection in this session: the
+ * build a check refused, or the checked one a source then failed to commit.
+ * Only full errors carry it; public ones never do.
+ */
+export function candidateSnapshotId(error: unknown): string | undefined {
+  const domain = error instanceof RpcFailure ? rpcDomainError(error) : error
+  if (!isIpcError(domain)) return undefined
+  const { kind } = domain
+  switch (kind.domain) {
+    case 'runtime':
+      return runtimeCandidateId(kind.error)
+    case 'profiles':
+    case 'config':
+      return sourceCandidateId(kind.error)
+    default:
+      return undefined
+  }
+}
 
 /** The simplest message for a failed command, localized by its domain. */
 export function ipcErrorMessage(

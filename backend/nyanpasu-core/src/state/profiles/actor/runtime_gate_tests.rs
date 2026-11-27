@@ -11,7 +11,7 @@ use nyanpasu_profile_io::fs_service::ProfileFileService;
 use nyanpasu_runtime_values::{
     mutation::{CommitAborted, ConfigDomain},
     profiles::ProfilesError,
-    runtime_error::{CoreRejectedConfigSnafu, RuntimeError},
+    runtime_error::RuntimeError,
 };
 use nyanpasu_state_engine::{StateSnapshot, Version};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -58,7 +58,10 @@ struct Gate {
 }
 #[async_trait::async_trait]
 impl RuntimeGate for Gate {
-    async fn check(&self, candidate: RuntimeCandidate) -> Result<(), Arc<RuntimeError>> {
+    async fn check(
+        &self,
+        candidate: RuntimeCandidate,
+    ) -> Result<crate::state::mutation::ports::CheckPass, Arc<RuntimeError>> {
         let crate::state::mutation::DomainChange::Profiles {
             candidate: next, ..
         } = &candidate.change
@@ -90,15 +93,13 @@ impl RuntimeGate for Gate {
         self.events.lock().unwrap().push("check");
         self.staged.lock().unwrap().push(candidate.staged);
         if self.reject.load(Ordering::SeqCst) {
-            Err(Arc::new(
-                CoreRejectedConfigSnafu {
-                    core_kind: Some(nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed),
-                    message: "invalid candidate",
-                }
-                .build(),
-            ))
+            Err(Arc::new(RuntimeError::CoreRejectedConfig {
+                core_kind: Some(nyanpasu_core_manager::CoreErrorKind::ConfigCheckFailed),
+                message: "invalid candidate".into(),
+                candidate_snapshot_id: None,
+            }))
         } else {
-            Ok(())
+            Ok(Default::default())
         }
     }
     fn committed(&self, domain: ConfigDomain, version: Version) {
@@ -161,7 +162,11 @@ async fn fixture() -> (ProfilesClient, Arc<Gate>, tempfile::TempDir) {
     *gate.snapshot.lock().unwrap() = Some(client.snapshot_handle());
     *gate.document.lock().unwrap() =
         Some(Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).unwrap());
-    coordinator.connect(gate.clone(), gate.clone());
+    coordinator.connect(
+        gate.clone(),
+        gate.clone(),
+        Arc::new(crate::state::mutation::ports::NoOutcomes),
+    );
     let mut initial = Profiles::default();
     initial.append_item(profiles::file_config_item("selected"));
     initial.append_item(profiles::file_config_item("spare"));

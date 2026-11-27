@@ -18,15 +18,12 @@ import { cn } from '@nyanpasu/utils'
 const containerVariants = cva('relative inline-flex items-stretch', {
   variants: {
     variant: {
-      pill: [
-        'rounded-full',
-        'bg-surface-variant/40 dark:bg-surface-variant/15',
-      ],
+      pill: ['rounded-full', 'bg-surface-container-high'],
       segment: [
         'rounded-full overflow-hidden',
-        'border border-outline dark:border-outline-variant',
-        'divide-x divide-outline dark:divide-outline-variant',
-        'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
+        'border border-outline-variant',
+        'divide-x divide-outline-variant',
+        'bg-surface-container',
       ],
     },
     size: {
@@ -50,24 +47,24 @@ const tabVariants = cva(
     'cursor-pointer select-none',
     'font-medium outline-hidden',
     'focus-visible:outline-none focus-visible:ring-2',
-    'focus-visible:ring-ring focus-visible:ring-offset-2',
+    'focus-visible:ring-primary focus-visible:ring-offset-2',
   ],
   {
     variants: {
       variant: {
         pill: [
           'rounded-full px-4',
-          'text-on-surface-variant dark:text-on-surface-variant',
-          'aria-selected:text-on-secondary-container dark:aria-selected:text-on-secondary-container',
+          'text-on-surface-variant',
+          'aria-selected:text-on-secondary-container',
           'transition-colors duration-200',
         ],
         segment: [
           'px-3',
-          'text-on-surface dark:text-on-surface',
+          'text-on-surface',
           'transition-[background-color,color,filter]',
-          'hover:bg-on-surface/8 dark:hover:bg-on-surface/12',
+          'hover:bg-on-surface/8',
           'focus-visible:bg-on-surface/10',
-          'aria-selected:text-on-secondary-container dark:aria-selected:text-on-secondary-container',
+          'aria-selected:text-on-secondary-container',
           'aria-selected:hover:brightness-95 dark:aria-selected:hover:brightness-105',
         ],
       },
@@ -79,10 +76,7 @@ const tabVariants = cva(
 )
 
 const activeIndicatorVariants = cva(
-  [
-    'absolute inset-0 z-1',
-    'bg-secondary-container dark:bg-secondary-container',
-  ],
+  ['absolute inset-0 z-1', 'bg-secondary-container'],
   {
     variants: {
       variant: {
@@ -239,7 +233,7 @@ export function AnimatedTabsItem({
           className={cn(
             'absolute inset-0 z-2 rounded-full',
             'opacity-0 transition-opacity duration-150',
-            'bg-on-surface dark:bg-on-surface',
+            'bg-on-surface',
             'group-focus-visible:opacity-10',
           )}
           data-slot="animated-tabs-hover-layer"

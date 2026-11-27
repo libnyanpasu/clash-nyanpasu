@@ -106,6 +106,8 @@ command | get_transparent_proxy_status | system:read | sensitive | query | deskt
 command | get_transparent_proxy_status_summary | system:read |  | query | desktop |  |
 command | import_profile | profile:write |  | mutation | desktop,http,local |  | elevation,os_integration,presentation
 command | inspect_applied_runtime | profile:read | sensitive | query | desktop,http |  |
+command | inspect_candidate_node | profile:read | sensitive | query | desktop |  |
+command | inspect_candidate_runtime | profile:read | sensitive | query | desktop |  |
 command | inspect_runtime | profile:read | sensitive | query | desktop,http |  |
 command | inspect_runtime_node | profile:read | sensitive | query | desktop,http |  |
 command | inspect_updater | system:read | sensitive | query | desktop,http |  |
@@ -128,6 +130,7 @@ command | mutate_proxies | proxy:write |  | mutation | desktop,http |  | present
 command | open_app_config_dir | system:write |  | mutation | desktop | opener |
 command | open_app_data_dir | system:write |  | mutation | desktop | opener |
 command | open_backups_dir | system:write |  | mutation | desktop | opener |
+command | open_candidate_config_window | system:write |  | mutation | desktop | window |
 command | open_core_dir | system:write |  | mutation | desktop | opener |
 command | open_log_session | logs:read |  | mutation | desktop,http,local |  |
 command | open_logs_dir | system:write |  | mutation | desktop | opener |

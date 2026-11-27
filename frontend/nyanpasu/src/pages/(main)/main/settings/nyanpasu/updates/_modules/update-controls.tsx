@@ -88,8 +88,7 @@ const updateStatusVariants = cva(
   {
     variants: {
       tone: {
-        neutral:
-          'bg-surface-variant/30 text-on-surface dark:bg-surface-variant/10',
+        neutral: 'bg-surface-container-high text-on-surface',
         primary: 'bg-primary-container text-on-primary-container',
         error: 'bg-error-container text-on-error-container',
       },

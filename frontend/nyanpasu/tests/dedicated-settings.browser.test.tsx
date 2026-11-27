@@ -15,7 +15,11 @@ import HotkeyManager from '../src/pages/(main)/main/settings/nyanpasu/shortcuts/
 import SystemServiceSwitch from '../src/pages/(main)/main/settings/system/service/_modules/system-service-switch'
 
 const platform = vi.hoisted(() => ({ desktop: true }))
-const debug = vi.hoisted(() => ({ status: vi.fn(), retryEffect: vi.fn() }))
+const debug = vi.hoisted(() => ({
+  status: vi.fn(),
+  retryEffect: vi.fn(),
+  openCandidate: vi.fn(),
+}))
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
@@ -26,6 +30,7 @@ vi.mock('@/utils/notification', () => ({ message: vi.fn() }))
 vi.mock('@/services/rpc', () => ({
   commands: {
     retryConfigurationEffect: debug.retryEffect,
+    openCandidateConfigWindow: debug.openCandidate,
   },
   queries: {
     getConfigurationStatus: () => ({
@@ -223,3 +228,88 @@ test('browser can retry saved hotkeys', async ({ onTestFinished }) => {
   await retry.click()
   expect(debug.retryEffect).toHaveBeenCalledWith('hotkeys')
 })
+
+const candidate = 'a_-012345678901234567'
+const failedStatus: ConfigurationStatus = {
+  ...status,
+  effects: [],
+  runtime: {
+    health: 'retry_scheduled',
+    operation_id: null,
+    message: 'refused',
+    candidate_snapshot_id: candidate,
+  },
+  sources: [
+    {
+      profile: 'p1',
+      name: 'Subscription',
+      origin: 'scheduled_refresh',
+      outcome: {
+        kind: 'rejected',
+        code: 'runtime_refused',
+        message: 'refused',
+        candidate_snapshot_id: candidate,
+      },
+      health: 'blocked',
+      at: 0,
+    },
+    {
+      profile: 'p2',
+      name: 'Watched file',
+      origin: 'external_file',
+      outcome: {
+        kind: 'committed',
+        operation_id: null,
+        deferred: {
+          message: 'materialization completion deferred',
+          candidate_snapshot_id: candidate,
+        },
+      },
+      health: 'retry_scheduled',
+      at: 0,
+    },
+  ],
+  refused_changes: [
+    {
+      origin: 'action_clash_mode',
+      message: 'the Clash config change was not committed',
+      candidate_snapshot_id: candidate,
+    },
+  ],
+}
+
+for (const desktop of [true, false])
+  test(`the status rows ${desktop ? 'open' : 'never offer'} a kept candidate ${desktop ? 'on the desktop' : 'in the browser'}`, async ({
+    onTestFinished,
+  }) => {
+    platform.desktop = desktop
+    debug.status.mockResolvedValue(failedStatus)
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const view = await render(
+      <QueryClientProvider client={client}>
+        <ConfigurationStatusPage />
+      </QueryClientProvider>,
+    )
+    onTestFinished(async () => {
+      await view.unmount()
+      client.clear()
+      vi.clearAllMocks()
+    })
+    await expect.element(view.getByText('Subscription')).toBeVisible()
+    // A tray or shortcut change the check refused has a row of its own.
+    await expect
+      .element(view.getByText(m.configuration_refused_action_clash_mode()))
+      .toBeVisible()
+    const view_ = view.getByRole('button', { name: m.inspect_candidate_view() })
+    if (!desktop) {
+      await expect.element(view_.first()).not.toBeInTheDocument()
+      return
+    }
+    // A committed file whose completion is deferred offers its candidate too.
+    await expect.element(view.getByText('Watched file')).toBeVisible()
+    expect(view_.elements()).toHaveLength(4)
+    await view_.last().click()
+    expect(debug.openCandidate).toHaveBeenCalledWith(candidate)
+  })

@@ -34,10 +34,10 @@ use nyanpasu_runtime_values::{
     execution_host::ExecutionHost,
     publish::PublishRuntimeError,
     runtime_error::{
-        ApplyRuntimeSnafu, InstallCoreBinarySnafu, InstallServiceSnafu, RecoverRuntimeSnafu,
-        RecoverServiceEndpointSnafu, RefreshStatusSnafu, ResolveCoreBinarySnafu,
-        RestartServiceSnafu, RuntimeError, ServiceHostsCoreSnafu, StartServiceSnafu, StopCoreSnafu,
-        StopServiceSnafu, UninstallServiceSnafu,
+        InstallCoreBinarySnafu, InstallServiceSnafu, RecoverRuntimeSnafu,
+        RecoverServiceEndpointSnafu, RefreshStatusSnafu, RestartServiceSnafu, RuntimeError,
+        ServiceHostsCoreSnafu, StartServiceSnafu, StopCoreSnafu, StopServiceSnafu,
+        UninstallServiceSnafu,
     },
 };
 
@@ -377,13 +377,18 @@ impl CoreLifecycleWorkflow {
         } = prepared;
         let spec = preparation
             .core_spec(&snapshot.target_core)
-            .context(ResolveCoreBinarySnafu)?;
+            .map_err(|source| RuntimeError::ResolveCoreBinary {
+                source,
+                candidate_snapshot_id: None,
+            })?;
         let result = self
             .core
             .reconcile(&intent, spec, expected)
             .await
-            .map_err(runtime_error::core_failure)
-            .context(ApplyRuntimeSnafu)?;
+            .map_err(|error| RuntimeError::ApplyRuntime {
+                failure: runtime_error::core_failure(error),
+                candidate_snapshot_id: None,
+            })?;
         // An unobserved outcome may still have applied: the core can already
         // be listening on the candidate's ports. The previously confirmed
         // binding then describes an instance that may no longer exist, and

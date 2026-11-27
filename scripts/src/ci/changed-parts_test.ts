@@ -8,6 +8,7 @@ test('files map to the parts that check them', () => {
   const cases: [string, Part[]][] = [
     ['README.md', []],
     ['docs/development/workflow.md', []],
+    ['.agents/skills/m3-expressive-ui/SKILL.md', []],
     ['renovate.json', []],
     ['frontend/nyanpasu/src/main.tsx', ['frontend']],
     ['frontend/README.md', ['frontend']],

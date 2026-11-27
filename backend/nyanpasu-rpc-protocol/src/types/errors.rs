@@ -17,6 +17,7 @@ use nyanpasu_contracts::{
 use nyanpasu_core_metadata::CoreErrorKind;
 use nyanpasu_profile_transform::RuntimeBuildLog;
 use nyanpasu_runtime_values::{
+    candidate::CandidateSnapshotId,
     check::RuntimeCheckUnavailable,
     effects::EffectsError,
     execution_host::ExecutionHost,
@@ -42,6 +43,8 @@ pub enum RuntimeError {
     },
     ApplyRuntime {
         failure: CoreFailure,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     StopCore {
         failure: CoreFailure,
@@ -80,18 +83,26 @@ pub enum RuntimeError {
     /// The committed configuration is waiting or has not taken effect.
     ConfigurationNotInEffect {
         reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     BuildRuntime {
         source: RuntimeBuildError,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     PublishRuntime {
         source: PublishRuntimeError,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     ResolvePort {
         source: PortResolveError,
     },
     ResolveCoreBinary {
         source: CoreSpecError,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     InstallCoreBinary {
         source: InstallCoreBinaryError,
@@ -105,17 +116,25 @@ pub enum RuntimeError {
     CoreRejectedConfig {
         core_kind: Option<CoreErrorKind>,
         message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     CheckUnavailable {
         reason: RuntimeCheckUnavailable,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     /// The core restored its own previous configuration.
     CoreRolledBack {
         reason: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     /// The submission ended unobserved, so it may have taken effect.
     SubmissionUnobserved {
         failure: CoreFailure,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     /// No runtime configuration has been built yet.
     NoRuntimeConfig,
@@ -218,10 +237,14 @@ pub enum ProfilesError {
     Materialization {
         operation: MaterializationOperation,
         source: ProfileFileError,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     VersionConflict {
         expected: u64,
         actual: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     Commit {
         /// The profile the change was about, when it was about one.
@@ -290,7 +313,10 @@ pub enum DegradationReason {
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
-    MaterializationDeferred,
+    MaterializationDeferred {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     CleanupDeferred,
     ProfileAutoActivationFailed {
         profile: ProfileId,
@@ -305,9 +331,15 @@ pub enum DegradationReason {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommitAborted {
     /// The yaml write failed; nothing committed.
-    WriteConfig {},
+    WriteConfig {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// The write failed and so did the recovery of what the transaction staged.
-    RecoverAfterWriteFailure {},
+    RecoverAfterWriteFailure {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
+    },
     /// Candidate validation refused the change.
     RuntimeRefused { errors: Vec<Arc<RuntimeError>> },
     /// Candidate validation could not return a verdict.
@@ -663,6 +695,8 @@ pub enum ConfigError {
         domain: ConfigDomain,
         expected: u64,
         actual: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     Commit {
         domain: ConfigDomain,

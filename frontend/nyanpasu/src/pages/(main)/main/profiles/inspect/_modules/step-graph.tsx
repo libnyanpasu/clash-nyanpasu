@@ -38,7 +38,7 @@ const nodeVariants = cva(
       state: {
         selected: 'bg-primary text-on-primary',
         trace: 'bg-primary-container text-on-primary-container',
-        idle: 'bg-surface-variant text-on-surface',
+        idle: 'bg-surface-container-high text-on-surface',
       },
       dimmed: { true: 'opacity-40', false: '' },
     },
@@ -130,7 +130,7 @@ export default function StepGraph({
     <div
       data-slot="inspect-step-graph"
       className={cn(
-        'bg-pane relative flex min-h-0 min-w-0 flex-col',
+        'bg-surface-container-low relative flex min-h-0 min-w-0 flex-col',
         className,
       )}
     >

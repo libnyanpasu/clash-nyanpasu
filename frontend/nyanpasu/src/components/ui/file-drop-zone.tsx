@@ -48,13 +48,13 @@ export const fileDropZoneVariants = cva(
           'border-outline-variant',
           'bg-transparent',
           'hover:border-primary/50',
-          'hover:bg-surface-variant/30',
+          'hover:bg-on-surface/8',
         ],
         outline: [
           'border-outline-variant',
           'bg-surface dark:bg-surface',
           'hover:border-primary/50',
-          'hover:bg-surface-variant/30',
+          'hover:bg-on-surface/8',
         ],
       },
       isDragging: {

@@ -8,7 +8,7 @@ const emptyStateVariants = cva(
   {
     variants: {
       tone: {
-        muted: 'text-surface-variant',
+        muted: 'text-on-surface-variant',
         normal: 'text-on-surface-variant',
       },
       size: {

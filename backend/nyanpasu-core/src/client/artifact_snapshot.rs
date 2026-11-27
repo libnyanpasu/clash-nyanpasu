@@ -89,18 +89,25 @@ pub(crate) fn map_postprocessing(
     out
 }
 
-pub fn runtime_snapshot_data_from_artifact(
-    artifact: RuntimeArtifact,
-    profiles: &Profiles,
-    core: ClashCore,
-    builtin_enabled: bool,
-) -> Result<crate::client::runtime::RuntimeSnapshotData, RuntimeBuildError> {
+/// The document the core receives: the final config as YAML, which must be a
+/// mapping.
+pub fn render_final_config(artifact: &RuntimeArtifact) -> Result<String, RuntimeBuildError> {
     ensure!(
         artifact.final_config.as_object_arc().is_some(),
         ConfigNotMappingSnafu
     );
-    let config_text =
-        yaml_serde::to_string(&*artifact.final_config).context(SerializeFinalConfigSnafu)?;
+    yaml_serde::to_string(&*artifact.final_config).context(SerializeFinalConfigSnafu)
+}
+
+/// The snapshot data of an artifact whose document `config_text` already
+/// rendered.
+pub fn runtime_snapshot_data_from_artifact(
+    artifact: RuntimeArtifact,
+    config_text: String,
+    profiles: &Profiles,
+    core: ClashCore,
+    builtin_enabled: bool,
+) -> crate::client::runtime::RuntimeSnapshotData {
     let exists_keys: Vec<String> = artifact.applied_fields.iter().cloned().collect();
     let builtin_names: Vec<String> = if builtin_enabled {
         builtin_transforms_for(core)
@@ -111,7 +118,7 @@ pub fn runtime_snapshot_data_from_artifact(
         Vec::new()
     };
     let postprocessing_output = map_postprocessing(&artifact.step_logs, profiles, &builtin_names);
-    Ok(crate::client::runtime::RuntimeSnapshotData {
+    crate::client::runtime::RuntimeSnapshotData {
         config_text: config_text.into(),
         exists_keys,
         inspection: std::sync::Arc::new(crate::client::runtime_inspection::RuntimeInspectionData {
@@ -120,7 +127,7 @@ pub fn runtime_snapshot_data_from_artifact(
             step_logs: artifact.step_logs,
         }),
         postprocessing_output,
-    })
+    }
 }
 
 #[cfg(test)]

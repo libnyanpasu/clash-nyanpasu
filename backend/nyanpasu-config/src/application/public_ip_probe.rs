@@ -35,8 +35,10 @@ pub struct StunServer {
 }
 
 /// The built-in servers, in the order the probe asks them. Capabilities are
-/// what each operator documents or what its DNS records offer (AAAA records
-/// for IPv6), checked on 2026-11-06.
+/// verified against live DNS records and Binding probes (IPv4/IPv6, UDP/TCP).
+/// The default-enabled set mixes global and mainland-China operators, includes
+/// dual-stack IPv6 coverage in both regions, and enables a TCP-capable server
+/// so UDP-restricted networks still succeed.
 pub fn default_stun_servers() -> Vec<StunServer> {
     const BOTH: StunFamilies = StunFamilies {
         ipv4: true,
@@ -52,10 +54,11 @@ pub fn default_stun_servers() -> Vec<StunServer> {
     };
     [
         ("stun.cloudflare.com", 3478, true, BOTH, NONE),
-        ("stun.l.google.com", 19302, true, BOTH, NONE),
         ("stun.miwifi.com", 3478, true, IPV4, NONE),
-        ("stun.chat.bilibili.com", 3478, false, IPV4, NONE),
-        ("stun.nextcloud.com", 3478, false, BOTH, BOTH),
+        ("stun.hitv.com", 3478, true, BOTH, NONE),
+        ("stun.l.google.com", 19302, true, BOTH, NONE),
+        ("stun.nextcloud.com", 3478, true, BOTH, BOTH),
+        ("stun.chat.bilibili.com", 3478, true, IPV4, NONE),
     ]
     .into_iter()
     .map(|(host, port, enabled, udp, tcp)| StunServer {
@@ -66,6 +69,43 @@ pub fn default_stun_servers() -> Vec<StunServer> {
         builtin: true,
     })
     .collect()
+}
+
+/// Merges missing built-in STUN servers from [`default_stun_servers`] and
+/// updates capabilities of existing built-in entries, while preserving the
+/// user's ordering, `enabled` choices, and custom servers.
+pub fn merge_builtin_stun_servers(existing: Vec<StunServer>) -> Vec<StunServer> {
+    let defaults = default_stun_servers();
+    let mut merged: Vec<StunServer> = existing
+        .into_iter()
+        .map(|mut server| {
+            if let Some(default) = defaults.iter().find(|default| {
+                default.port == server.port && default.host.eq_ignore_ascii_case(&server.host)
+            }) {
+                server.capabilities = default.capabilities;
+                server.builtin = true;
+            }
+            server
+        })
+        .collect();
+
+    for default in defaults {
+        let already_present = merged.iter().any(|server| {
+            server.port == default.port && server.host.eq_ignore_ascii_case(&default.host)
+        });
+        if !already_present {
+            merged.push(default);
+        }
+    }
+    merged
+}
+
+pub(super) fn deserialize_stun_servers<'de, D>(deserializer: D) -> Result<Vec<StunServer>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let existing = Vec::<StunServer>::deserialize(deserializer)?;
+    Ok(merge_builtin_stun_servers(existing))
 }
 
 /// HTTP services that answer with the caller's address. Each one receives
@@ -235,5 +275,121 @@ mod tests {
             Ok(())
         );
         assert!(validate_public_ip_probe_sources(&[], &ipify).is_err());
+    }
+
+    #[test]
+    fn merge_builtin_adds_missing_and_updates_capabilities_while_preserving_user_choices() {
+        let stale_caps = StunServerCapabilities::default();
+        let custom_caps = StunServerCapabilities {
+            udp: StunFamilies {
+                ipv4: true,
+                ipv6: false,
+            },
+            tcp: StunFamilies {
+                ipv4: true,
+                ipv6: false,
+            },
+        };
+        let legacy = vec![
+            StunServer {
+                host: "stun.l.google.com".into(),
+                port: 19302,
+                enabled: true,
+                capabilities: stale_caps,
+                builtin: false,
+            },
+            StunServer {
+                host: "stun.example.com".into(),
+                port: 3478,
+                enabled: true,
+                capabilities: custom_caps,
+                builtin: false,
+            },
+            StunServer {
+                host: "stun.nextcloud.com".into(),
+                port: 3478,
+                enabled: false,
+                capabilities: stale_caps,
+                builtin: true,
+            },
+            StunServer {
+                host: "stun.cloudflare.com".into(),
+                port: 3478,
+                enabled: false,
+                capabilities: stale_caps,
+                builtin: true,
+            },
+        ];
+
+        let merged = merge_builtin_stun_servers(legacy);
+        let hosts: Vec<&str> = merged.iter().map(|s| s.host.as_str()).collect();
+        assert_eq!(
+            hosts,
+            [
+                "stun.l.google.com",
+                "stun.example.com",
+                "stun.nextcloud.com",
+                "stun.cloudflare.com",
+                "stun.miwifi.com",
+                "stun.hitv.com",
+                "stun.chat.bilibili.com",
+            ]
+        );
+
+        let defaults = default_stun_servers();
+        let find_default = |host: &str| {
+            defaults
+                .iter()
+                .find(|s| s.host == host)
+                .unwrap()
+                .capabilities
+        };
+
+        assert!(merged[0].enabled);
+        assert!(merged[0].builtin);
+        assert_eq!(merged[0].capabilities, find_default("stun.l.google.com"));
+
+        assert!(merged[1].enabled);
+        assert!(!merged[1].builtin);
+        assert_eq!(merged[1].capabilities, custom_caps);
+
+        assert!(!merged[2].enabled);
+        assert!(merged[2].builtin);
+        assert_eq!(merged[2].capabilities, find_default("stun.nextcloud.com"));
+
+        assert!(!merged[3].enabled);
+        assert!(merged[3].builtin);
+        assert_eq!(merged[3].capabilities, find_default("stun.cloudflare.com"));
+
+        assert!(merged[5].enabled);
+        assert!(merged[5].builtin);
+        assert_eq!(merged[5].capabilities, find_default("stun.hitv.com"));
+
+        assert_eq!(validate_stun_servers(&merged), Ok(()));
+    }
+
+    #[test]
+    fn merge_builtin_is_case_insensitive_and_idempotent() {
+        let existing = vec![StunServer {
+            host: "STUN.Nextcloud.COM".into(),
+            port: 3478,
+            enabled: false,
+            capabilities: StunServerCapabilities::default(),
+            builtin: true,
+        }];
+
+        let once = merge_builtin_stun_servers(existing);
+        let twice = merge_builtin_stun_servers(once.clone());
+
+        assert_eq!(once, twice);
+        assert_eq!(once.len(), default_stun_servers().len());
+        assert_eq!(once[0].host, "STUN.Nextcloud.COM");
+        assert!(!once[0].enabled);
+        assert_eq!(
+            once.iter()
+                .filter(|s| s.host.eq_ignore_ascii_case("stun.nextcloud.com"))
+                .count(),
+            1
+        );
     }
 }

@@ -1,28 +1,33 @@
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   overflow: hidden;
   font-family: var(--font-sans);
   color: var(--color-on-surface);
   user-select: none;
-  background-color: #f7f7f7;
+  background-color: var(--color-surface);
   -webkit-font-smoothing: antialiased;
-}
-
-.dark body {
-  background-color: #0b0b0b;
-}
-
-:root {
-  --text-primary: #637381;
-  --scroller-color: #90939980;
-  --background-color: #fff;
-  --background-color-alpha: rgb(24 103 192 / 10%);
-  --border-radius: 12px;
 }
 
 ::selection {
   color: var(--color-md-on-primary);
   background-color: var(--color-md-primary);
+}
+
+* {
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--color-on-surface-variant) 42%,
+      transparent
+    )
+    transparent;
 }
 
 *::-webkit-scrollbar {
@@ -32,20 +37,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: var(--scroller-color);
+  background-color: color-mix(
+    in srgb,
+    var(--color-on-surface-variant) 42%,
+    transparent
+  );
   border-radius: 6px;
 }
 
 *::-webkit-scrollbar-track {
-  margin-block: calc(var(--border-radius) + 3px);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    background-color: rgb(18 18 18 / 100%);
-  }
-}
-
-.bg-inherit-allow-fallback {
-  background-color: var(--fallback-bg, inherit);
+  margin-block: 15px;
 }

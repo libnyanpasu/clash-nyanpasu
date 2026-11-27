@@ -106,6 +106,8 @@ command | get_transparent_proxy_status | sensitive_read | query | desktop |  |
 command | get_transparent_proxy_status_summary | read | query | desktop |  |
 command | import_profile | profile | mutation | desktop,http,local |  | elevation,os_integration,presentation
 command | inspect_applied_runtime | sensitive_read | query | desktop,http |  |
+command | inspect_candidate_node | sensitive_read | query | desktop |  |
+command | inspect_candidate_runtime | sensitive_read | query | desktop |  |
 command | inspect_runtime | sensitive_read | query | desktop,http |  |
 command | inspect_runtime_node | sensitive_read | query | desktop,http |  |
 command | inspect_updater | sensitive_read | query | desktop,http |  |
@@ -128,6 +130,7 @@ command | mutate_proxies | proxy | mutation | desktop,http |  | presentation
 command | open_app_config_dir | system | mutation | desktop | opener |
 command | open_app_data_dir | system | mutation | desktop | opener |
 command | open_backups_dir | system | mutation | desktop | opener |
+command | open_candidate_config_window | system | mutation | desktop | window |
 command | open_core_dir | system | mutation | desktop | opener |
 command | open_log_session | read | mutation | desktop,http,local |  |
 command | open_logs_dir | system | mutation | desktop | opener |

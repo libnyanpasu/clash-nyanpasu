@@ -174,7 +174,7 @@ const StateSlot = ({
       animate={{ scale: isDropTarget && !reducedMotion ? 1.04 : 1 }}
       transition={transition}
       className={cn(
-        'bg-surface-variant/40 relative flex min-w-0 flex-col items-stretch overflow-hidden rounded-3xl',
+        'bg-surface-container-high relative flex min-w-0 flex-col items-stretch overflow-hidden rounded-3xl',
         'transition-colors motion-reduce:transition-none',
         isDropTarget
           ? 'bg-primary-container'

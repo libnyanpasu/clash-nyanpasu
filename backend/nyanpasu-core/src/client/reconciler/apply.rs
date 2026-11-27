@@ -4,23 +4,23 @@ use std::sync::Arc;
 use nyanpasu_core_manager::CoreErrorKind;
 use nyanpasu_runtime_values::{
     execution_host::ExecutionHost,
-    runtime_error::{
-        ApplyRuntimeSnafu, CoreRolledBackSnafu, PublishRuntimeSnafu, ResolveCoreBinarySnafu,
-        RuntimeError, StopServiceSnafu, SubmissionUnobservedSnafu,
-    },
+    runtime_error::{RuntimeError, StopServiceSnafu},
 };
 use snafu::IntoError as _;
 
 use super::{
     mutation::{AppliedCandidate, ApplyOutcome},
-    workflow::RuntimeReconciler,
+    preparation::PrepareFailure,
+    workflow::{RuntimeReconciler, WaitEvidence, naming},
 };
 use crate::client::{
+    candidate_inspection::{CandidateEvidence, Retention},
     core_lifecycle::{
         RuntimeSubmission,
         ports::{PreparedRuntime, RuntimePreparationPort},
     },
     runtime_error,
+    runtime_inspection::CandidateStage,
 };
 
 pub(super) struct PreparedCandidate {
@@ -43,17 +43,42 @@ impl RuntimeReconciler {
                 None
             }
             Err(error) => {
+                // A retry of the same product names what its first failure
+                // kept while the store still has it, and does not try again
+                // to keep one that could not be kept.
+                let retried = match self.pending_product.take() {
+                    Some((pending, _, kept)) if Arc::ptr_eq(&pending, &product) => Some(kept),
+                    _ => None,
+                };
+                let kept = match retried {
+                    Some(Some(id)) if self.candidates.holds(&id) => Some(id),
+                    Some(None) => None,
+                    _ => {
+                        self.candidates
+                            .keep(
+                                CandidateEvidence::of_snapshot(&product)
+                                    .at(CandidateStage::AppliedUnpublished),
+                                Retention::Pinned,
+                            )
+                            .await
+                    }
+                };
                 let message = format!("runtime_product_publish_failed: {error}");
-                self.pending_product = Some((product, message));
-                Some(Arc::new(PublishRuntimeSnafu.into_error(error)))
+                self.pending_product = Some((product, message, kept.clone()));
+                Some(Arc::new(RuntimeError::PublishRuntime {
+                    source: error,
+                    candidate_snapshot_id: kept,
+                }))
             }
         }
     }
 
+    /// Prepares the committed target; a refusal comes with the candidate the
+    /// preparation had built.
     pub(super) async fn prepare_candidate(
         &mut self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedCandidate, ApplyOutcome> {
+    ) -> Result<PreparedCandidate, (ApplyOutcome, Option<Box<CandidateEvidence>>)> {
         let selection = super::committed::Selection::of(&inputs);
         let interruption = selection.interruption(self.applied_selection.as_ref(), &inputs.clash);
         let target = inputs.target_key();
@@ -69,19 +94,116 @@ impl RuntimeReconciler {
         } else {
             self.preparation.prepare_inputs(inputs).await
         }
-        .map_err(|error| ApplyOutcome::Refused {
-            cause: Arc::new(error),
+        .map_err(|PrepareFailure { error, candidate }| {
+            (
+                ApplyOutcome::Refused {
+                    cause: Arc::new(error),
+                },
+                candidate,
+            )
         })?;
         self.preparation
             .core_spec(&runtime.snapshot.target_core)
-            .map_err(|error| ApplyOutcome::Refused {
-                cause: Arc::new(ResolveCoreBinarySnafu.into_error(error)),
+            .map_err(|source| {
+                (
+                    ApplyOutcome::Refused {
+                        cause: Arc::new(RuntimeError::ResolveCoreBinary {
+                            source,
+                            candidate_snapshot_id: None,
+                        }),
+                    },
+                    Some(Box::new(CandidateEvidence::of_snapshot(&runtime.snapshot))),
+                )
             })?;
         Ok(PreparedCandidate {
             runtime,
             selection,
             interruption,
         })
+    }
+
+    /// Names the candidate of a failed attempt in its cause, pinned while
+    /// later rounds report the attempt. A target that waits for the core
+    /// keeps its candidate the first time only; its retries name that one.
+    pub(super) async fn name_attempt(
+        &mut self,
+        target: &str,
+        outcome: ApplyOutcome,
+        candidate: Option<CandidateEvidence>,
+    ) -> ApplyOutcome {
+        match outcome {
+            ApplyOutcome::Applied(_) => {
+                self.waiting_candidate = None;
+                outcome
+            }
+            ApplyOutcome::Refused { cause } => {
+                self.waiting_candidate = None;
+                let kept = self.keep_attempt(&cause, candidate).await;
+                ApplyOutcome::Refused {
+                    cause: naming(cause, kept),
+                }
+            }
+            ApplyOutcome::Unknown(cause) => {
+                self.waiting_candidate = None;
+                let kept = self.keep_attempt(&cause, candidate).await;
+                ApplyOutcome::Unknown(naming(cause, kept))
+            }
+            ApplyOutcome::Waiting(cause) => {
+                ApplyOutcome::Waiting(self.name_wait(target, cause, candidate).await)
+            }
+        }
+    }
+
+    /// Names the candidate `target` kept when it first waited, while the
+    /// store still has it, or keeps `candidate`. A build that could not be
+    /// kept is not tried again on every wait.
+    pub(super) async fn name_wait(
+        &mut self,
+        target: &str,
+        cause: Arc<RuntimeError>,
+        candidate: Option<CandidateEvidence>,
+    ) -> Arc<RuntimeError> {
+        let previous = self
+            .waiting_candidate
+            .take()
+            .filter(|(waiting, _)| waiting == target)
+            .map(|(_, evidence)| evidence);
+        let evidence = match previous {
+            Some(WaitEvidence::Kept(id)) if self.candidates.holds(&id) => WaitEvidence::Kept(id),
+            Some(WaitEvidence::Unkept) => WaitEvidence::Unkept,
+            _ => match candidate.filter(|_| cause.carries_candidate_snapshot_id()) {
+                None => WaitEvidence::Nothing,
+                Some(candidate) => match self.candidates.keep(candidate, Retention::Pinned).await {
+                    Some(id) => WaitEvidence::Kept(id),
+                    None => WaitEvidence::Unkept,
+                },
+            },
+        };
+        let kept = match &evidence {
+            WaitEvidence::Kept(id) => Some(id.clone()),
+            WaitEvidence::Nothing | WaitEvidence::Unkept => None,
+        };
+        self.waiting_candidate = Some((target.to_owned(), evidence));
+        naming(cause, kept)
+    }
+
+    /// The candidate a wait for the core names when the change it waits to
+    /// apply already passed a check; a checked build of another target is
+    /// left for its own round.
+    pub(super) fn checked_candidate(&self, target: &str) -> Option<CandidateEvidence> {
+        self.checked
+            .as_ref()
+            .filter(|prepared| prepared.target.as_deref() == Some(target))
+            .map(|prepared| CandidateEvidence::of_snapshot(&prepared.snapshot))
+    }
+
+    async fn keep_attempt(
+        &self,
+        cause: &RuntimeError,
+        candidate: Option<CandidateEvidence>,
+    ) -> Option<nyanpasu_runtime_values::candidate::CandidateSnapshotId> {
+        let candidate = candidate.filter(|_| cause.carries_candidate_snapshot_id())?;
+        self.candidates.keep(candidate, Retention::Pinned).await
     }
 
     pub(super) async fn apply_prepared(
@@ -188,23 +310,26 @@ impl RuntimeReconciler {
                 })
             }
             Ok(RuntimeSubmission::RolledBack(report)) => ApplyOutcome::Refused {
-                cause: Arc::new(
-                    CoreRolledBackSnafu {
-                        reason: report.failed_apply,
-                    }
-                    .build(),
-                ),
+                cause: Arc::new(RuntimeError::CoreRolledBack {
+                    reason: report.failed_apply,
+                    candidate_snapshot_id: None,
+                }),
             },
-            Ok(RuntimeSubmission::Unknown(uncertain)) => ApplyOutcome::Unknown(Arc::new(
-                SubmissionUnobservedSnafu.into_error(runtime_error::core_failure(uncertain.error)),
-            )),
+            Ok(RuntimeSubmission::Unknown(uncertain)) => {
+                ApplyOutcome::Unknown(Arc::new(RuntimeError::SubmissionUnobserved {
+                    failure: runtime_error::core_failure(uncertain.error),
+                    candidate_snapshot_id: None,
+                }))
+            }
             Ok(RuntimeSubmission::NotSubmitted(error)) => not_submitted_outcome(error),
             Err(error) => ApplyOutcome::Refused {
                 cause: Arc::new(error),
             },
             Ok(RuntimeSubmission::Unchanged(error)) => {
-                let error =
-                    Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+                let error = Arc::new(RuntimeError::ApplyRuntime {
+                    failure: runtime_error::core_failure(error),
+                    candidate_snapshot_id: None,
+                });
                 ApplyOutcome::Refused { cause: error }
             }
         }
@@ -244,7 +369,10 @@ fn not_submitted_outcome(error: nyanpasu_core_manager::CoreError) -> ApplyOutcom
                 | CoreErrorKind::BackendUnavailable
         )
     );
-    let error = Arc::new(ApplyRuntimeSnafu.into_error(runtime_error::core_failure(error)));
+    let error = Arc::new(RuntimeError::ApplyRuntime {
+        failure: runtime_error::core_failure(error),
+        candidate_snapshot_id: None,
+    });
     if waiting {
         ApplyOutcome::Waiting(error)
     } else {
@@ -258,10 +386,9 @@ mod tests {
 
     use nyanpasu_core_manager::{CoreError, OperationId};
     use nyanpasu_core_metadata::CoreErrorKind;
-    use snafu::ResultExt as _;
 
     use crate::client::runtime_error;
-    use nyanpasu_runtime_values::runtime_error::{ApplyRuntimeSnafu, CoreFailure, RuntimeError};
+    use nyanpasu_runtime_values::runtime_error::{CoreFailure, RuntimeError};
 
     // Guards classifying only these four kinds as dependencies, regardless of the retryable hint.
     #[test]
@@ -328,10 +455,10 @@ mod tests {
                         retryable,
                         operation_id: operation_id.map(|id| id.to_string()),
                     };
-                    let runtime: RuntimeError = Err::<(), _>(error.clone())
-                        .map_err(runtime_error::core_failure)
-                        .context(ApplyRuntimeSnafu)
-                        .unwrap_err();
+                    let runtime = RuntimeError::ApplyRuntime {
+                        failure: runtime_error::core_failure(error.clone()),
+                        candidate_snapshot_id: None,
+                    };
                     assert_eq!(
                         runtime.source().unwrap().downcast_ref::<CoreFailure>(),
                         Some(&expected)

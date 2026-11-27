@@ -27,10 +27,6 @@ module.exports = {
           '100%': { transform: 'translateX(-100%)' },
         },
       },
-      colors: {
-        scroller: 'var(--scroller-color)',
-        container: 'var(--background-color)',
-      },
     },
   },
   plugins: [

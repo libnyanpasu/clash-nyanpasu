@@ -31,7 +31,7 @@ export function StageLabel({
       {index !== undefined && (
         <span
           data-slot="stage-label-index"
-          className="bg-surface-variant text-on-surface-variant grid size-[18px] shrink-0 place-items-center rounded-full text-[10px]"
+          className="bg-surface-container-highest text-on-surface-variant grid size-[18px] shrink-0 place-items-center rounded-full text-[10px]"
         >
           {index}
         </span>

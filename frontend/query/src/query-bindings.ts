@@ -157,6 +157,20 @@ export function createQueryBindings(rpc: RpcClient) {
         queryKey: ['inspectRuntimeNode', ...args],
         queryFn: () => commands.inspectRuntimeNode(...args),
       }),
+    inspectCandidateRuntime: (
+      ...args: Parameters<typeof commands.inspectCandidateRuntime>
+    ) =>
+      queryOptions({
+        queryKey: ['inspectCandidateRuntime', ...args],
+        queryFn: () => commands.inspectCandidateRuntime(...args),
+      }),
+    inspectCandidateNode: (
+      ...args: Parameters<typeof commands.inspectCandidateNode>
+    ) =>
+      queryOptions({
+        queryKey: ['inspectCandidateNode', ...args],
+        queryFn: () => commands.inspectCandidateNode(...args),
+      }),
     getPostprocessingOutput: (
       ...args: Parameters<typeof commands.getPostprocessingOutput>
     ) =>
@@ -696,6 +710,12 @@ export function createQueryBindings(rpc: RpcClient) {
     inspectRuntimeNode: (
       ...args: Partial<Parameters<typeof commands.inspectRuntimeNode>>
     ) => ['inspectRuntimeNode', ...args],
+    inspectCandidateRuntime: (
+      ...args: Partial<Parameters<typeof commands.inspectCandidateRuntime>>
+    ) => ['inspectCandidateRuntime', ...args],
+    inspectCandidateNode: (
+      ...args: Partial<Parameters<typeof commands.inspectCandidateNode>>
+    ) => ['inspectCandidateNode', ...args],
     getPostprocessingOutput: (
       ...args: Partial<Parameters<typeof commands.getPostprocessingOutput>>
     ) => ['getPostprocessingOutput', ...args],
@@ -1664,6 +1684,13 @@ export function createQueryBindings(rpc: RpcClient) {
           uid: Parameters<typeof commands.createEditorWindow>[1]
         }) => commands.createEditorWindow(input.windowType, input.uid),
       }),
+    openCandidateConfigWindow: () =>
+      mutationOptions({
+        mutationKey: ['openCandidateConfigWindow'],
+        mutationFn: (input: {
+          snapshotId: Parameters<typeof commands.openCandidateConfigWindow>[0]
+        }) => commands.openCandidateConfigWindow(input.snapshotId),
+      }),
     reportWindowReady: () =>
       mutationOptions({
         mutationKey: ['reportWindowReady'],
@@ -1841,6 +1868,7 @@ export function createQueryBindings(rpc: RpcClient) {
     createDebugTrayMenuWindow: () => ['createDebugTrayMenuWindow'],
     simulateCrash: () => ['simulateCrash'],
     createEditorWindow: () => ['createEditorWindow'],
+    openCandidateConfigWindow: () => ['openCandidateConfigWindow'],
     reportWindowReady: () => ['reportWindowReady'],
     copyClashEnv: () => ['copyClashEnv'],
     quitApplication: () => ['quitApplication'],

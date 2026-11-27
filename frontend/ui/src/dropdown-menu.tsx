@@ -71,7 +71,7 @@ export function DropdownMenuTrigger({
 }: ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
   return (
     <DropdownMenuPrimitive.Trigger
-      className={cn('data-[state=open]:bg-inverse-on-surface', className)}
+      className={cn('data-[state=open]:bg-on-surface/8', className)}
       {...props}
     />
   )
@@ -133,17 +133,15 @@ export function DropdownMenuSubTrigger({
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 pr-2 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=open]:bg-surface-variant/30',
-        'dark:data-[state=open]:bg-surface-variant/30',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=open]:bg-on-surface/8',
         className,
       )}
       {...props}
     >
       {children}
 
-      <ArrowRight className="text-outline-variant dark:text-outline size-6" />
+      <ArrowRight className="text-on-surface-variant size-6" />
     </DropdownMenuPrimitive.SubTrigger>
   )
 }
@@ -251,8 +249,7 @@ export const DropdownMenuItem = ({
       className={cn(
         'flex h-12 cursor-default items-center justify-start gap-2 p-4 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
         className,
       )}
       {...props}
@@ -270,15 +267,14 @@ export const DropdownMenuCheckboxItem = ({
       className={cn(
         'relative flex h-12 items-center justify-between gap-2 p-4 outline-hidden',
         'cursor-pointer pl-12',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
     >
       <DropdownMenuPrimitive.ItemIndicator className="absolute top-1/2 left-4 -translate-y-1/2">
-        <Check className="text-primary" />
+        <Check className="text-on-primary-container" />
       </DropdownMenuPrimitive.ItemIndicator>
 
       {children}
@@ -301,21 +297,20 @@ export const DropdownMenuRadioItem = ({
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant',
-        'dark:hover:bg-surface-variant',
-        'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       value={value}
       {...props}
     >
       <DropdownMenuPrimitive.ItemIndicator>
-        <RadioChecked className="text-primary" />
+        <RadioChecked className="text-on-primary-container" />
       </DropdownMenuPrimitive.ItemIndicator>
 
       {!selected && (
         <span>
-          <Radio className="text-outline-variant dark:text-outline" />
+          <Radio className="text-on-surface-variant" />
         </span>
       )}
 

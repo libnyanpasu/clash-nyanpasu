@@ -673,7 +673,14 @@ fn disabled_transform_engine_is_a_structured_pipeline_failure() {
         let inputs = base_inputs(&profiles, ExecutionTarget::Bare, &overrides, &transforms);
         let mut runner = FakeScriptRunner::default();
         runner.runs.insert("disabled".into(), RunReply::Unavailable);
-        let error = execute(&inputs, &MapContentSource::from_pairs(&[]), &runner).unwrap_err();
+        let failure = execute(&inputs, &MapContentSource::from_pairs(&[]), &runner).unwrap_err();
+        assert_eq!(
+            failure.partial.and_then(|partial| partial.failed_step),
+            Some(crate::runtime::executor::HaltedStep::BuiltinTransform {
+                name: "builtin".into()
+            })
+        );
+        let error = failure.error;
         assert!(
             matches!(
                 error,

@@ -382,7 +382,7 @@ const CurrentCoreCard = ({
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
-        'bg-surface-variant/30 text-on-surface hover:bg-surface-variant/50 shadow-none hover:shadow-none focus:shadow-none',
+        'bg-surface-container-high text-on-surface hover:bg-on-surface/8 shadow-none hover:shadow-none focus:shadow-none',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
       )}
       data-running={String(isRunning)}
@@ -434,7 +434,7 @@ const CurrentCoreCard = ({
                 'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
                 isRunning
                   ? 'bg-primary-container text-on-primary-container'
-                  : 'bg-surface-variant text-on-surface-variant',
+                  : 'bg-surface-container-high text-on-surface-variant',
               )}
               data-slot="core-status"
             >
@@ -490,7 +490,7 @@ function CoreShortcutsPreviewCard({
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
-        'bg-surface-variant/30 text-on-surface shadow-none',
+        'bg-surface-container-high text-on-surface shadow-none',
       )}
       data-running="true"
       data-slot="current-core-card"

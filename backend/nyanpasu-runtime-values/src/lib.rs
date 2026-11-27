@@ -1,6 +1,7 @@
 //! Definition-only public runtime results and error values.
 
 pub mod app_update;
+pub mod candidate;
 pub mod check;
 pub mod configuration;
 pub mod core_spec;

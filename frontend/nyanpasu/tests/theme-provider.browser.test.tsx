@@ -4,6 +4,8 @@ import { render } from 'vitest-browser-react'
 import { createTheme, ThemeMode } from '@nyanpasu/theme'
 import {
   ExperimentalThemeProvider,
+  THEME_CSS_VARS_KEY,
+  THEME_PALETTE_KEY,
   useExperimentalThemeContext,
 } from '../src/components/providers/theme-provider'
 
@@ -20,22 +22,19 @@ vi.mock('@nyanpasu/query', () => ({
   }),
 }))
 const themes = vi.hoisted(() => ({ created: 0 }))
-vi.mock('@material/material-color-utilities', async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import('@material/material-color-utilities')>()
+vi.mock('@nyanpasu/theme', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@nyanpasu/theme')>()
   return {
     ...original,
-    themeFromSourceColor: (
-      ...args: Parameters<typeof original.themeFromSourceColor>
-    ) => {
+    createTheme: (...args: Parameters<typeof original.createTheme>) => {
       themes.created += 1
-      return original.themeFromSourceColor(...args)
+      return original.createTheme(...args)
     },
   }
 })
 
-const PALETTE_KEY = 'theme-palette-v1'
-const CSS_VARS_KEY = 'theme-css-vars-v1'
+const PALETTE_KEY = THEME_PALETTE_KEY
+const CSS_VARS_KEY = THEME_CSS_VARS_KEY
 
 let rerender: () => void = () => {}
 let palette: unknown
@@ -169,4 +168,25 @@ test('a mode preview switches the color scheme without saving it', async ({
   await expect.poll(() => root.classList.contains('light')).toBe(true)
   expect(root.classList.contains('dark')).toBe(false)
   expect(upsert).not.toHaveBeenCalled()
+})
+
+test('ignores legacy v1 cache and invalid v2 cache on startup', async ({
+  onTestFinished,
+}) => {
+  localStorage.clear()
+  localStorage.setItem('theme-palette-v1', JSON.stringify({ legacy: true }))
+  localStorage.setItem(
+    'theme-css-vars-v1',
+    JSON.stringify(':root{--color-md-primary:#000000;}'),
+  )
+  localStorage.setItem(PALETTE_KEY, JSON.stringify({ broken: true }))
+  localStorage.setItem(CSS_VARS_KEY, JSON.stringify(':root{}'))
+  settings.theme_color = undefined
+
+  const view = await render(<Harness />)
+  onTestFinished(() => view.unmount())
+
+  await expect
+    .poll(() => customStyle())
+    .toContain('--color-md-surface-container-lowest:')
 })

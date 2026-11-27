@@ -12,13 +12,32 @@ use super::{
 };
 use crate::{
     actor_v2::intent::RuntimeIntentBuilder,
-    client::core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
+    client::{
+        candidate_inspection::CandidateEvidence,
+        core_lifecycle::ports::{PreparedRuntime, RuntimePreparationPort},
+    },
 };
 use nyanpasu_runtime_values::{
     core_spec::CoreSpecError,
     publish::PublishRuntimeError,
-    runtime_error::{BuildRuntimeSnafu, ResolvePortSnafu, RuntimeError},
+    runtime_error::{ResolvePortSnafu, RuntimeError},
 };
+
+/// A preparation that failed, with the candidate its build had produced.
+#[derive(Debug)]
+pub(in crate::client) struct PrepareFailure {
+    pub error: RuntimeError,
+    pub candidate: Option<Box<CandidateEvidence>>,
+}
+
+impl From<RuntimeError> for PrepareFailure {
+    fn from(error: RuntimeError) -> Self {
+        Self {
+            error,
+            candidate: None,
+        }
+    }
+}
 
 /// Builds runtime candidates from committed source config. It holds read-only
 /// state handles, never a domain client: build capture must not write the source
@@ -57,7 +76,9 @@ impl RuntimePreparation {
         app: NyanpasuAppConfig,
     ) -> Result<PreparedRuntime, RuntimeError> {
         let inputs = self.capture_inputs(app, clash, profiles).await;
-        self.prepare_inputs(inputs).await
+        self.prepare_inputs(inputs)
+            .await
+            .map_err(|failure| failure.error)
     }
 
     pub async fn capture_inputs(
@@ -99,17 +120,21 @@ impl RuntimePreparation {
             .await
     }
 
-    pub async fn prepare_inputs(
+    /// Prepares a committed target, keeping failed transforms lenient. A
+    /// failure keeps the candidate its build had produced.
+    pub(in crate::client) async fn prepare_inputs(
         &self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedRuntime, RuntimeError> {
+    ) -> Result<PreparedRuntime, PrepareFailure> {
         self.prepare_inputs_with_policy(inputs, false).await
     }
 
+    /// Prepares a candidate for the check, refusing failed transforms. A
+    /// failure keeps the candidate its build had produced.
     pub async fn prepare_candidate_inputs(
         &self,
         inputs: super::inputs::RuntimeInputs,
-    ) -> Result<PreparedRuntime, RuntimeError> {
+    ) -> Result<PreparedRuntime, PrepareFailure> {
         self.prepare_inputs_with_policy(inputs, true).await
     }
 
@@ -117,7 +142,7 @@ impl RuntimePreparation {
         &self,
         inputs: super::inputs::RuntimeInputs,
         strict_transforms: bool,
-    ) -> Result<PreparedRuntime, RuntimeError> {
+    ) -> Result<PreparedRuntime, PrepareFailure> {
         let revision = self.revisions.allocate();
         let local_ipc = LocalIpcSettings {
             policy: match inputs.clash.clash_control_channel {
@@ -136,7 +161,8 @@ impl RuntimePreparation {
         let ports = self
             .ports
             .resolve_candidate(&inputs.clash)
-            .context(ResolvePortSnafu)?;
+            .context(ResolvePortSnafu)
+            .map_err(PrepareFailure::from)?;
         let core_type: nyanpasu_utils::core::CoreType = (&inputs.app.core).into();
         let target = inputs.target_key();
         let snapshot = self
@@ -148,7 +174,13 @@ impl RuntimePreparation {
                 strict_transforms,
             )
             .await
-            .context(BuildRuntimeSnafu)?;
+            .map_err(|failure| PrepareFailure {
+                error: RuntimeError::BuildRuntime {
+                    source: failure.error,
+                    candidate_snapshot_id: None,
+                },
+                candidate: failure.candidate,
+            })?;
         // Serialized once, here: the check and the reconcile both consume this
         // value, so "same bytes" holds by construction rather than by
         // convention.

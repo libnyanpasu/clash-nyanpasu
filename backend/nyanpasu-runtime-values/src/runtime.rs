@@ -161,7 +161,12 @@ pub enum DegradationReason {
     ProxyCacheRefreshFailed,
     JournalInvalid,
     JobsJournalUnavailable,
-    MaterializationDeferred,
+    MaterializationDeferred {
+        /// The checked candidate of the committed change whose files are
+        /// still being completed, kept for inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<crate::candidate::CandidateSnapshotId>,
+    },
     CleanupDeferred,
     ProfileAutoActivationFailed {
         profile: ProfileId,

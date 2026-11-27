@@ -164,6 +164,8 @@ mod tests {
                 "get_transparent_proxy_diagnostics",
                 "get_transparent_proxy_status",
                 "inspect_applied_runtime",
+                "inspect_candidate_node",
+                "inspect_candidate_runtime",
                 "inspect_runtime",
                 "inspect_runtime_node",
                 "inspect_updater",

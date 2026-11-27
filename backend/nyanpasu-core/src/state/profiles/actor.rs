@@ -22,7 +22,7 @@ use nyanpasu_contracts::profiles::{
 use nyanpasu_migration::modules::profiles::ProfilesFormat;
 use nyanpasu_runtime_values::{
     configuration::{SourceOrigin, SourceOutcome},
-    mutation::{RecoverAfterWriteFailureSnafu, WriteConfigSnafu},
+    mutation::CommitAborted,
 };
 use nyanpasu_state_engine::{
     PersistentStateManager, ReplaceIfVersionError, ReplaceIfVersionResult, Version,
@@ -32,18 +32,18 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use snafu::{IntoError, OptionExt, ResultExt, ensure};
 
 use crate::state::mutation::{
-    DomainChange, MutationCoordinator, ProfileContentLock, impact, ports::RuntimeCandidate,
+    DomainChange, MutationCoordinator, ProfileContentLock, impact,
+    ports::{CheckPass, RuntimeCandidate},
 };
 use nyanpasu_core_manager::OperationId;
 use nyanpasu_runtime_values::profiles::{
-    BlockingTaskCancelledSnafu, CommitSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
-    FingerprintDefinitionSnafu, MaterializationOperation, MaterializationSnafu,
-    MissingProxiesSnafu, NotARemoteProfileSnafu, NotYamlMappingSnafu,
-    ProfileChangedDuringRefreshSnafu, ProfileContentError, ProfileContentRejectedSnafu,
-    ProfileDeletedDuringRefreshSnafu, ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu,
-    ProfileIdCollisionSnafu, ProfileInUseSnafu, ProfileNotFoundSnafu, ProfilesError,
-    ReadExternalProfileSnafu, RefreshInProgressSnafu, ReorderListDuplicateSnafu,
-    ReorderListSizeMismatchSnafu, ValidationFailedSnafu, VersionConflictSnafu,
+    BlockingTaskCancelledSnafu, EmptyScriptSnafu, FetchSubscriptionSnafu,
+    FingerprintDefinitionSnafu, MaterializationOperation, MissingProxiesSnafu,
+    NotARemoteProfileSnafu, NotYamlMappingSnafu, ProfileChangedDuringRefreshSnafu,
+    ProfileContentError, ProfileContentRejectedSnafu, ProfileDeletedDuringRefreshSnafu,
+    ProfileFileNotWritableSnafu, ProfileHasNoFileSnafu, ProfileIdCollisionSnafu, ProfileInUseSnafu,
+    ProfileNotFoundSnafu, ProfilesError, ReadExternalProfileSnafu, RefreshInProgressSnafu,
+    ReorderListDuplicateSnafu, ReorderListSizeMismatchSnafu, ValidationFailedSnafu,
 };
 use tokio::{sync::watch, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
@@ -67,6 +67,9 @@ pub struct CommitReport {
     /// Server-generated uid (D13); set by Add / import commit, consumed by
     /// facade auto-activation (design §9).
     pub created: Option<ProfileId>,
+    /// The checked candidate of a change committed while its file was not
+    /// completed; the deferred materialization names it.
+    pub(crate) deferred_candidate: Option<nyanpasu_runtime_values::candidate::CandidateSnapshotId>,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +98,7 @@ pub struct ProfilesActorState {
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
     fetcher: Arc<dyn SubscriptionFetcher>,
+    outcomes: crate::state::mutation::ports::OwnerOutcomes,
     materialization: Arc<dyn ProfileMaterializationPort>,
     pending_refresh: HashMap<ProfileId, PendingRefresh>,
     next_refresh_token: u64,
@@ -236,6 +240,7 @@ pub enum ProfilesActorMessage {
     },
     Replace {
         profiles: Profiles,
+        attribution: crate::state::mutation::ports::Attribution,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
     Add {
@@ -463,42 +468,44 @@ impl ProfilesActor {
         candidate: &Profiles,
         hints: &ProfileCandidateContent,
         subject: &CommitSubject,
-    ) -> Result<bool, ProfilesError> {
+        background: Option<ProfileId>,
+    ) -> Result<(bool, CheckPass), ProfilesError> {
         state.mutations.ensure_ready()?;
         let reaches = impact::reaches_runtime(before, candidate, &hints.touched);
-        if reaches {
-            state
-                .mutations
-                .runtime()
-                .check(RuntimeCandidate {
-                    change: DomainChange::Profiles {
-                        candidate: Arc::new(candidate.clone()),
-                    },
-                    staged: hints.staged_content.clone(),
-                })
-                .await
-                .map_err(|error| {
-                    use nyanpasu_runtime_values::{
-                        mutation::CommitAborted, runtime_error::RuntimeError,
-                    };
-                    let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
-                    let errors = vec![error.clone()];
-
-                    let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. })
-                    {
-                        CommitAborted::RuntimeFailed { errors, source }
-                    } else {
-                        CommitAborted::RuntimeRefused { errors, source }
-                    };
-                    ProfilesError::Commit {
-                        uid: subject.0.clone(),
-                        path: subject.1.clone(),
-                        cleanup_failures: Vec::new(),
-                        source,
-                    }
-                })?;
+        if !reaches {
+            return Ok((false, CheckPass::default()));
         }
-        Ok(reaches)
+        let pass = state
+            .mutations
+            .runtime()
+            .check(RuntimeCandidate {
+                change: DomainChange::Profiles {
+                    candidate: Arc::new(candidate.clone()),
+                },
+                staged: hints.staged_content.clone(),
+                background,
+            })
+            .await
+            .map_err(|error| {
+                use nyanpasu_runtime_values::{
+                    mutation::CommitAborted, runtime_error::RuntimeError,
+                };
+                let source = Box::new(error.clone()) as nyanpasu_contracts::BoxedCause;
+                let errors = vec![error.clone()];
+
+                let source = if matches!(error.as_ref(), RuntimeError::CheckUnavailable { .. }) {
+                    CommitAborted::RuntimeFailed { errors, source }
+                } else {
+                    CommitAborted::RuntimeRefused { errors, source }
+                };
+                ProfilesError::Commit {
+                    uid: subject.0.clone(),
+                    path: subject.1.clone(),
+                    cleanup_failures: Vec::new(),
+                    source,
+                }
+            })?;
+        Ok((true, pass))
     }
 
     fn committed_report(
@@ -528,6 +535,7 @@ impl ProfilesActor {
             },
             runtime_degradations: Vec::new(),
             created,
+            deferred_candidate: None,
         }
     }
 
@@ -540,7 +548,8 @@ impl ProfilesActor {
         hints: ProfileCandidateContent,
         subject: CommitSubject,
     ) -> Result<CommitReport, ProfilesError> {
-        let reaches = Self::check_candidate(state, before, &next, &hints, &subject).await?;
+        let (reaches, pass) =
+            Self::check_candidate(state, before, &next, &hints, &subject, None).await?;
         let operation = reaches.then(OperationId::generate);
         let guard = state.content_lock.write().await;
         let result = state
@@ -558,13 +567,17 @@ impl ProfilesActor {
                     state, next, reaches, operation, None,
                 ))
             }
-            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => VersionConflictSnafu {
-                expected: *expected_version.as_ref(),
-                actual: *actual_version.as_ref(),
-                cleanup_failures: Vec::new(),
-            }
-            .fail(),
-            Err(error) => Err(Self::commit_failure(error, subject, Vec::new())),
+            Ok(ReplaceIfVersionResult::Conflict { actual_version }) => Err(pass
+                .keep_for(ProfilesError::VersionConflict {
+                    expected: *expected_version.as_ref(),
+                    actual: *actual_version.as_ref(),
+                    cleanup_failures: Vec::new(),
+                    candidate_snapshot_id: None,
+                })
+                .await),
+            Err(error) => Err(pass
+                .keep_for(Self::commit_failure(error, subject, Vec::new()))
+                .await),
         }
     }
 
@@ -581,26 +594,25 @@ impl ProfilesActor {
                 expected,
                 actual,
             }) => {
-                return VersionConflictSnafu {
+                return ProfilesError::VersionConflict {
                     expected: *expected.as_ref(),
                     actual: *actual.as_ref(),
                     cleanup_failures,
-                }
-                .build();
+                    candidate_snapshot_id: None,
+                };
             }
             error @ (ReplaceIfVersionError::WriteConfig(_)
-            | ReplaceIfVersionError::LocalWrite(_)) => {
-                WriteConfigSnafu.into_error(Box::new(error) as nyanpasu_contracts::BoxedCause)
+            | ReplaceIfVersionError::LocalWrite(_)) => CommitAborted::write_failed(Box::new(error)),
+            error @ ReplaceIfVersionError::ResourceRecovery { .. } => {
+                CommitAborted::recovery_failed(Box::new(error))
             }
-            error @ ReplaceIfVersionError::ResourceRecovery { .. } => RecoverAfterWriteFailureSnafu
-                .into_error(Box::new(error) as nyanpasu_contracts::BoxedCause),
         };
-        CommitSnafu {
+        ProfilesError::Commit {
             uid,
             path,
+            source,
             cleanup_failures,
         }
-        .into_error(source)
     }
 
     /// The profile a change is about, and its file in `candidate`, so a
@@ -752,19 +764,11 @@ impl ProfilesActor {
     ) -> SourceOutcome {
         let expected_fingerprint = match Self::fingerprint(uid, &definition) {
             Ok(fingerprint) => fingerprint,
-            Err(error) => {
-                return SourceOutcome::Failed {
-                    message: error.report(),
-                };
-            }
+            Err(error) => return SourceOutcome::failed(&error),
         };
         let content = match Self::read_external(&state.fs, &expected_target).await {
             Ok(content) => content,
-            Err(error) => {
-                return SourceOutcome::Failed {
-                    message: error.report(),
-                };
-            }
+            Err(error) => return SourceOutcome::failed(&error),
         };
         if let Err(error) = Self::validate_fetched_content(&definition, &content) {
             return SourceOutcome::rejected(
@@ -818,15 +822,12 @@ impl ProfilesActor {
             AffectsRule::Touched(uid.clone()),
             expected_path,
             content,
+            Some(uid.clone()),
         )
         .await
         {
-            Ok(report) => SourceOutcome::Committed {
-                operation_id: report.receipt.operation_id,
-            },
-            Err(error) => {
-                SourceOutcome::rejected(SourceOutcome::EXTERNAL_SOURCE_REJECTED, error.report())
-            }
+            Ok(report) => committed_receipt(&report),
+            Err(error) => SourceOutcome::refused(SourceOutcome::EXTERNAL_SOURCE_REJECTED, &error),
         }
     }
 
@@ -838,6 +839,7 @@ impl ProfilesActor {
         url: url::Url,
         definition_fingerprint: String,
         outcome: RefreshOutcome,
+        origin: RefreshOrigin,
     ) -> RefreshConclusion {
         let versioned = state.manager.snapshot_handle().load();
         let expected_version = versioned.version;
@@ -910,6 +912,9 @@ impl ProfilesActor {
             AffectsRule::Touched(uid.clone()),
             path,
             content,
+            // A scheduled refresh can fail the same way on every tick; one a
+            // user asked for keeps its own candidate for the dialog it shows.
+            (origin == RefreshOrigin::Scheduled).then(|| uid.clone()),
         )
         .await
         {
@@ -968,7 +973,11 @@ impl ProfilesActor {
             call(materialization.as_ref())
         }))
         .await?
-        .context(MaterializationSnafu { operation })
+        .map_err(|source| ProfilesError::Materialization {
+            operation,
+            source,
+            candidate_snapshot_id: None,
+        })
     }
 
     async fn read_external(
@@ -1171,6 +1180,7 @@ impl ProfilesActor {
         resource: Option<(ManagedProfilePath, MaterializationResource)>,
         cleanup_path: Option<ManagedProfilePath>,
         created: Option<ProfileId>,
+        background: Option<ProfileId>,
     ) -> Result<CommitReport, ProfilesError> {
         let candidate = Self::prepare_candidate(next)?;
         let subject = Self::commit_subject(&affects, created.as_ref(), &candidate);
@@ -1200,17 +1210,20 @@ impl ProfilesActor {
                 hints.staged_content.insert(path.to_string(), content);
             }
         }
-        let reaches = Self::check_candidate(state, &before, &candidate, &hints, &subject).await?;
+        let (reaches, pass) =
+            Self::check_candidate(state, &before, &candidate, &hints, &subject, background).await?;
         let operation = reaches.then(OperationId::generate);
         let prepared = if let Some((path, resource)) = resource {
-            Some(
-                Self::materialization_call(
-                    state,
-                    MaterializationOperation::PrepareFileFirst,
-                    move |port| port.prepare_file_first(&path, resource, expected_revision),
-                )
-                .await?,
+            match Self::materialization_call(
+                state,
+                MaterializationOperation::PrepareFileFirst,
+                move |port| port.prepare_file_first(&path, resource, expected_revision),
             )
+            .await
+            {
+                Ok(prepared) => Some(prepared),
+                Err(error) => return Err(pass.keep_for(error).await),
+            }
         } else {
             None
         };
@@ -1225,15 +1238,21 @@ impl ProfilesActor {
                 Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     if let Some(prepared) = prepared {
-                        let _guard = state.content_lock.write().await;
-                        Self::materialization_call(
+                        let guard = state.content_lock.write().await;
+                        let compensated = Self::materialization_call(
                             state,
                             MaterializationOperation::Compensate,
                             move |port| port.compensate(&prepared),
                         )
-                        .await?;
+                        .await;
+                        // Keeping the candidate writes a file; independent
+                        // snapshots need not wait for it.
+                        drop(guard);
+                        if let Err(error) = compensated {
+                            return Err(pass.keep_for(error).await);
+                        }
                     }
-                    return Err(error);
+                    return Err(pass.keep_for(error).await);
                 }
             }
         } else {
@@ -1323,18 +1342,20 @@ impl ProfilesActor {
                         }
                     }
                 }
-                return Err(match result {
+                let error = match result {
                     Err(error) => Self::commit_failure(error, subject, failures),
                     Ok(ReplaceIfVersionResult::Conflict { actual_version }) => {
-                        VersionConflictSnafu {
+                        ProfilesError::VersionConflict {
                             expected: *expected_version.as_ref(),
                             actual: *actual_version.as_ref(),
                             cleanup_failures: failures,
+                            candidate_snapshot_id: None,
                         }
-                        .build()
                     }
                     Ok(ReplaceIfVersionResult::Replaced) => unreachable!(),
-                });
+                };
+                drop(guard);
+                return Err(pass.keep_for(error).await);
             }
         }
         drop(guard);
@@ -1358,6 +1379,7 @@ impl ProfilesActor {
                     code: ProfileDegradationCode::MaterializationDeferred,
                     message: format!("materialization completion deferred: {}", error.report()),
                 });
+                report.deferred_candidate = pass.keep().await;
             }
         }
         if let Some(cleanup) = cleanup {
@@ -1377,6 +1399,7 @@ impl ProfilesActor {
         affects: AffectsRule,
         path: ManagedProfilePath,
         content: String,
+        background: Option<ProfileId>,
     ) -> Result<CommitReport, ProfilesError> {
         Self::commit_with_resources(
             myself,
@@ -1388,6 +1411,7 @@ impl ProfilesActor {
             Some((path, MaterializationResource::File { content })),
             None,
             None,
+            background,
         )
         .await
     }
@@ -1624,6 +1648,7 @@ impl Actor for ProfilesActor {
             index,
             fs: args.fs,
             fetcher: args.fetcher,
+            outcomes: Default::default(),
             materialization: args.materialization,
             pending_refresh: HashMap::new(),
             next_refresh_token: 1,
@@ -1706,6 +1731,7 @@ impl Actor for ProfilesActor {
                         AffectsRule::Touched(uid),
                         path,
                         content,
+                        None,
                     )
                     .await
                 }
@@ -1756,6 +1782,7 @@ impl Actor for ProfilesActor {
             }
             ProfilesActorMessage::Replace {
                 profiles: next,
+                attribution,
                 reply,
             } => {
                 let result = Self::run_state_write(&myself, state, move |profiles| {
@@ -1770,6 +1797,25 @@ impl Actor for ProfilesActor {
                     Ok(AffectsRule::Always)
                 })
                 .await;
+                // Reported before anyone hears of it, in this owner's order.
+                if state.mutations.ensure_ready().is_ok() {
+                    let record = state.mutations.outcomes();
+                    match &result {
+                        Ok(report) => state.outcomes.committed(
+                            record.as_ref(),
+                            attribution,
+                            None,
+                            report.version,
+                        ),
+                        Err(error) => state.outcomes.failed(
+                            record.as_ref(),
+                            attribution,
+                            state.manager.snapshot_handle().load().version,
+                            error,
+                            error.candidate_snapshot_id(),
+                        ),
+                    }
+                }
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::Add {
@@ -1820,6 +1866,7 @@ impl Actor for ProfilesActor {
                                     resource.map(|resource| (canonical, resource)),
                                     None,
                                     Some(uid),
+                                    None,
                                 )
                                 .await
                             }
@@ -1866,6 +1913,7 @@ impl Actor for ProfilesActor {
                         AffectsRule::Never,
                         None,
                         cleanup_path,
+                        None,
                         None,
                     )
                     .await
@@ -2106,9 +2154,7 @@ impl Actor for ProfilesActor {
                             state,
                             &uid,
                             origin.source(),
-                            SourceOutcome::Failed {
-                                message: error.report(),
-                            },
+                            SourceOutcome::failed(&error),
                         );
                         if let Some(reply) = reply {
                             let _ = reply.send(Err(error));
@@ -2177,35 +2223,25 @@ impl Actor for ProfilesActor {
                     url,
                     definition_fingerprint,
                     outcome,
+                    pending.origin,
                 );
                 let conclusion = match &pending.context {
                     Some(context) => context.instrument(conclude).await,
                     None => conclude.await,
                 };
                 let (outcome, result) = match conclusion {
-                    RefreshConclusion::Committed(report) => (
-                        SourceOutcome::Committed {
-                            operation_id: report.receipt.operation_id.clone(),
-                        },
-                        Ok(report),
-                    ),
+                    RefreshConclusion::Committed(report) => {
+                        (committed_receipt(&report), Ok(report))
+                    }
                     RefreshConclusion::Superseded(error) => (
                         SourceOutcome::Superseded {
                             reason: error.report(),
                         },
                         Err(error),
                     ),
-                    RefreshConclusion::Failed(error) => (
-                        SourceOutcome::Failed {
-                            message: error.report(),
-                        },
-                        Err(error),
-                    ),
+                    RefreshConclusion::Failed(error) => (SourceOutcome::failed(&error), Err(error)),
                     RefreshConclusion::Rejected(error) => (
-                        SourceOutcome::rejected(
-                            SourceOutcome::SUBSCRIPTION_REJECTED,
-                            error.report(),
-                        ),
+                        SourceOutcome::refused(SourceOutcome::SUBSCRIPTION_REJECTED, &error),
                         Err(error),
                     ),
                 };
@@ -2350,6 +2386,7 @@ impl Actor for ProfilesActor {
                                     Some((canonical, MaterializationResource::File { content })),
                                     None,
                                     Some(uid),
+                                    None,
                                 )
                                 .await
                             }
@@ -2412,17 +2449,14 @@ impl Actor for ProfilesActor {
                     })
                     .await;
                     match result {
-                        Ok(report) => SourceOutcome::Committed {
-                            operation_id: report.receipt.operation_id,
-                        },
-                        Err(error) => SourceOutcome::rejected(
-                            SourceOutcome::EXTERNAL_SOURCE_REJECTED,
-                            error.report(),
-                        ),
+                        Ok(report) => committed_receipt(&report),
+                        Err(error) => {
+                            SourceOutcome::refused(SourceOutcome::EXTERNAL_SOURCE_REJECTED, &error)
+                        }
                     }
                 };
-                if let SourceOutcome::Failed { message } | SourceOutcome::Rejected { message, .. } =
-                    &outcome
+                if let SourceOutcome::Failed { message, .. }
+                | SourceOutcome::Rejected { message, .. } = &outcome
                 {
                     tracing::warn!(uid = %uid, error = %message, "external profile change not applied");
                 }
@@ -2506,6 +2540,7 @@ impl Actor for ProfilesActor {
                                     resource.map(|resource| (canonical, resource)),
                                     cleanup_path,
                                     None,
+                                    None,
                                 )
                                 .await
                             }
@@ -2519,7 +2554,13 @@ impl Actor for ProfilesActor {
                     return Ok(());
                 }
                 match Self::reconcile_materializations(state).await {
-                    Ok(report) => Self::log_reconcile_report(&report),
+                    Ok(report) => {
+                        Self::log_reconcile_report(&report);
+                        // A clean pass leaves no file deferred.
+                        if report.degradations.is_empty() {
+                            state.sources.complete_deferred();
+                        }
+                    }
                     Err(error) => {
                         tracing::warn!(
                             error = %error.report(),
@@ -2564,6 +2605,25 @@ impl Actor for ProfilesActor {
             }
         }
         Ok(())
+    }
+}
+
+/// The receipt of a committed source, naming the checked candidate when its
+/// file could not be completed yet.
+fn committed_receipt(report: &CommitReport) -> SourceOutcome {
+    let deferred = report
+        .degradations
+        .iter()
+        .find(|degradation| degradation.code == ProfileDegradationCode::MaterializationDeferred)
+        .map(
+            |degradation| nyanpasu_runtime_values::configuration::DeferredCompletion {
+                message: degradation.message.clone(),
+                candidate_snapshot_id: report.deferred_candidate.clone(),
+            },
+        );
+    SourceOutcome::Committed {
+        operation_id: report.receipt.operation_id.clone(),
+        deferred,
     }
 }
 
@@ -2673,6 +2733,7 @@ mod tests {
             expected,
             actual,
             cleanup_failures,
+            candidate_snapshot_id: None,
         } = error
         else {
             panic!("expected a version conflict: {error:?}");

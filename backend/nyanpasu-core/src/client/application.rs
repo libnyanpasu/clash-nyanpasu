@@ -1,4 +1,4 @@
-use crate::state::mutation::MutationCoordinator;
+use crate::state::mutation::{MutationCoordinator, ports::Attribution};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
@@ -161,8 +161,21 @@ impl ApplicationClient {
         &self,
         patch: NyanpasuAppConfigPatch,
     ) -> Result<ApplicationSnapshot, ConfigError> {
+        self.patch_for(patch, Attribution::default()).await
+    }
+
+    /// [`Self::patch`] on behalf of `attribution`.
+    pub(crate) async fn patch_for(
+        &self,
+        patch: NyanpasuAppConfigPatch,
+        attribution: Attribution,
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
-            |reply| ApplicationActorMessage::Patch { patch, reply },
+            |reply| ApplicationActorMessage::Patch {
+                patch,
+                attribution,
+                reply,
+            },
             None,
         )
         .await
@@ -172,8 +185,21 @@ impl ApplicationClient {
         &self,
         state: NyanpasuAppConfig,
     ) -> Result<ApplicationSnapshot, ConfigError> {
+        self.replace_for(state, Attribution::default()).await
+    }
+
+    /// [`Self::replace`] on behalf of `attribution`.
+    pub(crate) async fn replace_for(
+        &self,
+        state: NyanpasuAppConfig,
+        attribution: Attribution,
+    ) -> Result<ApplicationSnapshot, ConfigError> {
         self.call(
-            |reply| ApplicationActorMessage::Replace { state, reply },
+            |reply| ApplicationActorMessage::Replace {
+                state,
+                attribution,
+                reply,
+            },
             None,
         )
         .await

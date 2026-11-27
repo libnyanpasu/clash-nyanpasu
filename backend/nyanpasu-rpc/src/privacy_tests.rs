@@ -69,6 +69,13 @@ fn desktop_caller(grant: Grant) -> RpcCaller {
     )
 }
 
+/// A kept candidate's ID: only a caller with `Full` visibility may learn it.
+const CANDIDATE_CANARY: &str = "candidatecanary000001";
+
+fn candidate_canary() -> nyanpasu_runtime_values::candidate::CandidateSnapshotId {
+    nyanpasu_runtime_values::candidate::CandidateSnapshotId::parse(CANDIDATE_CANARY).unwrap()
+}
+
 fn assert_no_canary(wire: &serde_json::Value, secrets: &[&str]) {
     let serialized = serde_json::to_string(wire).unwrap();
     for secret in secrets {
@@ -491,9 +498,11 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_metadat
             errors: vec![
                 Arc::new(RuntimeError::ApplyRuntime {
                     failure: core_failure,
+                    candidate_snapshot_id: Some(candidate_canary()),
                 }),
                 Arc::new(RuntimeError::ConfigurationNotInEffect {
                     reason: format!("waiting on {secret_url}"),
+                    candidate_snapshot_id: Some(candidate_canary()),
                 }),
             ],
             source: Box::new(io::Error::other(format!("raw cause {secret_url}"))),
@@ -513,6 +522,7 @@ fn nested_commit_aborted_projection_scrubs_paths_and_urls_but_keeps_core_metadat
             "hunter2",
             "sub.secret.invalid",
             "secret-uid",
+            CANDIDATE_CANARY,
         ],
     );
     assert_eq!(wire["domain_error"]["kind"]["domain"], "public");
@@ -615,6 +625,7 @@ fn canary_degraded_outcome(
                     cause: Arc::new(RuntimeError::CoreRejectedConfig {
                         core_kind: None,
                         message: format!("failed inspecting {secret_path} at {secret_url}"),
+                        candidate_snapshot_id: Some(candidate_canary()),
                     }),
                 },
                 message: format!("recovery failed: {secret_diag}"),
@@ -973,6 +984,7 @@ async fn dispatched_committed_degraded_outcome_projects_safely_for_every_resourc
                 secret_diag,
                 "hunter2",
                 "secret-profile-uid",
+                CANDIDATE_CANARY,
             ],
         );
         assert_eq!(public_body["status"], "committed_degraded");
@@ -1022,6 +1034,10 @@ async fn dispatched_committed_degraded_outcome_projects_safely_for_every_resourc
         .await;
         assert_eq!(full_status, StatusCode::OK, "{method} full: {full_body}");
         assert_eq!(full_body, expected_full);
+        assert_eq!(
+            full_body["degradations"][0]["reason"]["cause"]["candidate_snapshot_id"],
+            CANDIDATE_CANARY
+        );
         let decoded_full: ReceivedMutationOutcome<String> =
             serde_json::from_value(full_body).unwrap();
         assert!(matches!(decoded_full, ReceivedMutationOutcome::Full(_)));

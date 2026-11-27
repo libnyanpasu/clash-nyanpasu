@@ -8,7 +8,10 @@ use nyanpasu_contracts::profiles::error::{ErrorPath, ProfileFileError, Subscript
 use serde::Serialize;
 use snafu::Snafu;
 
-use super::mutation::{CommitAborted, NotReady};
+use super::{
+    candidate::CandidateSnapshotId,
+    mutation::{CommitAborted, NotReady},
+};
 
 /// Downloaded or read content that is not a valid profile document.
 #[derive(Debug, Snafu, Serialize, specta::Type)]
@@ -134,6 +137,10 @@ pub enum ProfilesError {
     Materialization {
         operation: MaterializationOperation,
         source: ProfileFileError,
+        /// The checked candidate the change failed to commit, kept for
+        /// inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
 
     #[snafu(display(
@@ -145,6 +152,10 @@ pub enum ProfilesError {
         /// Staging that could not be discarded after the conflict.
         #[serde(skip)]
         cleanup_failures: Vec<ProfilesError>,
+        /// The checked candidate the change failed to commit, kept for
+        /// inspection in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        candidate_snapshot_id: Option<CandidateSnapshotId>,
     },
     #[snafu(display("the profiles change was not committed{}", commit_subject(uid, path)))]
     Commit {
@@ -191,6 +202,62 @@ impl ProfilesError {
     pub fn report(&self) -> String {
         snafu::Report::from_error(self).to_string()
     }
+
+    fn candidate_slot(&mut self) -> Option<&mut Option<CandidateSnapshotId>> {
+        match self {
+            Self::Materialization {
+                candidate_snapshot_id,
+                ..
+            }
+            | Self::VersionConflict {
+                candidate_snapshot_id,
+                ..
+            } => Some(candidate_snapshot_id),
+            Self::Commit { source, .. } => source.candidate_slot(),
+            _ => None,
+        }
+    }
+
+    /// The candidate this failure names: the checked one a commit failed
+    /// with, or the one a runtime check refused.
+    pub fn candidate_snapshot_id(&self) -> Option<&CandidateSnapshotId> {
+        match self {
+            Self::Materialization {
+                candidate_snapshot_id: Some(id),
+                ..
+            }
+            | Self::VersionConflict {
+                candidate_snapshot_id: Some(id),
+                ..
+            } => Some(id),
+            Self::Commit { source, .. } => source.candidate_snapshot_id(),
+            _ => None,
+        }
+    }
+
+    /// Names the checked candidate the change failed to commit; other
+    /// failures stay as they are.
+    #[must_use]
+    pub fn with_candidate_snapshot_id(mut self, id: CandidateSnapshotId) -> Self {
+        if let Some(slot) = self.candidate_slot() {
+            *slot = Some(id);
+        }
+        self
+    }
+
+    /// Whether this failure to commit can name the checked candidate.
+    pub fn carries_candidate_snapshot_id(&self) -> bool {
+        matches!(
+            self,
+            Self::Materialization { .. }
+                | Self::VersionConflict { .. }
+                | Self::Commit {
+                    source: CommitAborted::WriteConfig { .. }
+                        | CommitAborted::RecoverAfterWriteFailure { .. },
+                    ..
+                }
+        )
+    }
 }
 
 #[cfg(test)]
@@ -206,9 +273,9 @@ mod tests {
         let error = ProfilesError::Commit {
             uid: Some(ProfileId("p1".into())),
             path: Some(ManagedProfilePath::new("p1.yaml").unwrap()),
-            source: CommitAborted::WriteConfig {
-                source: Box::new(std::io::Error::other("private operational cause")),
-            },
+            source: CommitAborted::write_failed(Box::new(std::io::Error::other(
+                "private operational cause",
+            ))),
             cleanup_failures: vec![ProfilesError::ShuttingDown],
         };
         assert_eq!(

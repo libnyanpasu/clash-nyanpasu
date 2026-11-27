@@ -106,6 +106,8 @@ command | get_transparent_proxy_status | system:read | system.proxy | sensitive 
 command | get_transparent_proxy_status_summary | system:read | system.proxy |  |  | desktop | tauri/src/ipc.rs
 command | import_profile | profile:write | profile.store |  |  | desktop,http,local | nyanpasu-rpc/src/commands/profiles.rs
 command | inspect_applied_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
+command | inspect_candidate_node | profile:read | profile.runtime | sensitive |  | desktop | nyanpasu-rpc/src/commands/profile/runtime.rs
+command | inspect_candidate_runtime | profile:read | profile.runtime | sensitive |  | desktop | nyanpasu-rpc/src/commands/profile/runtime.rs
 command | inspect_runtime | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | inspect_runtime_node | profile:read | profile.runtime | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/runtime.rs
 command | inspect_updater | system:read | system.core | sensitive |  | desktop,http | nyanpasu-rpc/src/commands/updater.rs
@@ -128,6 +130,7 @@ command | mutate_proxies | proxy:write | proxy.groups |  |  | desktop,http | nya
 command | open_app_config_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_app_data_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
 command | open_backups_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs
+command | open_candidate_config_window | system:write | system.window |  |  | desktop | tauri/src/ipc/system/window.rs
 command | open_core_dir | system:write | system.core |  |  | desktop | tauri/src/ipc.rs
 command | open_log_session | logs:read | logs.app |  | read | desktop,http,local | nyanpasu-rpc/src/commands/logs.rs
 command | open_logs_dir | system:write | system.os |  |  | desktop | tauri/src/ipc.rs

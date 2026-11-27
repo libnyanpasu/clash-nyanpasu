@@ -111,8 +111,8 @@ export default function SyncHistory({ uid }: { uid: string }) {
       key={run.id}
       run={run}
       className={cn(
-        !hasSummary && index === 0 && 'rounded-t-3xl',
-        !hasToggle && index === runs.length - 1 && 'rounded-b-3xl',
+        !hasSummary && index === 0 && 'rounded-t-extra-large',
+        !hasToggle && index === runs.length - 1 && 'rounded-b-extra-large',
       )}
     >
       <RunLogs logs={logs} />

@@ -59,9 +59,9 @@ export function PatternsPage() {
           <div
             className={cn(
               'flex flex-col gap-1',
-              '[&>*:first-child:not(:only-child)]:rounded-b-sm',
-              '[&>*:last-child:not(:only-child)]:rounded-t-sm',
-              '[&>*:not(:first-child):not(:last-child)]:rounded-sm',
+              '[&>*:first-child:not(:only-child)]:rounded-b-extra-small',
+              '[&>*:last-child:not(:only-child)]:rounded-t-extra-small',
+              '[&>*:not(:first-child):not(:last-child)]:rounded-extra-small',
             )}
           >
             <Card>
@@ -117,7 +117,7 @@ export function PatternsPage() {
         description="Mirrors Clash Nyanpasu's DataPage layout: calm opaque rows scrolling beneath a single frosted GlassControlGroup bottom dock."
         defaultSurface="canvas"
       >
-        <div className="bg-surface-container-low dark:bg-surface relative overflow-hidden rounded-2xl p-4 pb-20">
+        <div className="bg-surface-container-low dark:bg-surface rounded-large relative overflow-hidden p-4 pb-20">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <FilterChip defaultPressed>Active (128)</FilterChip>
             <FilterChip>HTTPS</FilterChip>
@@ -140,7 +140,7 @@ export function PatternsPage() {
             ].map((row) => (
               <div
                 key={row.host}
-                className="bg-surface-container-lowest dark:bg-surface-container flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-xs"
+                className="bg-surface-container-lowest dark:bg-surface-container rounded-large flex items-center justify-between gap-3 px-4 py-3 text-xs"
               >
                 <div className="min-w-0">
                   <div className="text-on-surface truncate font-mono font-medium">
@@ -283,7 +283,7 @@ export function PatternsPage() {
                 </span>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden rounded-xl">
+              <div className="rounded-medium min-h-0 flex-1 overflow-hidden">
                 <Sparkline
                   data={SAMPLE_THROUGHPUT}
                   className="text-primary size-full"

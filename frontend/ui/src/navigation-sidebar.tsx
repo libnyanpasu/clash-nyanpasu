@@ -22,7 +22,7 @@ export const navigationSidebarVariants = cva(
 )
 
 export const navigationSidebarItemVariants = cva(
-  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-2xl p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-large p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
   {
     variants: {
       open: {

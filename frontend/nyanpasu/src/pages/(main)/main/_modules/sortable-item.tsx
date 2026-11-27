@@ -29,7 +29,7 @@ export const sortableItemVariants = cva(
       dragging: {
         true: [
           'bg-surface-container-high shadow-lg',
-          'scale-[1.02] cursor-grabbing rounded-3xl!',
+          'scale-[1.02] cursor-grabbing rounded-extra-large!',
           'motion-reduce:scale-100',
         ],
         false: '',

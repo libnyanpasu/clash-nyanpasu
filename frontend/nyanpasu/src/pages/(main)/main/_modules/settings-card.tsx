@@ -19,9 +19,9 @@ export function SettingsGroup({ className, ...props }: ComponentProps<'div'>) {
     <div
       className={cn(
         'flex flex-col gap-1 *:transition-[border-radius]',
-        '[&>*:first-child:not(:only-child)]:rounded-b-sm',
-        '[&>*:last-child:not(:only-child)]:rounded-t-sm',
-        '[&>*:not(:first-child):not(:last-child)]:rounded-sm',
+        '[&>*:first-child:not(:only-child)]:rounded-b-extra-small',
+        '[&>*:last-child:not(:only-child)]:rounded-t-extra-small',
+        '[&>*:not(:first-child):not(:last-child)]:rounded-extra-small',
         className,
       )}
       data-slot="settings-group"

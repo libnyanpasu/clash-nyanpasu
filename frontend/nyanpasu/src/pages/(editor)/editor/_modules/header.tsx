@@ -13,7 +13,7 @@ const Title = ({ title, dirty }: { title?: string; dirty?: boolean }) => {
   return (
     <WindowTitle className="min-w-0">
       <div
-        className="text-on-surface flex min-w-0 items-center gap-2 text-base text-nowrap"
+        className="text-on-primary-container flex min-w-0 items-center gap-2 text-base text-nowrap"
         data-slot="app-header-logo-name"
         data-tauri-drag-region
       >
@@ -40,7 +40,7 @@ const Title = ({ title, dirty }: { title?: string; dirty?: boolean }) => {
         <span
           className={cn(
             'truncate',
-            title ? 'text-on-surface/60 text-sm' : 'font-bold',
+            title ? 'text-on-primary-container/70 text-sm' : 'font-bold',
           )}
           data-slot="editor-title-app"
           data-tauri-drag-region

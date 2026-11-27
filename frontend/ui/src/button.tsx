@@ -18,12 +18,14 @@ import { useRipple } from './ripple'
 
 export const buttonVariants = cva(
   [
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'cursor-pointer select-none',
     'focus:outline-hidden',
     'relative overflow-hidden',
     'h-10 text-sm font-medium',
     'rounded-full',
     'transition-[background-color,color,shadow,filter]',
+    '[&_svg]:shrink-0',
   ],
   {
     variants: {
@@ -61,7 +63,7 @@ export const buttonVariants = cva(
         ],
         fab: [
           'px-4 h-14',
-          'rounded-2xl',
+          'rounded-large',
           'shadow-sm',
           'text-on-primary-container',
           'bg-primary-container',
@@ -74,7 +76,7 @@ export const buttonVariants = cva(
         false: '',
       },
       icon: {
-        true: 'p-0 grid place-content-center',
+        true: 'p-0',
         false: 'min-w-16',
       },
     },

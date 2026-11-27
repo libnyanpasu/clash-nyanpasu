@@ -7,7 +7,7 @@ const COLLAPSED_COUNT = 8
 
 const fieldClassName = cn(
   'bg-surface-container-high text-on-surface-variant',
-  'inline-flex h-[26px] items-center rounded-lg px-[9px] font-mono text-[11.5px]',
+  'inline-flex h-[26px] items-center rounded-small px-[9px] font-mono text-[11.5px]',
 )
 
 export default function ChangedFields({

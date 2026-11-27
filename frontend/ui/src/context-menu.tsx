@@ -15,7 +15,7 @@ const MotionContent = ({
   return (
     <motion.div
       className={cn(
-        'relative z-50 w-full overflow-auto rounded-lg',
+        'rounded-small relative z-50 w-full overflow-auto',
         'bg-surface-container-high text-on-surface',
         'shadow-shadow/15 shadow-sm',
         'border-outline-variant/50 border',

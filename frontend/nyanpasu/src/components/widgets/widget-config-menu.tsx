@@ -140,7 +140,7 @@ export default function WidgetConfigMenu({
           </LauncherMenuGroup>
 
           <ScrollArea
-            className="min-h-0 flex-auto rounded-3xl"
+            className="rounded-extra-large min-h-0 flex-auto"
             data-slot="widget-config-scroll-area"
           >
             {ConfigForm && (

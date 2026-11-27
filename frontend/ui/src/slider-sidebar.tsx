@@ -139,7 +139,7 @@ export const SidebarToggleButton = () => {
 
   return (
     <Button
-      className="flex size-12 min-w-0 items-center gap-2 rounded-2xl px-3 text-left"
+      className="rounded-large flex size-12 min-w-0 items-center gap-2 px-3 text-left"
       variant="raised"
       onClick={() => setOpen(!open)}
     >

@@ -61,7 +61,7 @@ export default function FolderNavItem({
 
   return (
     <RegisterContextMenu>
-      <ModalAnchor className="rounded-3xl [&>*:first-child]:rounded-[inherit]">
+      <ModalAnchor className="rounded-extra-large [&>*:first-child]:rounded-[inherit]">
         <RegisterContextMenuTrigger asChild>
           <ProfilesNavigationItem
             ref={ref}

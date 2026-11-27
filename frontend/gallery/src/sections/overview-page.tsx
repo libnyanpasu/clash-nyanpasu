@@ -70,7 +70,7 @@ export function OverviewPage({
               </div>
             </div>
 
-            <div className="bg-surface-container dark:bg-surface-container-high grid grid-cols-1 gap-4 rounded-2xl p-4 sm:grid-cols-12">
+            <div className="bg-surface-container dark:bg-surface-container-high rounded-large grid grid-cols-1 gap-4 p-4 sm:grid-cols-12">
               <div className="flex h-40 flex-col sm:col-span-7">
                 <ExpressiveChoice
                   label="Routing mode"
@@ -138,7 +138,6 @@ export function OverviewPage({
 
               <Button
                 variant="flat"
-                className="gap-2"
                 onClick={() => onNavigate('foundations/colors')}
               >
                 <span>Explore Color System</span>
@@ -161,16 +160,20 @@ export function OverviewPage({
               </p>
             </div>
 
-            <div className="bg-surface-container-highest rounded-2xl p-3">
-              <div className="text-on-surface-variant mb-2 flex items-center justify-between text-[11px] font-medium">
+            <div className="bg-primary-container text-on-primary-container rounded-large p-3">
+              <div className="mb-2 flex items-center justify-between text-[11px] font-medium">
                 <span>WindowHeader</span>
-                <span className="font-mono">surface-container-highest</span>
+                <span className="text-on-primary-container/80 font-mono">
+                  primary-container
+                </span>
               </div>
 
-              <div className="bg-surface-container-high dark:bg-surface-container rounded-[14px] p-3">
-                <div className="text-on-surface-variant mb-2 flex items-center justify-between text-[11px] font-medium">
-                  <span>AppNavbar</span>
-                  <span className="font-mono">high / container</span>
+              <div className="bg-secondary-container text-on-secondary-container rounded-[14px] p-3">
+                <div className="mb-2 flex items-center justify-between text-[11px] font-medium">
+                  <span>AppNavbar / EditorToolbar</span>
+                  <span className="text-on-secondary-container/80 font-mono">
+                    secondary-container
+                  </span>
                 </div>
 
                 <div className="bg-surface-container dark:bg-surface-container-low rounded-[10px] p-3">
@@ -179,13 +182,13 @@ export function OverviewPage({
                     <span className="font-mono">container / low</span>
                   </div>
 
-                  <div className="bg-surface-container-low dark:bg-surface rounded-lg p-3">
+                  <div className="bg-surface-container-low dark:bg-surface rounded-small p-3">
                     <div className="text-on-surface-variant mb-2 flex items-center justify-between text-[11px] font-medium">
                       <span>Page Canvas</span>
                       <span className="font-mono">low / surface</span>
                     </div>
 
-                    <div className="bg-surface-container-lowest dark:bg-surface-container rounded-md p-3">
+                    <div className="bg-surface-container-lowest dark:bg-surface-container rounded-small p-3">
                       <div className="text-on-surface flex items-center justify-between text-xs font-medium">
                         <span>Card Surface</span>
                         <span className="text-on-surface-variant font-mono text-[11px]">
@@ -200,7 +203,7 @@ export function OverviewPage({
 
             <Button
               variant="stroked"
-              className="w-full justify-center gap-2"
+              className="w-full"
               onClick={() => onNavigate('foundations/surfaces')}
             >
               <span>Inspect all {SURFACE_LADDER.length} surface tiers</span>
@@ -260,7 +263,7 @@ export function OverviewPage({
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className={cn(
-                      'grid size-10 place-items-center rounded-2xl',
+                      'rounded-large grid size-10 place-items-center',
                       item.chipClass,
                     )}
                   >

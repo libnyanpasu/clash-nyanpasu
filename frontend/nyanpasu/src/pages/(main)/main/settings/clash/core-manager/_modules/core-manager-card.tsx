@@ -230,7 +230,7 @@ const CoreItem = ({
       data-downloading={updateCoreTask.isPending}
       disabled={locked}
       className={cn(
-        'relative h-auto w-full min-w-0 overflow-hidden rounded-2xl p-2 text-left',
+        'rounded-large relative h-auto w-full min-w-0 overflow-hidden p-2 text-left',
         'flex items-center gap-2',
       )}
       onClick={() => onClick(core)}
@@ -422,7 +422,7 @@ export default function CoreManagerCard() {
       <SettingsCardContent data-slot="core-manager-card-content">
         <div
           className={cn(
-            'relative flex items-center gap-3 overflow-hidden rounded-2xl p-4',
+            'rounded-large relative flex items-center gap-3 overflow-hidden p-4',
             'bg-surface-container-high',
           )}
         >

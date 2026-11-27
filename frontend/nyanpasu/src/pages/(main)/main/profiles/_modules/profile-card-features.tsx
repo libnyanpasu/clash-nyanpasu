@@ -126,7 +126,7 @@ export default function ProfileCardFeatures({
           <TooltipContent
             side="bottom"
             align="start"
-            className="bg-surface text-on-surface w-72 max-w-[calc(100vw-2rem)] rounded-2xl p-4 text-sm"
+            className="bg-surface text-on-surface rounded-large w-72 max-w-[calc(100vw-2rem)] p-4 text-sm"
           >
             <p className="mb-3 text-sm font-medium">
               {m.profile_card_scoped_transforms_title()}

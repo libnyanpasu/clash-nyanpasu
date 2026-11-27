@@ -56,7 +56,7 @@ export function TypographyPage() {
           {TYPOGRAPHY_SCALE.map((row) => (
             <div
               key={row.role}
-              className="bg-surface-container dark:bg-surface-container-high flex flex-col gap-3 rounded-2xl p-4"
+              className="bg-surface-container dark:bg-surface-container-high rounded-large flex flex-col gap-3 p-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
                 <span className="text-primary font-semibold">{row.role}</span>
@@ -126,7 +126,7 @@ export function TypographyPage() {
         </CardHeader>
 
         <CardContent className="grid grid-cols-1 gap-4 px-6 pt-4 pb-6 md:grid-cols-2">
-          <div className="bg-surface-container dark:bg-surface-container-high rounded-2xl p-4">
+          <div className="bg-surface-container dark:bg-surface-container-high rounded-large p-4">
             <div className="text-on-surface-variant mb-2 text-xs font-medium">
               Tabular Numerals (KPIs)
             </div>
@@ -136,7 +136,7 @@ export function TypographyPage() {
             </div>
           </div>
 
-          <div className="bg-surface-container dark:bg-surface-container-high rounded-2xl p-4">
+          <div className="bg-surface-container dark:bg-surface-container-high rounded-large p-4">
             <div className="text-on-surface-variant mb-2 text-xs font-medium">
               CJK + Latin Pairing
             </div>

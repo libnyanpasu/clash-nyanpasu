@@ -86,7 +86,7 @@ export default function ChangelogPreview() {
               <ChangelogSources {...range} />
 
               <ScrollArea
-                className="border-outline-variant max-h-[60dvh] rounded-xl border"
+                className="border-outline-variant rounded-medium max-h-[60dvh] border"
                 data-slot="changelog-preview-result"
               >
                 <div className="p-4">

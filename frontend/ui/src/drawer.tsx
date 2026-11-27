@@ -58,7 +58,7 @@ function DrawerSurface({
       inert={!open}
       aria-hidden={!open || undefined}
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full flex-col rounded-t-3xl',
+        'rounded-t-extra-large fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full flex-col',
         'bg-surface-container-low text-on-surface',
         className,
       )}

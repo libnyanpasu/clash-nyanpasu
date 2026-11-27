@@ -389,7 +389,7 @@ function ImportUrlSubscription({ probe }: { probe: ProfileUrlProbe }) {
   return (
     <div
       data-slot="import-url-dialog-subscription"
-      className="bg-surface-container dark:bg-surface-container-high space-y-1 rounded-xl p-3 text-sm"
+      className="bg-surface-container dark:bg-surface-container-high rounded-medium space-y-1 p-3 text-sm"
     >
       {quota && (
         <>

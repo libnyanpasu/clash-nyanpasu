@@ -17,7 +17,7 @@ export default function FilterChip({
   return (
     <span
       className={cn(
-        'border-outline-variant text-on-surface flex h-8 shrink-0 items-center gap-1 rounded-lg border pr-1 pl-3 text-sm',
+        'border-outline-variant text-on-surface rounded-small flex h-8 shrink-0 items-center gap-1 border pr-1 pl-3 text-sm',
         className,
       )}
       data-slot="traffic-filter-chip"
@@ -27,7 +27,7 @@ export default function FilterChip({
 
       <button
         type="button"
-        className="hover:bg-on-surface/8 grid size-6 shrink-0 cursor-pointer place-content-center rounded-md"
+        className="hover:bg-on-surface/8 rounded-small grid size-6 shrink-0 cursor-pointer place-content-center"
         aria-label={m.traffic_filter_remove({ filter: label })}
         onClick={onRemove}
       >

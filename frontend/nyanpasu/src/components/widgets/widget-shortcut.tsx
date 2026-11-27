@@ -393,7 +393,7 @@ const CurrentCoreCard = ({
         <div className="flex w-full min-w-0 shrink-0 items-center gap-3">
           <div
             className={cn(
-              'bg-surface/60 grid shrink-0 place-items-center rounded-xl',
+              'bg-surface/60 rounded-medium grid shrink-0 place-items-center',
               'size-10',
             )}
           >
@@ -496,7 +496,7 @@ function CoreShortcutsPreviewCard({
       data-slot="current-core-card"
     >
       <div className="flex w-full min-w-0 items-center gap-3">
-        <div className="bg-surface/60 grid size-10 shrink-0 place-items-center rounded-xl">
+        <div className="bg-surface/60 rounded-medium grid size-10 shrink-0 place-items-center">
           <img
             src={previewCoreIcon}
             alt=""

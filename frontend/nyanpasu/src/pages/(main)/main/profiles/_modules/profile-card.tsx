@@ -90,7 +90,7 @@ export const GridViewProfile = memo(function GridViewProfile({
             !activeProfile.isActive && 'active:cursor-grabbing',
             isProxyProfile(profile)
               ? featured
-                ? 'order-first col-span-full h-72 rounded-4xl'
+                ? 'rounded-extra-large-increased order-first col-span-full h-72'
                 : 'h-60'
               : 'min-h-40',
             isDragging && 'shadow-lg',

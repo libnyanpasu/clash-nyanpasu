@@ -40,13 +40,13 @@ export function ShapePage() {
           </p>
         </CardHeader>
 
-        <CardContent className="grid grid-cols-2 gap-3 px-6 pt-4 pb-6 sm:grid-cols-3 lg:grid-cols-5">
+        <CardContent className="grid grid-cols-1 gap-3 px-6 pt-4 pb-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           {SHAPE_SCALE.map((token) => (
             <div
               key={token.id}
-              className="bg-surface-container dark:bg-surface-container-high flex flex-col justify-between gap-3 rounded-2xl p-4"
+              className="bg-surface-container dark:bg-surface-container-high rounded-large flex min-w-0 flex-col gap-3 p-3.5"
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex h-5 items-center justify-between gap-2">
                 <span className="font-mono text-xs font-semibold">
                   {token.px === 9999 ? 'full' : `${token.px}px`}
                 </span>
@@ -59,18 +59,23 @@ export function ShapePage() {
 
               <div
                 className={cn(
-                  'bg-primary-container text-on-primary-container grid h-16 place-items-center text-xs font-medium',
+                  'bg-primary-container text-on-primary-container grid h-16 shrink-0 place-items-center text-xs font-medium',
                   token.tailwindClass,
                 )}
               >
                 {token.id}
               </div>
 
-              <div>
-                <code className="text-on-surface-variant text-[11px]">
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <code className="text-on-surface block text-[11px] leading-4 font-medium break-words">
                   {token.tailwindClass}
                 </code>
-                <p className="text-on-surface-variant mt-1 text-[11px] leading-4">
+                {token.alias && (
+                  <code className="bg-surface-container-highest text-on-surface-variant rounded-extra-small w-fit px-1.5 py-0.5 text-[10px] leading-4 whitespace-nowrap">
+                    {token.alias}
+                  </code>
+                )}
+                <p className="text-on-surface-variant text-[11px] leading-4">
                   {token.usage}
                 </p>
               </div>

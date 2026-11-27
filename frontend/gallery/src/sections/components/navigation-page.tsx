@@ -167,7 +167,7 @@ export function NavigationPage() {
             'navigation-sidebar-toggle',
           ]}
         >
-          <div className="bg-surface-container-low dark:bg-surface relative flex h-80 overflow-hidden rounded-2xl">
+          <div className="bg-surface-container-low dark:bg-surface rounded-large relative flex h-80 overflow-hidden">
             <SidebarProvider defaultOpen>
               <NavigationSidebar className="h-full">
                 <NavigationSidebarContent>
@@ -280,7 +280,7 @@ export function NavigationPage() {
               </AccordionItem>
             </Accordion>
 
-            <div className="bg-surface-container-low dark:bg-surface h-28 overflow-hidden rounded-2xl">
+            <div className="bg-surface-container-low dark:bg-surface rounded-large h-28 overflow-hidden">
               <Sidebar className="h-full">
                 <SidebarContent className="border-outline-variant/30 w-28 border-r p-2 text-xs">
                   Sidebar pane
@@ -322,7 +322,7 @@ export function NavigationPage() {
           >
             {(item) => (
               <DndGridItem key={item.id} id={item.id}>
-                <div className="bg-surface-container-lowest dark:bg-surface-container flex h-full w-full cursor-grab items-center justify-between rounded-2xl p-4 active:cursor-grabbing">
+                <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large flex h-full w-full cursor-grab items-center justify-between p-4 active:cursor-grabbing">
                   <div>
                     <div className="text-on-surface text-sm font-semibold capitalize">
                       {item.id}

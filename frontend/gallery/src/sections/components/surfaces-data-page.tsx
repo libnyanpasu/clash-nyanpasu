@@ -114,7 +114,7 @@ export function SurfacesDataPage() {
           code={`<Sparkline data={series} className="text-primary h-24 w-full" />`}
         >
           <div className="flex flex-col gap-4">
-            <div className="bg-surface-container-lowest dark:bg-surface-container h-28 overflow-hidden rounded-2xl p-2">
+            <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large h-28 overflow-hidden p-2">
               <Sparkline data={series} className="text-primary size-full" />
             </div>
 
@@ -152,13 +152,13 @@ export function SurfacesDataPage() {
               clearLabel="Clear"
             />
 
-            <div className="bg-surface-container-lowest dark:bg-surface-container rounded-2xl p-3 text-sm">
+            <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large p-3 text-sm">
               <HighlightText searchText={highlightQuery}>
                 Tokyo-01 · Premium IEPL Relay · tokyo.nyanpasu.local
               </HighlightText>
             </div>
 
-            <div className="bg-surface-container-lowest dark:bg-surface-container max-w-64 rounded-2xl px-3 py-2 text-xs">
+            <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large max-w-64 px-3 py-2 text-xs">
               <TextMarquee>
                 Very long node label that smoothly scrolls inside tight
                 containers: Singapore-Premium-BGP-04 · 28ms
@@ -209,11 +209,11 @@ export function SurfacesDataPage() {
             <LazyImage
               src={INLINE_SVG_PREVIEW}
               alt="Inline vector preview"
-              className="h-24 w-full rounded-2xl object-cover"
+              className="rounded-large h-24 w-full object-cover"
             />
 
             <AnimatedItem key={animatedKey}>
-              <div className="bg-secondary-container text-on-secondary-container rounded-2xl px-4 py-3 text-xs font-medium">
+              <div className="bg-secondary-container text-on-secondary-container rounded-large px-4 py-3 text-xs font-medium">
                 AnimatedItem entrance (#{animatedKey + 1})
               </div>
             </AnimatedItem>

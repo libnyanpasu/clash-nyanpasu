@@ -107,7 +107,7 @@ export function OverlaysFeedbackPage() {
     <Button variant="flat">Open Dialog</Button>
   </ModalTrigger>
   <ModalContent>
-    <div className="bg-surface-container-high w-96 rounded-3xl p-6">
+    <div className="bg-surface-container-high w-96 rounded-extra-large p-6">
       <ModalTitle>Confirm Action</ModalTitle>
       <ModalClose variant="flat">Done</ModalClose>
     </div>
@@ -121,7 +121,7 @@ export function OverlaysFeedbackPage() {
               </ModalTrigger>
               <AnchorMenuTrigger />
               <ModalContent>
-                <div className="bg-surface-container-high text-on-surface flex w-[min(92vw,26rem)] flex-col gap-4 rounded-3xl p-6 shadow-xl">
+                <div className="bg-surface-container-high text-on-surface rounded-extra-large flex w-[min(92vw,26rem)] flex-col gap-4 p-6 shadow-xl">
                   <div className="flex flex-col gap-1.5">
                     <ModalTitle className="text-lg font-semibold">
                       Shared-Origin Modal
@@ -153,7 +153,8 @@ export function OverlaysFeedbackPage() {
                 </DrawerTitle>
                 <p className="text-on-surface-variant mt-2 text-sm leading-5">
                   Rises smoothly on an M3E spatial spring with
-                  surface-container-low ground and rounded-t-3xl geometry.
+                  surface-container-low ground and rounded-t-extra-large
+                  geometry.
                 </p>
                 <div className="mt-6 flex justify-end">
                   <DrawerClose asChild>
@@ -209,7 +210,7 @@ export function OverlaysFeedbackPage() {
 
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <div className="bg-surface-container-highest text-on-surface-variant cursor-context-menu rounded-2xl px-4 py-2.5 text-xs font-medium select-none">
+                <div className="bg-surface-container-highest text-on-surface-variant rounded-large cursor-context-menu px-4 py-2.5 text-xs font-medium select-none">
                   Right-click for ContextMenu
                 </div>
               </ContextMenuTrigger>
@@ -270,8 +271,24 @@ export function OverlaysFeedbackPage() {
             </div>
 
             <div className="flex flex-col gap-3">
-              <LinearProgress indeterminate />
-              <LinearProgress value={progress} />
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Hero Storage Bar (size=&quot;lg&quot;)
+                </span>
+                <LinearProgress size="lg" value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  List Progress Bar (default size=&quot;sm&quot;)
+                </span>
+                <LinearProgress value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Indeterminate
+                </span>
+                <LinearProgress indeterminate />
+              </div>
             </div>
           </div>
 

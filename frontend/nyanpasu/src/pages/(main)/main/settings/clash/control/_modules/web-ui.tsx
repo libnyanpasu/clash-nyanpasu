@@ -76,7 +76,7 @@ const PreviewItem = ({ url }: { url: string }) => {
 
   return (
     <motion.div
-      className="outline-outline-variant overflow-hidden rounded-2xl p-3 outline"
+      className="outline-outline-variant rounded-large overflow-hidden p-3 outline"
       initial={{
         height: 0,
         opacity: 0,

@@ -44,7 +44,7 @@ export function MotionPage() {
           {M3E_MOTION_SPEC.map((spec) => (
             <div
               key={spec.id}
-              className="bg-surface-container dark:bg-surface-container-high grid grid-cols-1 items-center gap-3 rounded-2xl p-4 lg:grid-cols-12"
+              className="bg-surface-container dark:bg-surface-container-high rounded-large grid grid-cols-1 items-center gap-3 p-4 lg:grid-cols-12"
             >
               <div className="lg:col-span-4">
                 <div className="flex flex-wrap items-center gap-1.5">

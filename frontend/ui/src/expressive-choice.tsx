@@ -1,4 +1,3 @@
-import CheckRounded from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -76,7 +75,7 @@ export function ExpressiveChoice({
           disabled={disabled || !selected}
           aria-label={selected?.label}
           aria-pressed={Boolean(selected)}
-          className="bg-primary-container text-on-primary-container hover:bg-primary-container focus-visible:ring-primary relative flex h-auto min-h-0 min-w-0 flex-[1.7] items-center justify-start gap-4 overflow-hidden rounded-3xl px-4 py-2 shadow-none focus-visible:ring-2 [@container_expressive-choice_(max-height:110px)]:gap-2.5 [@container_expressive-choice_(max-height:110px)]:px-3 [@container_expressive-choice_(max-height:110px)]:py-1"
+          className="bg-primary-container text-on-primary-container hover:bg-primary-container focus-visible:ring-primary rounded-extra-large relative flex h-auto min-h-0 min-w-0 flex-[1.7] items-center justify-start gap-4 overflow-hidden px-4 py-2 shadow-none focus-visible:ring-2 [@container_expressive-choice_(max-height:110px)]:gap-2.5 [@container_expressive-choice_(max-height:110px)]:px-3 [@container_expressive-choice_(max-height:110px)]:py-1"
         >
           <motion.button
             type="button"
@@ -139,7 +138,7 @@ export function ExpressiveChoice({
                   </div>
                   {selected?.description && (
                     <div
-                      className="mt-1 line-clamp-2 text-xs font-normal opacity-80 [@container_expressive-choice_(max-height:110px)]:hidden"
+                      className="mt-1 line-clamp-2 text-xs font-normal whitespace-normal opacity-80 [@container_expressive-choice_(max-height:110px)]:hidden"
                       data-slot="expressive-choice-description"
                     >
                       {selected.description}
@@ -189,7 +188,7 @@ export function ExpressiveChoice({
                       onChange?.(option.value)
                     }}
                     className={cn(
-                      'group focus-visible:ring-primary relative isolate flex h-full min-h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-2xl px-2 py-1 shadow-none focus-visible:ring-2 [@container_expressive-choice_(max-height:110px)]:gap-1',
+                      'group focus-visible:ring-primary rounded-large relative isolate flex h-full min-h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden px-2 py-1 shadow-none focus-visible:ring-2 [@container_expressive-choice_(max-height:110px)]:gap-1',
                       layout === 'flex'
                         ? 'flex-col transition-colors duration-200'
                         : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high',
@@ -238,20 +237,6 @@ export function ExpressiveChoice({
                       <span className="relative max-w-full truncate text-sm">
                         {option.label}
                       </span>
-                      {layout === 'flex' && (
-                        <motion.span
-                          className="absolute top-2 right-2"
-                          initial={false}
-                          animate={{
-                            opacity: active ? 1 : 0,
-                            scale: active ? 1 : 0.7,
-                          }}
-                          transition={transition}
-                          aria-hidden
-                        >
-                          <CheckRounded className="size-3" />
-                        </motion.span>
-                      )}
                     </motion.button>
                   </Button>
                 </motion.div>

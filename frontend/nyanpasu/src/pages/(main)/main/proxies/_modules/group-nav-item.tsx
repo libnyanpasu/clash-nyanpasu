@@ -125,7 +125,7 @@ const GroupNavItem = memo(function GroupNavItem({
 
   return (
     <RegisterContextMenu>
-      <ModalAnchor className="rounded-3xl [&>*:first-child]:rounded-[inherit]">
+      <ModalAnchor className="rounded-extra-large [&>*:first-child]:rounded-[inherit]">
         <RegisterContextMenuTrigger asChild>
           <NavigationListItem
             ref={ref}

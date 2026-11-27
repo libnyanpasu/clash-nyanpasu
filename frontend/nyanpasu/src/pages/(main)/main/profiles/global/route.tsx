@@ -90,7 +90,7 @@ function RouteComponent() {
         context={
           <p
             data-slot="profile-global-context"
-            className="text-on-surface-variant flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-3 text-[13px] shadow-[inset_0_0_0_1px_var(--color-outline-variant)] max-md:hidden"
+            className="text-on-surface-variant rounded-small flex h-8 min-w-0 items-center gap-1.5 px-3 text-[13px] shadow-[inset_0_0_0_1px_var(--color-outline-variant)] max-md:hidden"
           >
             <DescriptionOutlineRounded
               className="size-4 shrink-0"

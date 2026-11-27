@@ -36,7 +36,7 @@ const useFileDropZoneContext = () => {
 export const fileDropZoneVariants = cva(
   [
     'relative flex min-h-24 flex-col items-center justify-center gap-2',
-    'rounded-md border border-dashed p-4',
+    'rounded-small border border-dashed p-4',
     'transition-colors duration-200',
     'cursor-pointer',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',

@@ -53,7 +53,7 @@ export default function SubscriptionSection({
           <SettingsCardAnimatedItem
             key="update-interval"
             data-slot="profile-detail-update-interval"
-            className="rounded-3xl shadow-sm *:rounded-[inherit]! *:shadow-none"
+            className="rounded-extra-large shadow-sm *:rounded-[inherit]! *:shadow-none"
           >
             <UpdateIntervalEditor profile={profile} asChild>
               <DetailRow

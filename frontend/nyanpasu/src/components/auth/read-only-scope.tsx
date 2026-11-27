@@ -34,7 +34,7 @@ export function ReadOnlyScope({
           data-slot="read-only-banner"
           className={cn(
             'bg-secondary-container text-on-secondary-container',
-            'mx-4 mb-4 rounded-xl px-4 py-3 text-sm',
+            'rounded-medium mx-4 mb-4 px-4 py-3 text-sm',
           )}
         >
           {m.auth_read_only_banner()}

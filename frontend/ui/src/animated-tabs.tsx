@@ -154,7 +154,7 @@ export function AnimatedTabsItem({
 
   const renderLabel = (content: ReactNode) => (
     <span
-      className="relative z-3 flex items-center gap-2 whitespace-nowrap"
+      className="relative z-3 flex items-center gap-2 whitespace-nowrap [&_svg]:shrink-0"
       data-slot="animated-tabs-item-label"
     >
       {content}

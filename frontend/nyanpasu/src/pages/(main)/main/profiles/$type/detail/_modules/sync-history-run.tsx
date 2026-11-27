@@ -202,7 +202,7 @@ export function Chip({
     <span
       data-slot="profile-sync-chip"
       className={cn(
-        'inline-flex h-8 max-w-full items-center gap-2 rounded-lg border px-3 text-sm font-medium',
+        'rounded-small inline-flex h-8 max-w-full items-center gap-2 border px-3 text-sm font-medium',
         tonal
           ? 'bg-secondary-container text-on-secondary-container border-transparent'
           : 'border-outline-variant text-on-surface-variant',
@@ -231,7 +231,7 @@ export function Notice({
       role={role}
       data-slot="profile-sync-notice"
       className={cn(
-        'flex items-start gap-3 rounded-2xl px-4 py-3 text-sm',
+        'rounded-large flex items-start gap-3 px-4 py-3 text-sm',
         tone === 'error'
           ? 'bg-error-container text-on-error-container'
           : 'bg-tertiary-container text-on-tertiary-container',
@@ -287,7 +287,7 @@ export function RunEntry({
       // Rows of the detail group: plain surface like its other cards, with
       // the corner radius the group gives its neighbours.
       className={cn(
-        'bg-surface data-[state=open]:bg-surface rounded-sm shadow-sm',
+        'bg-surface data-[state=open]:bg-surface rounded-extra-small shadow-sm',
         className,
       )}
     >
@@ -368,7 +368,7 @@ export function RunLogs({
   return (
     <div
       data-slot="profile-sync-logs"
-      className="bg-surface-container-high flex min-w-0 flex-col overflow-hidden rounded-2xl"
+      className="bg-surface-container-high rounded-large flex min-w-0 flex-col overflow-hidden"
     >
       <div className="max-h-80 min-h-32 overflow-auto p-2">
         {logs.isPending ? (

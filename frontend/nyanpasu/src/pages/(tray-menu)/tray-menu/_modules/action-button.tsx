@@ -20,7 +20,7 @@ export function ActionButton({
   return (
     <Button
       className={cn(
-        'bg-surface-container-high rounded-2xl px-3 py-2',
+        'bg-surface-container-high rounded-large px-3 py-2',
         'flex w-full min-w-0 flex-row items-center justify-start gap-2 overflow-hidden',
         'text-left font-semibold',
         'data-[checked=true]:bg-secondary-container',

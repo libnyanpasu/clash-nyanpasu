@@ -63,7 +63,7 @@ export function ColorsPage() {
     return (
       <div
         key={role}
-        className="flex flex-col justify-between gap-3 rounded-2xl p-3.5"
+        className="rounded-large flex flex-col justify-between gap-3 p-3.5"
         style={{
           backgroundColor: hex,
           color: hexFromArgb(textArgb),
@@ -114,11 +114,11 @@ export function ColorsPage() {
           {contrastResults.map((item) => (
             <div
               key={item.id}
-              className="bg-surface-container dark:bg-surface-container-high flex items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5"
+              className="bg-surface-container dark:bg-surface-container-high rounded-large flex items-center justify-between gap-3 px-3.5 py-2.5"
             >
               <div className="flex min-w-0 items-center gap-2.5">
                 <span
-                  className="grid size-8 shrink-0 place-items-center rounded-xl text-xs font-bold"
+                  className="rounded-medium grid size-8 shrink-0 place-items-center text-xs font-bold"
                   style={{ backgroundColor: item.bgHex, color: item.fgHex }}
                 >
                   Aa
@@ -187,7 +187,7 @@ export function ColorsPage() {
             <div
               key={hue.id}
               className={cn(
-                'flex flex-col items-center justify-center gap-1 rounded-2xl p-4 text-center',
+                'rounded-large flex flex-col items-center justify-center gap-1 p-4 text-center',
                 hue.bgClass,
                 hue.textClass,
               )}
@@ -214,7 +214,7 @@ export function ColorsPage() {
         </CardHeader>
 
         <CardContent className="grid grid-cols-1 gap-4 px-6 pt-4 pb-6 lg:grid-cols-12">
-          <pre className="bg-surface-container-lowest overflow-x-auto rounded-2xl p-4 font-mono text-xs leading-6 lg:col-span-7">
+          <pre className="bg-surface-container-lowest rounded-large overflow-x-auto p-4 font-mono text-xs leading-6 lg:col-span-7">
             <code>
               <span style={{ color: syntax.comment }}>
                 {'// Harmonized YAML / TS preview'}
@@ -251,7 +251,7 @@ export function ColorsPage() {
             {Object.entries(syntax).map(([key, color]) => (
               <div
                 key={key}
-                className="bg-surface-container dark:bg-surface-container-high flex items-center gap-2 rounded-xl px-3 py-2"
+                className="bg-surface-container dark:bg-surface-container-high rounded-medium flex items-center gap-2 px-3 py-2"
               >
                 <span
                   className="size-3.5 shrink-0 rounded-full"

@@ -226,7 +226,7 @@ export function TransformLibrary({
               aria-pressed={type === item.value}
               onClick={() => setType(item.value)}
               className={cn(
-                'flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium outline-none',
+                'rounded-small flex h-[30px] cursor-pointer items-center gap-1.5 px-3 text-xs font-medium outline-none',
                 'text-on-surface-variant shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
                 'hover:bg-on-surface/8 focus-visible:outline-primary focus-visible:outline-2',
                 'transition-[background-color,color,box-shadow] motion-reduce:transition-none',

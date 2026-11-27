@@ -1,4 +1,3 @@
-import CheckRounded from '~icons/material-symbols/check-rounded'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -32,11 +31,11 @@ export function ShapeToggle({
       disableRipple
       disabled={disabled || loading}
       className={cn(
-        'group focus-visible:ring-primary [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2',
+        'group focus-visible:ring-primary rounded-large [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2',
         className,
         compact && 'flex-row justify-start gap-3',
         elastic &&
-          'relative isolate overflow-hidden rounded-2xl px-2 py-1 transition-colors duration-200',
+          'rounded-large relative isolate overflow-hidden px-2 py-1 transition-colors duration-200',
         elastic &&
           (active
             ? 'bg-primary-container text-on-primary-container hover:bg-primary-container'
@@ -100,14 +99,11 @@ export function ShapeToggle({
           >
             <span className="absolute inset-0 bg-current opacity-0 transition-opacity group-hover:opacity-8 group-active:opacity-14" />
           </MaterialShape>
-          <motion.span
-            initial={false}
-            animate={{ y: active && !loading && !elastic ? -3 : 0 }}
+          <span
             className={cn(
               'relative grid aspect-square w-[clamp(1.25rem,40cqi,1.75rem)] place-items-center',
               active ? 'text-on-primary-container' : 'text-on-surface-variant',
             )}
-            transition={{ duration: reducedMotion ? 0 : 0.3 }}
           >
             {loading ? (
               <CircularProgress
@@ -120,37 +116,8 @@ export function ShapeToggle({
                 {icon}
               </span>
             )}
-          </motion.span>
-          <motion.span
-            className={cn(
-              'text-on-primary-container absolute',
-              'bottom-[15%] w-[clamp(0.5rem,12cqi,0.75rem)]',
-              elastic && 'hidden',
-            )}
-            initial={false}
-            animate={{
-              opacity: active && !loading ? 1 : 0,
-              scale: active && !loading ? 1 : 0.6,
-            }}
-            transition={{ duration: reducedMotion ? 0 : 0.2 }}
-          >
-            <CheckRounded className="size-full" aria-hidden />
-          </motion.span>
+          </span>
         </motion.span>
-        {elastic && (
-          <motion.span
-            aria-hidden
-            className="text-on-primary-container absolute top-2 right-2"
-            initial={false}
-            animate={{
-              opacity: active && !loading ? 1 : 0,
-              scale: active && !loading ? 1 : 0.7,
-            }}
-            transition={{ duration: reducedMotion ? 0 : 0.2 }}
-          >
-            <CheckRounded className="size-3" />
-          </motion.span>
-        )}
         <span
           className={cn(
             'max-w-full shrink-0 truncate text-xs leading-4 font-medium [@container_shape-toggle_(max-height:110px)]:text-[11px]',

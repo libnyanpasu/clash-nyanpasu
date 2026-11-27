@@ -65,7 +65,7 @@ export default function ProfileOverviewCard({
       data-active={activeProfile.isActive || undefined}
       className={cn(
         'relative isolate flex min-w-0 flex-col justify-between',
-        activeProfile.isActive && 'rounded-4xl',
+        activeProfile.isActive && 'rounded-extra-large-increased',
       )}
       asChild
     >

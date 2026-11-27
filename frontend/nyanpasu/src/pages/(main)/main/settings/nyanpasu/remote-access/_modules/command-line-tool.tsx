@@ -98,7 +98,7 @@ export default function CommandLineTool() {
 
               <div className="flex items-center gap-2">
                 <code
-                  className="bg-surface-container-high grow rounded-xl p-3 wrap-anywhere select-text"
+                  className="bg-surface-container-high rounded-medium grow p-3 wrap-anywhere select-text"
                   data-slot="remote-access-cli-system-command"
                 >
                   {install.data.system_command}

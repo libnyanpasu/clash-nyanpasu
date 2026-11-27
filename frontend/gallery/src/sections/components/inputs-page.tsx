@@ -196,8 +196,14 @@ export function InputsPage() {
 
       <SpecimenCard
         title="Switch, SwitchItem, Checkbox, FilterChip & Slider"
-        description="Tactile M3E selection controls with accessible focus rings and 48px hit targets."
-        slots={['slider']}
+        description="Android 17 / M3E 52x32px Switch (24px thumb with symmetric 4px concentric inset, check/close icons, and motion spring) alongside Checkbox, FilterChip, and Slider."
+        slots={[
+          'switch',
+          'switch-thumb',
+          'switch-thumb-check',
+          'switch-thumb-close',
+          'slider',
+        ]}
       >
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="flex flex-col gap-4">
@@ -256,6 +262,15 @@ export function InputsPage() {
             </div>
             <Slider
               aria-label="Latency threshold"
+              min={0}
+              max={200}
+              step={2}
+              value={sliderValue}
+              onValueChange={setSliderValue}
+            />
+            <Slider
+              aria-label="Compact latency threshold"
+              size="sm"
               min={0}
               max={200}
               step={2}

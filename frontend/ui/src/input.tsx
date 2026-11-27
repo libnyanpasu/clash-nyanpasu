@@ -23,7 +23,7 @@ export const inputContainerVariants = cva(
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-container-highest',
+        filled: 'rounded-t-extra-small bg-surface-container-highest',
         // outlined use inputLabelFieldsetVariants
         outlined: '',
       },
@@ -176,7 +176,7 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
       filled: 'hidden',
       outlined: [
         'absolute inset-0 text-left',
-        'rounded transition-all duration-200',
+        'rounded-extra-small transition-all duration-200',
         // may open border width will be 1.5, idk
         'group-data-[state=closed]:border',
         'group-data-[state=open]:border-2',

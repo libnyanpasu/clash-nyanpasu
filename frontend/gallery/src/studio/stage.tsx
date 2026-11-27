@@ -33,7 +33,7 @@ const STAGE_SURFACE_OPTIONS: readonly {
 
 const stageSurfaceVariants = cva(
   [
-    'relative min-w-0 rounded-2xl p-6',
+    'relative min-w-0 rounded-large p-6',
     'text-on-surface transition-colors duration-200',
   ],
   {
@@ -192,7 +192,7 @@ export function SpecimenCard({
               {slots?.map((slot) => (
                 <code
                   key={slot}
-                  className="bg-surface-container text-on-surface-variant dark:bg-surface-container-high rounded-md px-2 py-0.5 text-[11px]"
+                  className="bg-surface-container text-on-surface-variant dark:bg-surface-container-high rounded-small px-2 py-0.5 text-[11px]"
                 >
                   data-slot=&quot;{slot}&quot;
                 </code>
@@ -228,7 +228,7 @@ export function SpecimenCard({
         {controls && (
           <div
             data-slot="gallery-specimen-controls"
-            className="bg-surface-container-low dark:bg-surface-container-low/80 flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3"
+            className="bg-surface-container-low dark:bg-surface-container-low/80 rounded-large flex flex-wrap items-center gap-3 px-4 py-3"
           >
             {controls}
           </div>
@@ -246,7 +246,7 @@ export function SpecimenCard({
         {showCode && code && (
           <div
             data-slot="gallery-code-block"
-            className="bg-surface-container-lowest border-outline-variant/40 relative overflow-hidden rounded-2xl border"
+            className="bg-surface-container-lowest border-outline-variant/40 rounded-large relative overflow-hidden border"
           >
             <div className="flex items-center justify-between px-4 py-2">
               <span className="text-on-surface-variant font-mono text-xs">
@@ -304,7 +304,7 @@ export function GuidelineComparison({
       </CardHeader>
 
       <CardContent className="grid grid-cols-1 gap-4 px-6 pt-4 pb-6 md:grid-cols-2">
-        <div className="bg-surface-container dark:bg-surface-container-high flex flex-col gap-3 rounded-2xl p-4">
+        <div className="bg-surface-container dark:bg-surface-container-high rounded-large flex flex-col gap-3 p-4">
           <div className="flex items-center gap-2">
             <span className="bg-ok/15 text-ok inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold">
               <TaskAltRounded className="size-3.5" />
@@ -315,14 +315,14 @@ export function GuidelineComparison({
             </span>
           </div>
 
-          <div className="bg-surface-container-low dark:bg-surface rounded-xl p-4">
+          <div className="bg-surface-container-low dark:bg-surface rounded-medium p-4">
             {doDemo}
           </div>
 
           <p className="text-on-surface-variant text-xs leading-5">{doNote}</p>
         </div>
 
-        <div className="bg-surface-container dark:bg-surface-container-high flex flex-col gap-3 rounded-2xl p-4">
+        <div className="bg-surface-container dark:bg-surface-container-high rounded-large flex flex-col gap-3 p-4">
           <div className="flex items-center gap-2">
             <span className="bg-error-container text-on-error-container inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold">
               <CancelRounded className="size-3.5" />
@@ -333,7 +333,7 @@ export function GuidelineComparison({
             </span>
           </div>
 
-          <div className="bg-surface-container-low dark:bg-surface rounded-xl p-4">
+          <div className="bg-surface-container-low dark:bg-surface rounded-medium p-4">
             {dontDemo}
           </div>
 

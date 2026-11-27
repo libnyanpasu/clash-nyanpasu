@@ -378,7 +378,7 @@ export function DndGrid<T extends string = string>({
               layout
               className={cn(
                 'border-primary/40 bg-primary/5 border-2 border-dashed',
-                'pointer-events-none absolute rounded-2xl',
+                'rounded-large pointer-events-none absolute',
               )}
               style={{
                 left: placeholderRect.left,

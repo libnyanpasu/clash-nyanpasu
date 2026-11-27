@@ -77,7 +77,7 @@ const LibraryIcon = ({
           animate={{ opacity: isDragSource ? 0.35 : 1 }}
           transition={reducedMotion ? { duration: 0 } : SPRING}
           className={cn(
-            'flex touch-none items-center justify-center rounded-2xl p-3',
+            'rounded-large flex touch-none items-center justify-center p-3',
             'hover:bg-primary-container cursor-grab outline-none select-none',
             'focus-visible:ring-primary focus-visible:ring-2',
             'disabled:cursor-default disabled:opacity-60',
@@ -174,7 +174,7 @@ const StateSlot = ({
       animate={{ scale: isDropTarget && !reducedMotion ? 1.04 : 1 }}
       transition={transition}
       className={cn(
-        'bg-surface-container-high relative flex min-w-0 flex-col items-stretch overflow-hidden rounded-3xl',
+        'bg-surface-container-high rounded-extra-large relative flex min-w-0 flex-col items-stretch overflow-hidden',
         'transition-colors motion-reduce:transition-none',
         isDropTarget
           ? 'bg-primary-container'
@@ -391,7 +391,7 @@ export const TrayIconEditor = ({
                 rotate: reducedMotion ? 0 : -4,
               }}
               transition={reducedMotion ? { duration: 0 } : SPRING}
-              className="bg-primary-container cursor-grabbing rounded-2xl p-3 shadow-lg"
+              className="bg-primary-container rounded-large cursor-grabbing p-3 shadow-lg"
             >
               {item && (
                 <img

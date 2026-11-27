@@ -1,8 +1,8 @@
+import { ItemGroup } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { useCurrentProfileUid } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { useDeleteProfile } from '../../../_modules/use-delete-profile'
-import { SettingsGroup } from '../../../../_modules/settings-card'
 import { DetailRow } from './detail-section'
 
 /** The one destructive action, kept apart from the rest. */
@@ -23,7 +23,7 @@ export default function DeleteSection({
   })
 
   return (
-    <SettingsGroup data-slot="profile-detail-delete">
+    <ItemGroup data-slot="profile-detail-delete">
       <DetailRow
         destructive
         label={m.profile_delete_title()}
@@ -32,6 +32,6 @@ export default function DeleteSection({
         trailing={null}
         onClick={deleteProfile.handleClick}
       />
-    </SettingsGroup>
+    </ItemGroup>
   )
 }

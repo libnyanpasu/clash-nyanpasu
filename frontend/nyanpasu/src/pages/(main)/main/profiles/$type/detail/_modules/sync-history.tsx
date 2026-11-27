@@ -7,6 +7,7 @@ import { AnimatePresence, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { Accordion } from '@nyanpasu/ui/accordion'
 import { AnimatedItem } from '@nyanpasu/ui/animated-item'
+import { Item, ItemGroup } from '@nyanpasu/ui/item-group'
 import { ErrorMessage } from '@/components/error-message'
 import { m } from '@/paraglide/messages'
 import { formatDate } from '@/utils/date'
@@ -18,11 +19,6 @@ import {
 import { type RunDto } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-} from '../../../../_modules/settings-card'
 import { DetailRow } from './detail-section'
 import {
   Chip,
@@ -130,64 +126,66 @@ export default function SyncHistory({ uid }: { uid: string }) {
         </p>
       )}
 
-      <SettingsGroup>
+      <ItemGroup>
         {hasSummary && (
-          <SettingsCard data-slot="profile-sync-summary">
-            <SettingsCardContent className="gap-3 py-4">
-              {status.data && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Chip
-                    tonal={status.data.scheduled}
-                    icon={
-                      status.data.scheduled
-                        ? EventRepeatRounded
-                        : HistoryToggleOffRounded
-                    }
-                  >
-                    {status.data.scheduled
-                      ? m.profile_sync_schedule_enabled()
-                      : m.profile_sync_schedule_disabled()}
+          <Item
+            data-slot="profile-sync-summary"
+            className="flex-col items-stretch gap-3 py-4"
+          >
+            {status.data && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip
+                  tonal={status.data.scheduled}
+                  icon={
+                    status.data.scheduled
+                      ? EventRepeatRounded
+                      : HistoryToggleOffRounded
+                  }
+                >
+                  {status.data.scheduled
+                    ? m.profile_sync_schedule_enabled()
+                    : m.profile_sync_schedule_disabled()}
+                </Chip>
+
+                {status.data.next_run_at && (
+                  <Chip icon={ScheduleRounded} className="tabular-nums">
+                    {m.profile_sync_next_run({
+                      time: formatDate(status.data.next_run_at),
+                    })}
                   </Chip>
+                )}
+              </div>
+            )}
 
-                  {status.data.next_run_at && (
-                    <Chip icon={ScheduleRounded} className="tabular-nums">
-                      {m.profile_sync_next_run({
-                        time: formatDate(status.data.next_run_at),
-                      })}
-                    </Chip>
-                  )}
-                </div>
-              )}
+            {status.data?.journal_degraded && (
+              <Notice tone="warning" role="status">
+                {m.profile_sync_journal_degraded()}
+              </Notice>
+            )}
 
-              {status.data?.journal_degraded && (
-                <Notice tone="warning" role="status">
-                  {m.profile_sync_journal_degraded()}
-                </Notice>
-              )}
+            {status.data?.registration_error && (
+              <Notice tone="error" role="alert">
+                {status.data.registration_error}
+              </Notice>
+            )}
 
-              {status.data?.registration_error && (
-                <Notice tone="error" role="alert">
-                  {status.data.registration_error}
-                </Notice>
-              )}
-
-              {error && (
-                <Notice tone="error" role="alert">
-                  <ErrorMessage error={error} />
-                </Notice>
-              )}
-            </SettingsCardContent>
-          </SettingsCard>
+            {error && (
+              <Notice tone="error" role="alert">
+                <ErrorMessage error={error} />
+              </Notice>
+            )}
+          </Item>
         )}
 
         {runs.length === 0 ? (
-          <SettingsCard data-slot="profile-detail-run-empty">
-            <SettingsCardContent className="text-on-surface-variant py-4 text-sm">
-              {history.isPending
-                ? m.profile_sync_loading()
-                : m.profile_sync_empty()}
-            </SettingsCardContent>
-          </SettingsCard>
+          <Item
+            data-slot="profile-detail-run-empty"
+            className="text-on-surface-variant py-4 text-sm"
+          >
+            {history.isPending
+              ? m.profile_sync_loading()
+              : m.profile_sync_empty()}
+          </Item>
         ) : (
           <Accordion
             value={openRun}
@@ -245,7 +243,7 @@ export default function SyncHistory({ uid }: { uid: string }) {
             onClick={() => history.fetchNextPage()}
           />
         )}
-      </SettingsGroup>
+      </ItemGroup>
     </div>
   )
 }

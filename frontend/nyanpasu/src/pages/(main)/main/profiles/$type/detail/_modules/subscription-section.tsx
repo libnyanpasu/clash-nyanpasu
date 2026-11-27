@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'motion/react'
+import { AnimatedItem } from '@nyanpasu/ui/animated-item'
 import { m } from '@/paraglide/messages'
 import { getRemoteSource } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import { SettingsCardAnimatedItem } from '../../../../_modules/settings-card'
 import { DetailRow, DetailSection } from './detail-section'
 import { AutoUpdateSwitch, ProxySwitch } from './subscription-switches'
 import SubscriptionUrlEditor from './subscription-url-editor'
@@ -48,12 +48,12 @@ export default function SubscriptionSection({
 
       <AnimatePresence initial={false}>
         {autoUpdate && (
-          // The row carries the card's shape; the card inside follows it, so
-          // the group rounds this row like its other rows.
-          <SettingsCardAnimatedItem
+          // The group rounds this animated child by position; its row
+          // inherits that shape.
+          <AnimatedItem
             key="update-interval"
             data-slot="profile-detail-update-interval"
-            className="rounded-extra-large shadow-sm *:rounded-[inherit]! *:shadow-none"
+            className="rounded-extra-large *:rounded-[inherit]!"
           >
             <UpdateIntervalEditor profile={profile} asChild>
               <DetailRow
@@ -63,7 +63,7 @@ export default function SubscriptionSection({
                 })}
               />
             </UpdateIntervalEditor>
-          </SettingsCardAnimatedItem>
+          </AnimatedItem>
         )}
       </AnimatePresence>
 

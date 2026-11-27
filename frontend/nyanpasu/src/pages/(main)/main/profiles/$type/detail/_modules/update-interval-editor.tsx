@@ -1,14 +1,13 @@
-import { AnimatePresence } from 'motion/react'
 import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FormDialogError } from '@nyanpasu/ui/dialog'
 import { NumericInput } from '@nyanpasu/ui/input'
 import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getRemoteSource } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
-import AnimatedErrorItem from '../../../../_modules/error-item'
 import ProfileFieldDialog from './profile-field-dialog'
 import {
   UNCHANGED_REMOTE_OPTIONS,
@@ -79,19 +78,15 @@ function UpdateIntervalEditorForm({
             <div className="space-y-2">
               <NumericInput
                 label={m.profile_update_interval_label()}
-                variant="outlined"
+                variant="underlined"
                 min={1}
                 step={1}
                 {...field}
               />
 
-              <AnimatePresence>
-                {form.formState.errors.update_interval && (
-                  <AnimatedErrorItem className="text-error">
-                    {form.formState.errors.update_interval.message}
-                  </AnimatedErrorItem>
-                )}
-              </AnimatePresence>
+              <FormDialogError
+                message={form.formState.errors.update_interval?.message}
+              />
             </div>
           )}
         />

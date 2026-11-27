@@ -1,12 +1,5 @@
 import { ComponentProps, ReactNode } from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import {
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-} from '@nyanpasu/ui/modal'
+import { DialogTrigger, FormDialogContent } from '@nyanpasu/ui/dialog'
 import { m } from '@/paraglide/messages'
 
 /**
@@ -20,35 +13,30 @@ export default function ProfileFieldDialog({
   onSave,
   saving,
   ...props
-}: ComponentProps<typeof ModalTrigger> & {
+}: ComponentProps<typeof DialogTrigger> & {
   title: ReactNode
   /** The input and its validation message. */
   field: ReactNode
   onOpen: () => void
-  onSave: () => void
+  onSave: () => void | Promise<void>
   saving: boolean
 }) {
   return (
     <>
-      <ModalTrigger {...props} />
+      <DialogTrigger {...props} />
 
-      <ModalContent dismissible={!saving} onOpenAutoFocus={onOpen}>
-        <Card className="w-96" data-slot="profile-field-dialog">
-          <CardHeader>
-            <ModalTitle>{title}</ModalTitle>
-          </CardHeader>
-
-          <CardContent>{field}</CardContent>
-
-          <CardFooter className="gap-1">
-            <Button onClick={onSave} loading={saving} disabled={saving}>
-              {m.common_save()}
-            </Button>
-
-            <ModalClose disabled={saving}>{m.common_cancel()}</ModalClose>
-          </CardFooter>
-        </Card>
-      </ModalContent>
+      <FormDialogContent
+        title={title}
+        submitLabel={m.common_save()}
+        cancelLabel={m.common_cancel()}
+        submitting={saving}
+        onOpen={onOpen}
+        onSubmit={onSave}
+      >
+        <div data-slot="profile-field-dialog" className="flex flex-col gap-4">
+          {field}
+        </div>
+      </FormDialogContent>
     </>
   )
 }

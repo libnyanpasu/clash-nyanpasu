@@ -9,7 +9,7 @@ import {
   FormDialogError,
   useDialog,
 } from '@nyanpasu/ui/dialog'
-import { Input } from '@nyanpasu/ui/input'
+import { Textarea } from '@nyanpasu/ui/input'
 import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -108,8 +108,9 @@ function ProxyBypassConfigForm() {
           name="systemProxyBypass"
           render={({ field }) => (
             <div className="flex flex-col gap-2">
-              <Input
+              <Textarea
                 variant="underlined"
+                rows={4}
                 aria-label={m.settings_system_proxy_proxy_bypass_label()}
                 aria-invalid={!!form.formState.errors.systemProxyBypass}
                 aria-describedby={

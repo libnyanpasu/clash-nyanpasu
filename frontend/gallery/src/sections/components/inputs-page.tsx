@@ -268,6 +268,15 @@ export function InputsPage() {
               value={sliderValue}
               onValueChange={setSliderValue}
             />
+            <Slider
+              aria-label="Compact latency threshold"
+              size="sm"
+              min={0}
+              max={200}
+              step={2}
+              value={sliderValue}
+              onValueChange={setSliderValue}
+            />
           </div>
         </div>
       </SpecimenCard>

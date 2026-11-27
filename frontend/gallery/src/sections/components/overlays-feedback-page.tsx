@@ -271,8 +271,24 @@ export function OverlaysFeedbackPage() {
             </div>
 
             <div className="flex flex-col gap-3">
-              <LinearProgress indeterminate />
-              <LinearProgress value={progress} />
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Hero Storage Bar (size=&quot;lg&quot;)
+                </span>
+                <LinearProgress size="lg" value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  List Progress Bar (default size=&quot;sm&quot;)
+                </span>
+                <LinearProgress value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Indeterminate
+                </span>
+                <LinearProgress indeterminate />
+              </div>
             </div>
           </div>
 

@@ -4,12 +4,15 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { AnimatePresence, motion } from 'motion/react'
 import { Select as SelectPrimitive } from 'radix-ui'
 import {
+  Children,
   ComponentProps,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useState,
+  type ReactNode,
 } from 'react'
 import { chains, cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
@@ -247,7 +250,40 @@ export type SelectContentVariants = VariantProps<typeof selectContentVariants>
 type SelectContextType = {
   haveValue?: boolean
   open?: boolean
+  resolvedLabel?: ReactNode
+  registerLabels: (next: Map<string, ReactNode>) => void
 } & SelectTriggerVariants
+
+function collectSelectItemLabels(
+  nodes: ReactNode,
+  labels: Map<string, ReactNode>,
+) {
+  Children.forEach(nodes, (child) => {
+    if (!isValidElement<{ value?: unknown; children?: ReactNode }>(child)) {
+      return
+    }
+
+    if (
+      (child.type === SelectItem || child.type === SelectPrimitive.Item) &&
+      typeof child.props.value === 'string'
+    ) {
+      labels.set(child.props.value, child.props.children)
+      return
+    }
+
+    if (child.props.children !== undefined) {
+      collectSelectItemLabels(child.props.children, labels)
+    }
+  })
+}
+
+function mapsEqual(a: Map<string, ReactNode>, b: Map<string, ReactNode>) {
+  if (a.size !== b.size) return false
+  for (const [key, value] of a) {
+    if (!b.has(key) || b.get(key) !== value) return false
+  }
+  return true
+}
 
 const SelectContext = createContext<SelectContextType | null>(null)
 
@@ -278,6 +314,8 @@ export const SelectLine = ({ className, ...props }: ComponentProps<'div'>) => {
 }
 
 export const Select = ({
+  value: inputValue,
+  defaultValue,
   onValueChange,
   variant,
   open: inputOpen,
@@ -292,17 +330,22 @@ export const Select = ({
     onChange: onOpenChange,
   })
 
-  const [haveValue, setHaveValue] = useState(
-    Boolean(props.value || props.defaultValue),
+  const [value, setValue] = useControllableState({
+    prop: inputValue,
+    defaultProp: defaultValue ?? '',
+    onChange: onValueChange,
+  })
+
+  const [itemLabels, setItemLabels] = useState<Map<string, ReactNode>>(
+    () => new Map(),
   )
 
-  const handleOnChange = useCallback((value?: string) => {
-    setHaveValue(Boolean(value))
+  const registerLabels = useCallback((next: Map<string, ReactNode>) => {
+    setItemLabels((current) => (mapsEqual(current, next) ? current : next))
   }, [])
 
-  useEffect(() => {
-    setHaveValue(Boolean(props.value || props.defaultValue))
-  }, [props.value, props.defaultValue])
+  const haveValue = Boolean(value)
+  const resolvedLabel = haveValue ? itemLabels.get(value) : undefined
 
   return (
     <SelectContext.Provider
@@ -310,12 +353,16 @@ export const Select = ({
         open,
         haveValue,
         variant,
+        resolvedLabel,
+        registerLabels,
       }}
     >
       <SelectPrimitive.Root
         open={open}
         onOpenChange={setOpen}
-        onValueChange={chains(handleOnChange, onValueChange)}
+        value={inputValue !== undefined ? value : undefined}
+        defaultValue={inputValue === undefined ? defaultValue : undefined}
+        onValueChange={chains(setValue)}
         {...props}
       />
     </SelectContext.Provider>
@@ -327,9 +374,10 @@ export type SelectProps = ComponentProps<typeof Select>
 export const SelectValue = ({
   className,
   placeholder,
+  children,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Value>) => {
-  const { haveValue, open, variant } = useSelectContext()
+  const { haveValue, open, variant, resolvedLabel } = useSelectContext()
 
   return (
     <>
@@ -342,7 +390,9 @@ export const SelectValue = ({
           className,
         )}
       >
-        <SelectPrimitive.Value {...props} />
+        <SelectPrimitive.Value {...props}>
+          {children ?? resolvedLabel}
+        </SelectPrimitive.Value>
       </div>
 
       <fieldset
@@ -456,7 +506,15 @@ export const SelectContent = ({
   children,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Content>) => {
-  const { open, variant } = useSelectContext()
+  const { open, variant, registerLabels } = useSelectContext()
+
+  // Keep SelectValue populated even while AnimatePresence unmounts the portal
+  // when closed so Radix does not clear the displayed label between opens.
+  useLayoutEffect(() => {
+    const labels = new Map<string, ReactNode>()
+    collectSelectItemLabels(children, labels)
+    registerLabels(labels)
+  }, [children, registerLabels])
 
   return (
     <AnimatePresence initial={false}>

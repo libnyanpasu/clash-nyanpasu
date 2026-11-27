@@ -4,7 +4,9 @@ import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { page, userEvent } from 'vitest/browser'
 import { m } from '@/paraglide/messages'
-import HeaderMenu from '../src/pages/(main)/_modules/header-menu'
+import HeaderMenu, {
+  HeaderTitleMenu,
+} from '../src/pages/(main)/_modules/header-menu'
 import { AllPermissions } from './all-permissions'
 
 const fakes = vi.hoisted(() => ({
@@ -156,6 +158,63 @@ test('the update link stays outside the menubar and Help invokes its action', as
   await page
     .getByRole('menuitem', { name: m.header_help_action_title() })
     .click()
+  expect(
+    document.querySelector('[data-slot="menubar-content"]')?.className,
+  ).toContain('bg-transparent')
+  await page
+    .getByRole('menuitem', { name: m.header_help_action_wiki() })
+    .click()
+  expect(fakes.openWiki).toHaveBeenCalledOnce()
+})
+
+test('compact titlebar pill menu exposes file, settings submenus, help, and update link', async () => {
+  vi.clearAllMocks()
+  await render(<HeaderTitleMenu />, { wrapper: AllPermissions })
+
+  const trigger = page.getByRole('button', { name: /Clash Nyanpasu/ })
+  await expect
+    .element(trigger)
+    .toHaveAttribute('data-slot', 'dropdown-menu-pill-trigger')
+
+  await trigger.click()
+
+  const content = document.querySelector('[data-slot="dropdown-menu-content"]')
+  expect(content).not.toBeNull()
+  expect(content?.className).toContain('bg-transparent')
+
+  await expect
+    .element(
+      page.getByRole('menuitem', {
+        name: m.header_file_action_import_local_profile(),
+      }),
+    )
+    .toBeVisible()
+  await expect
+    .element(page.getByRole('menuitem', { name: m.header_new_version() }))
+    .toHaveAttribute('href', '/main/settings/nyanpasu/updates')
+
+  await page
+    .getByRole('menuitem', { name: m.header_settings_action_theme_mode() })
+    .click()
+  await page
+    .getByRole('menuitemradio', {
+      name: m.settings_user_interface_theme_mode_dark(),
+    })
+    .click()
+  expect(fakes.setThemeMode).toHaveBeenCalledWith('dark')
+
+  await trigger.click()
+  await page
+    .getByRole('menuitem', { name: m.header_settings_action_proxy_settings() })
+    .click()
+  await page
+    .getByRole('menuitemcheckbox', {
+      name: m.settings_system_proxy_system_proxy_label(),
+    })
+    .click()
+  expect(fakes.executeSystemProxy).toHaveBeenCalledOnce()
+
+  await trigger.click()
   await page
     .getByRole('menuitem', { name: m.header_help_action_wiki() })
     .click()

@@ -14,6 +14,7 @@ import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
@@ -247,7 +248,7 @@ export const MobileNavbar = () => {
         {m.navbar_label_settings()}
       </MoblieNavbarContainer>
 
-      <DropdownMenu>
+      <DropdownMenu variant="launcher">
         <MoblieNavbarContainer>
           <DropdownMenuTrigger asChild>
             <Button
@@ -262,45 +263,47 @@ export const MobileNavbar = () => {
         </MoblieNavbarContainer>
 
         <DropdownMenuContent>
-          <DropdownMenuItem asChild>
-            <Link
-              to="/main/profiles/$type"
-              params={{
-                type: 'profile',
-              }}
-            >
-              <GridViewOutlineRounded />
-              <span>{m.navbar_label_profiles()}</span>
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/main/profiles/$type"
+                params={{
+                  type: 'profile',
+                }}
+              >
+                <GridViewOutlineRounded />
+                <span>{m.navbar_label_profiles()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/topology">
-              <SchemaRounded />
-              <span>{m.topology_title()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/topology">
+                <SchemaRounded />
+                <span>{m.topology_title()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/rules">
-              <DesignServicesRounded />
-              <span>{m.navbar_label_rules()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/rules">
+                <DesignServicesRounded />
+                <span>{m.navbar_label_rules()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/logs">
-              <TerminalRounded />
-              <span>{m.navbar_label_logs()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/logs">
+                <TerminalRounded />
+                <span>{m.navbar_label_logs()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/providers">
-              <Apps />
-              <span>{m.navbar_label_providers()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/providers">
+                <Apps />
+                <span>{m.navbar_label_providers()}</span>
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </AnimatedTabs>

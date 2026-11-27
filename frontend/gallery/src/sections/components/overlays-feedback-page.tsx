@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   LinearProgress,
+  LoadingIndicator,
   Modal,
   ModalAnchor,
   ModalClose,
@@ -92,6 +93,7 @@ export function OverlaysFeedbackPage() {
           'ContextMenu',
           'Tooltip',
           'SharedTooltip',
+          'LoadingIndicator',
           'Progress',
           'Snackbar',
         ]}
@@ -254,38 +256,95 @@ export function OverlaysFeedbackPage() {
         }
       >
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col items-center gap-2">
-                <CircularProgress indeterminate className="size-10" />
-                <span className="text-on-surface-variant text-xs">
-                  Indeterminate
-                </span>
+          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-5">
+                <div className="flex flex-col items-center gap-2">
+                  <LoadingIndicator />
+                  <span className="text-on-surface-variant text-xs">
+                    Loading (Default)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <LoadingIndicator variant="contained" />
+                  <span className="text-on-surface-variant text-xs">
+                    Loading (Contained)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress indeterminate />
+                  <span className="text-on-surface-variant text-xs">
+                    Circular Flat
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress indeterminate variant="wavy" />
+                  <span className="text-on-surface-variant text-xs">
+                    Circular Wavy
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-col items-center gap-2">
-                <CircularProgress value={progress} className="size-10" />
-                <span className="text-on-surface-variant text-xs">
-                  Determinate ({progress}%)
-                </span>
+
+              <div className="flex flex-wrap items-center gap-5">
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} />
+                  <span className="text-on-surface-variant text-xs">
+                    Flat ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} thickness="thick" />
+                  <span className="text-on-surface-variant text-xs">
+                    Thick ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress value={progress} variant="wavy" />
+                  <span className="text-on-surface-variant text-xs">
+                    Wavy ({progress}%)
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <CircularProgress
+                    value={progress}
+                    variant="wavy"
+                    thickness="thick"
+                  />
+                  <span className="text-on-surface-variant text-xs">
+                    Wavy Thick
+                  </span>
+                </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
                 <span className="text-on-surface-variant text-[11px] font-medium">
-                  Hero Storage Bar (size=&quot;lg&quot;)
+                  Hero Storage Bar (flat · size=&quot;lg&quot;)
                 </span>
                 <LinearProgress size="lg" value={progress} />
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-on-surface-variant text-[11px] font-medium">
-                  List Progress Bar (default size=&quot;sm&quot;)
+                  List Progress Bar (flat · default size=&quot;sm&quot;)
                 </span>
                 <LinearProgress value={progress} />
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-on-surface-variant text-[11px] font-medium">
-                  Indeterminate
+                  Wavy Determinate (wavy · size=&quot;md&quot;)
+                </span>
+                <LinearProgress variant="wavy" size="md" value={progress} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Wavy Indeterminate
+                </span>
+                <LinearProgress variant="wavy" size="md" indeterminate />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-on-surface-variant text-[11px] font-medium">
+                  Flat Indeterminate
                 </span>
                 <LinearProgress indeterminate />
               </div>

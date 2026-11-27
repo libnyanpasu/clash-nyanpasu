@@ -226,6 +226,7 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'menu',
       'tooltip',
       'progress',
+      'loading',
       'snackbar',
     ],
     uiModules: [
@@ -237,6 +238,7 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'menu-surface',
       'tooltip',
       'shared-tooltip',
+      'loading-indicator',
       'progress',
       'snackbar',
     ],

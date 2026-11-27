@@ -324,6 +324,7 @@ export const SegmentedButtonItem = ({
   children,
   hideIndicator,
   onClick,
+  onPointerDown,
   disabled,
   value,
   ...props
@@ -333,6 +334,9 @@ export const SegmentedButtonItem = ({
   const ripple = useRipple()
 
   const handleClick = disabled ? undefined : chains(onClick, ripple.onClick)
+  const handlePointerDown = disabled
+    ? onPointerDown
+    : chains(onPointerDown, ripple.onPointerDown)
 
   const handleClear = useCallback(
     (key: React.Key) => {
@@ -356,6 +360,7 @@ export const SegmentedButtonItem = ({
       className={cn(segmentedButtonItemVariants({ variant }), className)}
       disabled={disabled}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
       value={value}
       {...props}
     >

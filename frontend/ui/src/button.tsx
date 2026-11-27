@@ -168,6 +168,7 @@ export const Button = ({
   className,
   children,
   onClick,
+  onPointerDown,
   disableRipple = false,
   ...props
 }: ButtonProps) => {
@@ -186,12 +187,16 @@ export const Button = ({
       : content(children)
 
   const ripple = useRipple()
+  const rippleEnabled = !disableRipple && !loading && !disabled
 
   const handleClick = disabled
     ? undefined
-    : disableRipple
-      ? onClick
-      : chains(onClick, ripple.onClick)
+    : rippleEnabled
+      ? chains(onClick, ripple.onClick)
+      : onClick
+  const handlePointerDown = rippleEnabled
+    ? chains(onPointerDown, ripple.onPointerDown)
+    : onPointerDown
 
   const handleClear = useCallback(
     (key: React.Key) => {
@@ -213,6 +218,7 @@ export const Button = ({
         className,
       )}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
       disabled={disabled ?? undefined}
       data-loading={String(Boolean(loading))}
       {...props}
@@ -237,7 +243,7 @@ export const Button = ({
       </AnimatePresence>
 
       <Suspense>
-        {ripple && !disableRipple && !loading && !disabled && (
+        {rippleEnabled && (
           <LazyRipple ripples={ripple.ripples} onClear={handleClear} />
         )}
       </Suspense>

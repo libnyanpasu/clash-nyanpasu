@@ -4,15 +4,13 @@ import { motion, useReducedMotion } from 'motion/react'
 import {
   useEffect,
   useRef,
-  useState,
   type ComponentProps,
-  type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { cn } from '@nyanpasu/utils'
+import { chains, cn } from '@nyanpasu/utils'
 import { Button } from './button'
-import { Ripple, type RippleConfig } from './ripple'
+import { Ripple, useRipple } from './ripple'
 import { Sidebar, useSidebar } from './slider-sidebar'
 
 export const NAVIGATION_SIDEBAR_WIDTH = { open: 200, closed: 88 } as const
@@ -95,6 +93,7 @@ export function NavigationSidebarItem({
   hideCollapsedLabel = false,
   icon,
   onClick,
+  onPointerDown,
   renderLink,
   ...props
 }: NavigationSidebarItemProps) {
@@ -104,37 +103,14 @@ export function NavigationSidebarItem({
     ? { duration: 0 }
     : { type: 'spring' as const, stiffness: 300, damping: 30 }
   const iconRef = useRef<HTMLSpanElement>(null)
-  const nextRipple = useRef(0)
-  const [ripples, setRipples] = useState<RippleConfig[]>([])
+  const ripple = useRipple({
+    getHost: () => (open ? null : iconRef.current),
+  })
+  const { clearAll: clearRipples, onClear: handleRippleClear } = ripple
 
   useEffect(() => {
-    setRipples([])
-  }, [open])
-
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    const host = open ? event.currentTarget : iconRef.current
-    if (host) {
-      const rect = host.getBoundingClientRect()
-      const pointerInsideHost =
-        event.detail !== 0 &&
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      const size = Math.max(rect.width, rect.height)
-      const x = pointerInsideHost ? event.clientX - rect.left : rect.width / 2
-      const y = pointerInsideHost ? event.clientY - rect.top : rect.height / 2
-      const ripple: RippleConfig = {
-        key: ++nextRipple.current,
-        size,
-        x: x - size / 2,
-        y: y - size / 2,
-      }
-      setRipples((current) => [...current, ripple])
-    }
-
-    onClick?.(event)
-  }
+    clearRipples()
+  }, [open, clearRipples])
 
   const content = (
     <>
@@ -157,14 +133,7 @@ export function NavigationSidebarItem({
           {icon}
         </span>
         {!open && (
-          <Ripple
-            ripples={ripples}
-            onClear={(key) =>
-              setRipples((current) =>
-                current.filter((ripple) => ripple.key !== key),
-              )
-            }
-          />
+          <Ripple ripples={ripple.ripples} onClear={handleRippleClear} />
         )}
       </motion.span>
 
@@ -186,16 +155,7 @@ export function NavigationSidebarItem({
         {children}
       </motion.span>
 
-      {open && (
-        <Ripple
-          ripples={ripples}
-          onClear={(key) =>
-            setRipples((current) =>
-              current.filter((ripple) => ripple.key !== key),
-            )
-          }
-        />
-      )}
+      {open && <Ripple ripples={ripple.ripples} onClear={handleRippleClear} />}
     </>
   )
 
@@ -208,7 +168,10 @@ export function NavigationSidebarItem({
         hideCollapsedLabel && !open && 'h-11',
         className,
       )}
-      onClick={handleClick}
+      onClick={chains(onClick, ripple.onClick)}
+      onPointerDown={
+        disabled ? onPointerDown : chains(onPointerDown, ripple.onPointerDown)
+      }
       disabled={disabled}
       data-slot="navigation-sidebar-item"
       disableRipple

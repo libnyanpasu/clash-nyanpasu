@@ -318,7 +318,7 @@ async fn http_logs_archive(
             });
             let file_name = format!(
                 "{}-log.zip",
-                jiff_http::ZonedDateTime::now().strftime("%Y-%m-%d")
+                jiff::ZonedDateTime::now().strftime("%Y-%m-%d")
             );
             Response::builder()
                 .header("content-type", "application/zip")

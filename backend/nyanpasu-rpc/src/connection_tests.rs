@@ -16,7 +16,7 @@ fn connection_details_decode_owned_connections_and_preserve_extras() {
             serde_json::from_value(json!({
                 "id": "00000000-0000-0000-0000-000000000001",
                 "metadata": {"network": "tcp", "futureMetadata": [null, 7]},
-                "upload": 4, "download": 9, "start": "2026-11-07T12:30:00+08:00",
+                "upload": 4, "download": 9, "start": "2026-11-07T12:30:00.123456+08:00",
                 "chains": ["Proxy A"], "rule": "MATCH", "rulePayload": "",
                 "futureConnection": {"value": true}
             }))
@@ -50,6 +50,12 @@ fn connection_details_decode_owned_connections_and_preserve_extras() {
         let bytes = serde_json::to_vec(&frame).unwrap();
         let received: types::ClashConnectionDetails = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(serde_json::to_vec(&received).unwrap(), bytes);
+        if let Some(connection) = received.connections.first() {
+            assert_eq!(
+                serde_json::to_value(connection).unwrap()["start"],
+                json!("2026-11-07T12:30:00.123456+08:00")
+            );
+        }
         assert_eq!(received.sequence, 90);
         if let Some(connection) = received.connections.first() {
             assert_eq!(connection.download_speed, 5);

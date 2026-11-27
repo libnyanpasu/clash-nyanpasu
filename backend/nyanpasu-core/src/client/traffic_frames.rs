@@ -67,7 +67,7 @@ fn sample(
 ) -> Sample {
     Sample {
         id: connection.id.to_string(),
-        started_at: connection.start.timestamp_millis(),
+        started_at: connection.start.timestamp().as_millisecond(),
         counters: counters(connection.upload, connection.download),
         dimensions: dimensions(connection, index, local_source),
     }

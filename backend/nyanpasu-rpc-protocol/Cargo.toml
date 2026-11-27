@@ -21,7 +21,6 @@ nyanpasu-runtime-values = { path = '../nyanpasu-runtime-values', default-feature
 nyanpasu-profile-transform = { path = '../nyanpasu-profile-transform', default-features = false }
 nyanpasu-core-metadata = { path = '../nyanpasu-runtime/crates/nyanpasu-core-metadata' }
 clash-api = { workspace = true }
-chrono = { version = '0.4', features = ['serde'] }
 indexmap = { version = '2', features = ['serde'] }
 uuid = { version = '1', features = ['serde'] }
 url = { version = '2', features = ['serde'] }

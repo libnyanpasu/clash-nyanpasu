@@ -4,8 +4,8 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use clash_api::{
-    IndexMap, ProviderName, ProviderType, Proxy, ProxyName, ProxyProvider, SubscriptionInfo,
-    VehicleType,
+    IndexMap, OffsetTimestamp, ProviderName, ProviderType, Proxy, ProxyName, ProxyProvider,
+    SubscriptionInfo, VehicleType,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -18,7 +18,7 @@ pub struct ProxyProviderSummary {
     #[serde(rename = "type")]
     pub provider_type: ProviderType,
     pub vehicle_type: VehicleType,
-    pub updated_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub updated_at: Option<OffsetTimestamp>,
     pub subscription_info: Option<SubscriptionInfo>,
     pub proxy_count: usize,
 }
@@ -1206,6 +1206,24 @@ mod tests {
         );
         assert!(trimmed.groups[0].icon_configured);
         assert_secret_free(&trimmed);
+    }
+
+    #[test]
+    fn a_provider_summary_keeps_the_update_time_text() {
+        for time in [
+            "2026-09-07T10:00:00.123456789+08:00",
+            "2026-09-07T02:00:00Z",
+        ] {
+            let provider: ProxyProvider = serde_json::from_value(json!({
+                "name": "p", "type": "Proxy", "vehicleType": "HTTP", "proxies": [],
+                "updatedAt": time
+            }))
+            .unwrap();
+
+            let summary = serde_json::to_value(ProxyProviderSummary::from(provider)).unwrap();
+
+            assert_eq!(summary["updatedAt"], json!(time));
+        }
     }
 
     #[test]

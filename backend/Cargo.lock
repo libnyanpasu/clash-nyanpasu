@@ -1853,11 +1853,11 @@ name = "clash-api"
 version = "1.0.4"
 dependencies = [
  "backon",
- "chrono",
  "futures-core",
  "futures-util",
  "indexmap 2.14.2",
  "ipnet",
+ "jiff 1.0.1",
  "nyanpasu-serde",
  "nyanpasu-utils",
  "reqwest 0.13.5",
@@ -2392,6 +2392,17 @@ name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
+
+[[package]]
+name = "croner"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc2cf2521b1ad228da5c87b135855eb146b4aed7a2da389afc682c540e5d515"
+dependencies = [
+ "chrono",
+ "jiff 1.0.1",
+ "serde",
+]
 
 [[package]]
 name = "crossbeam-channel"
@@ -5622,17 +5633,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jiff-cron"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa4804a5e6441082f7b8f2e840c639e489902aba5533c1e95c2fb7f0ab23d96c"
-dependencies = [
- "jiff 0.2.46",
- "phf 0.13.1",
- "winnow 1.0.4",
-]
-
-[[package]]
 name = "jiff-static"
 version = "0.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7129,7 +7129,6 @@ dependencies = [
  "axum",
  "bytes",
  "camino",
- "chrono",
  "clash-api",
  "dashmap",
  "fs-err",
@@ -7202,9 +7201,9 @@ version = "1.0.4"
 dependencies = [
  "backon",
  "camino",
- "chrono",
  "clash-api",
  "enumset",
+ "jiff 1.0.1",
  "libc",
  "nyanpasu-core-metadata",
  "nyanpasu-utils",
@@ -7326,9 +7325,9 @@ dependencies = [
 name = "nyanpasu-jobs"
 version = "0.1.5"
 dependencies = [
+ "croner",
  "futures-util",
- "jiff 0.2.46",
- "jiff-cron",
+ "jiff 1.0.1",
  "ractor",
  "redb",
  "serde",
@@ -7372,9 +7371,9 @@ dependencies = [
 name = "nyanpasu-logging"
 version = "0.1.5"
 dependencies = [
- "chrono",
  "file-id",
  "gxhash",
+ "jiff 1.0.1",
  "lasso",
  "ractor",
  "serde",
@@ -7635,7 +7634,6 @@ dependencies = [
  "interprocess",
  "inventory",
  "ipnet",
- "jiff 0.2.46",
  "jiff 1.0.1",
  "mockall",
  "nyanpasu-config",
@@ -7700,7 +7698,6 @@ dependencies = [
 name = "nyanpasu-rpc-protocol"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "clash-api",
  "indexmap 2.14.2",
  "nyanpasu-config",
@@ -11883,7 +11880,6 @@ version = "2.0.0-rc.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fa60a95f1bed059a9e9b1f4052dfa8fee47813c429223c8590b338f719ac12e"
 dependencies = [
- "chrono",
  "indexmap 2.14.2",
  "paste",
  "rustc_version",

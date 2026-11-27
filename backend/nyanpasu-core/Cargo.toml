@@ -57,7 +57,6 @@ clash-api = { workspace = true }
 futures-util = '0.3'
 axum = { version = '0.8', features = ['ws'], optional = true }
 redb = '5.0.0'
-chrono = { version = '0.4', features = ['serde'] }
 jiff = '1'
 uuid = '1.7.0'
 nyanpasu-macro = { path = '../nyanpasu-macro' }

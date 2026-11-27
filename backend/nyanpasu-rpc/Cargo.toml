@@ -23,7 +23,6 @@ local-server = [
 http = [
   'dep:axum',
   'dep:hyper-util',
-  'dep:jiff-http',
   'dep:futures',
   'dep:ipnet',
   'dep:ractor',
@@ -77,7 +76,7 @@ clash-api = { workspace = true }
 anyhow = '1.0'
 async-trait = '0.1.77'
 base64 = '0.23'
-jiff-http = { package = 'jiff', version = '1', optional = true }
+jiff = '1'
 dirs = '7'
 futures = { version = '0.3', optional = true }
 indexmap = { version = '2.2.3', features = ['serde'] }
@@ -135,7 +134,6 @@ rcgen = { version = '0.14', default-features = false, features = [
 whoami = '2.0.0'
 atomicwrites = '0.4'
 redb = '5.0.0'
-jiff = '0.2'
 nyanpasu-state-engine = { path = '../nyanpasu-state-engine', default-features = false }
 nyanpasu-persistence = { path = '../nyanpasu-persistence', default-features = false }
 

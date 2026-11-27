@@ -64,7 +64,7 @@ export function AccordionItem({
         data-slot="accordion-item"
         value={value}
         className={cn(
-          'bg-surface-container-low min-w-0 overflow-hidden rounded-3xl',
+          'bg-surface-container-low rounded-extra-large min-w-0 overflow-hidden',
           'transition-colors motion-reduce:transition-none',
           'data-[state=open]:bg-surface-container-high',
           className,

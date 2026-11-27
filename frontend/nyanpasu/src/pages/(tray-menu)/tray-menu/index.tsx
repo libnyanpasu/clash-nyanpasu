@@ -165,7 +165,7 @@ const EnvCopyButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
@@ -221,7 +221,7 @@ const OpenDirectoryButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
@@ -267,7 +267,7 @@ const RestartButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}

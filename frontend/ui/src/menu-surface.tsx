@@ -7,7 +7,7 @@ import { cn } from '@nyanpasu/utils'
 const MotionSlot = motion.create(Slot.Root)
 
 const menuSurfaceVariants = cva([
-  'relative z-50 w-full overflow-auto rounded',
+  'relative z-50 w-full overflow-auto rounded-extra-small',
   'bg-surface-container-high text-on-surface',
   'shadow-sm shadow-shadow/15',
   'border border-outline-variant/50',

@@ -132,7 +132,7 @@ function ViewButton({
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="hover:bg-primary/10 -mx-1 flex cursor-pointer rounded-md px-1"
+          className="hover:bg-primary/10 rounded-small -mx-1 flex cursor-pointer px-1"
           data-slot={slot}
           onClick={onClick}
         >
@@ -258,7 +258,7 @@ export const RuleRow = memo(function RuleRow({
           {rule.payload && (
             <span
               className={cn(
-                'shrink-0 rounded-md px-1.5 text-[11px] leading-4.5',
+                'rounded-small shrink-0 px-1.5 text-[11px] leading-4.5',
                 'bg-secondary-container/70 text-on-secondary-container',
               )}
             >

@@ -30,7 +30,7 @@ export default function GrantReach({ held }: { held: HeldPermissions }) {
 
   return (
     <details
-      className="bg-surface-container-high rounded-xl px-4 py-3 text-sm"
+      className="bg-surface-container-high rounded-medium px-4 py-3 text-sm"
       data-slot="grant-reach"
     >
       <summary className="cursor-pointer font-medium">

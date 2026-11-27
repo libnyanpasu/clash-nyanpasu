@@ -51,7 +51,7 @@ export default function HighlightText({
         part.isHighlight ? (
           <mark
             key={index}
-            className="bg-tertiary-container text-on-tertiary-container rounded px-0.5"
+            className="bg-tertiary-container text-on-tertiary-container rounded-extra-small px-0.5"
           >
             {part.text}
           </mark>

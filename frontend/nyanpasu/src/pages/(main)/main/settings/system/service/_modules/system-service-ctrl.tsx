@@ -137,7 +137,7 @@ const ServiceDetailRawJson = ({ code }: { code: string }) => {
     <div
       ref={ref}
       className={cn(
-        'bg-surface-container-high rounded-xl p-3 text-xs select-text',
+        'bg-surface-container-high rounded-medium p-3 text-xs select-text',
         '[&_.shiki]:bg-transparent! [&_.shiki_span]:bg-transparent!',
         '[&_pre]:font-mono [&_pre]:leading-relaxed [&_pre]:wrap-anywhere [&_pre]:whitespace-pre-wrap',
       )}

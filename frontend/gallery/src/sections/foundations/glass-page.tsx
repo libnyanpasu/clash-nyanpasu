@@ -40,19 +40,19 @@ export function GlassPage() {
   </Button>
 </GlassControlGroup>`}
       >
-        <div className="relative overflow-hidden rounded-2xl p-6">
+        <div className="rounded-large relative overflow-hidden p-6">
           {/* Colorful content layer beneath floating chrome */}
           <div className="grid grid-cols-3 gap-3 opacity-80">
-            <div className="bg-primary-container text-on-primary-container rounded-2xl p-4 text-xs font-medium">
+            <div className="bg-primary-container text-on-primary-container rounded-large p-4 text-xs font-medium">
               Primary Container Layer
             </div>
-            <div className="bg-secondary-container text-on-secondary-container rounded-2xl p-4 text-xs font-medium">
+            <div className="bg-secondary-container text-on-secondary-container rounded-large p-4 text-xs font-medium">
               Secondary Container Layer
             </div>
-            <div className="bg-tertiary-container text-on-tertiary-container rounded-2xl p-4 text-xs font-medium">
+            <div className="bg-tertiary-container text-on-tertiary-container rounded-large p-4 text-xs font-medium">
               Tertiary Container Layer
             </div>
-            <div className="bg-surface-container-lowest dark:bg-surface-container col-span-3 rounded-2xl p-4 text-xs">
+            <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large col-span-3 p-4 text-xs">
               Background rows remain calm, crisp, and opaque while floating
               chrome glides above them.
             </div>

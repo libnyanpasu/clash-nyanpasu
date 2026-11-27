@@ -21,7 +21,7 @@ export function GuidelinesPage() {
         doTitle="Semantic primary / secondary container chrome"
         doNote="Keeps Clash Nyanpasu's signature brand-tinted chrome while preserving WCAG contrast across all 9 MCU schemes."
         doDemo={
-          <div className="bg-secondary-container text-on-secondary-container flex items-center gap-2 rounded-2xl p-2">
+          <div className="bg-secondary-container text-on-secondary-container rounded-large flex items-center gap-2 p-2">
             <span className="bg-primary-container text-on-primary-container inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
               <CheckRounded className="size-4" />
               Proxies
@@ -34,7 +34,7 @@ export function GuidelinesPage() {
         dontTitle="Inverted primary / on-primary hack"
         dontNote="Uses on-primary as a background in dark mode, breaking contrast on high-contrast or monochrome themes."
         dontDemo={
-          <div className="bg-primary-container dark:bg-on-primary flex items-center gap-2 rounded-2xl p-2">
+          <div className="bg-primary-container dark:bg-on-primary rounded-large flex items-center gap-2 p-2">
             <span className="bg-inverse-primary dark:bg-primary-container text-primary inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
               Proxies
             </span>
@@ -52,13 +52,13 @@ export function GuidelinesPage() {
         doNote="Rows read as one cohesive group while clearly separating each touch target."
         doDemo={
           <div className="flex flex-col gap-1">
-            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-t-2xl rounded-b-xs px-4 py-2.5 text-xs font-medium">
+            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-t-large rounded-b-extra-small px-4 py-2.5 text-xs font-medium">
               System Proxy
             </div>
-            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-xs px-4 py-2.5 text-xs font-medium">
+            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-extra-small px-4 py-2.5 text-xs font-medium">
               TUN Mode
             </div>
-            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-t-xs rounded-b-2xl px-4 py-2.5 text-xs font-medium">
+            <div className="bg-surface-container-lowest dark:bg-surface-container text-on-surface rounded-t-extra-small rounded-b-large px-4 py-2.5 text-xs font-medium">
               Allow LAN
             </div>
           </div>
@@ -70,7 +70,7 @@ export function GuidelinesPage() {
             {['System Proxy', 'TUN Mode', 'Allow LAN'].map((label) => (
               <div
                 key={label}
-                className="bg-surface-container-lowest dark:bg-surface-container border-outline text-on-surface rounded-xl border px-4 py-2.5 text-xs font-medium shadow-md"
+                className="bg-surface-container-lowest dark:bg-surface-container border-outline text-on-surface rounded-medium border px-4 py-2.5 text-xs font-medium shadow-md"
               >
                 {label}
               </div>
@@ -108,12 +108,12 @@ export function GuidelinesPage() {
         doTitle="Start-aligned icon + label"
         doNote="Predictable left scanline across dropdowns, context menus, and menubars."
         doDemo={
-          <div className="bg-surface-container-high flex w-56 flex-col rounded-2xl p-1.5">
-            <div className="hover:bg-on-surface/8 text-on-surface flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs">
+          <div className="bg-surface-container-high rounded-large flex w-56 flex-col p-1.5">
+            <div className="hover:bg-on-surface/8 text-on-surface rounded-medium flex items-center gap-2.5 px-3 py-2 text-xs">
               <EditRounded className="size-4" />
               <span>Edit profile</span>
             </div>
-            <div className="hover:bg-on-surface/8 text-on-surface flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs">
+            <div className="hover:bg-on-surface/8 text-on-surface rounded-medium flex items-center gap-2.5 px-3 py-2 text-xs">
               <ShareRounded className="size-4" />
               <span>Share link</span>
             </div>
@@ -122,12 +122,12 @@ export function GuidelinesPage() {
         dontTitle="justify-between splitting label"
         dontNote="Forces the eye to ping-pong horizontally across menus."
         dontDemo={
-          <div className="bg-surface-container-high flex w-56 flex-col rounded-2xl p-1.5">
-            <div className="text-on-surface flex items-center justify-between rounded-xl px-3 py-2 text-xs">
+          <div className="bg-surface-container-high rounded-large flex w-56 flex-col p-1.5">
+            <div className="text-on-surface rounded-medium flex items-center justify-between px-3 py-2 text-xs">
               <EditRounded className="size-4" />
               <span>Edit profile</span>
             </div>
-            <div className="text-on-surface flex items-center justify-between rounded-xl px-3 py-2 text-xs">
+            <div className="text-on-surface rounded-medium flex items-center justify-between px-3 py-2 text-xs">
               <ShareRounded className="size-4" />
               <span>Share link</span>
             </div>

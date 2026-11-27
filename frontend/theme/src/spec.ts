@@ -485,6 +485,7 @@ export interface ShapeTokenSpec {
   id: string
   px: number
   tailwindClass: string
+  alias?: string
   expressiveAddition: boolean
   usage: string
 }
@@ -503,56 +504,64 @@ export const SHAPE_SCALE: readonly ShapeTokenSpec[] = [
   {
     id: 'extraSmall',
     px: 4,
-    tailwindClass: 'rounded-xs',
+    tailwindClass: 'rounded-extra-small',
+    alias: 'rounded-xs',
     expressiveAddition: false,
     usage: 'Tight chips, grouped list inner corners.',
   },
   {
     id: 'small',
     px: 8,
-    tailwindClass: 'rounded-sm',
+    tailwindClass: 'rounded-small',
+    alias: 'rounded-sm',
     expressiveAddition: false,
     usage: 'Text fields, menus, pressed small buttons.',
   },
   {
     id: 'medium',
     px: 12,
-    tailwindClass: 'rounded-md',
+    tailwindClass: 'rounded-medium',
+    alias: 'rounded-md',
     expressiveAddition: false,
     usage: 'Standard cards, small FABs, compact tiles.',
   },
   {
     id: 'large',
     px: 16,
-    tailwindClass: 'rounded-lg',
+    tailwindClass: 'rounded-large',
+    alias: 'rounded-lg',
     expressiveAddition: false,
     usage: 'FABs, grouped settings sections, drawers.',
   },
   {
     id: 'largeIncreased',
     px: 20,
-    tailwindClass: 'rounded-xl',
+    tailwindClass: 'rounded-large-increased',
+    alias: 'rounded-lg-inc',
     expressiveAddition: true,
     usage: 'Expressive split panels and spacious tiles.',
   },
   {
     id: 'extraLarge',
     px: 28,
-    tailwindClass: 'rounded-2xl',
+    tailwindClass: 'rounded-extra-large',
+    alias: 'rounded-xl',
     expressiveAddition: false,
     usage: 'Dialogs, bottom sheets, large FABs, hero cards.',
   },
   {
     id: 'extraLargeIncreased',
     px: 32,
-    tailwindClass: 'rounded-3xl',
+    tailwindClass: 'rounded-extra-large-increased',
+    alias: 'rounded-xl-inc',
     expressiveAddition: true,
     usage: 'Expressive hero containers and floating modal sheets.',
   },
   {
     id: 'extraExtraLarge',
     px: 48,
-    tailwindClass: 'rounded-[48px]',
+    tailwindClass: 'rounded-extra-extra-large',
+    alias: 'rounded-exl',
     expressiveAddition: true,
     usage: 'Maximum expressive hero framing.',
   },

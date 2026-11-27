@@ -116,7 +116,7 @@ function DnsYamlEditor() {
       <CardContent className="flex flex-col gap-2">
         <textarea
           className={cn(
-            'h-[60vh] w-full resize-none rounded-lg p-3',
+            'rounded-small h-[60vh] w-full resize-none p-3',
             'bg-surface-container-highest text-on-surface',
             'font-mono text-sm outline-hidden',
             'focus-visible:ring-primary focus-visible:ring-2',

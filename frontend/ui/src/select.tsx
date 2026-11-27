@@ -27,7 +27,7 @@ export const selectTriggerVariants = cva(
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-container-highest',
+        filled: 'rounded-t-extra-small bg-surface-container-highest',
         // outlined use selectValuePlaceholderFieldsetVariants
         outlined: '',
         // compact pill that sits at the end of a menu row
@@ -165,7 +165,7 @@ export const selectValuePlaceholderFieldsetVariants = cva(
         filled: 'hidden',
         outlined: [
           'absolute inset-0 text-left',
-          'rounded transition-all duration-200',
+          'rounded-extra-small transition-all duration-200',
           // may open border width will be 1.5, idk
           'group-data-[state=closed]:border',
           'group-data-[state=open]:border-2',
@@ -222,7 +222,7 @@ export type SelectValuePlaceholderLegendVariants = VariantProps<
 
 export const selectContentVariants = cva(
   [
-    'relative w-full overflow-auto rounded z-50',
+    'relative w-full overflow-auto rounded-extra-small z-50',
     'bg-surface-container-high text-on-surface',
     'shadow-sm shadow-shadow/15',
     'border border-outline-variant/50',
@@ -232,7 +232,7 @@ export const selectContentVariants = cva(
       variant: {
         filled: 'rounded-t-none',
         outlined: '',
-        chip: 'min-w-40 rounded-2xl',
+        chip: 'min-w-40 rounded-large',
       },
     },
     defaultVariants: {

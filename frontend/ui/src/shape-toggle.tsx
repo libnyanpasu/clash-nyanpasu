@@ -32,11 +32,11 @@ export function ShapeToggle({
       disableRipple
       disabled={disabled || loading}
       className={cn(
-        'group focus-visible:ring-primary [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2',
+        'group focus-visible:ring-primary rounded-large [container-type:size] flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5 bg-transparent p-1 shadow-none [container-name:shape-toggle] hover:bg-transparent focus-visible:ring-2',
         className,
         compact && 'flex-row justify-start gap-3',
         elastic &&
-          'relative isolate overflow-hidden rounded-2xl px-2 py-1 transition-colors duration-200',
+          'rounded-large relative isolate overflow-hidden px-2 py-1 transition-colors duration-200',
         elastic &&
           (active
             ? 'bg-primary-container text-on-primary-container hover:bg-primary-container'

@@ -251,7 +251,7 @@ export default function ServerSettings() {
               <p
                 role="note"
                 data-slot="remote-access-network-warning"
-                className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
+                className="bg-error-container text-on-error-container rounded-medium px-4 py-3 text-sm"
               >
                 {listen === 'lan'
                   ? m.settings_remote_access_listen_lan_warning()
@@ -314,7 +314,7 @@ export default function ServerSettings() {
                 <p
                   role="note"
                   data-slot="remote-access-auth-optional-warning"
-                  className="bg-error-container text-on-error-container rounded-xl px-4 py-3 text-sm"
+                  className="bg-error-container text-on-error-container rounded-medium px-4 py-3 text-sm"
                 >
                   {m.settings_remote_access_auth_optional_warning()}
                 </p>

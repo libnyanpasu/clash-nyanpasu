@@ -326,7 +326,7 @@ export function GalleryShell() {
                 className={cn(
                   'flex w-full min-w-0 flex-col gap-6 transition-[max-width] duration-300',
                   simulatedWidth
-                    ? 'border-outline-variant/50 rounded-3xl border border-dashed p-4 md:p-6'
+                    ? 'border-outline-variant/50 rounded-extra-large border border-dashed p-4 md:p-6'
                     : 'max-w-6xl',
                 )}
                 style={

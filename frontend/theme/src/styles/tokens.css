@@ -72,6 +72,27 @@
     1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
   --custom-text-shadow-none: none;
 
+  /* Material Design 3 Expressive 10-Step Shape Scale (drops legacy Tailwind xs..4xl) */
+  --radius-*: initial;
+  --radius-extra-small: 0.25rem; /* 4px */
+  --radius-small: 0.5rem; /* 8px */
+  --radius-medium: 0.75rem; /* 12px */
+  --radius-large: 1rem; /* 16px */
+  --radius-large-increased: 1.25rem; /* 20px */
+  --radius-extra-large: 1.75rem; /* 28px */
+  --radius-extra-large-increased: 2rem; /* 32px */
+  --radius-extra-extra-large: 3rem; /* 48px */
+
+  /* M3E Shape Shorthand Aliases */
+  --radius-xs: var(--radius-extra-small);
+  --radius-sm: var(--radius-small);
+  --radius-md: var(--radius-medium);
+  --radius-lg: var(--radius-large);
+  --radius-lg-inc: var(--radius-large-increased);
+  --radius-xl: var(--radius-extra-large);
+  --radius-xl-inc: var(--radius-extra-large-increased);
+  --radius-exl: var(--radius-extra-extra-large);
+
   /* Material Design 3 Expressive Color System */
   --color-primary: var(--color-md-primary);
   --color-on-primary: var(--color-md-on-primary);

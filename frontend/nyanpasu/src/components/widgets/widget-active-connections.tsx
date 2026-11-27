@@ -91,7 +91,7 @@ function ActiveConnectionsPreview() {
               data-slot="widget-active-connections-row"
               key={connection.host}
             >
-              <div className="bg-surface-container-high text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+              <div className="bg-surface-container-high text-on-surface-variant rounded-medium flex size-8 shrink-0 items-center justify-center">
                 <PublicRounded className="size-5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
@@ -271,7 +271,7 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive() {
                     data-slot="widget-active-connections-row"
                     key={connection.id}
                   >
-                    <div className="bg-surface-container-high text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                    <div className="bg-surface-container-high text-on-surface-variant rounded-medium flex size-8 shrink-0 items-center justify-center">
                       <PublicRounded className="size-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">

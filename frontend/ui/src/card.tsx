@@ -3,18 +3,21 @@ import { Slot } from 'radix-ui'
 import { createContext, HTMLAttributes, useContext } from 'react'
 import { cn } from '@nyanpasu/utils'
 
-export const cardVariants = cva('rounded-3xl text-on-surface overflow-hidden', {
-  variants: {
-    variant: {
-      basic: ['bg-surface-container-lowest dark:bg-surface-container'],
-      raised: ['bg-surface-container-high'],
-      outline: ['bg-surface', 'border border-outline-variant'],
+export const cardVariants = cva(
+  'rounded-extra-large text-on-surface overflow-hidden',
+  {
+    variants: {
+      variant: {
+        basic: ['bg-surface-container-lowest dark:bg-surface-container'],
+        raised: ['bg-surface-container-high'],
+        outline: ['bg-surface', 'border border-outline-variant'],
+      },
+    },
+    defaultVariants: {
+      variant: 'basic',
     },
   },
-  defaultVariants: {
-    variant: 'basic',
-  },
-})
+)
 
 export type CardVariantsProps = VariantProps<typeof cardVariants>
 

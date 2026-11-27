@@ -267,7 +267,7 @@ const DiagnosticsBody = ({
             {connections.map((connection) => (
               <li
                 key={connection.id}
-                className="border-outline-variant/30 rounded-lg border p-2"
+                className="border-outline-variant/30 rounded-small border p-2"
               >
                 <div className="flex flex-wrap justify-between gap-2">
                   <span>

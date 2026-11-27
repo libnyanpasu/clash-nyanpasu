@@ -201,7 +201,7 @@ function FileLogsContent({ source, showLogbook }: FileLogsProps) {
             >
               <form
                 ref={filterForm}
-                className="bg-surface text-on-surface flex max-h-[85dvh] w-[min(28rem,calc(100vw-2rem))] flex-col gap-5 overflow-auto rounded-3xl p-6"
+                className="bg-surface text-on-surface rounded-extra-large flex max-h-[85dvh] w-[min(28rem,calc(100vw-2rem))] flex-col gap-5 overflow-auto p-6"
                 onSubmit={(event) => {
                   event.preventDefault()
                   setTarget(draft.target)
@@ -229,7 +229,7 @@ function FileLogsContent({ source, showLogbook }: FileLogsProps) {
                   <Suspense
                     fallback={
                       <div
-                        className="bg-surface-container-high h-40 animate-pulse rounded-xl"
+                        className="bg-surface-container-high rounded-medium h-40 animate-pulse"
                         aria-busy="true"
                       />
                     }

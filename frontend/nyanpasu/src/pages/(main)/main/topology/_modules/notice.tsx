@@ -8,7 +8,7 @@ export default function Notice({
   return error ? (
     <p
       role="status"
-      className="bg-error-container text-on-error-container rounded-2xl p-4 text-sm"
+      className="bg-error-container text-on-error-container rounded-large p-4 text-sm"
     >
       {children}
     </p>

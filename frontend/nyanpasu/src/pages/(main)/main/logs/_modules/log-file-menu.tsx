@@ -16,7 +16,7 @@ const logFileMenuTriggerVariants = cva(
 )
 
 const logFileMenuItemVariants = cva(
-  'h-auto min-h-12 rounded-xl [&>div]:min-w-0 [&>div]:break-all [&>span]:shrink-0',
+  'h-auto min-h-12 rounded-medium [&>div]:min-w-0 [&>div]:break-all [&>span]:shrink-0',
 )
 
 export function LogFileMenu({
@@ -50,7 +50,7 @@ export function LogFileMenu({
         align="end"
         sideOffset={8}
         collisionPadding={8}
-        className="w-80 max-w-[calc(100vw-1rem)] rounded-2xl p-1"
+        className="rounded-large w-80 max-w-[calc(100vw-1rem)] p-1"
       >
         <DropdownMenuLabel className="text-on-surface-variant h-9 text-xs">
           {m.logs_file_label()}

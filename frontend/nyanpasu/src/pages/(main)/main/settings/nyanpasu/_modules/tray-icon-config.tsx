@@ -176,7 +176,7 @@ const ModeCard = ({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        'relative isolate h-auto flex-col items-stretch gap-3 rounded-3xl p-4 text-left',
+        'rounded-extra-large relative isolate h-auto flex-col items-stretch gap-3 p-4 text-left',
         // The sliding indicator paints the selected background.
         selected
           ? 'text-on-primary-container! bg-transparent!'
@@ -192,7 +192,7 @@ const ModeCard = ({
               ? { duration: 0 }
               : { type: 'spring', stiffness: 520, damping: 40 }
           }
-          className="bg-primary-container absolute inset-0 -z-10 rounded-3xl"
+          className="bg-primary-container rounded-extra-large absolute inset-0 -z-10"
         />
       )}
 

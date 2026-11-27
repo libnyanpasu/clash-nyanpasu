@@ -235,7 +235,7 @@ export const ExternalFileField = ({ disabled }: { disabled: boolean }) => {
               <code
                 className={cn(
                   'bg-surface-container dark:bg-surface-container-high',
-                  'min-w-0 flex-1 truncate rounded-xl px-3 py-2.5 text-xs',
+                  'rounded-medium min-w-0 flex-1 truncate px-3 py-2.5 text-xs',
                   !field.value && 'text-on-surface-variant',
                 )}
                 title={field.value || undefined}

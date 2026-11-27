@@ -235,7 +235,7 @@ export function ActionsPage() {
             <button
               type="button"
               onClick={handleRippleClick}
-              className="bg-primary-container text-on-primary-container relative overflow-hidden rounded-2xl px-5 py-3 text-sm font-medium"
+              className="bg-primary-container text-on-primary-container rounded-large relative overflow-hidden px-5 py-3 text-sm font-medium"
             >
               <span>Click anywhere for standalone Ripple</span>
               <Ripple ripples={ripple.ripples} onClear={handleRippleClear} />

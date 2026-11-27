@@ -109,7 +109,7 @@ export default function ProfileSection({
         (empty ? (
           <div
             className={cn(
-              'border-outline-variant text-on-surface-variant rounded-2xl border-2 border-dashed',
+              'border-outline-variant text-on-surface-variant rounded-large border-2 border-dashed',
               'flex h-24 items-center justify-center text-sm',
               isDropTarget && 'border-primary bg-primary/10',
             )}

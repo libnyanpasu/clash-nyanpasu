@@ -86,7 +86,7 @@ export function Slider({
     >
       <span
         data-slot="slider-range"
-        className="bg-primary pointer-events-none absolute left-0 h-4 rounded-l-full rounded-r-xs"
+        className="bg-primary rounded-r-extra-small pointer-events-none absolute left-0 h-4 rounded-l-full"
         style={{
           width: rangeWidth,
         }}
@@ -94,7 +94,7 @@ export function Slider({
 
       <span
         data-slot="slider-track"
-        className="bg-secondary-container pointer-events-none absolute right-0 h-4 rounded-l-xs rounded-r-full"
+        className="bg-secondary-container rounded-l-extra-small pointer-events-none absolute right-0 h-4 rounded-r-full"
         style={{
           width: trackWidth,
         }}

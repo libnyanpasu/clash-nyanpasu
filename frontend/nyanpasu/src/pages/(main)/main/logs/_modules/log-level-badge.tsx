@@ -13,7 +13,7 @@ export default function LogLevelBadge({
   return (
     <div
       className={cn(
-        'bg-surface-container-highest text-on-surface-variant inline-flex shrink-0 items-center rounded-md px-2 py-1 font-sans text-[11px] leading-none font-semibold tracking-wide uppercase',
+        'bg-surface-container-highest text-on-surface-variant rounded-small inline-flex shrink-0 items-center px-2 py-1 font-sans text-[11px] leading-none font-semibold tracking-wide uppercase',
         childrenLower === 'info' &&
           'bg-primary-container text-on-primary-container',
         (childrenLower === 'warn' || childrenLower === 'warning') &&

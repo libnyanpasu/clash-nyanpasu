@@ -16,7 +16,7 @@ const PathButton = ({
     <Button
       variant="raised"
       className={cn(
-        'h-18 w-full rounded-3xl px-5 text-left font-bold',
+        'rounded-extra-large h-18 w-full px-5 text-left font-bold',
         className,
       )}
       {...props}

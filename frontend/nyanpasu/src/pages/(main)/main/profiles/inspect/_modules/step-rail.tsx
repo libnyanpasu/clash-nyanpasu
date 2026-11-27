@@ -87,7 +87,7 @@ export default function StepRail({
         >
           <p
             data-slot="inspect-rail-hint"
-            className="bg-surface text-on-surface-variant rounded-2xl px-3.5 py-3 text-[12.5px] leading-[18px]"
+            className="bg-surface text-on-surface-variant rounded-large px-3.5 py-3 text-[12.5px] leading-[18px]"
           >
             {m.inspect_rail_hint()}
           </p>

@@ -29,7 +29,7 @@ import { cn } from '@nyanpasu/utils'
 
 const categoryItemVariants = cva(
   [
-    'flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-sm font-medium',
+    'flex w-full items-center gap-2.5 rounded-large px-3 py-2 text-sm font-medium',
     'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary',
   ],
   {
@@ -76,7 +76,7 @@ function WidgetPreviewCard({
       data-slot="widget-sheet-entry"
       data-placed={placed || undefined}
       className={cn(
-        'bg-surface-container-high border-outline-variant/40 flex min-w-0 flex-col overflow-hidden rounded-3xl border',
+        'bg-surface-container-high border-outline-variant/40 rounded-extra-large flex min-w-0 flex-col overflow-hidden border',
         'hover:border-outline-variant transition-colors',
       )}
     >

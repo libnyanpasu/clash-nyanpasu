@@ -331,9 +331,9 @@ export default function StepDetail({
                   {data.logs.map((log, index) => (
                     <li
                       key={index}
-                      className="bg-surface flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-[13px] leading-[18px]"
+                      className="bg-surface rounded-medium flex items-start gap-2.5 px-3 py-2.5 text-[13px] leading-[18px]"
                     >
-                      <LogLevelBadge className="h-5 rounded-md px-[7px] py-0 font-bold">
+                      <LogLevelBadge className="rounded-small h-5 px-[7px] py-0 font-bold">
                         {log.level}
                       </LogLevelBadge>
 

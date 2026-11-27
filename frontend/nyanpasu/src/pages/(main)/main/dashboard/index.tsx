@@ -95,7 +95,7 @@ function DashboardDragOverlay({
   return (
     <DragOverlay dropAnimation={null}>
       <div
-        className="cursor-grabbing rounded-2xl opacity-90"
+        className="rounded-large cursor-grabbing opacity-90"
         style={{
           width: activeDrag.dims.width,
           height: activeDrag.dims.height,

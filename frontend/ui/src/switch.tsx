@@ -64,7 +64,7 @@ export function SwitchItem({
       className={cn(
         'flex h-16 w-full items-center justify-between gap-2',
         'bg-surface-container-lowest dark:bg-surface-container',
-        'rounded-xl',
+        'rounded-medium',
         'p-4',
         className,
       )}

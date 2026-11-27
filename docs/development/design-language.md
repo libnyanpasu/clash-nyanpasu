@@ -53,6 +53,26 @@ In light mode, pure-white `surface-container-lowest` cards float crisply over a 
 - **Outline roles:** Use `border-outline-variant` (or `/40`–`/50`) for decorative dividers and subtle card/menu frames. Use `border-outline` for meaningful interactive boundaries such as outlined buttons, text fields, checkboxes, and unchecked switches.
 - **Button layout:** `Button` defaults to `inline-flex items-center justify-center gap-2 whitespace-nowrap` with non-shrinking icons (`[&_svg]:shrink-0`) so icon + label buttons stay on a single line without wrapping. Opt into `whitespace-normal` only for explicit multi-line controls.
 
+## M3E 10-step shape scale and Tailwind radius utilities
+
+`@nyanpasu/theme/styles/tokens.css` resets Tailwind CSS v4's default `--radius-*` scale (`--radius-*: initial;`) and replaces it with the canonical 10-step Material 3 Expressive corner scale plus matching shorthand aliases. Legacy Tailwind sizes (`2px`, `6px`, `24px`) and legacy class names (`rounded-2xl`, `rounded-3xl`, `rounded-4xl`) are intentionally removed.
+
+| M3E token             | Value    | Canonical Tailwind class        | Shorthand alias  | Typical usage                                             |
+| --------------------- | -------- | ------------------------------- | ---------------- | --------------------------------------------------------- |
+| `none`                | `0px`    | `rounded-none`                  | —                | Full-bleed bars, sharp tables, code gutters               |
+| `extraSmall`          | `4px`    | `rounded-extra-small`           | `rounded-xs`     | Tight chips, grouped list inner corners, filled field top |
+| `small`               | `8px`    | `rounded-small`                 | `rounded-sm`     | Text fields, menus, pressed small buttons                 |
+| `medium`              | `12px`   | `rounded-medium`                | `rounded-md`     | Standard cards, small FABs, compact tiles                 |
+| `large`               | `16px`   | `rounded-large`                 | `rounded-lg`     | FABs, grouped settings sections, drawers                  |
+| `largeIncreased`      | `20px`   | `rounded-large-increased`       | `rounded-lg-inc` | Expressive split panels and spacious tiles                |
+| `extraLarge`          | `28px`   | `rounded-extra-large`           | `rounded-xl`     | Dialogs, bottom sheets, large FABs, cards, hero panels    |
+| `extraLargeIncreased` | `32px`   | `rounded-extra-large-increased` | `rounded-xl-inc` | Expressive hero containers and floating modal sheets      |
+| `extraExtraLarge`     | `48px`   | `rounded-extra-extra-large`     | `rounded-exl`    | Maximum expressive hero framing                           |
+| `full`                | `9999px` | `rounded-full`                  | —                | Buttons, pills, floating docks, switches, nav indicators  |
+
+- All directional variants (`rounded-t-*`, `rounded-b-*`, `rounded-l-*`, `rounded-r-*`, `rounded-tl-*`, etc.) work with both the canonical names and shorthand aliases, and `@nyanpasu/utils` (`cn`) registers every token with `extendTailwindMerge`.
+- Note that shorthand aliases map to **M3E values**, not Tailwind defaults (for example `rounded-xs` is `4px`, `rounded-xl` is `28px`, and `rounded-exl` is `48px`). Prefer the canonical full names in shared UI primitives and specs, and never reintroduce `rounded-2xl`, `rounded-3xl`, `rounded-4xl`, or arbitrary pixel radii where an M3E step applies.
+
 ## Android 17 frosted translucency
 
 Floating chrome overlays (such as the `DataPage` bottom dock and floating pill controls) use `glassSurfaceVariants` from `@nyanpasu/ui/glass-surface`:

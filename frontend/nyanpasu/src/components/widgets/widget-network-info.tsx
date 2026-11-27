@@ -87,7 +87,7 @@ function EgressRow({
       data-slot="widget-network-info-row"
       data-family={family}
     >
-      <span className="bg-secondary-container/60 text-on-secondary-container shrink-0 rounded-md px-1.5 py-0.5 text-[length:var(--w-text-meta)] font-medium">
+      <span className="bg-secondary-container/60 text-on-secondary-container rounded-small shrink-0 px-1.5 py-0.5 text-[length:var(--w-text-meta)] font-medium">
         {FAMILY_LABELS[family]}
       </span>
 

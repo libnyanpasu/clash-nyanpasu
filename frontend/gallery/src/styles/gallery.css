@@ -7,6 +7,7 @@
 @import '@nyanpasu/theme/styles/tokens.css';
 @import '@nyanpasu/ui/styles.css';
 
+@source '../../../theme/src';
 @source '../../../ui/src';
 @source '../';
 

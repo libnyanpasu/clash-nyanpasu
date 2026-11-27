@@ -62,18 +62,18 @@ Apply interactive state overlays using the element's `on-*` color via `color-mix
 
 Bold entries were added by the M3 Expressive update (May 2025).
 
-| Token                     | Value      | Web / Tailwind Mapping       | Typical Usage                                                                     |
-| ------------------------- | ---------- | ---------------------------- | --------------------------------------------------------------------------------- |
-| `none`                    | `0px`      | `0px` (`rounded-none`)       | Full-bleed bars, sharp tables, code gutters                                       |
-| `extraSmall`              | `4px`      | `0.25rem` (`rounded-xs`)     | Tight chips, inner corners of connected XS groups, grouped list inner corners     |
-| `small`                   | `8px`      | `0.5rem` (`rounded-sm`)      | Text fields, menus, pressed XS/S buttons, connected S/M inner corners             |
-| `medium`                  | `12px`     | `0.75rem` (`rounded-md`)     | Standard cards, square XS/S buttons, pressed M buttons, small FAB                 |
-| `large`                   | `16px`     | `1rem` (`rounded-lg`)        | FAB, square M buttons, pressed L/XL buttons, grouped settings sections, drawers   |
-| **`largeIncreased`**      | **`20px`** | **`1.25rem` (`rounded-xl`)** | Intermediate expressive cards, split panels, connected XL inner corners           |
-| `extraLarge`              | `28px`     | `1.75rem` (`rounded-2xl`)    | Dialogs, bottom sheets, large FAB, square L/XL buttons, hero cards                |
-| **`extraLargeIncreased`** | **`32px`** | **`2rem` (`rounded-3xl`)**   | Expressive hero containers, floating modal sheets                                 |
-| **`extraExtraLarge`**     | **`48px`** | **`3rem`**                   | Maximum expressive hero framing                                                   |
-| `full`                    | `9999px`   | `9999px` (`rounded-full`)    | Round buttons, pills, floating toolbars, active nav indicators, avatars, switches |
+| Token                     | Value      | Canonical Tailwind Class            | Shorthand Alias  | Typical Usage                                                                     |
+| ------------------------- | ---------- | ----------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
+| `none`                    | `0px`      | `rounded-none`                      | —                | Full-bleed bars, sharp tables, code gutters                                       |
+| `extraSmall`              | `4px`      | `rounded-extra-small`               | `rounded-xs`     | Tight chips, inner corners of connected XS groups, grouped list inner corners     |
+| `small`                   | `8px`      | `rounded-small`                     | `rounded-sm`     | Text fields, menus, pressed XS/S buttons, connected S/M inner corners             |
+| `medium`                  | `12px`     | `rounded-medium`                    | `rounded-md`     | Standard cards, square XS/S buttons, pressed M buttons, small FAB                 |
+| `large`                   | `16px`     | `rounded-large`                     | `rounded-lg`     | FAB, square M buttons, pressed L/XL buttons, grouped settings sections, drawers   |
+| **`largeIncreased`**      | **`20px`** | **`rounded-large-increased`**       | `rounded-lg-inc` | Intermediate expressive cards, split panels, connected XL inner corners           |
+| `extraLarge`              | `28px`     | `rounded-extra-large`               | `rounded-xl`     | Dialogs, bottom sheets, large FAB, square L/XL buttons, hero cards                |
+| **`extraLargeIncreased`** | **`32px`** | **`rounded-extra-large-increased`** | `rounded-xl-inc` | Expressive hero containers, floating modal sheets                                 |
+| **`extraExtraLarge`**     | **`48px`** | **`rounded-extra-extra-large`**     | `rounded-exl`    | Maximum expressive hero framing                                                   |
+| `full`                    | `9999px`   | `rounded-full`                      | —                | Round buttons, pills, floating toolbars, active nav indicators, avatars, switches |
 
 ### Mandatory Optical Roundness Formula
 

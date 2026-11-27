@@ -44,7 +44,7 @@ export function SurfacesPage() {
             <div
               key={previewMode}
               className={cn(
-                'border-outline-variant/40 overflow-hidden rounded-2xl border',
+                'border-outline-variant/40 rounded-large overflow-hidden border',
                 previewMode === 'light'
                   ? 'gallery-theme-light light'
                   : 'gallery-theme-dark dark',
@@ -71,7 +71,7 @@ export function SurfacesPage() {
 
               <div className="flex min-h-48">
                 <div className="bg-surface-container dark:bg-surface-container-low flex w-28 shrink-0 flex-col gap-1.5 p-2.5">
-                  <div className="bg-secondary-container text-on-secondary-container rounded-xl px-2.5 py-1.5 text-xs font-medium">
+                  <div className="bg-secondary-container text-on-secondary-container rounded-medium px-2.5 py-1.5 text-xs font-medium">
                     Active
                   </div>
                   <div className="text-on-surface-variant px-2.5 py-1.5 text-xs">
@@ -80,11 +80,11 @@ export function SurfacesPage() {
                 </div>
 
                 <div className="bg-surface-container-low dark:bg-surface flex flex-1 flex-col gap-3 p-4">
-                  <div className="bg-surface-container-lowest dark:bg-surface-container rounded-2xl p-3.5">
+                  <div className="bg-surface-container-lowest dark:bg-surface-container rounded-large p-3.5">
                     <div className="text-on-surface text-xs font-semibold">
                       Card surface
                     </div>
-                    <div className="bg-surface-container dark:bg-surface-container-high text-on-surface-variant mt-2 rounded-lg p-2.5 text-[11px]">
+                    <div className="bg-surface-container dark:bg-surface-container-high text-on-surface-variant rounded-small mt-2 p-2.5 text-[11px]">
                       Nested well inside card (outer 16px - padding 8px = 8px)
                     </div>
                   </div>
@@ -116,7 +116,7 @@ export function SurfacesPage() {
             return (
               <div
                 key={tier.id}
-                className="bg-surface-container dark:bg-surface-container-high grid grid-cols-1 items-center gap-3 rounded-2xl p-3.5 md:grid-cols-12"
+                className="bg-surface-container dark:bg-surface-container-high rounded-large grid grid-cols-1 items-center gap-3 p-3.5 md:grid-cols-12"
               >
                 <div className="md:col-span-4">
                   <div className="text-on-surface text-sm font-medium">
@@ -129,7 +129,7 @@ export function SurfacesPage() {
 
                 <div className="flex items-center gap-2 md:col-span-3">
                   <span
-                    className="border-outline-variant/50 size-7 shrink-0 rounded-lg border"
+                    className="border-outline-variant/50 rounded-small size-7 shrink-0 border"
                     style={{ backgroundColor: hexFromArgb(lightArgb) }}
                   />
                   <div className="min-w-0 font-mono text-[11px]">
@@ -144,7 +144,7 @@ export function SurfacesPage() {
 
                 <div className="flex items-center gap-2 md:col-span-3">
                   <span
-                    className="border-outline-variant/50 size-7 shrink-0 rounded-lg border"
+                    className="border-outline-variant/50 rounded-small size-7 shrink-0 border"
                     style={{ backgroundColor: hexFromArgb(darkArgb) }}
                   />
                   <div className="min-w-0 font-mono text-[11px]">
@@ -158,7 +158,7 @@ export function SurfacesPage() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <code className="bg-surface-container-lowest dark:bg-surface-container block truncate rounded-lg px-2 py-1 text-[11px]">
+                  <code className="bg-surface-container-lowest dark:bg-surface-container rounded-small block truncate px-2 py-1 text-[11px]">
                     {tier.tailwindClasses}
                   </code>
                 </div>

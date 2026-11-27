@@ -22,7 +22,7 @@ const NavigateButton = ({
   return (
     <Button
       className={cn(
-        'h-16 w-full rounded-2xl',
+        'rounded-large h-16 w-full',
         'flex flex-col items-start justify-center gap-2',
         'data-[active=true]:bg-surface-container-highest',
         'data-[active=false]:bg-transparent',

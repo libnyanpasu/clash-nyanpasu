@@ -4,7 +4,7 @@ import type { StunFamilies, StunServerCapabilities } from '@nyanpasu/rpc/types'
 
 /** The small tonal label of a server row, as transform rows show their type. */
 export const stunChipVariants = cva([
-  'inline-block rounded-md px-1.5 py-0.5 text-xs',
+  'inline-block rounded-small px-1.5 py-0.5 text-xs',
   'bg-secondary-container/60 text-on-secondary-container',
 ])
 

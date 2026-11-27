@@ -63,7 +63,7 @@ export const buttonVariants = cva(
         ],
         fab: [
           'px-4 h-14',
-          'rounded-2xl',
+          'rounded-large',
           'shadow-sm',
           'text-on-primary-container',
           'bg-primary-container',

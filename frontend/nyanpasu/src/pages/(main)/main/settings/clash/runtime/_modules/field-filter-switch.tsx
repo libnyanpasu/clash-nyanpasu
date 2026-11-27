@@ -1,14 +1,9 @@
-import { Switch } from '@nyanpasu/ui/switch'
+import { ItemSwitch } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashSystemSetting } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 
 export default function FieldFilterButton() {
   const { value, upsert } = useClashSystemSetting('enable_clash_fields')
@@ -29,14 +24,11 @@ export default function FieldFilterButton() {
   })
 
   return (
-    <ItemContainer data-slot="field-filter-switch-container">
-      <ItemLabel>
-        <ItemLabelText>
-          {m.settings_clash_settings_field_filter_label()}
-        </ItemLabelText>
-      </ItemLabel>
-
-      <Switch checked={Boolean(value)} onCheckedChange={handleFieldFilter} />
-    </ItemContainer>
+    <ItemSwitch
+      data-slot="field-filter-switch-container"
+      title={m.settings_clash_settings_field_filter_label()}
+      checked={Boolean(value)}
+      onCheckedChange={handleFieldFilter}
+    />
   )
 }

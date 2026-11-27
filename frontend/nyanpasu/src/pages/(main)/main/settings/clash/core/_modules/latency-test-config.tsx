@@ -1,19 +1,16 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { AnimatePresence } from 'motion/react'
-import { useEffect, useId, type BaseSyntheticEvent } from 'react'
-import { Controller, useForm, type UseFormReturn } from 'react-hook-form'
+import { useEffect, useId } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Input, NumericInput } from '@nyanpasu/ui/input'
 import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-  useModal,
-} from '@nyanpasu/ui/modal'
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
+import { Input, NumericInput } from '@nyanpasu/ui/input'
+import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -21,15 +18,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { DEFAULT_LATENCY_TEST_URL } from '@nyanpasu/constants'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useFullSetting } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 
 const MS_PER_SECOND = 1000
 
@@ -68,119 +56,19 @@ type TimeoutFormValues = z.infer<typeof timeoutFormSchema>
 const reportError = (error: unknown) =>
   message(formatError(error), { title: 'Error', kind: 'error', error })
 
-const LatencyUrlForm = ({
-  form,
-  onSubmit,
-}: {
-  form: UseFormReturn<UrlFormValues>
-  onSubmit: (event?: BaseSyntheticEvent) => Promise<unknown>
-}) => {
-  const id = useId()
-  const errorId = `${id}-url-error`
-
-  return (
-    <form
-      className="flex flex-col gap-2"
-      data-slot="latency-test-url-form"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSubmit(event)
-      }}
-    >
-      <Controller
-        name="url"
-        control={form.control}
-        render={({ field }) => (
-          <>
-            <Input
-              variant="outlined"
-              label={m.settings_clash_latency_test_url_label()}
-              aria-label={m.settings_clash_latency_test_url_label()}
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              aria-invalid={!!form.formState.errors.url}
-              aria-describedby={form.formState.errors.url ? errorId : undefined}
-            />
-
-            <ItemLabelDescription className="px-4">
-              {m.settings_clash_latency_test_url_description()}
-            </ItemLabelDescription>
-
-            <AnimatePresence initial={false}>
-              {form.formState.errors.url && (
-                <SettingsCardAnimatedItem id={errorId} className="text-error">
-                  {form.formState.errors.url.message}
-                </SettingsCardAnimatedItem>
-              )}
-            </AnimatePresence>
-          </>
-        )}
-      />
-    </form>
-  )
-}
-
-const LatencyTimeoutForm = ({
-  form,
-  onSubmit,
-}: {
-  form: UseFormReturn<TimeoutFormValues>
-  onSubmit: (event?: BaseSyntheticEvent) => Promise<unknown>
-}) => {
-  const id = useId()
-  const errorId = `${id}-timeout-error`
-
-  return (
-    <form
-      className="flex flex-col gap-2"
-      data-slot="latency-test-timeout-form"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onSubmit(event)
-      }}
-    >
-      <Controller
-        name="timeout"
-        control={form.control}
-        render={({ field }) => (
-          <>
-            <NumericInput
-              variant="outlined"
-              label={m.settings_clash_latency_test_timeout_label()}
-              aria-label={m.settings_clash_latency_test_timeout_label()}
-              value={field.value}
-              onChange={(value) => field.onChange(value)}
-              allowNegative={false}
-              aria-invalid={!!form.formState.errors.timeout}
-              aria-describedby={
-                form.formState.errors.timeout ? errorId : undefined
-              }
-            />
-
-            <AnimatePresence initial={false}>
-              {form.formState.errors.timeout && (
-                <SettingsCardAnimatedItem id={errorId} className="text-error">
-                  {form.formState.errors.timeout.message}
-                </SettingsCardAnimatedItem>
-              )}
-            </AnimatePresence>
-          </>
-        )}
-      />
-    </form>
-  )
-}
-
 export default function LatencyTestConfig() {
   return (
-    <Modal>
+    <Dialog>
       <LatencyTestConfigForm />
-    </Modal>
+    </Dialog>
   )
 }
 
 function LatencyTestConfigForm() {
-  const { setOpen } = useModal()
+  const { setOpen } = useDialog()
+  const id = useId()
+  const urlErrorId = `${id}-url-error`
+  const timeoutErrorId = `${id}-timeout-error`
 
   const latencyUrl = useFullSetting('default_latency_test')
   const latencyTimeoutMs = useFullSetting('default_latency_timeout_ms')
@@ -264,70 +152,106 @@ function LatencyTestConfigForm() {
 
   // A submit resolves `undefined` when validation rejects its form, so the
   // dialog closes only after both forms are saved.
-  const handleApply = useLockFn(async () => {
+  const handleApply = async () => {
     const saved = await Promise.all([submitUrl(), submitTimeout()])
 
     if (saved.every(Boolean)) {
       setOpen(false)
     }
-  })
+  }
 
   return (
-    <SettingsCard data-slot="latency-test-config">
-      <>
-        <SettingsCardContent asChild>
-          <ModalTrigger asChild onClick={handleReset}>
-            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
-              <ItemContainer>
-                <ItemLabel>
-                  <ItemLabelText>
-                    {m.settings_clash_latency_test_label()}
-                  </ItemLabelText>
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          data-slot="latency-test-config"
+          title={m.settings_clash_latency_test_label()}
+          description={`${savedUrl || DEFAULT_LATENCY_TEST_URL} · ${savedSeconds}s`}
+        />
+      </DialogTrigger>
 
-                  <ItemLabelDescription>
-                    {`${savedUrl || DEFAULT_LATENCY_TEST_URL} · ${savedSeconds}s`}
-                  </ItemLabelDescription>
-                </ItemLabel>
+      <FormDialogContent
+        title={m.settings_clash_latency_test_label()}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_close()}
+        submitting={isSubmitting}
+        submitDisabled={!isDirty}
+        extraActions={
+          <Button
+            type="button"
+            variant="basic"
+            onClick={handleReset}
+            disabled={!isDirty || isSubmitting}
+          >
+            {m.common_reset()}
+          </Button>
+        }
+        onOpen={handleReset}
+        onSubmit={handleApply}
+      >
+        <div className="flex flex-col gap-2" data-slot="latency-test-url-form">
+          <Controller
+            name="url"
+            control={urlForm.control}
+            render={({ field }) => {
+              const error = urlForm.formState.errors.url
 
-                <ArrowForwardIosRounded />
-              </ItemContainer>
-            </Button>
-          </ModalTrigger>
-        </SettingsCardContent>
+              return (
+                <>
+                  <Input
+                    variant="underlined"
+                    label={m.settings_clash_latency_test_url_label()}
+                    aria-label={m.settings_clash_latency_test_url_label()}
+                    value={field.value}
+                    onChange={(event) => field.onChange(event.target.value)}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? urlErrorId : undefined}
+                  />
 
-        <ModalContent dismissible={!isSubmitting}>
-          <Card className="flex min-w-96 flex-col">
-            <CardHeader>
-              <ModalTitle>{m.settings_clash_latency_test_label()}</ModalTitle>
-            </CardHeader>
+                  <p className="text-on-surface-variant text-sm">
+                    {m.settings_clash_latency_test_url_description()}
+                  </p>
 
-            <CardContent className="flex flex-col gap-6">
-              <LatencyUrlForm form={urlForm} onSubmit={submitUrl} />
+                  <FormDialogError id={urlErrorId} message={error?.message} />
+                </>
+              )
+            }}
+          />
+        </div>
 
-              <LatencyTimeoutForm form={timeoutForm} onSubmit={submitTimeout} />
-            </CardContent>
+        <div
+          className="flex flex-col gap-2"
+          data-slot="latency-test-timeout-form"
+        >
+          <Controller
+            name="timeout"
+            control={timeoutForm.control}
+            render={({ field }) => {
+              const error = timeoutForm.formState.errors.timeout
 
-            <CardFooter className="gap-2">
-              <Button
-                variant="flat"
-                onClick={handleApply}
-                loading={isSubmitting}
-                disabled={!isDirty || isSubmitting}
-              >
-                {m.common_apply()}
-              </Button>
+              return (
+                <>
+                  <NumericInput
+                    variant="underlined"
+                    label={m.settings_clash_latency_test_timeout_label()}
+                    aria-label={m.settings_clash_latency_test_timeout_label()}
+                    value={field.value}
+                    onChange={(value) => field.onChange(value)}
+                    allowNegative={false}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? timeoutErrorId : undefined}
+                  />
 
-              <Button onClick={handleReset} disabled={!isDirty || isSubmitting}>
-                {m.common_reset()}
-              </Button>
-
-              <ModalClose disabled={isSubmitting}>
-                {m.common_close()}
-              </ModalClose>
-            </CardFooter>
-          </Card>
-        </ModalContent>
-      </>
-    </SettingsCard>
+                  <FormDialogError
+                    id={timeoutErrorId}
+                    message={error?.message}
+                  />
+                </>
+              )
+            }}
+          />
+        </div>
+      </FormDialogContent>
+    </>
   )
 }

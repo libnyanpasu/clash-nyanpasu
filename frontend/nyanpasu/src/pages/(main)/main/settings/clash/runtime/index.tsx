@@ -1,15 +1,15 @@
+import {
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+} from '@nyanpasu/ui/item-group'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { RestrictedContent } from '@/components/auth/restricted-content'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../_modules/settings-card'
 import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import ExpandIncludeAllSwitch from './_modules/expand-include-all-switch'
 import FieldFilterCard from './_modules/field-filter-card'
@@ -22,37 +22,37 @@ export const Route = createFileRoute('/(main)/main/settings/clash/runtime/')({
 
 const FieldFilterSettings = () => {
   return (
-    <div data-slot="field-filter-settings-container">
-      <SettingsLabel>
-        {m.settings_clash_settings_field_filter_label()}
-      </SettingsLabel>
+    <ItemSection data-slot="field-filter-settings-container" className="gap-2">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_settings_field_filter_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <div className="space-y-2">
-        <SettingsCard>
-          <SettingsCardContent>
-            <FieldFilterSwitch />
-          </SettingsCardContent>
-        </SettingsCard>
+      <ItemGroup>
+        <FieldFilterSwitch />
+      </ItemGroup>
 
-        <FieldFilterCard />
-      </div>
-    </div>
+      <FieldFilterCard />
+    </ItemSection>
   )
 }
 
 const ProfileProcessingSettings = () => {
   return (
-    <div data-slot="profile-processing-settings-container">
-      <SettingsLabel>
-        {m.settings_clash_runtime_processing_label()}
-      </SettingsLabel>
+    <ItemSection data-slot="profile-processing-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_runtime_processing_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <ExpandIncludeAllSwitch />
 
         <EnableBuiltinEnhancedSwitch />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 

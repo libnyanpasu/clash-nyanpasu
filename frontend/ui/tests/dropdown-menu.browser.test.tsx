@@ -120,3 +120,59 @@ test('DropdownMenuPillTrigger opens a launcher menu with grouped items and neste
 
   await userEvent.keyboard('{Escape}')
 })
+
+test('launcher DropdownMenu and submenu stay within narrow viewport bounds', async () => {
+  await page.viewport(360, 420)
+
+  await render(
+    <DropdownMenu variant="launcher" align="start">
+      <DropdownMenuPillTrigger>
+        <span>Clash Nyanpasu</span>
+      </DropdownMenuPillTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuGroup>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Language</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup value="zh-cn">
+                <DropdownMenuRadioItem value="en">
+                  English
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="zh-cn">
+                  简体中文
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="zh-tw">
+                  繁體中文
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>,
+  )
+
+  await page.getByRole('button', { name: 'Clash Nyanpasu' }).click()
+  const contentEl = document.querySelector<HTMLElement>(
+    '[data-slot="dropdown-menu-content"]',
+  )!
+  const contentRect = contentEl.getBoundingClientRect()
+  expect(contentRect.left).toBeGreaterThanOrEqual(0)
+  expect(contentRect.right).toBeLessThanOrEqual(360)
+  expect(contentRect.bottom).toBeLessThanOrEqual(420)
+
+  const langTrigger = page.getByRole('menuitem', { name: 'Language' })
+  langTrigger.element().focus()
+  await userEvent.keyboard('{ArrowRight}')
+  await expect
+    .element(page.getByRole('menuitemradio', { name: '简体中文' }))
+    .toBeVisible()
+
+  const subContentEl = document.querySelector<HTMLElement>(
+    '[data-slot="dropdown-menu-sub-content"]',
+  )!
+  const subRect = subContentEl.getBoundingClientRect()
+  expect(subRect.left).toBeGreaterThanOrEqual(0)
+  expect(subRect.right).toBeLessThanOrEqual(360)
+  expect(subRect.bottom).toBeLessThanOrEqual(420)
+})

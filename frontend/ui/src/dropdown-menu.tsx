@@ -18,12 +18,10 @@ type WidthType = 'auto' | 'full'
 type AlignType = 'start' | 'center' | 'end'
 
 const dropdownMenuPillTriggerVariants = cva([
-  'group/pill-trigger relative inline-flex h-8 cursor-pointer items-center gap-1.5',
+  'group/pill-trigger relative inline-flex h-8 min-w-0 max-w-full cursor-pointer items-center gap-1.5',
   'rounded-full px-2.5 text-sm font-semibold select-none outline-none',
-  'bg-transparent transition-[background-color,transform] duration-150',
-  'motion-reduce:transition-none',
+  'bg-transparent transition-colors duration-150 motion-reduce:transition-none',
   'hover:bg-current/10 data-[state=open]:bg-current/14',
-  'active:scale-[0.98] motion-reduce:active:scale-100',
   'focus-visible:outline-2 focus-visible:outline-current/60 focus-visible:-outline-offset-2',
   'disabled:pointer-events-none disabled:opacity-38',
 ])
@@ -33,7 +31,9 @@ const dropdownMenuContentVariants = cva('', {
     variant: {
       default: '',
       launcher: [
-        'flex min-w-56 flex-col gap-1 overflow-visible',
+        'flex min-w-[min(11rem,var(--radix-popper-available-width,11rem))]',
+        'max-w-[var(--radix-popper-available-width,calc(100vw-1rem))]',
+        'flex-col gap-1 overflow-x-hidden overflow-y-auto p-0.5',
         'rounded-none border-0 bg-transparent shadow-none',
       ],
     },
@@ -261,7 +261,7 @@ export function DropdownMenuPillTrigger({
           transition={
             reduceMotion
               ? { duration: 0 }
-              : { type: 'spring', stiffness: 800, damping: 33.9, mass: 1 }
+              : { duration: 0.16, ease: [0.2, 0, 0, 1] }
           }
         >
           <ExpandMoreRounded className="size-4.5" />
@@ -365,6 +365,7 @@ export function DropdownMenuSubContent({
   className,
   variant: variantProp,
   sideOffset = 4,
+  collisionPadding = 8,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.SubContent> & {
   variant?: DropdownMenuVariant
@@ -380,6 +381,7 @@ export function DropdownMenuSubContent({
           <DropdownMenuVariantContext.Provider value={variant}>
             <DropdownMenuPrimitive.SubContent
               sideOffset={sideOffset}
+              collisionPadding={collisionPadding}
               {...props}
               asChild
             >
@@ -455,6 +457,7 @@ export const DropdownMenuContent = ({
   align: alignProp,
   variant: variantProp,
   sideOffset = 4,
+  collisionPadding = 8,
   style,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content> & {
@@ -476,6 +479,7 @@ export const DropdownMenuContent = ({
             <DropdownMenuPrimitive.Content
               align={alignProp ?? align}
               sideOffset={sideOffset}
+              collisionPadding={collisionPadding}
               {...props}
               asChild
             >

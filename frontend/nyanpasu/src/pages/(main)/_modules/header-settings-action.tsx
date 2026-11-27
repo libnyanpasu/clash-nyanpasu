@@ -130,12 +130,10 @@ const ProxySettings = () => {
         }}
         data-loading={String(systemProxy.isPending)}
       >
-        <span className="text-nowrap">
-          {m.settings_system_proxy_system_proxy_label()}
-        </span>
+        <span>{m.settings_system_proxy_system_proxy_label()}</span>
 
         <CircularProgress
-          className="invisible size-4 group-data-[loading=true]:visible"
+          className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
           indeterminate
         />
       </CheckboxItem>
@@ -155,12 +153,10 @@ const ProxySettings = () => {
         }}
         data-loading={String(tunMode.isPending)}
       >
-        <span className="text-nowrap">
-          {m.settings_system_proxy_tun_mode_label()}
-        </span>
+        <span>{m.settings_system_proxy_tun_mode_label()}</span>
 
         <CircularProgress
-          className="invisible size-4 group-data-[loading=true]:visible"
+          className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
           indeterminate
         />
       </CheckboxItem>
@@ -176,11 +172,9 @@ const ProxySettings = () => {
           }}
           data-loading={String(transparentProxy.isPending)}
         >
-          <span className="text-nowrap">
-            {m.settings_clash_transparent_proxy_label()}
-          </span>
+          <span>{m.settings_clash_transparent_proxy_label()}</span>
           <CircularProgress
-            className="invisible size-4 group-data-[loading=true]:visible"
+            className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
             indeterminate
           />
         </CheckboxItem>

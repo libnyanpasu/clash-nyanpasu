@@ -1,6 +1,7 @@
 import FolderOpenRounded from '~icons/material-symbols/folder-open-rounded'
 import {
   MenubarContent,
+  MenubarGroup,
   MenubarMenu,
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
@@ -41,7 +42,9 @@ export default function HeaderFileAction() {
       </MenubarTrigger>
 
       <MenubarContent>
-        <HeaderFileItems />
+        <MenubarGroup>
+          <HeaderFileItems />
+        </MenubarGroup>
       </MenubarContent>
     </MenubarMenu>
   )

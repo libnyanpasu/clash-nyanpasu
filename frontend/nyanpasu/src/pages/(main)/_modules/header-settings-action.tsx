@@ -3,6 +3,7 @@ import PaletteRounded from '~icons/material-symbols/palette-rounded'
 import TuneRounded from '~icons/material-symbols/tune-rounded'
 import {
   MenubarContent,
+  MenubarGroup,
   MenubarMenu,
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
@@ -238,7 +239,9 @@ export default function HeaderSettingsAction() {
       </MenubarTrigger>
 
       <MenubarContent>
-        <HeaderSettingsItems />
+        <MenubarGroup>
+          <HeaderSettingsItems />
+        </MenubarGroup>
       </MenubarContent>
     </MenubarMenu>
   )

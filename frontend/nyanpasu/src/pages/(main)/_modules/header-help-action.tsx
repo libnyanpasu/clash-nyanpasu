@@ -4,6 +4,7 @@ import HelpRounded from '~icons/material-symbols/help-rounded'
 import InfoRounded from '~icons/material-symbols/info-rounded'
 import {
   MenubarContent,
+  MenubarGroup,
   MenubarMenu,
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
@@ -97,7 +98,9 @@ export default function HeaderHelpAction() {
       </MenubarTrigger>
 
       <MenubarContent>
-        <HeaderHelpItems />
+        <MenubarGroup>
+          <HeaderHelpItems />
+        </MenubarGroup>
       </MenubarContent>
     </MenubarMenu>
   )

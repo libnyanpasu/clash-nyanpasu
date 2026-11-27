@@ -158,6 +158,9 @@ test('the update link stays outside the menubar and Help invokes its action', as
   await page
     .getByRole('menuitem', { name: m.header_help_action_title() })
     .click()
+  expect(
+    document.querySelector('[data-slot="menubar-content"]')?.className,
+  ).toContain('bg-transparent')
   await page
     .getByRole('menuitem', { name: m.header_help_action_wiki() })
     .click()

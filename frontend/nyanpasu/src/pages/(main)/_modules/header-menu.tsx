@@ -17,6 +17,7 @@ import HeaderFileAction, { HeaderFileItems } from './header-file-action'
 import HeaderHelpAction, { HeaderHelpItems } from './header-help-action'
 import {
   HeaderMenuPrimitivesProvider,
+  LAUNCHER_MENUBAR_PRIMITIVES,
   LAUNCHER_PRIMITIVES,
 } from './header-menu-primitives'
 import HeaderSettingsAction, {
@@ -145,14 +146,17 @@ export default function HeaderMenu({
       data-tauri-drag-region
     >
       <Menubar
+        variant="launcher"
         loop
         className="[&_[data-slot=menubar-trigger]]:text-on-primary-container [&_[data-slot=menubar-trigger]]:hover:bg-on-primary-container/10 [&_[data-slot=menubar-trigger]]:data-[state=open]:bg-on-primary-container/10 gap-0.5 bg-transparent p-0"
       >
-        <HeaderFileAction />
+        <HeaderMenuPrimitivesProvider value={LAUNCHER_MENUBAR_PRIMITIVES}>
+          <HeaderFileAction />
 
-        <HeaderSettingsAction />
+          <HeaderSettingsAction />
 
-        <HeaderHelpAction />
+          <HeaderHelpAction />
+        </HeaderMenuPrimitivesProvider>
       </Menubar>
 
       <UpdateButton />

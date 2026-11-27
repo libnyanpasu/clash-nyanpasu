@@ -39,11 +39,11 @@ import {
   Menubar,
   MenubarCheckboxItem,
   MenubarContent,
+  MenubarGroup,
   MenubarItem,
   MenubarMenu,
   MenubarRadioGroup,
   MenubarRadioItem,
-  MenubarSeparator,
   MenubarSub,
   MenubarSubContent,
   MenubarSubTrigger,
@@ -283,6 +283,7 @@ export function PatternsPage() {
                     </div>
 
                     <Menubar
+                      variant="launcher"
                       loop
                       className="[&_[data-slot=menubar-trigger]]:text-on-primary-container [&_[data-slot=menubar-trigger]]:hover:bg-on-primary-container/10 [&_[data-slot=menubar-trigger]]:data-[state=open]:bg-on-primary-container/10 gap-0.5 bg-transparent p-0"
                     >
@@ -291,7 +292,12 @@ export function PatternsPage() {
                           File
                         </MenubarTrigger>
                         <MenubarContent>
-                          <MenubarItem>Import Local Profile</MenubarItem>
+                          <MenubarGroup>
+                            <MenubarItem>
+                              <FolderOpenRounded className="size-5 shrink-0" />
+                              <span>Import Local Profile</span>
+                            </MenubarItem>
+                          </MenubarGroup>
                         </MenubarContent>
                       </MenubarMenu>
 
@@ -300,80 +306,90 @@ export function PatternsPage() {
                           Settings
                         </MenubarTrigger>
                         <MenubarContent>
-                          <MenubarSub>
-                            <MenubarSubTrigger>Language</MenubarSubTrigger>
-                            <MenubarSubContent>
-                              <MenubarRadioGroup
-                                value={titlebarLanguage}
-                                onValueChange={setTitlebarLanguage}
-                              >
-                                <MenubarRadioItem value="en">
-                                  English
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="zh-cn">
-                                  简体中文
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="ja">
-                                  日本語
-                                </MenubarRadioItem>
-                              </MenubarRadioGroup>
-                            </MenubarSubContent>
-                          </MenubarSub>
+                          <MenubarGroup>
+                            <MenubarSub>
+                              <MenubarSubTrigger>
+                                <LanguageRounded className="size-5 shrink-0" />
+                                <span>Language</span>
+                              </MenubarSubTrigger>
+                              <MenubarSubContent>
+                                <MenubarRadioGroup
+                                  value={titlebarLanguage}
+                                  onValueChange={setTitlebarLanguage}
+                                >
+                                  <MenubarRadioItem value="en">
+                                    English
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="zh-cn">
+                                    简体中文
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="ja">
+                                    日本語
+                                  </MenubarRadioItem>
+                                </MenubarRadioGroup>
+                              </MenubarSubContent>
+                            </MenubarSub>
 
-                          <MenubarSub>
-                            <MenubarSubTrigger>Theme Mode</MenubarSubTrigger>
-                            <MenubarSubContent>
-                              <MenubarRadioGroup
-                                value={titlebarTheme}
-                                onValueChange={setTitlebarTheme}
-                              >
-                                <MenubarRadioItem value="light">
-                                  Light
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="dark">
-                                  Dark
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="system">
-                                  System
-                                </MenubarRadioItem>
-                              </MenubarRadioGroup>
-                            </MenubarSubContent>
-                          </MenubarSub>
+                            <MenubarSub>
+                              <MenubarSubTrigger>
+                                <PaletteRounded className="size-5 shrink-0" />
+                                <span>Theme Mode</span>
+                              </MenubarSubTrigger>
+                              <MenubarSubContent>
+                                <MenubarRadioGroup
+                                  value={titlebarTheme}
+                                  onValueChange={setTitlebarTheme}
+                                >
+                                  <MenubarRadioItem value="light">
+                                    Light
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="dark">
+                                    Dark
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="system">
+                                    System
+                                  </MenubarRadioItem>
+                                </MenubarRadioGroup>
+                              </MenubarSubContent>
+                            </MenubarSub>
 
-                          <MenubarSub>
-                            <MenubarSubTrigger>
-                              Proxy Settings
-                            </MenubarSubTrigger>
-                            <MenubarSubContent>
-                              <MenubarCheckboxItem
-                                checked={sysProxy}
-                                onCheckedChange={setSysProxy}
-                              >
-                                System Proxy
-                              </MenubarCheckboxItem>
-                              <MenubarCheckboxItem
-                                checked={tun}
-                                onCheckedChange={setTun}
-                              >
-                                TUN Mode
-                              </MenubarCheckboxItem>
-                              <MenubarSeparator />
-                              <MenubarRadioGroup
-                                value={proxyMode}
-                                onValueChange={setProxyMode}
-                              >
-                                <MenubarRadioItem value="rule">
-                                  Rule Mode
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="global">
-                                  Global Mode
-                                </MenubarRadioItem>
-                                <MenubarRadioItem value="direct">
-                                  Direct Mode
-                                </MenubarRadioItem>
-                              </MenubarRadioGroup>
-                            </MenubarSubContent>
-                          </MenubarSub>
+                            <MenubarSub>
+                              <MenubarSubTrigger>
+                                <TuneRounded className="size-5 shrink-0" />
+                                <span>Proxy Settings</span>
+                              </MenubarSubTrigger>
+                              <MenubarSubContent>
+                                <MenubarGroup>
+                                  <MenubarCheckboxItem
+                                    checked={sysProxy}
+                                    onCheckedChange={setSysProxy}
+                                  >
+                                    System Proxy
+                                  </MenubarCheckboxItem>
+                                  <MenubarCheckboxItem
+                                    checked={tun}
+                                    onCheckedChange={setTun}
+                                  >
+                                    TUN Mode
+                                  </MenubarCheckboxItem>
+                                </MenubarGroup>
+                                <MenubarRadioGroup
+                                  value={proxyMode}
+                                  onValueChange={setProxyMode}
+                                >
+                                  <MenubarRadioItem value="rule">
+                                    Rule Mode
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="global">
+                                    Global Mode
+                                  </MenubarRadioItem>
+                                  <MenubarRadioItem value="direct">
+                                    Direct Mode
+                                  </MenubarRadioItem>
+                                </MenubarRadioGroup>
+                              </MenubarSubContent>
+                            </MenubarSub>
+                          </MenubarGroup>
                         </MenubarContent>
                       </MenubarMenu>
 
@@ -382,10 +398,24 @@ export function PatternsPage() {
                           Help
                         </MenubarTrigger>
                         <MenubarContent>
-                          <MenubarItem>Wiki &amp; Docs</MenubarItem>
-                          <MenubarItem>Report Issue</MenubarItem>
-                          <MenubarItem>Collect Logs</MenubarItem>
-                          <MenubarItem>About</MenubarItem>
+                          <MenubarGroup>
+                            <MenubarItem>
+                              <HelpRounded className="size-5 shrink-0" />
+                              <span>Wiki &amp; Docs</span>
+                            </MenubarItem>
+                            <MenubarItem>
+                              <BugReportRounded className="size-5 shrink-0" />
+                              <span>Report Issue</span>
+                            </MenubarItem>
+                            <MenubarItem>
+                              <DescriptionRounded className="size-5 shrink-0" />
+                              <span>Collect Logs</span>
+                            </MenubarItem>
+                            <MenubarItem>
+                              <InfoRounded className="size-5 shrink-0" />
+                              <span>About</span>
+                            </MenubarItem>
+                          </MenubarGroup>
                         </MenubarContent>
                       </MenubarMenu>
                     </Menubar>

@@ -75,6 +75,11 @@ export const MENUBAR_PRIMITIVES: HeaderMenuPrimitives = {
   Separator: MenubarSeparator,
 }
 
+export const LAUNCHER_MENUBAR_PRIMITIVES: HeaderMenuPrimitives = {
+  ...MENUBAR_PRIMITIVES,
+  mode: 'launcher',
+}
+
 export const LAUNCHER_PRIMITIVES: HeaderMenuPrimitives = {
   mode: 'launcher',
   Group: DropdownMenuGroup,

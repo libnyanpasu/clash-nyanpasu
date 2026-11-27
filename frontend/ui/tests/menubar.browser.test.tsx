@@ -6,6 +6,7 @@ import {
   Menubar,
   MenubarCheckboxItem,
   MenubarContent,
+  MenubarGroup,
   MenubarItem,
   MenubarMenu,
   MenubarRadioGroup,
@@ -193,4 +194,41 @@ test('checkbox asChild preserves its child, built-in indicator, and ref', async 
 
   await checkbox.click()
   expect(onCheckedChange).toHaveBeenCalledWith(false)
+})
+
+test('Menubar variant="launcher" renders transparent grouped content and submenus', async () => {
+  await render(
+    <Menubar variant="launcher">
+      <MenubarMenu>
+        <MenubarTrigger>File</MenubarTrigger>
+        <MenubarContent>
+          <MenubarGroup>
+            <MenubarItem>Import</MenubarItem>
+            <MenubarSub>
+              <MenubarSubTrigger>Mode</MenubarSubTrigger>
+              <MenubarSubContent>
+                <MenubarRadioGroup value="rule">
+                  <MenubarRadioItem value="rule">Rule</MenubarRadioItem>
+                </MenubarRadioGroup>
+              </MenubarSubContent>
+            </MenubarSub>
+          </MenubarGroup>
+        </MenubarContent>
+      </MenubarMenu>
+    </Menubar>,
+  )
+
+  await page.getByRole('menuitem', { name: 'File' }).click()
+  const content = document.querySelector('[data-slot="menubar-content"]')
+  expect(content?.className).toContain('bg-transparent')
+
+  const modeTrigger = page.getByRole('menuitem', { name: 'Mode' })
+  modeTrigger.element().focus()
+  await userEvent.keyboard('{ArrowRight}')
+  await expect
+    .element(page.getByRole('menuitemradio', { name: 'Rule' }))
+    .toBeVisible()
+
+  const subContent = document.querySelector('[data-slot="menubar-sub-content"]')
+  expect(subContent?.className).toContain('bg-transparent')
 })

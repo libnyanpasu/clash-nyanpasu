@@ -61,7 +61,7 @@ function NavbarButton<
   return (
     <AnimatedTabsItem
       className={cn(
-        'text-on-surface-variant data-[active=true]:text-on-secondary-container md:min-w-max md:flex-none [&_svg]:size-5',
+        'text-on-secondary-container/80 hover:text-on-secondary-container data-[active=true]:text-on-primary-container md:min-w-max md:flex-none [&_svg]:size-5',
       )}
       data-active={String(isActive)}
       data-slot="animated-tabs-item"
@@ -141,7 +141,7 @@ export const DefaultNavbar = () => {
     <AnimatedTabs
       className={cn(
         'bg-transparent!',
-        '**:data-[slot=animated-tabs-indicator]:bg-secondary-container',
+        '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
       )}
       data-slot="app-navbar"
       variant="pill"
@@ -210,7 +210,7 @@ export const MobileNavbar = () => {
     <AnimatedTabs
       className={cn(
         'h-full w-full bg-transparent! py-2',
-        '**:data-[slot=animated-tabs-indicator]:bg-secondary-container',
+        '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
       )}
       variant="pill"
       size="sm"

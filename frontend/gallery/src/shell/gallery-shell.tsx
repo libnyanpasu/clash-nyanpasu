@@ -229,19 +229,19 @@ export function GalleryShell() {
         'bg-surface-container-low dark:bg-surface text-on-surface',
       )}
     >
-      {/* Top chrome bar — mirrors AppNavbar A17 tier */}
+      {/* Top chrome bar — mirrors brand-tinted AppNavbar tier */}
       <header
         data-slot="gallery-navbar"
         className={cn(
           'flex h-14 shrink-0 items-center justify-between gap-3 px-3 md:px-4',
-          'bg-surface-container-high dark:bg-surface-container',
+          'bg-secondary-container text-on-secondary-container',
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
           <Button
             variant="basic"
             icon
-            className="text-on-surface lg:hidden"
+            className="text-on-secondary-container hover:bg-on-secondary-container/10 lg:hidden"
             aria-label="Open navigation"
             onClick={() => setMobileNavOpen(true)}
           >
@@ -260,10 +260,10 @@ export function GalleryShell() {
               <AutoAwesomeRounded className="size-4" />
             </MaterialShape>
             <div className="hidden min-w-0 sm:block">
-              <div className="text-on-surface truncate text-sm leading-4 font-semibold">
+              <div className="text-on-secondary-container truncate text-sm leading-4 font-semibold">
                 Nyanpasu UI
               </div>
-              <div className="text-on-surface-variant truncate text-[11px] leading-4">
+              <div className="text-on-secondary-container/75 truncate text-[11px] leading-4">
                 M3E 2025 · A17 Gallery
               </div>
             </div>
@@ -272,7 +272,7 @@ export function GalleryShell() {
           <AnimatedTabs
             className={cn(
               'hidden bg-transparent! md:flex',
-              '**:data-[slot=animated-tabs-indicator]:bg-secondary-container',
+              '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
             )}
             variant="pill"
             size="sm"
@@ -283,7 +283,7 @@ export function GalleryShell() {
               <AnimatedTabsItem
                 key={section.id}
                 value={section.id}
-                className="text-on-surface-variant data-[active=true]:text-on-secondary-container min-w-max flex-none px-3.5 text-sm font-medium"
+                className="text-on-secondary-container/80 hover:text-on-secondary-container data-[active=true]:text-on-primary-container min-w-max flex-none px-3.5 text-sm font-medium"
               >
                 {section.label}
               </AnimatedTabsItem>

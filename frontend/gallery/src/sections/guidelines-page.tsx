@@ -16,26 +16,26 @@ export function GuidelinesPage() {
       />
 
       <GuidelineComparison
-        title="1. Active Navigation Pills vs. Dark-Mode Role Inversion"
-        rule="Use secondary-container + on-secondary-container for active navigation and selected rows; never invert primary/on-primary tokens across light and dark modes."
-        doTitle="Canonical secondary-container pill"
-        doNote="Maintains balanced contrast in both light and dark modes across all 9 MCU schemes."
+        title="1. Brand-Tinted Chrome & Semantic Container Pairs vs. Dark-Mode Role Inversion"
+        rule="Pair primary-container (WindowHeader) with secondary-container (AppNavbar / EditorToolbar) and primary-container active navbar pills using their matching on-* foreground tokens. Never invert primary/on-primary roles across light and dark modes."
+        doTitle="Semantic primary / secondary container chrome"
+        doNote="Keeps Clash Nyanpasu's signature brand-tinted chrome while preserving WCAG contrast across all 9 MCU schemes."
         doDemo={
-          <div className="flex items-center gap-2">
-            <span className="bg-secondary-container text-on-secondary-container inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
+          <div className="bg-secondary-container text-on-secondary-container flex items-center gap-2 rounded-2xl p-2">
+            <span className="bg-primary-container text-on-primary-container inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
               <CheckRounded className="size-4" />
               Proxies
             </span>
-            <span className="text-on-surface-variant hover:bg-on-surface/8 rounded-full px-3.5 py-1.5 text-xs font-medium">
+            <span className="text-on-secondary-container/80 hover:bg-on-secondary-container/10 rounded-full px-3.5 py-1.5 text-xs font-medium">
               Profiles
             </span>
           </div>
         }
         dontTitle="Inverted primary / on-primary hack"
-        dontNote="Breaks WCAG contrast when users pick high-contrast or monochrome themes."
+        dontNote="Uses on-primary as a background in dark mode, breaking contrast on high-contrast or monochrome themes."
         dontDemo={
-          <div className="flex items-center gap-2">
-            <span className="bg-primary-container dark:bg-on-primary text-primary inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
+          <div className="bg-primary-container dark:bg-on-primary flex items-center gap-2 rounded-2xl p-2">
+            <span className="bg-inverse-primary dark:bg-primary-container text-primary inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium">
               Proxies
             </span>
             <span className="bg-surface-variant text-on-surface-variant rounded-full px-3.5 py-1.5 text-xs font-medium">

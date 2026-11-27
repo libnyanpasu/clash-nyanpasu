@@ -31,10 +31,11 @@ export function SurfacesPage() {
             Side-by-Side Polarity Proof
           </h2>
           <p className="text-on-surface-variant text-xs leading-5">
-            In light mode, pure-white surface-container-lowest cards float
-            crisply over a bright surface-container-low canvas. In dark mode,
-            surface-container cards lift clearly above a near-black surface
-            canvas.
+            Brand-tinted top chrome (primary-container titlebar over
+            secondary-container navbar) transitions cleanly into a neutral A17
+            workspace: pure-white surface-container-lowest cards over a bright
+            surface-container-low canvas in light mode, and surface-container
+            cards lifted above a near-black surface canvas in dark mode.
           </p>
         </CardHeader>
 
@@ -43,27 +44,27 @@ export function SurfacesPage() {
             <div
               key={previewMode}
               className={cn(
-                'overflow-hidden rounded-2xl',
+                'border-outline-variant/40 overflow-hidden rounded-2xl border',
                 previewMode === 'light'
                   ? 'gallery-theme-light light'
                   : 'gallery-theme-dark dark',
               )}
             >
-              <div className="bg-surface-container-highest text-on-surface flex items-center justify-between px-4 py-2 text-xs font-medium">
+              <div className="bg-primary-container text-on-primary-container flex items-center justify-between px-4 py-2 text-xs font-medium">
                 <span>WindowHeader ({previewMode})</span>
-                <span className="text-on-surface-variant font-mono">
-                  highest
+                <span className="text-on-primary-container/75 font-mono">
+                  primary-container
                 </span>
               </div>
 
-              <div className="bg-surface-container-high dark:bg-surface-container text-on-surface flex items-center gap-2 px-4 py-2.5 text-xs">
-                <span className="bg-secondary-container text-on-secondary-container rounded-full px-3 py-1 font-medium">
+              <div className="bg-secondary-container text-on-secondary-container flex items-center gap-2 px-4 py-2.5 text-xs">
+                <span className="bg-primary-container text-on-primary-container rounded-full px-3 py-1 font-medium">
                   Dashboard
                 </span>
-                <span className="text-on-surface-variant px-2 py-1">
+                <span className="text-on-secondary-container/80 px-2 py-1">
                   Proxies
                 </span>
-                <span className="text-on-surface-variant px-2 py-1">
+                <span className="text-on-secondary-container/80 px-2 py-1">
                   Settings
                 </span>
               </div>

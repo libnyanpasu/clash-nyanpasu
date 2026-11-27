@@ -14,7 +14,7 @@ const Title = () => {
   return (
     <WindowTitle>
       <div
-        className="text-on-surface text-base font-bold text-nowrap"
+        className="text-on-primary-container text-base font-bold text-nowrap"
         data-slot="app-header-logo-name"
         data-tauri-drag-region
       >

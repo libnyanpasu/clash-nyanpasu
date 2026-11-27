@@ -19,7 +19,10 @@ const UpdateButton = () => {
     <div className="relative">
       <Link
         to="/main/settings/nyanpasu/updates"
-        className={cn(menubarTriggerVariants(), 'min-h-8 py-1')}
+        className={cn(
+          menubarTriggerVariants(),
+          'text-on-primary-container hover:bg-on-primary-container/10 min-h-8 py-1',
+        )}
       >
         {isReady
           ? m.settings_about_update_ready_header()
@@ -49,7 +52,10 @@ export default function HeaderMenu({
       {...props}
       data-tauri-drag-region
     >
-      <Menubar loop className="gap-0.5 bg-transparent p-0">
+      <Menubar
+        loop
+        className="[&_[data-slot=menubar-trigger]]:text-on-primary-container [&_[data-slot=menubar-trigger]]:hover:bg-on-primary-container/10 [&_[data-slot=menubar-trigger]]:data-[state=open]:bg-on-primary-container/10 gap-0.5 bg-transparent p-0"
+      >
         <HeaderFileAction />
 
         <HeaderSettingsAction />

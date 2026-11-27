@@ -10,8 +10,8 @@
 @source '../../../ui/src';
 @source '../';
 
-/* Match both root dark mode and scoped split-view dark preview panes. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Match root dark mode and scoped dark panes without leaking into scoped light panes. */
+@custom-variant dark (&:where(.dark, .dark *):not(:where(.gallery-theme-light, .gallery-theme-light *)));
 
 :root {
   color-scheme: light;
@@ -81,9 +81,11 @@ body {
 }
 
 .gallery-theme-light {
-  color-scheme: light;
+  color: var(--color-on-surface);
+  color-scheme: only light;
 }
 
 .gallery-theme-dark {
-  color-scheme: dark;
+  color: var(--color-on-surface);
+  color-scheme: only dark;
 }

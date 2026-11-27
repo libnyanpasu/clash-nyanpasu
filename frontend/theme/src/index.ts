@@ -284,7 +284,22 @@ export function generateScopedThemeCssVars(
   scopeSelector: string,
   mode: ResolvedThemeMode,
 ): string {
-  return `${scopeSelector}{${generateThemeCssVarsForMode(theme, mode)}}`
+  const scheme = getThemeScheme(theme, mode)
+  let vars = generateThemeCssVarsForMode(theme, mode)
+
+  // Tailwind v4 `@theme` resolves `--color-*: var(--color-md-*)` on `:root`,
+  // so scoped light/dark preview subtrees must also re-bind `--color-*`
+  // directly to prevent inheriting the root mode's computed values.
+  for (const [key, value] of Object.entries(scheme)) {
+    vars += `--color-${kebabCase(key)}: ${hexFromArgb(value)};`
+  }
+
+  vars +=
+    mode === ThemeMode.DARK
+      ? '--color-tc: #8e9099;--color-ok: #7bdc95;--color-warn: #ffb870;'
+      : '--color-tc: #74777f;--color-ok: #1b6d3b;--color-warn: #8a5100;'
+
+  return `${scopeSelector}{${vars}}`
 }
 
 export function generateThemeCssVars(theme: Theme): string {

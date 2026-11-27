@@ -160,16 +160,20 @@ export function OverviewPage({
               </p>
             </div>
 
-            <div className="bg-surface-container-highest rounded-2xl p-3">
-              <div className="text-on-surface-variant mb-2 flex items-center justify-between text-[11px] font-medium">
+            <div className="bg-primary-container text-on-primary-container rounded-2xl p-3">
+              <div className="mb-2 flex items-center justify-between text-[11px] font-medium">
                 <span>WindowHeader</span>
-                <span className="font-mono">surface-container-highest</span>
+                <span className="text-on-primary-container/80 font-mono">
+                  primary-container
+                </span>
               </div>
 
-              <div className="bg-surface-container-high dark:bg-surface-container rounded-[14px] p-3">
-                <div className="text-on-surface-variant mb-2 flex items-center justify-between text-[11px] font-medium">
-                  <span>AppNavbar</span>
-                  <span className="font-mono">high / container</span>
+              <div className="bg-secondary-container text-on-secondary-container rounded-[14px] p-3">
+                <div className="mb-2 flex items-center justify-between text-[11px] font-medium">
+                  <span>AppNavbar / EditorToolbar</span>
+                  <span className="text-on-secondary-container/80 font-mono">
+                    secondary-container
+                  </span>
                 </div>
 
                 <div className="bg-surface-container dark:bg-surface-container-low rounded-[10px] p-3">

@@ -22,6 +22,7 @@ import {
   Slider,
   Switch,
   SwitchItem,
+  Textarea,
 } from '@nyanpasu/ui'
 import { PageHeader, SpecimenCard } from '../../studio/stage'
 
@@ -95,6 +96,14 @@ export function InputsPage() {
             max={65535}
             onChange={setPortValue}
           />
+          <div className="md:col-span-2">
+            <Textarea
+              variant="underlined"
+              label="System Proxy Bypass (Textarea)"
+              rows={3}
+              defaultValue="localhost;127.;192.168.;10.;172.16.;172.17.;172.18.;172.19.;172.20.;172.21.;172.22.;172.23.;172.24.;172.25.;172.26.;172.27.;172.28.;172.29.;172.30.;172.31.*"
+            />
+          </div>
           <div className="flex flex-col justify-center gap-2 md:col-span-2">
             <SearchField
               variant="basic"

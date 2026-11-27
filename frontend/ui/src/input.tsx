@@ -593,3 +593,132 @@ export const NumericInput = ({
 }
 
 NumericInput.displayName = 'NumericInput'
+
+export const textareaContainerVariants = cva(
+  [
+    'group relative box-border flex w-full flex-auto items-start',
+    'text-on-surface outline-hidden',
+  ],
+  {
+    variants: {
+      variant: {
+        filled: 'rounded-t-extra-small bg-surface-container-highest px-4 py-3',
+        outlined: 'px-4 py-3',
+        underlined: 'bg-transparent px-0 py-2',
+      },
+      haveLabel: {
+        true: '',
+        false: '',
+      },
+    },
+    compoundVariants: [
+      {
+        variant: 'outlined',
+        haveLabel: true,
+        className: 'pt-5 pb-3',
+      },
+      {
+        variant: 'filled',
+        haveLabel: true,
+        className: 'pt-6 pb-3',
+      },
+      {
+        variant: 'underlined',
+        haveLabel: true,
+        className: 'pt-5 pb-2',
+      },
+    ],
+    defaultVariants: {
+      variant: 'filled',
+      haveLabel: false,
+    },
+  },
+)
+
+export type TextareaProps = ComponentProps<'textarea'> & {
+  label?: string
+  variant?: InputContainerVariants['variant']
+}
+
+export const Textarea = ({
+  variant = 'filled',
+  className,
+  label,
+  rows = 3,
+  onChange,
+  ...props
+}: TextareaProps) => {
+  const [haveValue, setHaveValue] = useState(() =>
+    Boolean(props.value || props.defaultValue),
+  )
+
+  const haveLabel = Boolean(label)
+
+  useEffect(() => {
+    setHaveValue(Boolean(props.value || props.defaultValue))
+  }, [props.value, props.defaultValue])
+
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setHaveValue(event.target.value.length > 0)
+    onChange?.(event)
+  }
+
+  return (
+    <InputContext.Provider
+      value={{
+        haveLabel,
+        haveValue,
+        variant,
+      }}
+    >
+      <div
+        data-slot="textarea"
+        className={textareaContainerVariants({ variant, haveLabel })}
+      >
+        <textarea
+          rows={rows}
+          className={cn(
+            'peer w-full resize-y border-none bg-transparent p-0 text-base leading-relaxed outline-hidden',
+            haveLabel && 'not-focus:placeholder:text-transparent!',
+            className,
+          )}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          onChange={handleChange}
+          {...props}
+        />
+
+        {label && (
+          <>
+            <fieldset
+              className={cn(
+                inputLabelFieldsetVariants({
+                  variant,
+                }),
+              )}
+            >
+              <legend
+                className={cn(
+                  inputLabelLegendVariants({
+                    variant,
+                    haveValue,
+                  }),
+                )}
+              >
+                {label}
+              </legend>
+            </fieldset>
+
+            <InputLabel>{label}</InputLabel>
+          </>
+        )}
+
+        <InputLine />
+      </div>
+    </InputContext.Provider>
+  )
+}
+
+Textarea.displayName = 'Textarea'

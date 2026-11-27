@@ -1,4 +1,3 @@
-import CheckRounded from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -238,20 +237,6 @@ export function ExpressiveChoice({
                       <span className="relative max-w-full truncate text-sm">
                         {option.label}
                       </span>
-                      {layout === 'flex' && (
-                        <motion.span
-                          className="absolute top-2 right-2"
-                          initial={false}
-                          animate={{
-                            opacity: active ? 1 : 0,
-                            scale: active ? 1 : 0.7,
-                          }}
-                          transition={transition}
-                          aria-hidden
-                        >
-                          <CheckRounded className="size-3" />
-                        </motion.span>
-                      )}
                     </motion.button>
                   </Button>
                 </motion.div>

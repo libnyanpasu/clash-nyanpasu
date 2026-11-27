@@ -7,8 +7,8 @@ export function OptionRow({ className, ...props }: ComponentProps<'div'>) {
     <div
       className={cn(
         'flex min-h-14 items-center justify-between gap-4 py-2 pr-3 pl-4',
-        'bg-surface-variant/30 rounded-sm',
-        'first:rounded-t-2xl last:rounded-b-2xl',
+        'bg-surface-container-high rounded-extra-small',
+        'first:rounded-t-large last:rounded-b-large',
         className,
       )}
       data-slot="option-row"

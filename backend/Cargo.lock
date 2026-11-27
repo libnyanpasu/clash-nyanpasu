@@ -2021,7 +2021,6 @@ dependencies = [
  "urlencoding",
  "uuid",
  "webview2-com",
- "which 8.0.6",
  "whoami",
  "window-vibrancy",
  "windows-core 0.62.2",

@@ -72,7 +72,7 @@ function ActiveConnectionsPreview() {
 
         <WidgetControls>
           <span
-            className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
+            className="bg-surface-container-high text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
             data-slot="widget-active-connections-count"
           >
             2
@@ -87,11 +87,11 @@ function ActiveConnectionsPreview() {
         >
           {PREVIEW_CONNECTIONS.map((connection) => (
             <li
-              className="bg-surface-variant/30 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
+              className="bg-surface-container-high flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
               data-slot="widget-active-connections-row"
               key={connection.host}
             >
-              <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+              <div className="bg-surface-container-high text-on-surface-variant rounded-medium flex size-8 shrink-0 items-center justify-center">
                 <PublicRounded className="size-5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
@@ -167,7 +167,7 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive() {
         <WidgetControls>
           {details && connectorState === 'connected' && (
             <span
-              className="bg-surface-variant/30 text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
+              className="bg-surface-container-high text-on-surface-variant rounded-full px-2 py-0.5 text-[length:var(--w-text-meta)] tabular-nums"
               data-slot="widget-active-connections-count"
             >
               {totalCount}
@@ -267,11 +267,11 @@ const ActiveConnectionsLive = memo(function ActiveConnectionsLive() {
                       duration: reducedMotion ? 0 : 0.22,
                       ease: 'easeOut',
                     }}
-                    className="bg-surface-variant/30 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
+                    className="bg-surface-container-high flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-3 text-[length:var(--w-text-meta)]"
                     data-slot="widget-active-connections-row"
                     key={connection.id}
                   >
-                    <div className="bg-surface-variant/40 text-on-surface-variant flex size-8 shrink-0 items-center justify-center rounded-xl">
+                    <div className="bg-surface-container-high text-on-surface-variant rounded-medium flex size-8 shrink-0 items-center justify-center">
                       <PublicRounded className="size-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">

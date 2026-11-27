@@ -27,6 +27,9 @@
       "path": "./frontend/ui",
     },
     {
+      "path": "./frontend/gallery",
+    },
+    {
       "path": "./frontend/nyanpasu",
     },
   ],

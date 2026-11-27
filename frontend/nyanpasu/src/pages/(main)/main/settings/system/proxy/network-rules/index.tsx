@@ -1,18 +1,14 @@
-import { AnimatePresence } from 'motion/react'
 import { EmptyState } from '@nyanpasu/ui/empty-state'
+import { ItemGroup } from '@nyanpasu/ui/item-group'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { PlatformDesktop } from '@nyanpasu/platform/react'
-import { useNetworkAutomation } from '@nyanpasu/query'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
-  SettingsCardAnimatedItem,
   SettingsCardContent,
-  SettingsGroup,
 } from '../../../../_modules/settings-card'
 import NetworkAutomationStatus from './_modules/network-automation-status'
-import NetworkAutomationSwitch from './_modules/network-automation-switch'
 import NetworkDefaultActions from './_modules/network-default-actions'
 import NetworkRuleList from './_modules/network-rule-list'
 
@@ -26,40 +22,22 @@ export const Route = createFileRoute(
 })
 
 function NetworkRules() {
-  const { policy } = useNetworkAutomation()
-
   return (
-    <SettingsGroup>
+    <ItemGroup>
       <SettingsCard>
         <SettingsCardContent>
-          <NetworkAutomationSwitch />
+          <NetworkAutomationStatus />
         </SettingsCardContent>
       </SettingsCard>
 
-      <AnimatePresence initial={false}>
-        {policy?.enabled && (
-          <SettingsCard key="status" asChild>
-            <SettingsCardAnimatedItem>
-              <SettingsCardContent>
-                <NetworkAutomationStatus />
-              </SettingsCardContent>
-            </SettingsCardAnimatedItem>
-          </SettingsCard>
-        )}
+      <NetworkRuleList />
 
-        {policy?.enabled && <NetworkRuleList key="rules" />}
-
-        {policy?.enabled && (
-          <SettingsCard key="default-actions" asChild>
-            <SettingsCardAnimatedItem>
-              <SettingsCardContent>
-                <NetworkDefaultActions />
-              </SettingsCardContent>
-            </SettingsCardAnimatedItem>
-          </SettingsCard>
-        )}
-      </AnimatePresence>
-    </SettingsGroup>
+      <SettingsCard>
+        <SettingsCardContent>
+          <NetworkDefaultActions />
+        </SettingsCardContent>
+      </SettingsCard>
+    </ItemGroup>
   )
 }
 

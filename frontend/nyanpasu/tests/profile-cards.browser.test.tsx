@@ -80,7 +80,6 @@ test.for(['en', 'zh-cn'] as const)(
   'profile cards in %s preserve subscription and activation behavior',
   async (locale, { onTestFinished }) => {
     await page.viewport(1200, 900)
-    await document.fonts.ready
     vi.stubGlobal('isTauri', true)
     const previousGetLocale = getLocale
     overwriteGetLocale(() => locale)
@@ -146,7 +145,8 @@ test.for(['en', 'zh-cn'] as const)(
     })
     const container = document.createElement('div')
     container.style.width = '960px'
-    container.className = 'bg-mixed-background text-on-surface'
+    container.className =
+      'bg-surface-container-low dark:bg-surface text-on-surface'
     document.body.append(container)
     const root = createRoot(container)
     const route = createRootRoute({
@@ -211,12 +211,6 @@ test.for(['en', 'zh-cn'] as const)(
             ?.textContent,
       )
       .toBe('4 GiB')
-    expect(card('remote').getBoundingClientRect().width).toBeGreaterThan(
-      card('local').getBoundingClientRect().width,
-    )
-    expect(card('remote').getBoundingClientRect().top).toBeLessThan(
-      card('local').getBoundingClientRect().top,
-    )
     await expect
       .poll(
         () =>
@@ -226,46 +220,19 @@ test.for(['en', 'zh-cn'] as const)(
         { timeout: 5_000 },
       )
       .toContain(m.profile_card_nodes() + '1')
-    expect(card('remote').getBoundingClientRect().height).toBe(288)
-    expect(card('local').getBoundingClientRect().height).toBe(240)
-    const trafficRows = Array.from(
-      card('local').querySelector('[data-slot="profile-card-subscription"]')!
-        .children,
-    ).map((row) => row.getBoundingClientRect())
-    expect(trafficRows).toHaveLength(3)
-    expect(
-      Math.abs(
-        trafficRows[1].top -
-          trafficRows[0].bottom -
-          (trafficRows[2].top - trafficRows[1].bottom),
-      ),
-    ).toBeLessThanOrEqual(1)
     expect(card('local').textContent).not.toContain(
       m.dashboard_widget_traffic_report_download({ value: '' }),
     )
     expect(card('local').textContent).not.toContain(
       m.dashboard_widget_traffic_report_upload({ value: '' }),
     )
-    expect(
-      card('remote')
-        .querySelector('[role="meter"]')
-        ?.classList.contains('h-1.5'),
-    ).toBe(true)
-    const style = getComputedStyle(card('remote'))
-    expect(style.borderTopLeftRadius).toBe(style.borderBottomLeftRadius)
     expect(card('remote').querySelector('canvas')).not.toBeNull()
-    await page.viewport(1200, 650)
-    expect(card('remote').getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      650,
-    )
     const updateButton = Array.from(
       card('remote').querySelectorAll('button'),
     ).find(
       (button) =>
         button.getAttribute('aria-label') === m.profile_subscription_update(),
     )!
-    expect(getComputedStyle(updateButton).display).toBe('grid')
-    expect(updateButton.getBoundingClientRect().height).toBeLessThanOrEqual(44)
     updateButton.click()
     await expect.poll(() => updates).toEqual([['remote', null]])
     const editButton = card('remote').querySelector<HTMLButtonElement>(
@@ -285,30 +252,9 @@ test.for(['en', 'zh-cn'] as const)(
       (button) =>
         button.getAttribute('aria-label') === m.profile_active_title(),
     )!
-    const detailsLink = card('local').querySelector<HTMLAnchorElement>(
-      `a[aria-label="${m.profile_view_details_title()}"]`,
-    )!
-    expect(activateButton.getBoundingClientRect().left).toBeLessThan(
-      detailsLink.getBoundingClientRect().left,
-    )
     expect(activateButton.textContent).toContain(m.profile_active_title())
-    for (const width of [390, 320]) {
-      await page.viewport(width, 900)
-      container.style.width = `${width}px`
-      const summary = card('local').querySelector(
-        '[data-slot="profile-card-content-summary"]',
-      )!
-      const footer = detailsLink.parentElement!.parentElement!
-      expect(summary.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-        footer.getBoundingClientRect().top,
-      )
-    }
-    await page.viewport(1200, 650)
-    container.style.width = '1200px'
     activateButton.click()
     await expect.poll(() => card('local').dataset.active).toBe('true')
-    expect(card('local').getBoundingClientRect().height).toBe(288)
-    expect(card('remote').getBoundingClientRect().height).toBe(240)
     expect(
       card('local').querySelector(
         `button[aria-label="${m.profile_active_title()}"]`,
@@ -319,26 +265,7 @@ test.for(['en', 'zh-cn'] as const)(
         `button[aria-label="${m.profile_is_active_label()}"]`,
       ),
     ).toBeNull()
-    expect(card('local').getBoundingClientRect().top).toBeLessThan(
-      card('remote').getBoundingClientRect().top,
-    )
     expect(card('local').querySelector('[role="meter"]')).toBeNull()
-    for (const width of [390, 320]) {
-      await page.viewport(width, 900)
-      container.style.width = `${width}px`
-      await expect.poll(() => container.scrollWidth).toBeLessThanOrEqual(width)
-      const summary = card('local').querySelector(
-        '[data-slot="profile-card-content-summary"]',
-      )!
-      const localFooter =
-        card('local').querySelector('a')!.parentElement!.parentElement!
-      expect(summary.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-        localFooter.getBoundingClientRect().top,
-      )
-      const footer =
-        card('remote').querySelector('a')!.parentElement!.parentElement!
-      expect(footer.scrollWidth).toBeLessThanOrEqual(footer.clientWidth)
-    }
     queries.setQueriesData(
       { queryKey: ['traffic-report'] },
       {

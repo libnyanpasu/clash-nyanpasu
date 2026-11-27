@@ -26,18 +26,18 @@ export const segmentedButtonVariants = cva(
       variant: {
         filled: [
           'rounded-full overflow-hidden',
-          'border border-outline dark:border-outline-variant',
-          'divide-x divide-outline dark:divide-outline-variant',
-          'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
+          'border border-outline-variant',
+          'divide-x divide-outline-variant',
+          'bg-surface-container',
           'transition-opacity',
         ],
         tabs: [
           'rounded-full',
-          'bg-surface-variant/40 dark:bg-surface-variant/15',
+          'bg-surface-container-high',
           'transition-opacity',
         ],
         glass: [
-          'h-9 w-auto shrink-0 rounded-full bg-transparent dark:bg-transparent',
+          'h-9 w-auto shrink-0 rounded-full bg-transparent',
           'transition-opacity',
           '*:data-[slot=segmented-button-slider-pill]:rounded-full',
           '**:data-[slot=segmented-button-item-state-layer]:rounded-full',
@@ -68,10 +68,11 @@ export type SegmentedButtonVariantsProps = VariantProps<
 export const segmentedButtonItemVariants = cva(
   [
     'group relative overflow-hidden',
-    'flex min-w-0 flex-1 items-center justify-center',
+    'flex min-w-0 flex-1 items-center justify-center whitespace-nowrap',
     'cursor-pointer select-none',
     'font-medium outline-hidden',
     'transition-[color,filter]',
+    '[&_svg]:shrink-0',
     'data-disabled:cursor-not-allowed data-disabled:text-on-surface/40',
   ],
   {
@@ -79,24 +80,24 @@ export const segmentedButtonItemVariants = cva(
       variant: {
         filled: [
           'px-3',
-          'text-on-surface dark:text-on-surface',
+          'text-on-surface',
           'transition-[background-color,color,filter]',
-          'hover:bg-on-surface/8 dark:hover:bg-on-surface/12',
+          'hover:bg-on-surface/8',
           'focus-visible:bg-on-surface/10',
           'data-disabled:hover:bg-transparent',
-          'data-[state=on]:bg-secondary-container dark:data-[state=on]:bg-secondary-container',
-          'data-[state=on]:text-on-secondary-container dark:data-[state=on]:text-on-secondary-container',
+          'data-[state=on]:bg-secondary-container',
+          'data-[state=on]:text-on-secondary-container',
           'data-[state=on]:hover:brightness-95 dark:data-[state=on]:hover:brightness-105',
         ],
         tabs: [
           'rounded-full px-4',
-          'text-on-surface-variant dark:text-on-surface-variant',
-          'data-[state=on]:text-on-secondary-container dark:data-[state=on]:text-on-secondary-container',
+          'text-on-surface-variant',
+          'data-[state=on]:text-on-secondary-container',
         ],
         glass: [
           'rounded-full px-4 flex-none whitespace-nowrap',
-          'text-on-surface-variant dark:text-on-surface-variant',
-          'data-[state=on]:text-on-secondary-container dark:data-[state=on]:text-on-secondary-container',
+          'text-on-surface-variant',
+          'data-[state=on]:text-on-secondary-container',
         ],
       },
     },
@@ -286,7 +287,7 @@ export const SegmentedButton = ({
             data-slot="segmented-button-slider-pill"
             className={cn(
               'pointer-events-none absolute top-0 bottom-0 left-0',
-              'bg-secondary-container dark:bg-secondary-container rounded-full',
+              'bg-secondary-container rounded-full',
             )}
             initial={false}
             animate={{ x: pillRect!.x, width: pillRect!.width }}
@@ -365,9 +366,9 @@ export const SegmentedButtonItem = ({
           className={cn(
             'absolute inset-0 rounded-full',
             'opacity-0 transition-opacity duration-150',
-            'bg-on-surface dark:bg-on-surface',
-            'group-hover:opacity-[0.08] dark:group-hover:opacity-[0.12]',
-            'group-focus-visible:opacity-[0.1]',
+            'bg-on-surface',
+            'group-hover:opacity-[0.08]',
+            'group-focus-visible:opacity-[0.10]',
             'group-data-disabled:group-hover:opacity-0',
           )}
         />
@@ -376,7 +377,7 @@ export const SegmentedButtonItem = ({
       <span
         data-slot="segmented-button-item-content"
         className={cn(
-          'relative z-10 flex max-w-full min-w-0 items-center justify-center gap-2',
+          'relative z-10 flex max-w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap',
         )}
       >
         {showCheck && (
@@ -393,7 +394,11 @@ export const SegmentedButtonItem = ({
           />
         )}
 
-        <span className="truncate">{children}</span>
+        {typeof children === 'string' || typeof children === 'number' ? (
+          <span className="truncate">{children}</span>
+        ) : (
+          children
+        )}
       </span>
 
       <Suspense>

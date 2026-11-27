@@ -48,7 +48,7 @@ const stepOf = (share: number) =>
 
 /** A step's shade as a solid colour: the primary over the land, as on the map. */
 const swatch = (step: number) =>
-  `color-mix(in srgb, var(--color-primary) ${STEP_OPACITY[step] * 100}%, var(--color-surface-variant))`
+  `color-mix(in srgb, var(--color-primary) ${STEP_OPACITY[step] * 100}%, var(--color-surface-container-high))`
 
 const OCEAN =
   'color-mix(in srgb, var(--color-secondary-container) 45%, var(--color-surface))'
@@ -196,7 +196,10 @@ const BaseMap = memo(function BaseMap({ land }: { land: boolean }) {
           />
 
           {/* Borders take the surface colour: a gap that reads in both themes. */}
-          <g className="fill-surface-variant stroke-surface" strokeWidth="0.6">
+          <g
+            className="fill-surface-container-high stroke-surface"
+            strokeWidth="0.6"
+          >
             <path d={worldMap.unassigned} />
             {Object.entries(shapes).map(([code, d]) => (
               <path key={code} d={d} />
@@ -445,7 +448,7 @@ export default function GeographyView({
             aria-pressed={measuredOnly}
             onClick={onMeasuredOnlyChange}
             className={cn(
-              'flex h-8 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm outline-none',
+              'rounded-small flex h-8 cursor-pointer items-center gap-2 border px-3 text-sm outline-none',
               'focus-visible:ring-primary transition-colors focus-visible:ring-2',
               measuredOnly
                 ? 'bg-secondary-container text-on-secondary-container border-transparent'
@@ -462,7 +465,7 @@ export default function GeographyView({
       <div className="grid gap-4 @5xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div
           ref={map}
-          className="relative overflow-hidden rounded-2xl"
+          className="rounded-large relative overflow-hidden"
           data-slot="traffic-geography-map"
         >
           <svg
@@ -621,7 +624,7 @@ export default function GeographyView({
                           <motion.circle
                             cx={x}
                             cy={y}
-                            className="fill-surface-variant"
+                            className="fill-surface-container-high"
                             initial={false}
                             animate={{ r }}
                             transition={transition}
@@ -750,7 +753,7 @@ export default function GeographyView({
           )}
 
           {hint && (
-            <p className="bg-surface/90 text-on-surface-variant absolute inset-x-4 bottom-4 rounded-2xl p-3 text-center text-sm">
+            <p className="bg-surface/90 text-on-surface-variant rounded-large absolute inset-x-4 bottom-4 p-3 text-center text-sm">
               {hint}
             </p>
           )}
@@ -800,7 +803,7 @@ export default function GeographyView({
                           onPointerEnter={() => setHovered(region.code)}
                           onPointerLeave={() => setHovered(null)}
                           className={cn(
-                            'flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-xl px-4 py-2 text-left outline-none',
+                            'rounded-medium flex w-full min-w-0 cursor-pointer flex-col gap-1 px-4 py-2 text-left outline-none',
                             'focus-visible:ring-primary transition-colors focus-visible:ring-2',
                             'hover:bg-on-surface/8',
                             active && 'bg-secondary-container',
@@ -835,7 +838,7 @@ export default function GeographyView({
                             </span>
 
                             {geographic && !region.measured && (
-                              <span className="bg-surface-variant text-on-surface-variant shrink-0 rounded-md px-1.5 text-[10px] leading-4">
+                              <span className="bg-surface-container-highest text-on-surface-variant rounded-small shrink-0 px-1.5 text-[10px] leading-4">
                                 {m.topology_geo_basis_resolved()}
                               </span>
                             )}
@@ -849,7 +852,7 @@ export default function GeographyView({
                             </span>
                           </span>
 
-                          <span className="bg-surface-variant block h-1 overflow-hidden rounded-full">
+                          <span className="bg-surface-container-highest block h-1 overflow-hidden rounded-full">
                             <motion.span
                               className={cn(
                                 'block h-full rounded-full',
@@ -875,7 +878,11 @@ export default function GeographyView({
         <ShareLegend percent={percent} />
 
         <span className="flex items-center gap-2">
-          <svg className="size-4 rounded-sm" viewBox="0 0 16 16" aria-hidden>
+          <svg
+            className="rounded-extra-small size-4"
+            viewBox="0 0 16 16"
+            aria-hidden
+          >
             <rect width="16" height="16" style={{ fill: swatch(2) }} />
             <rect width="16" height="16" fill="url(#traffic-geography-hatch)" />
           </svg>

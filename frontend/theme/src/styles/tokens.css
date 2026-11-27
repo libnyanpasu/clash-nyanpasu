@@ -1,0 +1,234 @@
+/* stylelint-disable value-keyword-case */
+/* stylelint-disable at-rule-no-unknown */
+/* stylelint-disable custom-property-pattern */
+/* stylelint-disable import-notation */
+
+/*
+ * Shared Clash Nyanpasu M3E / Android 17 Tailwind v4 design tokens.
+ * Import after `@import 'tailwindcss';` in any consumer app.
+ */
+
+/* do not use layer */
+:where(code, kbd, pre, samp) {
+  font-family: var(--font-mono);
+  font-feature-settings:
+    'liga' 0,
+    'calt' 0;
+}
+
+/*
+ * Inter only covers Latin, Greek and Cyrillic; other scripts fall through to
+ * the platform fonts. Han glyphs differ by region, so CJK locales put their
+ * regional fonts first, keyed on the `lang` attribute that follows the app
+ * language. `:where()` keeps a plain `:root` specificity so custom CSS can
+ * still override `--font-sans`.
+ */
+:root {
+  --font-sans-fallback:
+    system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Color Emoji Flags',
+    'Color Emoji';
+}
+
+:root:where(:lang(zh-cn)) {
+  --font-sans:
+    'Inter Variable', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI',
+    'Microsoft YaHei', 'Noto Sans CJK SC', var(--font-sans-fallback);
+}
+
+:root:where(:lang(zh-tw)) {
+  --font-sans:
+    'Inter Variable', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei UI',
+    'Microsoft JhengHei', 'Noto Sans CJK TC', var(--font-sans-fallback);
+}
+
+:root:where(:lang(ja)) {
+  --font-sans:
+    'Inter Variable', 'Hiragino Sans', 'Noto Sans JP',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', 'Noto Sans CJK JP',
+    var(--font-sans-fallback);
+}
+
+:root:where(:lang(ko)) {
+  --font-sans:
+    'Inter Variable', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic',
+    'Noto Sans CJK KR', var(--font-sans-fallback);
+}
+
+@theme {
+  --font-sans: 'Inter Variable', var(--font-sans-fallback);
+  --font-mono:
+    'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', 'Sarasa Mono SC', monospace,
+    'Color Emoji Flags', 'Color Emoji';
+  --custom-text-shadow:
+    0px 0px 1px rgb(0 0 0 / 20%), 0px 0px 1px rgb(1 0 5 / 10%);
+  --custom-text-shadow-sm: 1px 1px 3px rgb(36 37 47 / 25%);
+  --custom-text-shadow-md:
+    0px 1px 2px rgb(30 29 39 / 19%), 1px 2px 4px rgb(54 64 147 / 18%);
+  --custom-text-shadow-lg:
+    3px 3px 6px rgb(0 0 0 / 26%), 0 0 5px rgb(15 3 86 / 22%);
+  --custom-text-shadow-xl:
+    1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
+  --custom-text-shadow-none: none;
+
+  /* Material Design 3 Expressive 10-Step Shape Scale (drops legacy Tailwind xs..4xl) */
+  --radius-*: initial;
+  --radius-extra-small: 0.25rem; /* 4px */
+  --radius-small: 0.5rem; /* 8px */
+  --radius-medium: 0.75rem; /* 12px */
+  --radius-large: 1rem; /* 16px */
+  --radius-large-increased: 1.25rem; /* 20px */
+  --radius-extra-large: 1.75rem; /* 28px */
+  --radius-extra-large-increased: 2rem; /* 32px */
+  --radius-extra-extra-large: 3rem; /* 48px */
+
+  /* M3E Shape Shorthand Aliases */
+  --radius-xs: var(--radius-extra-small);
+  --radius-sm: var(--radius-small);
+  --radius-md: var(--radius-medium);
+  --radius-lg: var(--radius-large);
+  --radius-lg-inc: var(--radius-large-increased);
+  --radius-xl: var(--radius-extra-large);
+  --radius-xl-inc: var(--radius-extra-large-increased);
+  --radius-exl: var(--radius-extra-extra-large);
+
+  /* Material Design 3 Expressive Color System */
+  --color-primary: var(--color-md-primary);
+  --color-on-primary: var(--color-md-on-primary);
+  --color-primary-container: var(--color-md-primary-container);
+  --color-on-primary-container: var(--color-md-on-primary-container);
+  --color-primary-fixed: var(--color-md-primary-fixed);
+  --color-primary-fixed-dim: var(--color-md-primary-fixed-dim);
+  --color-on-primary-fixed: var(--color-md-on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--color-md-on-primary-fixed-variant);
+  --color-secondary: var(--color-md-secondary);
+  --color-on-secondary: var(--color-md-on-secondary);
+  --color-secondary-container: var(--color-md-secondary-container);
+  --color-on-secondary-container: var(--color-md-on-secondary-container);
+  --color-secondary-fixed: var(--color-md-secondary-fixed);
+  --color-secondary-fixed-dim: var(--color-md-secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--color-md-on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(
+    --color-md-on-secondary-fixed-variant
+  );
+  --color-tertiary: var(--color-md-tertiary);
+  --color-on-tertiary: var(--color-md-on-tertiary);
+  --color-tertiary-container: var(--color-md-tertiary-container);
+  --color-on-tertiary-container: var(--color-md-on-tertiary-container);
+  --color-tertiary-fixed: var(--color-md-tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--color-md-tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--color-md-on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--color-md-on-tertiary-fixed-variant);
+  --color-error: var(--color-md-error);
+  --color-on-error: var(--color-md-on-error);
+  --color-error-container: var(--color-md-error-container);
+  --color-on-error-container: var(--color-md-on-error-container);
+  --color-background: var(--color-md-background);
+  --color-on-background: var(--color-md-on-background);
+  --color-surface: var(--color-md-surface);
+  --color-on-surface: var(--color-md-on-surface);
+  --color-surface-dim: var(--color-md-surface-dim);
+  --color-surface-bright: var(--color-md-surface-bright);
+  --color-surface-container-lowest: var(--color-md-surface-container-lowest);
+  --color-surface-container-low: var(--color-md-surface-container-low);
+  --color-surface-container: var(--color-md-surface-container);
+  --color-surface-container-high: var(--color-md-surface-container-high);
+  --color-surface-container-highest: var(--color-md-surface-container-highest);
+  --color-surface-variant: var(--color-md-surface-variant);
+  --color-on-surface-variant: var(--color-md-on-surface-variant);
+  --color-surface-tint: var(--color-md-surface-tint);
+  --color-outline: var(--color-md-outline);
+  --color-outline-variant: var(--color-md-outline-variant);
+  --color-shadow: var(--color-md-shadow);
+  --color-scrim: var(--color-md-scrim);
+  --color-inverse-surface: var(--color-md-inverse-surface);
+  --color-inverse-on-surface: var(--color-md-inverse-on-surface);
+  --color-inverse-primary: var(--color-md-inverse-primary);
+
+  /* Fixed hues for per-item colors (see @nyanpasu/theme) */
+  --color-red-container: var(--color-md-red-container);
+  --color-on-red-container: var(--color-md-on-red-container);
+  --color-orange-container: var(--color-md-orange-container);
+  --color-on-orange-container: var(--color-md-on-orange-container);
+  --color-yellow-container: var(--color-md-yellow-container);
+  --color-on-yellow-container: var(--color-md-on-yellow-container);
+  --color-green-container: var(--color-md-green-container);
+  --color-on-green-container: var(--color-md-on-green-container);
+  --color-cyan-container: var(--color-md-cyan-container);
+  --color-on-cyan-container: var(--color-md-on-cyan-container);
+  --color-blue-container: var(--color-md-blue-container);
+  --color-on-blue-container: var(--color-md-on-blue-container);
+  --color-purple-container: var(--color-md-purple-container);
+  --color-on-purple-container: var(--color-md-on-purple-container);
+  --color-pink-container: var(--color-md-pink-container);
+  --color-on-pink-container: var(--color-md-on-pink-container);
+}
+
+/* Status palette colors that stay fixed across the tonal surface ladder. */
+@theme {
+  --color-tc: #74777f;
+  --color-ok: #1b6d3b;
+  --color-warn: #8a5100;
+}
+
+.dark {
+  --color-tc: #8e9099;
+  --color-ok: #7bdc95;
+  --color-warn: #ffb870;
+}
+
+@utility text-shadow-* {
+  /* prettier-ignore */
+  text-shadow: --value(--custom-text-shadow-*);
+}
+
+@layer base {
+  [class*='rounded'] {
+    corner-shape: superellipse(1.25);
+  }
+}
+
+@utility rounded-full {
+  corner-shape: round;
+}
+
+@utility rounded-none {
+  corner-shape: round;
+}
+
+@utility rounded-t-full {
+  corner-top-left-shape: round;
+  corner-top-right-shape: round;
+}
+
+@utility rounded-r-full {
+  corner-top-right-shape: round;
+  corner-bottom-right-shape: round;
+}
+
+@utility rounded-b-full {
+  corner-bottom-right-shape: round;
+  corner-bottom-left-shape: round;
+}
+
+@utility rounded-l-full {
+  corner-top-left-shape: round;
+  corner-bottom-left-shape: round;
+}
+
+@utility rounded-tl-full {
+  corner-top-left-shape: round;
+}
+
+@utility rounded-tr-full {
+  corner-top-right-shape: round;
+}
+
+@utility rounded-br-full {
+  corner-bottom-right-shape: round;
+}
+
+@utility rounded-bl-full {
+  corner-bottom-left-shape: round;
+}

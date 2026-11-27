@@ -217,7 +217,7 @@ function RouteComponent() {
             </div>
 
             {readOnly && (
-              <Chip className="bg-surface/60 dark:bg-primary-container">
+              <Chip className="bg-secondary-container text-on-secondary-container">
                 {m.editor_read_only_chip()}
               </Chip>
             )}

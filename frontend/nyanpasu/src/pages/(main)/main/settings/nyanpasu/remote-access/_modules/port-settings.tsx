@@ -1,16 +1,9 @@
 import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { FormDialogContent, FormDialogError } from '@nyanpasu/ui/dialog'
 import { NumericInput } from '@nyanpasu/ui/input'
-import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-  useModal,
-} from '@nyanpasu/ui/modal'
+import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import {
@@ -33,6 +26,7 @@ function PortDialog({
   onApply: (port: number | null) => Promise<unknown>
 }) {
   const { setOpen } = useModal()
+  const errorId = useId()
   const [draft, setDraft] = useState<number | null>(port)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -51,67 +45,42 @@ function PortDialog({
   }
 
   return (
-    <ModalContent
-      dismissible={!saving}
-      onOpenAutoFocus={() => {
+    <FormDialogContent
+      title={m.settings_remote_access_port_title()}
+      submitLabel={m.common_apply()}
+      cancelLabel={m.common_close()}
+      submitting={saving}
+      onOpen={() => {
         setDraft(port)
         setError(null)
       }}
+      onSubmit={apply}
     >
-      <Card
-        className="flex min-w-96 flex-col"
+      <div
+        className="flex flex-col gap-4"
         data-slot="remote-access-port-dialog"
       >
-        <CardHeader>
-          <ModalTitle>{m.settings_remote_access_port_title()}</ModalTitle>
-        </CardHeader>
+        <NumericInput
+          variant="outlined"
+          label={m.settings_remote_access_port_title()}
+          aria-label={m.settings_remote_access_port_title()}
+          value={draft}
+          onChange={setDraft}
+          min={1}
+          max={PORT_MAX}
+          allowNegative={false}
+          decimalScale={0}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+        />
 
-        <CardContent asChild>
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              apply()
-            }}
-          >
-            <NumericInput
-              variant="outlined"
-              label={m.settings_remote_access_port_title()}
-              aria-label={m.settings_remote_access_port_title()}
-              value={draft}
-              onChange={setDraft}
-              min={1}
-              max={PORT_MAX}
-              allowNegative={false}
-              decimalScale={0}
-            />
+        <p className="text-on-surface-variant text-sm">
+          {m.settings_remote_access_port_description()}
+        </p>
 
-            <p className="text-on-surface-variant px-4 text-sm">
-              {m.settings_remote_access_port_description()}
-            </p>
-
-            {error && (
-              <p role="alert" className="text-error px-4 text-sm">
-                {error}
-              </p>
-            )}
-          </form>
-        </CardContent>
-
-        <CardFooter className="gap-2">
-          <Button
-            variant="flat"
-            loading={saving}
-            disabled={saving}
-            onClick={apply}
-          >
-            {m.common_apply()}
-          </Button>
-
-          <ModalClose disabled={saving}>{m.common_close()}</ModalClose>
-        </CardFooter>
-      </Card>
-    </ModalContent>
+        <FormDialogError id={errorId} message={error} />
+      </div>
+    </FormDialogContent>
   )
 }
 

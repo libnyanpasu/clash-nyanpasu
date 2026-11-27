@@ -27,7 +27,7 @@ const LEGEND: readonly StepStatus[] = [
 
 const nodeVariants = cva(
   [
-    'group/node absolute flex items-center gap-2.5 rounded-xl px-3 text-left',
+    'group/node absolute flex items-center gap-2.5 rounded-medium px-3 text-left',
     'transition-opacity outline-none',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
     'before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit]',
@@ -38,7 +38,7 @@ const nodeVariants = cva(
       state: {
         selected: 'bg-primary text-on-primary',
         trace: 'bg-primary-container text-on-primary-container',
-        idle: 'bg-surface-variant text-on-surface',
+        idle: 'bg-surface-container-high text-on-surface',
       },
       dimmed: { true: 'opacity-40', false: '' },
     },
@@ -130,7 +130,7 @@ export default function StepGraph({
     <div
       data-slot="inspect-step-graph"
       className={cn(
-        'bg-pane relative flex min-h-0 min-w-0 flex-col',
+        'bg-surface-container-low relative flex min-h-0 min-w-0 flex-col',
         className,
       )}
     >
@@ -159,7 +159,7 @@ export default function StepGraph({
               <div
                 key={band.stage}
                 data-stage={band.stage}
-                className="bg-surface absolute rounded-3xl"
+                className="bg-surface rounded-extra-large absolute"
                 style={{
                   left: band.x,
                   top: band.y,

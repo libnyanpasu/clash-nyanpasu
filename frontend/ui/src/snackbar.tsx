@@ -61,7 +61,7 @@ export function Snackbar({
             data-slot="snackbar"
             className={cn(
               'pointer-events-auto flex min-h-12 w-full items-center gap-3 sm:w-auto sm:min-w-86',
-              'max-w-2xl rounded px-4 py-3.5 shadow-lg',
+              'rounded-extra-small max-w-2xl px-4 py-3.5 shadow-lg',
               'bg-inverse-surface text-inverse-on-surface text-sm',
               className,
             )}

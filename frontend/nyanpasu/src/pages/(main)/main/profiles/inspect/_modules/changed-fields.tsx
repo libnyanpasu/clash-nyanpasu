@@ -6,8 +6,8 @@ import { cn } from '@nyanpasu/utils'
 const COLLAPSED_COUNT = 8
 
 const fieldClassName = cn(
-  'bg-surface-variant text-on-surface-variant dark:bg-surface-variant',
-  'inline-flex h-[26px] items-center rounded-lg px-[9px] font-mono text-[11.5px]',
+  'bg-surface-container-high text-on-surface-variant',
+  'inline-flex h-[26px] items-center rounded-small px-[9px] font-mono text-[11.5px]',
 )
 
 export default function ChangedFields({

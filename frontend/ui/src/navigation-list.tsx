@@ -19,27 +19,27 @@ const navigationListGroupVariants = cva('flex flex-col')
 const navigationListGroupItemsVariants = cva([
   'flex flex-col gap-0.5',
   // Only the ends of a group get the large radius, like `SettingsGroup`.
-  '[&>*:first-child:not(:only-child)]:rounded-b-sm',
-  '[&>*:last-child:not(:only-child)]:rounded-t-sm',
-  '[&>*:not(:first-child):not(:last-child)]:rounded-sm',
+  '[&>*:first-child:not(:only-child)]:rounded-b-extra-small',
+  '[&>*:last-child:not(:only-child)]:rounded-t-extra-small',
+  '[&>*:not(:first-child):not(:last-child)]:rounded-extra-small',
 ])
 
 const navigationListItemVariants = cva([
   'group/navigation-list-item',
-  'h-auto min-h-16 w-full justify-start rounded-3xl px-4 py-2.5',
+  'h-auto min-h-16 w-full justify-start rounded-extra-large px-4 py-2.5',
   'flex items-center gap-3 text-left',
-  'bg-surface text-on-surface dark:bg-surface dark:text-on-surface',
+  'bg-surface-container-lowest dark:bg-surface-container text-on-surface',
   // A state layer over the item's own fill instead of the button's hover fill.
-  'data-[active=false]:hover:bg-surface',
+  'data-[active=false]:hover:bg-surface-container-lowest dark:data-[active=false]:hover:bg-surface-container',
   'hover:shadow-[inset_0_0_0_100px] hover:shadow-on-surface/8',
   'focus-visible:ring-primary focus-visible:ring-2 focus-visible:ring-inset',
   'transition-[border-radius,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.2,0,0,1)]',
   'motion-reduce:transition-none',
   // The selected item rounds every corner, wherever it sits in its group.
   'data-[active=true]:bg-secondary-container data-[active=true]:hover:bg-secondary-container',
-  'data-[active=true]:text-on-secondary-container data-[active=true]:rounded-3xl!',
+  'data-[active=true]:text-on-secondary-container data-[active=true]:rounded-extra-large!',
   // The app owns drag and drop; it sets these attributes on the item.
-  'data-[dragging=true]:z-10 data-[dragging=true]:rounded-3xl! data-[dragging=true]:shadow-lg',
+  'data-[dragging=true]:z-10 data-[dragging=true]:rounded-extra-large! data-[dragging=true]:shadow-lg',
   'data-[drop-target=true]:shadow-[inset_0_0_0_100px] data-[drop-target=true]:shadow-on-surface/8',
   'data-[drop-target=true]:ring-primary data-[drop-target=true]:ring-2 data-[drop-target=true]:ring-inset',
 ])
@@ -62,7 +62,7 @@ const navigationListItemIconVariants = cva(
         blue: 'bg-blue-container text-on-blue-container',
         purple: 'bg-purple-container text-on-purple-container',
         pink: 'bg-pink-container text-on-pink-container',
-        neutral: 'bg-surface-variant text-on-surface-variant',
+        neutral: 'bg-surface-container-highest text-on-surface-variant',
       },
     },
   },

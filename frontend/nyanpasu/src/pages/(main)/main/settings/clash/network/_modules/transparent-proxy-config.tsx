@@ -349,7 +349,7 @@ export default function TransparentProxyConfigSettings() {
                 )}
               </div>
 
-              <div className="bg-surface-variant/40 text-on-surface-variant flex items-center gap-2 rounded-full px-4 py-2 text-sm">
+              <div className="bg-surface-container-high text-on-surface-variant flex items-center gap-2 rounded-full px-4 py-2 text-sm">
                 <span>{m.settings_clash_transparent_proxy_desired_mode()}</span>
                 <span className="text-on-surface font-medium">
                   {modeLabels[config.mode]}

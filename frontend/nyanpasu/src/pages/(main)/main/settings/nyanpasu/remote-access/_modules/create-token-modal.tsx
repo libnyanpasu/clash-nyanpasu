@@ -147,7 +147,7 @@ function CreateTokenDialog() {
               </p>
 
               <code
-                className="bg-surface-variant/50 rounded-xl p-3 text-sm break-all select-text"
+                className="bg-surface-container-high rounded-medium p-3 text-sm break-all select-text"
                 data-slot="remote-access-created-token"
               >
                 {created.token}

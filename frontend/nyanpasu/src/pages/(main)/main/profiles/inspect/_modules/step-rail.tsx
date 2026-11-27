@@ -70,7 +70,7 @@ export default function StepRail({
       data-slot="inspect-step-rail"
       aria-label={m.inspect_steps()}
       className={cn(
-        'bg-pane flex min-h-0 min-w-0 flex-col',
+        'bg-surface-container-low flex min-h-0 min-w-0 flex-col',
         'shadow-[inset_-1px_0_0_var(--color-outline-variant)]',
         className,
       )}
@@ -87,7 +87,7 @@ export default function StepRail({
         >
           <p
             data-slot="inspect-rail-hint"
-            className="bg-surface text-on-surface-variant rounded-2xl px-3.5 py-3 text-[12.5px] leading-[18px]"
+            className="bg-surface text-on-surface-variant rounded-large px-3.5 py-3 text-[12.5px] leading-[18px]"
           >
             {m.inspect_rail_hint()}
           </p>

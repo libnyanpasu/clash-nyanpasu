@@ -18,22 +18,21 @@ import { Sidebar, useSidebar } from './slider-sidebar'
 export const NAVIGATION_SIDEBAR_WIDTH = { open: 200, closed: 88 } as const
 
 export const navigationSidebarVariants = cva(
-  'bg-surface z-10 flex min-h-0 shrink-0 flex-col max-md:inset-y-0 max-md:left-0 md:relative',
+  'bg-surface-container dark:bg-surface-container-low z-10 flex min-h-0 shrink-0 flex-col max-md:inset-y-0 max-md:left-0 md:relative',
 )
 
 export const navigationSidebarItemVariants = cva(
-  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-2xl p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary dark:text-on-surface-variant',
+  'group relative flex w-full min-w-0 shrink-0 overflow-hidden rounded-large p-0 text-on-surface-variant shadow-none transition-[height,background-color] duration-300 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
   {
     variants: {
       open: {
         true: [
           'h-11',
           'data-[active=true]:bg-secondary-container data-[active=true]:text-on-secondary-container',
-          'dark:data-[active=true]:bg-secondary-container dark:data-[active=true]:text-on-secondary-container',
-          'data-[active=false]:bg-transparent data-[active=false]:hover:bg-on-surface/8 dark:data-[active=false]:hover:bg-on-surface/8',
+          'data-[active=false]:bg-transparent data-[active=false]:hover:bg-on-surface/8',
         ],
         false:
-          'h-18 bg-transparent hover:bg-transparent data-[active=true]:text-on-secondary-container dark:bg-transparent dark:hover:bg-transparent dark:data-[active=true]:text-on-secondary-container',
+          'h-18 bg-transparent hover:bg-transparent data-[active=true]:text-on-secondary-container',
       },
     },
   },

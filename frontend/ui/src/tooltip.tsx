@@ -96,10 +96,8 @@ export function TooltipBubble({
     <motion.div
       className={cn(
         'w-fit rounded-full border text-xs text-balance',
-        'dark:text-on-surface',
-        'backdrop-blur',
-        'bg-primary-container/10 dark:bg-primary/10',
-        'dark:border-surface-variant/30 border-inverse-surface/10',
+        'bg-inverse-surface text-inverse-on-surface',
+        'border-inverse-on-surface/10',
         'overflow-hidden px-3 py-1.5',
         className,
       )}

@@ -1,13 +1,10 @@
+import LanguageRounded from '~icons/material-symbols/language-rounded'
+import PaletteRounded from '~icons/material-symbols/palette-rounded'
+import TuneRounded from '~icons/material-symbols/tune-rounded'
 import {
-  MenubarCheckboxItem,
   MenubarContent,
+  MenubarGroup,
   MenubarMenu,
-  MenubarRadioGroup,
-  MenubarRadioItem,
-  MenubarSeparator,
-  MenubarSub,
-  MenubarSubContent,
-  MenubarSubTrigger,
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
 import { CircularProgress } from '@nyanpasu/ui/progress'
@@ -23,8 +20,11 @@ import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
 import { ProxyMode, useProxyMode } from '@nyanpasu/query'
 import { ThemeMode } from '@nyanpasu/theme'
+import { useHeaderMenuPrimitives } from './header-menu-primitives'
 
 const LanguageSelector = () => {
+  const { mode, Sub, SubTrigger, SubContent, RadioGroup, RadioItem } =
+    useHeaderMenuPrimitives()
   const { language, setLanguage } = useLanguage()
 
   const handleLanguageChange = (value: string) => {
@@ -32,28 +32,30 @@ const LanguageSelector = () => {
   }
 
   return (
-    <MenubarSub>
-      <MenubarSubTrigger>
-        {m.header_settings_action_language()}
-      </MenubarSubTrigger>
+    <Sub>
+      <SubTrigger>
+        {mode === 'launcher' && (
+          <LanguageRounded className="size-5 shrink-0" aria-hidden="true" />
+        )}
+        <span>{m.header_settings_action_language()}</span>
+      </SubTrigger>
 
-      <MenubarSubContent>
-        <MenubarRadioGroup
-          value={language}
-          onValueChange={handleLanguageChange}
-        >
+      <SubContent>
+        <RadioGroup value={language} onValueChange={handleLanguageChange}>
           {Object.entries(locales).map(([key, value]) => (
-            <MenubarRadioItem key={key} value={value}>
+            <RadioItem key={key} value={value}>
               {m.language(key, { locale: value })}
-            </MenubarRadioItem>
+            </RadioItem>
           ))}
-        </MenubarRadioGroup>
-      </MenubarSubContent>
-    </MenubarSub>
+        </RadioGroup>
+      </SubContent>
+    </Sub>
   )
 }
 
 const ThemeModeSelector = () => {
+  const { mode, Sub, SubTrigger, SubContent, RadioGroup, RadioItem } =
+    useHeaderMenuPrimitives()
   const { themeMode, setThemeMode } = useExperimentalThemeContext()
 
   const handleThemeModeChange = (value: string) => {
@@ -67,28 +69,40 @@ const ThemeModeSelector = () => {
   } satisfies Record<ThemeMode, string>
 
   return (
-    <MenubarSub>
-      <MenubarSubTrigger>
-        {m.header_settings_action_theme_mode()}
-      </MenubarSubTrigger>
+    <Sub>
+      <SubTrigger>
+        {mode === 'launcher' && (
+          <PaletteRounded className="size-5 shrink-0" aria-hidden="true" />
+        )}
+        <span>{m.header_settings_action_theme_mode()}</span>
+      </SubTrigger>
 
-      <MenubarSubContent>
-        <MenubarRadioGroup
-          value={themeMode}
-          onValueChange={handleThemeModeChange}
-        >
+      <SubContent>
+        <RadioGroup value={themeMode} onValueChange={handleThemeModeChange}>
           {Object.entries(messages).map(([key, value]) => (
-            <MenubarRadioItem key={key} value={key}>
+            <RadioItem key={key} value={key}>
               {value}
-            </MenubarRadioItem>
+            </RadioItem>
           ))}
-        </MenubarRadioGroup>
-      </MenubarSubContent>
-    </MenubarSub>
+        </RadioGroup>
+      </SubContent>
+    </Sub>
   )
 }
 
 const ProxySettings = () => {
+  const {
+    mode,
+    Group,
+    Sub,
+    SubTrigger,
+    SubContent,
+    CheckboxItem,
+    RadioGroup,
+    RadioItem,
+    Separator,
+  } = useHeaderMenuPrimitives()
+
   const systemProxy = useSystemProxy()
 
   const tunMode = useTunMode()
@@ -106,94 +120,114 @@ const ProxySettings = () => {
     rule: m.settings_system_proxy_rule_mode_label(),
   } satisfies Record<ProxyMode, string>
 
+  const toggleItems = (
+    <>
+      <CheckboxItem
+        key="system-proxy"
+        className="group relative"
+        checked={systemProxy.isActive}
+        onCheckedChange={() => {
+          systemProxy.execute()
+        }}
+        data-loading={String(systemProxy.isPending)}
+      >
+        <span>{m.settings_system_proxy_system_proxy_label()}</span>
+
+        <CircularProgress
+          className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
+          indeterminate
+        />
+      </CheckboxItem>
+
+      <CheckboxItem
+        key="tun-mode"
+        className="group relative"
+        checked={tunMode.isActive}
+        disabled={tunMode.disabled || tunMode.isPending}
+        title={
+          tunMode.disabled
+            ? m.error_transparent_proxy_tun_conflict()
+            : undefined
+        }
+        onCheckedChange={() => {
+          tunMode.execute()
+        }}
+        data-loading={String(tunMode.isPending)}
+      >
+        <span>{m.settings_system_proxy_tun_mode_label()}</span>
+
+        <CircularProgress
+          className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
+          indeterminate
+        />
+      </CheckboxItem>
+
+      {transparentProxy.visible && (
+        <CheckboxItem
+          className="group relative"
+          checked={transparentProxy.isActive}
+          disabled={transparentProxy.disabled || transparentProxy.isPending}
+          title={transparentProxy.reason}
+          onCheckedChange={() => {
+            transparentProxy.execute()
+          }}
+          data-loading={String(transparentProxy.isPending)}
+        >
+          <span>{m.settings_clash_transparent_proxy_label()}</span>
+          <CircularProgress
+            className="invisible size-4 shrink-0 group-data-[loading=true]:visible"
+            indeterminate
+          />
+        </CheckboxItem>
+      )}
+    </>
+  )
+
   return (
-    <MenubarSub>
-      <MenubarSubTrigger>
-        {m.header_settings_action_proxy_settings()}
-      </MenubarSubTrigger>
+    <Sub>
+      <SubTrigger>
+        {mode === 'launcher' && (
+          <TuneRounded className="size-5 shrink-0" aria-hidden="true" />
+        )}
+        <span>{m.header_settings_action_proxy_settings()}</span>
+      </SubTrigger>
 
-      <MenubarSubContent>
-        <MenubarCheckboxItem
-          key="system-proxy"
-          className="group relative"
-          checked={systemProxy.isActive}
-          onCheckedChange={() => {
-            systemProxy.execute()
-          }}
-          data-loading={String(systemProxy.isPending)}
-        >
-          <span className="text-nowrap">
-            {m.settings_system_proxy_system_proxy_label()}
-          </span>
-
-          <CircularProgress
-            className="invisible size-4 group-data-[loading=true]:visible"
-            indeterminate
-          />
-        </MenubarCheckboxItem>
-
-        <MenubarCheckboxItem
-          key="tun-mode"
-          className="group relative"
-          checked={tunMode.isActive}
-          disabled={tunMode.disabled || tunMode.isPending}
-          title={
-            tunMode.disabled
-              ? m.error_transparent_proxy_tun_conflict()
-              : undefined
-          }
-          onCheckedChange={() => {
-            tunMode.execute()
-          }}
-          data-loading={String(tunMode.isPending)}
-        >
-          <span className="text-nowrap">
-            {m.settings_system_proxy_tun_mode_label()}
-          </span>
-
-          <CircularProgress
-            className="invisible size-4 group-data-[loading=true]:visible"
-            indeterminate
-          />
-        </MenubarCheckboxItem>
-
-        {transparentProxy.visible && (
-          <MenubarCheckboxItem
-            className="group relative"
-            checked={transparentProxy.isActive}
-            disabled={transparentProxy.disabled || transparentProxy.isPending}
-            title={transparentProxy.reason}
-            onCheckedChange={() => {
-              transparentProxy.execute()
-            }}
-            data-loading={String(transparentProxy.isPending)}
-          >
-            <span className="text-nowrap">
-              {m.settings_clash_transparent_proxy_label()}
-            </span>
-            <CircularProgress
-              className="invisible size-4 group-data-[loading=true]:visible"
-              indeterminate
-            />
-          </MenubarCheckboxItem>
+      <SubContent>
+        {mode === 'launcher' ? (
+          <Group>{toggleItems}</Group>
+        ) : (
+          <>
+            {toggleItems}
+            <Separator />
+          </>
         )}
 
-        <MenubarSeparator />
-
-        <MenubarRadioGroup
+        <RadioGroup
           value={
             Object.entries(proxyMode.value).find(([, enabled]) => enabled)?.[0]
           }
           onValueChange={(value) => proxyMode.upsert(value as ProxyMode)}
         >
           {Object.keys(proxyMode.value).map((key) => (
-            <MenubarRadioItem key={key} value={key} disabled={!canProxy}>
+            <RadioItem key={key} value={key} disabled={!canProxy}>
               {proxyModeMessages[key as ProxyMode]}
-            </MenubarRadioItem>
+            </RadioItem>
           ))}
-        </MenubarRadioGroup>
-      </MenubarSubContent>
-    </MenubarSub>
+        </RadioGroup>
+      </SubContent>
+    </Sub>
+  )
+}
+
+export function HeaderSettingsItems() {
+  return (
+    <>
+      <LanguageSelector />
+
+      <ThemeModeSelector />
+
+      <ProxySettings />
+    </>
   )
 }
 
@@ -205,11 +239,9 @@ export default function HeaderSettingsAction() {
       </MenubarTrigger>
 
       <MenubarContent>
-        <LanguageSelector />
-
-        <ThemeModeSelector />
-
-        <ProxySettings />
+        <MenubarGroup>
+          <HeaderSettingsItems />
+        </MenubarGroup>
       </MenubarContent>
     </MenubarMenu>
   )

@@ -35,14 +35,14 @@ import NetworkRuleDialog from './network-rule-dialog'
 
 const ruleActionVariants = cva(
   [
-    'inline-flex h-6 items-center gap-1 rounded-lg pr-2 pl-1',
+    'inline-flex h-6 items-center gap-1 rounded-small pr-2 pl-1',
     'text-xs font-medium whitespace-nowrap',
   ],
   {
     variants: {
       action: {
         enable: 'bg-secondary-container text-on-secondary-container',
-        disable: 'bg-surface-variant/60 text-on-surface-variant',
+        disable: 'bg-surface-container-high text-on-surface-variant',
       },
     },
   },

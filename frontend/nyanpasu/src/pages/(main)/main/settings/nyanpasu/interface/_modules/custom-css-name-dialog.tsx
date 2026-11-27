@@ -1,13 +1,7 @@
 import { useState } from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import { FormDialogContent } from '@nyanpasu/ui/dialog'
 import { Input } from '@nyanpasu/ui/input'
-import {
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  useModal,
-} from '@nyanpasu/ui/modal'
+import { useModal } from '@nyanpasu/ui/modal'
 import { reportCustomCssError } from '@/hooks/use-custom-css'
 import { m } from '@/paraglide/messages'
 
@@ -44,48 +38,25 @@ export default function CustomCssNameDialog({
   }
 
   return (
-    <ModalContent
-      dismissible={!saving}
-      onOpenAutoFocus={() => setName(initialName)}
+    <FormDialogContent
+      title={title}
+      submitLabel={m.common_save()}
+      cancelLabel={m.common_cancel()}
+      submitting={saving}
+      submitDisabled={!trimmedName}
+      onOpen={() => setName(initialName)}
+      onSubmit={handleSubmit}
     >
-      <Card className="w-[28rem] max-w-full" data-slot="custom-css-name-dialog">
-        <CardHeader>
-          <ModalTitle>{title}</ModalTitle>
-        </CardHeader>
-
-        <CardContent>
-          <form
-            data-slot="custom-css-name-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              handleSubmit()
-            }}
-          >
-            <Input
-              className="w-full"
-              label={m.settings_user_interface_custom_css_name()}
-              aria-label={m.settings_user_interface_custom_css_name()}
-              value={name}
-              autoFocus
-              spellCheck={false}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </form>
-        </CardContent>
-
-        <CardFooter className="gap-1">
-          <ModalClose disabled={saving}>{m.common_cancel()}</ModalClose>
-
-          <Button
-            variant="flat"
-            loading={saving}
-            disabled={!trimmedName || saving}
-            onClick={handleSubmit}
-          >
-            {m.common_save()}
-          </Button>
-        </CardFooter>
-      </Card>
-    </ModalContent>
+      <Input
+        variant="underlined"
+        className="w-full"
+        label={m.settings_user_interface_custom_css_name()}
+        aria-label={m.settings_user_interface_custom_css_name()}
+        value={name}
+        autoFocus
+        spellCheck={false}
+        onChange={(event) => setName(event.target.value)}
+      />
+    </FormDialogContent>
   )
 }

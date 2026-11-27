@@ -121,7 +121,7 @@ export default function GroupFolder({
               active={false}
               aria-expanded={expanded}
               // The block's top corners stay large; below the heading is a list.
-              className={cn(expanded && 'rounded-b-sm')}
+              className={cn(expanded && 'rounded-b-extra-small')}
               onClick={onToggle}
               data-drop-target={isDropTarget || undefined}
             >
@@ -181,7 +181,7 @@ export default function GroupFolder({
           ref={listRef}
           className={cn(
             'flex flex-col gap-0.5',
-            '[&>*]:rounded-sm [&>*:last-child]:rounded-b-3xl',
+            '[&>*]:rounded-extra-small [&>*:last-child]:rounded-b-extra-large',
           )}
           data-slot="proxies-folder-list"
         >

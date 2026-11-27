@@ -75,7 +75,7 @@ function ProviderUpdatesPreview() {
             { name: 'Regional Rules', kind: 'HTTP', count: '342' },
           ].map((provider) => (
             <li
-              className="bg-surface-variant/20 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-2 rounded-[var(--w-radius-inner)] px-2 py-1 text-[length:var(--w-text-meta)]"
+              className="bg-surface-container-high flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-2 rounded-[var(--w-radius-inner)] px-2 py-1 text-[length:var(--w-text-meta)]"
               data-slot="widget-provider-updates-preview-row"
               key={provider.name}
             >
@@ -349,7 +349,7 @@ function ProviderUpdatesLive() {
 
                 return (
                   <li
-                    className="hover:bg-surface-variant/40 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-2 rounded-[var(--w-radius-inner)] px-2 py-1 text-[length:var(--w-text-meta)]"
+                    className="hover:bg-on-surface/8 flex h-[var(--w-row-height)] min-w-0 shrink-0 items-center gap-2 rounded-[var(--w-radius-inner)] px-2 py-1 text-[length:var(--w-text-meta)]"
                     key={key}
                   >
                     <div className="min-w-0 flex-1">

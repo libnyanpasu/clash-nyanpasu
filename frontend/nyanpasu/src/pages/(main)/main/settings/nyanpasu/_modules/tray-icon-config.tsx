@@ -176,11 +176,11 @@ const ModeCard = ({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        'relative isolate h-auto flex-col items-stretch gap-3 rounded-3xl p-4 text-left',
+        'rounded-extra-large relative isolate h-auto flex-col items-stretch gap-3 p-4 text-left',
         // The sliding indicator paints the selected background.
         selected
           ? 'text-on-primary-container! bg-transparent!'
-          : 'text-on-surface-variant! bg-surface-variant/40! hover:brightness-95',
+          : 'text-on-surface-variant! bg-surface-container-high! hover:brightness-95',
       )}
     >
       {selected && (
@@ -192,7 +192,7 @@ const ModeCard = ({
               ? { duration: 0 }
               : { type: 'spring', stiffness: 520, damping: 40 }
           }
-          className="bg-primary-container absolute inset-0 -z-10 rounded-3xl"
+          className="bg-primary-container rounded-extra-large absolute inset-0 -z-10"
         />
       )}
 
@@ -326,7 +326,7 @@ const TrayIconItem = ({
           onClick={handleChangeIcon}
           disabled={disabled}
         >
-          <MaterialShape className="bg-surface-variant size-12 shrink-0">
+          <MaterialShape className="bg-surface-container-high size-12 shrink-0">
             <store.Image className="size-8" mode={mode} version={version} />
           </MaterialShape>
 

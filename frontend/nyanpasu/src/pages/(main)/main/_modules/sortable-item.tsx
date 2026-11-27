@@ -28,8 +28,8 @@ export const sortableItemVariants = cva(
       },
       dragging: {
         true: [
-          'bg-surface-variant shadow-lg',
-          'scale-[1.02] cursor-grabbing rounded-3xl!',
+          'bg-surface-container-high shadow-lg',
+          'scale-[1.02] cursor-grabbing rounded-extra-large!',
           'motion-reduce:scale-100',
         ],
         false: '',

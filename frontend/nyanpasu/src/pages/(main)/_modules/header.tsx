@@ -6,15 +6,15 @@ import {
 } from '@/components/window/system-titlebar'
 import WindowTitle from '@/components/window/window-title'
 import { PlatformMacos } from '@nyanpasu/platform/react'
-import HeaderMenu from './header-menu'
+import HeaderMenu, { HeaderTitleMenu } from './header-menu'
 
 const APP_NAME = 'Clash Nyanpasu'
 
-const Title = () => {
+const Title = ({ className }: { className?: string }) => {
   return (
-    <WindowTitle>
+    <WindowTitle className={className}>
       <div
-        className="text-on-surface text-base font-bold text-nowrap"
+        className="text-on-primary-container text-base font-bold text-nowrap"
         data-slot="app-header-logo-name"
         data-tauri-drag-region
       >
@@ -29,7 +29,8 @@ export default function Header({ className, ...props }: ComponentProps<'div'>) {
     <PlatformMacos
       fallback={
         <DefaultHeader className={className} {...props}>
-          <Title />
+          <Title className="hidden md:flex" />
+          <HeaderTitleMenu className="md:hidden" />
           <HeaderMenu className="hidden md:flex" />
         </DefaultHeader>
       }
@@ -39,7 +40,8 @@ export default function Header({ className, ...props }: ComponentProps<'div'>) {
           <HeaderMenu />
         </MacOSHeaderLeft>
 
-        <Title />
+        <Title className="hidden md:flex" />
+        <HeaderTitleMenu className="md:hidden" />
       </MacOSHeader>
     </PlatformMacos>
   )

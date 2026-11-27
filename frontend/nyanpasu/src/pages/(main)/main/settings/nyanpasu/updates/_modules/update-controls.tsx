@@ -84,12 +84,11 @@ const instantTransition = { duration: 0 } satisfies Transition
 const labelTransition = { duration: 0.12, ease: 'easeOut' } satisfies Transition
 
 const updateStatusVariants = cva(
-  'flex flex-col rounded-3xl p-4 transition-colors duration-300',
+  'flex flex-col rounded-extra-large p-4 transition-colors duration-300',
   {
     variants: {
       tone: {
-        neutral:
-          'bg-surface-variant/30 text-on-surface dark:bg-surface-variant/10',
+        neutral: 'bg-surface-container-high text-on-surface',
         primary: 'bg-primary-container text-on-primary-container',
         error: 'bg-error-container text-on-error-container',
       },

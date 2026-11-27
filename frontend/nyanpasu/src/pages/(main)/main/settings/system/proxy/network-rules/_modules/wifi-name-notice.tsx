@@ -58,7 +58,7 @@ export default function WifiNameNotice({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4',
+        'rounded-large flex items-center gap-3 py-2 pr-2 pl-4',
         'bg-tertiary-container text-on-tertiary-container',
       )}
       data-slot="wifi-name-notice"

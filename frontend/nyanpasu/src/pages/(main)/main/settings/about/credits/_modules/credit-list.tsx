@@ -62,7 +62,7 @@ function CreditRow({
       <button
         type="button"
         className={cn(
-          'absolute inset-x-0 top-0 flex items-center gap-3 rounded-2xl px-4 text-left',
+          'rounded-large absolute inset-x-0 top-0 flex items-center gap-3 px-4 text-left',
           'hover:bg-on-surface/8 focus-visible:outline-primary outline-none focus-visible:outline-2',
           'cursor-pointer transition-colors',
         )}
@@ -83,7 +83,7 @@ function CreditRow({
 
         <span
           className={cn(
-            'bg-surface-variant/60 dark:bg-surface-variant/30 max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
+            'bg-surface-container-highest max-w-[45%] truncate rounded-full px-2.5 py-0.5 text-xs',
             !pkg.license && 'text-on-surface-variant',
           )}
           data-slot="credits-row-license"

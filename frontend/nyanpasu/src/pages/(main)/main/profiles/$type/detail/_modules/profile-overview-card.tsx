@@ -14,6 +14,7 @@ import {
 } from '@nyanpasu/ui/dropdown-menu'
 import { ModalAnchor } from '@nyanpasu/ui/modal'
 import { m } from '@/paraglide/messages'
+import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { getRemoteSource, isConfigItem } from '@nyanpasu/query'
 import { type ProfileItem_Serialize } from '@nyanpasu/rpc/types'
 import { cn } from '@nyanpasu/utils'
@@ -48,6 +49,7 @@ export default function ProfileOverviewCard({
 }) {
   const activeProfile = useActiveProfile(profile)
 
+  const isDesktop = useMatchesPlatform('desktop')
   const showInFileManager = useShowInFileManager(profile)
   const move = useProfileMove(profile.uid)
 
@@ -63,7 +65,7 @@ export default function ProfileOverviewCard({
       data-active={activeProfile.isActive || undefined}
       className={cn(
         'relative isolate flex min-w-0 flex-col justify-between',
-        activeProfile.isActive && 'rounded-4xl',
+        activeProfile.isActive && 'rounded-extra-large-increased',
       )}
       asChild
     >
@@ -142,7 +144,7 @@ export default function ProfileOverviewCard({
               </ProfileCardAction>
             )}
 
-            {(hasFile || isConfigItem(profile)) && (
+            {((hasFile && isDesktop) || isConfigItem(profile)) && (
               <DropdownMenu>
                 <ModalAnchor className="w-fit">
                   <DropdownMenuTrigger asChild>
@@ -157,7 +159,7 @@ export default function ProfileOverviewCard({
                 </ModalAnchor>
 
                 <DropdownMenuContent align="end">
-                  {hasFile && (
+                  {hasFile && isDesktop && (
                     <DropdownMenuItem onSelect={showInFileManager}>
                       <FolderOpenOutlineRounded
                         className="size-4"

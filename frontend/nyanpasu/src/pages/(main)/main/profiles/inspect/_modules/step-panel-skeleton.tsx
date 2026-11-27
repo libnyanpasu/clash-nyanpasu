@@ -16,10 +16,10 @@ export default function StepPanelSkeleton() {
     >
       {Array.from({ length: LINE_COUNT }, (_, index) => (
         <div key={index} className="flex h-3 shrink-0 items-center gap-4">
-          <div className="bg-surface-variant h-full w-6 rounded-full" />
+          <div className="bg-surface-container-high h-full w-6 rounded-full" />
 
           <div
-            className="bg-surface-variant/60 h-full rounded-full"
+            className="bg-surface-container-high h-full rounded-full"
             style={{ width: LINE_WIDTHS[index % LINE_WIDTHS.length] }}
           />
         </div>

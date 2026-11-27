@@ -1,7 +1,7 @@
-import { AnimatePresence } from 'motion/react'
 import { ComponentProps } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { FormDialogError } from '@nyanpasu/ui/dialog'
 import { Input } from '@nyanpasu/ui/input'
 import { Modal, ModalTrigger, useModal } from '@nyanpasu/ui/modal'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -16,7 +16,6 @@ import {
   type ProfileItem_Serialize,
 } from '@nyanpasu/rpc/types'
 import { subscriptionUrlSchema } from '../../../_modules/subscription-url-schema'
-import AnimatedErrorItem from '../../../../_modules/error-item'
 import ProfileFieldDialog from './profile-field-dialog'
 
 const formSchema = z.object({
@@ -120,17 +119,11 @@ function SubscriptionUrlEditorForm({
             <div className="space-y-2">
               <Input
                 label={m.profile_subscription_url_label()}
-                variant="outlined"
+                variant="underlined"
                 {...field}
               />
 
-              <AnimatePresence>
-                {form.formState.errors.url && (
-                  <AnimatedErrorItem className="text-error">
-                    {form.formState.errors.url?.message}
-                  </AnimatedErrorItem>
-                )}
-              </AnimatePresence>
+              <FormDialogError message={form.formState.errors.url?.message} />
             </div>
           )}
         />

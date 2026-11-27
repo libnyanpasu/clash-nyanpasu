@@ -22,7 +22,7 @@ export default function NyanpasuVersion() {
             Clash Nyanpasu~(∠・ω&lt; )⌒☆
           </div>
 
-          <span className="bg-surface-variant text-on-surface-variant rounded-full px-3 py-1 text-sm font-medium">
+          <span className="bg-surface-container-highest text-on-surface-variant rounded-full px-3 py-1 text-sm font-medium">
             {m.settings_label_about_version({ version: currentVersion })}
           </span>
         </div>

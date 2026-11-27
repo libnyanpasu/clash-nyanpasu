@@ -1,6 +1,10 @@
+import BugReportRounded from '~icons/material-symbols/bug-report-rounded'
+import DescriptionRounded from '~icons/material-symbols/description-rounded'
+import HelpRounded from '~icons/material-symbols/help-rounded'
+import InfoRounded from '~icons/material-symbols/info-rounded'
 import {
   MenubarContent,
-  MenubarItem,
+  MenubarGroup,
   MenubarMenu,
   MenubarTrigger,
 } from '@nyanpasu/ui/menubar'
@@ -10,29 +14,39 @@ import { useLockFn } from '@nyanpasu/hooks'
 import { createBrowserAdapter } from '@nyanpasu/platform'
 import { useMatchesPlatform } from '@nyanpasu/platform/react'
 import { Link } from '@tanstack/react-router'
+import { useHeaderMenuPrimitives } from './header-menu-primitives'
 import { openIssueReport, openWiki } from './help-links'
 
 const WikiItem = () => {
+  const { mode, Item } = useHeaderMenuPrimitives()
   const handleClick = useLockFn(openWiki)
 
   return (
-    <MenubarItem onSelect={handleClick}>
-      {m.header_help_action_wiki()}
-    </MenubarItem>
+    <Item onSelect={handleClick}>
+      {mode === 'launcher' && (
+        <HelpRounded className="size-5 shrink-0" aria-hidden="true" />
+      )}
+      <span>{m.header_help_action_wiki()}</span>
+    </Item>
   )
 }
 
 const IssuesItem = () => {
+  const { mode, Item } = useHeaderMenuPrimitives()
   const handleClick = useLockFn(openIssueReport)
 
   return (
-    <MenubarItem onSelect={handleClick}>
-      {m.header_help_action_issues()}
-    </MenubarItem>
+    <Item onSelect={handleClick}>
+      {mode === 'launcher' && (
+        <BugReportRounded className="size-5 shrink-0" aria-hidden="true" />
+      )}
+      <span>{m.header_help_action_issues()}</span>
+    </Item>
   )
 }
 
 const CollectLogItem = () => {
+  const { mode, Item } = useHeaderMenuPrimitives()
   const isDesktop = useMatchesPlatform('desktop')
   const handleClick = useLockFn(async () => {
     if (!isDesktop) {
@@ -44,9 +58,35 @@ const CollectLogItem = () => {
   })
 
   return (
-    <MenubarItem onSelect={handleClick}>
-      {m.header_help_action_collect_logs()}
-    </MenubarItem>
+    <Item onSelect={handleClick}>
+      {mode === 'launcher' && (
+        <DescriptionRounded className="size-5 shrink-0" aria-hidden="true" />
+      )}
+      <span>{m.header_help_action_collect_logs()}</span>
+    </Item>
+  )
+}
+
+export function HeaderHelpItems() {
+  const { mode, Item } = useHeaderMenuPrimitives()
+
+  return (
+    <>
+      <WikiItem />
+
+      <IssuesItem />
+
+      <CollectLogItem />
+
+      <Item asChild>
+        <Link to="/main/settings/about">
+          {mode === 'launcher' && (
+            <InfoRounded className="size-5 shrink-0" aria-hidden="true" />
+          )}
+          <span>{m.header_help_action_about()}</span>
+        </Link>
+      </Item>
+    </>
   )
 }
 
@@ -58,15 +98,9 @@ export default function HeaderHelpAction() {
       </MenubarTrigger>
 
       <MenubarContent>
-        <WikiItem />
-
-        <IssuesItem />
-
-        <CollectLogItem />
-
-        <MenubarItem asChild>
-          <Link to="/main/settings/about">{m.header_help_action_about()}</Link>
-        </MenubarItem>
+        <MenubarGroup>
+          <HeaderHelpItems />
+        </MenubarGroup>
       </MenubarContent>
     </MenubarMenu>
   )

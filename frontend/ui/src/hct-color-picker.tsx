@@ -259,7 +259,7 @@ export function HctColorPickerHexField({
     <div
       data-slot="hct-color-picker-hex-field"
       className={cn(
-        'bg-surface-variant text-on-surface-variant flex items-center gap-3 rounded-3xl py-3 pr-3 pl-5',
+        'bg-surface-container text-on-surface-variant rounded-extra-large flex items-center gap-3 py-3 pr-3 pl-5',
         className,
       )}
       {...props}
@@ -324,7 +324,7 @@ export function HctColorPickerSliders({
     <div
       data-slot="hct-color-picker-sliders"
       className={cn(
-        'bg-surface-variant text-on-surface-variant flex flex-col gap-4 rounded-3xl px-5 py-4',
+        'bg-surface-container-low text-on-surface-variant rounded-extra-large flex flex-col gap-4 px-5 py-4',
         className,
       )}
       {...props}

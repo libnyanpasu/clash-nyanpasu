@@ -4,12 +4,15 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { AnimatePresence, motion } from 'motion/react'
 import { Select as SelectPrimitive } from 'radix-ui'
 import {
+  Children,
   ComponentProps,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useState,
+  type ReactNode,
 } from 'react'
 import { chains, cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
@@ -22,14 +25,14 @@ export const selectTriggerVariants = cva(
     'px-4 py-4 outline-hidden',
     // TODO: size variants, fix this
     'flex items-center justify-between h-14',
-    'dark:text-on-surface',
+    'text-on-surface',
   ],
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
+        filled: 'rounded-t-extra-small bg-surface-container-highest',
         // outlined use selectValuePlaceholderFieldsetVariants
-        outlined: '',
+        outlined: 'h-16 pt-2 pb-0',
         // compact pill that sits at the end of a menu row
         chip: [launcherMenuChipClassName, 'gap-1'],
       },
@@ -46,14 +49,14 @@ export const selectLineVariants = cva('', {
   variants: {
     variant: {
       filled: [
-        'absolute inset-x-0 bottom-0 w-full border-b border-on-primary-container',
+        'absolute inset-x-0 bottom-0 w-full border-b border-outline-variant',
         'transition-all duration-200',
 
         // pseudo elements be overlay parent element, will not affect the box size
         'after:absolute after:inset-x-0 after:bottom-0 after:z-10',
         "after:scale-x-0 after:border-b-2 after:opacity-0 after:content-['']",
         'after:transition-all after:duration-200',
-        'after:border-primary dark:after:border-on-primary-container',
+        'after:border-primary',
 
         // sync parent group state, state from radix-ui
         'group-data-[state=open]:border-b-0',
@@ -122,12 +125,10 @@ export const selectValuePlaceholderVariants = cva(
           'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
         ],
         outlined: [
-          'group-data-[state=open]:-top-2',
-          'group-data-[state=open]:text-sm',
+          'top-6',
+          'group-data-[state=open]:top-0',
+          'group-data-[state=open]:text-xs',
           'group-data-[state=open]:text-primary',
-
-          'dark:group-data-[state=open]:text-inverse-primary',
-          'dark:group-data-[state=closed]:text-on-primary-container',
         ],
         chip: 'hidden',
       },
@@ -145,7 +146,7 @@ export const selectValuePlaceholderVariants = cva(
       {
         variant: 'outlined',
         focus: true,
-        className: '-top-2 text-sm',
+        className: 'top-0 text-xs',
       },
     ],
     defaultVariants: {
@@ -167,8 +168,8 @@ export const selectValuePlaceholderFieldsetVariants = cva(
         // only for outlined variant
         filled: 'hidden',
         outlined: [
-          'absolute inset-0 text-left',
-          'rounded transition-all duration-200',
+          'absolute inset-x-0 top-2 bottom-0 text-left',
+          'rounded-extra-small transition-all duration-200',
           // may open border width will be 1.5, idk
           'group-data-[state=closed]:border',
           'group-data-[state=open]:border-2',
@@ -177,13 +178,8 @@ export const selectValuePlaceholderFieldsetVariants = cva(
           // different material web border color, i think this looks better
           'group-data-[state=closed]:border-outline-variant',
           'group-data-[state=open]:border-primary',
-          'peer-not-focus:border-primary-container',
+          'peer-not-focus:border-outline-variant',
           'peer-focus:border-primary',
-          // dark must be prefixed
-          'dark:group-data-[state=closed]:border-outline-variant',
-          'dark:group-data-[state=open]:border-primary-container',
-          'dark:peer-not-focus:border-outline-variant',
-          'dark:peer-focus:border-primary-container',
         ],
         chip: 'hidden',
       },
@@ -203,7 +199,7 @@ export const selectValuePlaceholderLegendVariants = cva('', {
     variant: {
       // only for outlined variant
       filled: 'hidden',
-      outlined: 'invisible ml-2 px-2 text-sm h-0',
+      outlined: 'invisible ml-2 px-2 text-xs h-0',
       chip: 'hidden',
     },
     haveValue: {
@@ -230,17 +226,17 @@ export type SelectValuePlaceholderLegendVariants = VariantProps<
 
 export const selectContentVariants = cva(
   [
-    'relative w-full overflow-auto rounded z-50',
-    'shadow shadow-zinc-300 dark:shadow-zinc-900',
-    'bg-inverse-on-surface dark:bg-surface',
-    'dark:text-on-surface',
+    'relative w-full overflow-auto rounded-extra-small z-50',
+    'bg-surface-container-high text-on-surface',
+    'shadow-sm shadow-shadow/15',
+    'border border-outline-variant/50',
   ],
   {
     variants: {
       variant: {
         filled: 'rounded-t-none',
         outlined: '',
-        chip: 'min-w-40 rounded-2xl',
+        chip: 'min-w-40 rounded-large',
       },
     },
     defaultVariants: {
@@ -254,7 +250,40 @@ export type SelectContentVariants = VariantProps<typeof selectContentVariants>
 type SelectContextType = {
   haveValue?: boolean
   open?: boolean
+  resolvedLabel?: ReactNode
+  registerLabels: (next: Map<string, ReactNode>) => void
 } & SelectTriggerVariants
+
+function collectSelectItemLabels(
+  nodes: ReactNode,
+  labels: Map<string, ReactNode>,
+) {
+  Children.forEach(nodes, (child) => {
+    if (!isValidElement<{ value?: unknown; children?: ReactNode }>(child)) {
+      return
+    }
+
+    if (
+      (child.type === SelectItem || child.type === SelectPrimitive.Item) &&
+      typeof child.props.value === 'string'
+    ) {
+      labels.set(child.props.value, child.props.children)
+      return
+    }
+
+    if (child.props.children !== undefined) {
+      collectSelectItemLabels(child.props.children, labels)
+    }
+  })
+}
+
+function mapsEqual(a: Map<string, ReactNode>, b: Map<string, ReactNode>) {
+  if (a.size !== b.size) return false
+  for (const [key, value] of a) {
+    if (!b.has(key) || b.get(key) !== value) return false
+  }
+  return true
+}
 
 const SelectContext = createContext<SelectContextType | null>(null)
 
@@ -285,6 +314,8 @@ export const SelectLine = ({ className, ...props }: ComponentProps<'div'>) => {
 }
 
 export const Select = ({
+  value: inputValue,
+  defaultValue,
   onValueChange,
   variant,
   open: inputOpen,
@@ -299,17 +330,22 @@ export const Select = ({
     onChange: onOpenChange,
   })
 
-  const [haveValue, setHaveValue] = useState(
-    Boolean(props.value || props.defaultValue),
+  const [value, setValue] = useControllableState({
+    prop: inputValue,
+    defaultProp: defaultValue ?? '',
+    onChange: onValueChange,
+  })
+
+  const [itemLabels, setItemLabels] = useState<Map<string, ReactNode>>(
+    () => new Map(),
   )
 
-  const handleOnChange = useCallback((value?: string) => {
-    setHaveValue(Boolean(value))
+  const registerLabels = useCallback((next: Map<string, ReactNode>) => {
+    setItemLabels((current) => (mapsEqual(current, next) ? current : next))
   }, [])
 
-  useEffect(() => {
-    setHaveValue(Boolean(props.value || props.defaultValue))
-  }, [props.value, props.defaultValue])
+  const haveValue = Boolean(value)
+  const resolvedLabel = haveValue ? itemLabels.get(value) : undefined
 
   return (
     <SelectContext.Provider
@@ -317,12 +353,16 @@ export const Select = ({
         open,
         haveValue,
         variant,
+        resolvedLabel,
+        registerLabels,
       }}
     >
       <SelectPrimitive.Root
         open={open}
         onOpenChange={setOpen}
-        onValueChange={chains(handleOnChange, onValueChange)}
+        value={inputValue !== undefined ? value : undefined}
+        defaultValue={inputValue === undefined ? defaultValue : undefined}
+        onValueChange={chains(setValue)}
         {...props}
       />
     </SelectContext.Provider>
@@ -334,9 +374,10 @@ export type SelectProps = ComponentProps<typeof Select>
 export const SelectValue = ({
   className,
   placeholder,
+  children,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Value>) => {
-  const { haveValue, open, variant } = useSelectContext()
+  const { haveValue, open, variant, resolvedLabel } = useSelectContext()
 
   return (
     <>
@@ -349,7 +390,9 @@ export const SelectValue = ({
           className,
         )}
       >
-        <SelectPrimitive.Value {...props} />
+        <SelectPrimitive.Value {...props}>
+          {children ?? resolvedLabel}
+        </SelectPrimitive.Value>
       </div>
 
       <fieldset
@@ -402,7 +445,7 @@ export const SelectLabel = ({
     <SelectPrimitive.Label
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
-        'text-primary dark:text-inverse-primary',
+        'text-primary',
         className,
       )}
       {...props}
@@ -463,7 +506,15 @@ export const SelectContent = ({
   children,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Content>) => {
-  const { open, variant } = useSelectContext()
+  const { open, variant, registerLabels } = useSelectContext()
+
+  // Keep SelectValue populated even while AnimatePresence unmounts the portal
+  // when closed so Radix does not clear the displayed label between opens.
+  useLayoutEffect(() => {
+    const labels = new Map<string, ReactNode>()
+    collectSelectItemLabels(children, labels)
+    registerLabels(labels)
+  }, [children, registerLabels])
 
   return (
     <AnimatePresence initial={false}>
@@ -524,8 +575,8 @@ export const SelectItem = ({
       className={cn(
         'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
         'cursor-pointer',
-        'hover:bg-surface-variant data-[state=checked]:bg-primary-container',
-        'dark:hover:bg-surface-variant dark:data-[state=checked]:bg-primary-container',
+        'hover:bg-on-surface/8 data-[highlighted]:bg-on-surface/8',
+        'data-[state=checked]:bg-primary-container data-[state=checked]:text-on-primary-container',
         className,
       )}
       {...props}
@@ -533,7 +584,7 @@ export const SelectItem = ({
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
 
       <SelectPrimitive.ItemIndicator>
-        <Check className="text-primary" />
+        <Check className="text-on-primary-container" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

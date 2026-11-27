@@ -1,10 +1,15 @@
+import {
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+} from '@nyanpasu/ui/item-group'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { ReadOnlyScope } from '@/components/auth/read-only-scope'
 import { RestrictedContent } from '@/components/auth/restricted-content'
 import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import { SettingsGroup, SettingsLabel } from '../../../_modules/settings-card'
 import ControlChannelSettings from './_modules/control-channel-settings'
 import CoreSecretConfig from './_modules/core-secret-config'
 import ExternalControllerConfig from './_modules/external-controller-config'
@@ -18,29 +23,33 @@ export const Route = createFileRoute('/(main)/main/settings/clash/control/')({
 
 const ExternalControllerSettings = () => {
   return (
-    <div data-slot="external-controller-settings-container">
-      <SettingsLabel>
-        {m.settings_clash_external_controller_label()}
-      </SettingsLabel>
+    <ItemSection data-slot="external-controller-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>
+          {m.settings_clash_external_controller_label()}
+        </ItemSectionTitle>
+      </ItemSectionHeader>
 
-      <SettingsGroup>
+      <ItemGroup>
         <ExternalControllerConfig />
 
         <PortStrategySelector />
 
         <CoreSecretConfig />
-      </SettingsGroup>
-    </div>
+      </ItemGroup>
+    </ItemSection>
   )
 }
 
 const WebUISettings = () => {
   return (
-    <div data-slot="web-ui-settings-container">
-      <SettingsLabel>{m.settings_web_ui_title()}</SettingsLabel>
+    <ItemSection data-slot="web-ui-settings-container">
+      <ItemSectionHeader>
+        <ItemSectionTitle>{m.settings_web_ui_title()}</ItemSectionTitle>
+      </ItemSectionHeader>
 
       <WebUI />
-    </div>
+    </ItemSection>
   )
 }
 

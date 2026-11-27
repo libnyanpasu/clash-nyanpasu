@@ -83,11 +83,11 @@ function EgressRow({
 
   return (
     <li
-      className="bg-surface-variant/20 flex min-w-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-[var(--w-gap-sm)] py-2"
+      className="bg-surface-container-high flex min-w-0 items-center gap-[var(--w-gap-sm)] rounded-[var(--w-radius-inner)] px-[var(--w-gap-sm)] py-2"
       data-slot="widget-network-info-row"
       data-family={family}
     >
-      <span className="bg-secondary-container/60 text-on-secondary-container shrink-0 rounded-md px-1.5 py-0.5 text-[length:var(--w-text-meta)] font-medium">
+      <span className="bg-secondary-container/60 text-on-secondary-container rounded-small shrink-0 px-1.5 py-0.5 text-[length:var(--w-text-meta)] font-medium">
         {FAMILY_LABELS[family]}
       </span>
 

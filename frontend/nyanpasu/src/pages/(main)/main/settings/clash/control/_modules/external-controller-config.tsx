@@ -1,18 +1,14 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { AnimatePresence } from 'motion/react'
-import { ChangeEvent } from 'react'
+import { useId } from 'react'
 import { Controller } from 'react-hook-form'
-import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
-import { Input } from '@nyanpasu/ui/input'
 import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-  useModal,
-} from '@nyanpasu/ui/modal'
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
+import { Input } from '@nyanpasu/ui/input'
+import { ItemAction } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -22,27 +18,19 @@ import {
   useClashSystemSetting,
   useRuntimeProfile,
 } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 import { useExternalControllerForm } from './use-external-controller-form'
 
 export default function ExternalControllerConfig() {
   return (
-    <Modal>
+    <Dialog>
       <ExternalControllerConfigForm />
-    </Modal>
+    </Dialog>
   )
 }
 
 function ExternalControllerConfigForm() {
-  const { setOpen } = useModal()
+  const { setOpen } = useDialog()
+  const errorId = useId()
 
   const { data, refetch } = useClashInfo()
 
@@ -81,91 +69,47 @@ function ExternalControllerConfigForm() {
   )
 
   return (
-    <SettingsCard data-slot="external-controller-config-card">
-      <>
-        <SettingsCardContent asChild>
-          <ModalTrigger asChild>
-            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
-              <ItemContainer>
-                <ItemLabel>
-                  <ItemLabelText>
-                    {m.settings_clash_settings_external_controll_label()}
-                  </ItemLabelText>
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          data-slot="external-controller-config-card"
+          title={m.settings_clash_settings_external_controll_label()}
+          description={data?.server}
+        />
+      </DialogTrigger>
 
-                  <ItemLabelDescription>{data?.server}</ItemLabelDescription>
-                </ItemLabel>
+      <FormDialogContent
+        title={m.settings_clash_settings_external_controll_label_edit()}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_close()}
+        submitting={form.formState.isSubmitting}
+        onOpen={() => form.reset({ externalController: configuredAddress })}
+        onSubmit={handleSubmit}
+      >
+        <Controller
+          control={form.control}
+          name="externalController"
+          render={({ field }) => {
+            const error = form.formState.errors.externalController
 
-                <ArrowForwardIosRounded />
-              </ItemContainer>
-            </Button>
-          </ModalTrigger>
-        </SettingsCardContent>
-
-        <ModalContent
-          dismissible={!form.formState.isSubmitting}
-          onOpenAutoFocus={() =>
-            form.reset({ externalController: configuredAddress })
-          }
-        >
-          <Card className="flex min-w-96 flex-col">
-            <CardHeader>
-              <ModalTitle>
-                {m.settings_clash_settings_external_controll_label_edit()}
-              </ModalTitle>
-            </CardHeader>
-
-            <CardContent asChild>
-              <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-                <Controller
-                  control={form.control}
-                  name="externalController"
-                  render={({ field }) => {
-                    const handleChange = (
-                      event: ChangeEvent<HTMLInputElement>,
-                    ) => {
-                      field.onChange(event.target.value)
-                    }
-
-                    return (
-                      <>
-                        <Input
-                          variant="outlined"
-                          label={m.settings_clash_settings_external_controll_label()}
-                          value={field.value ?? ''}
-                          onChange={handleChange}
-                        />
-
-                        <AnimatePresence>
-                          {form.formState.errors.externalController && (
-                            <SettingsCardAnimatedItem className="text-error">
-                              {form.formState.errors.externalController.message}
-                            </SettingsCardAnimatedItem>
-                          )}
-                        </AnimatePresence>
-                      </>
-                    )
-                  }}
+            return (
+              <>
+                <Input
+                  variant="underlined"
+                  label={m.settings_clash_settings_external_controll_label()}
+                  aria-label={m.settings_clash_settings_external_controll_label()}
+                  value={field.value ?? ''}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? errorId : undefined}
                 />
-              </form>
-            </CardContent>
 
-            <CardFooter className="gap-2">
-              <Button
-                variant="flat"
-                onClick={handleSubmit}
-                loading={form.formState.isSubmitting}
-                disabled={form.formState.isSubmitting}
-              >
-                {m.common_apply()}
-              </Button>
-
-              <ModalClose disabled={form.formState.isSubmitting}>
-                {m.common_close()}
-              </ModalClose>
-            </CardFooter>
-          </Card>
-        </ModalContent>
-      </>
-    </SettingsCard>
+                <FormDialogError id={errorId} message={error?.message} />
+              </>
+            )
+          }}
+        />
+      </FormDialogContent>
+    </>
   )
 }

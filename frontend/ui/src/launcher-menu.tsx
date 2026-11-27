@@ -38,8 +38,8 @@ export function LauncherMenuGroup({
       data-slot="launcher-menu-group"
       className={cn(
         'flex flex-col gap-0.5',
-        '*:bg-surface *:border-on-surface/10 *:rounded-md *:border',
-        '*:first:rounded-t-3xl *:last:rounded-b-3xl',
+        '*:bg-surface-container-high *:border-outline-variant/50 *:rounded-small *:border',
+        '*:first:rounded-t-extra-large *:last:rounded-b-extra-large',
         className,
       )}
       {...props}

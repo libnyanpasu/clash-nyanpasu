@@ -1,21 +1,16 @@
-import { Switch } from '@nyanpasu/ui/switch'
+import { ItemSwitch } from '@nyanpasu/ui/item-group'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useSystemSetting } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 
 export default function AutoLaunchSwitch() {
   const autoLaunch = useSystemSetting('enable_auto_launch')
 
-  const handleAutoLaunch = useLockFn(async () => {
+  const handleAutoLaunch = useLockFn(async (next: boolean) => {
     try {
-      await autoLaunch.upsert(!autoLaunch.value)
+      await autoLaunch.upsert(next)
     } catch (error) {
       message(`Activation Auto Launch failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
@@ -26,18 +21,12 @@ export default function AutoLaunchSwitch() {
   })
 
   return (
-    <ItemContainer data-slot="auto-launch-switch-container">
-      <ItemLabel>
-        <ItemLabelText>
-          {m.settings_system_proxy_auto_launch_label()}
-        </ItemLabelText>
-      </ItemLabel>
-
-      <Switch
-        checked={Boolean(autoLaunch.value)}
-        onCheckedChange={handleAutoLaunch}
-        loading={autoLaunch.isPending}
-      />
-    </ItemContainer>
+    <ItemSwitch
+      data-slot="auto-launch-switch-container"
+      title={m.settings_system_proxy_auto_launch_label()}
+      checked={Boolean(autoLaunch.value)}
+      onCheckedChange={handleAutoLaunch}
+      loading={autoLaunch.isPending}
+    />
   )
 }

@@ -10,11 +10,7 @@ import { m } from '@/paraglide/messages'
 import { useLockFn } from '@nyanpasu/hooks'
 import { ProxyMode, useClashProxies, useProxyMode } from '@nyanpasu/query'
 import { cn } from '@nyanpasu/utils'
-import {
-  createFileRoute,
-  Link,
-  retainSearchParams,
-} from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { ProfileType } from '../profiles/_modules/consts'
 import ProxiesDndProvider from './_modules/proxies-dnd-provider'
 import ProxiesLayoutProvider from './_modules/proxies-layout-provider'
@@ -26,9 +22,6 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/(main)/main/proxies')({
   component: RouteComponent,
-  search: {
-    middlewares: [retainSearchParams(['q'])],
-  },
   staticData: {
     crumb: { title: () => m.navbar_label_proxies(), hub: true },
   },
@@ -107,7 +100,7 @@ function RouteComponent() {
         <Sidebar data-slot="proxies-container">
           {!isNoProxies && proxyMode.rule && (
             <SidebarContent
-              className="bg-surface-variant/50 dark:bg-transparent"
+              className="bg-surface-container-low dark:bg-surface border-outline-variant/30 border-r"
               data-slot="proxies-sidebar-scroll-area"
             >
               <ProxiesNavigate />

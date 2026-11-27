@@ -16,7 +16,7 @@ function RouteComponent() {
 
   return (
     <AppContentScrollArea
-      className="bg-surface-variant/50 dark:bg-transparent"
+      className="bg-surface-container-low dark:bg-transparent"
       data-slot="proxies-sidebar-scroll-area"
     >
       <ProxiesNavigate />

@@ -316,7 +316,7 @@ function TrafficTotals({
           variant="outline"
           className="flex items-center gap-3 px-4 py-3.5"
         >
-          <span className="bg-secondary-container text-on-secondary-container grid size-9 shrink-0 place-items-center rounded-2xl">
+          <span className="bg-secondary-container text-on-secondary-container rounded-large grid size-9 shrink-0 place-items-center">
             <Icon className="size-5" aria-hidden />
           </span>
           <div>
@@ -427,7 +427,7 @@ function TrafficRows({
                         {onOpen ? (
                           <button
                             type="button"
-                            className="text-primary focus-visible:ring-primary inline-flex max-w-full items-center gap-1 rounded-sm text-start hover:underline focus-visible:ring-2"
+                            className="text-primary focus-visible:ring-primary rounded-extra-small inline-flex max-w-full items-center gap-1 text-start hover:underline focus-visible:ring-2"
                             onClick={() => onOpen(name)}
                           >
                             <span className="truncate" title={label}>

@@ -165,11 +165,11 @@ const EnvCopyButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleClick(key as CopyEnvOption)}
           >
             {value}
@@ -221,11 +221,11 @@ const OpenDirectoryButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleOpenDirectory(key as DirectoryType)}
           >
             {value}
@@ -267,11 +267,11 @@ const RestartButton = () => {
         </ActionButton>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent className="rounded-2xl backdrop-blur">
+      <DropdownMenuContent className="rounded-large backdrop-blur">
         {Object.entries(messages).map(([key, value]) => (
           <DropdownMenuItem
             key={key}
-            className="bg-surface-variant/30 h-10"
+            className="bg-surface-container-high h-10"
             onSelect={() => handleRestart(key as RestartType)}
           >
             {value}

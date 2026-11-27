@@ -249,11 +249,11 @@ importers:
         specifier: 1.65.1
         version: 1.65.1
       postcss:
-        specifier: 8.5.33
-        version: 8.5.33
+        specifier: 8.5.34
+        version: 8.5.34
       postcss-html:
         specifier: 2.0.1
-        version: 2.0.1(postcss@8.5.33)
+        version: 2.0.1(postcss@8.5.34)
       prettier:
         specifier: 3.10.1
         version: 3.10.1
@@ -277,10 +277,10 @@ importers:
         version: 18.1.0
       stylelint-config-html:
         specifier: 2.0.0
-        version: 2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.1.0)
+        version: 2.0.0(postcss-html@2.0.1(postcss@8.5.34))(stylelint@18.1.0)
       stylelint-config-recess-order:
         specifier: 7.10.1
-        version: 7.10.1(stylelint-order@8.1.3(stylelint@18.1.0))(stylelint@18.1.0)
+        version: 7.10.1(stylelint-order@9.0.0(stylelint@18.1.0))(stylelint@18.1.0)
       stylelint-config-standard:
         specifier: 41.1.0
         version: 41.1.0(stylelint@18.1.0)
@@ -288,8 +288,8 @@ importers:
         specifier: 3.1.0
         version: 3.1.0(stylelint@18.1.0)
       stylelint-order:
-        specifier: 8.1.3
-        version: 8.1.3(stylelint@18.1.0)
+        specifier: 9.0.0
+        version: 9.0.0(stylelint@18.1.0)
       tailwind-merge:
         specifier: 3.7.1
         version: 3.7.1
@@ -313,6 +313,73 @@ importers:
         version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.3))(@types/react@19.3.3)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@5.1.2)
 
   frontend/constants: {}
+
+  frontend/gallery:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@internationalized/date':
+        specifier: 3.12.4
+        version: 3.12.4
+      '@nyanpasu/hooks':
+        specifier: workspace:^
+        version: link:../hooks
+      '@nyanpasu/theme':
+        specifier: workspace:^
+        version: link:../theme
+      '@nyanpasu/ui':
+        specifier: workspace:^
+        version: link:../ui
+      '@nyanpasu/utils':
+        specifier: workspace:^
+        version: link:../utils
+      class-variance-authority:
+        specifier: 0.7.1
+        version: 0.7.1
+      es-toolkit:
+        specifier: 1.53.2
+        version: 1.53.2
+      motion:
+        specifier: 14.14.0
+        version: 14.14.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react:
+        specifier: 19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@csstools/normalize.css':
+        specifier: 12.1.1
+        version: 12.1.1
+      '@iconify/json':
+        specifier: 2.2.562
+        version: 2.2.562
+      '@tailwindcss/vite':
+        specifier: 4.3.5
+        version: 4.3.5(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      '@types/node':
+        specifier: 26.6.11
+        version: 26.6.11
+      '@types/react':
+        specifier: 19.3.3
+        version: 19.3.3
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.3)
+      '@vitejs/plugin-react':
+        specifier: 6.3.0
+        version: 6.3.0(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      tailwindcss:
+        specifier: 4.3.5
+        version: 4.3.5
+      unplugin-icons:
+        specifier: 24.0.0
+        version: 24.0.0(@svgr/core@8.1.0(supports-color@7.2.0)(typescript@7.0.2))(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      vite:
+        specifier: 8.4.0
+        version: 8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1)
 
   frontend/hooks:
     dependencies:
@@ -4546,9 +4613,6 @@ packages:
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
 
-  confbox@0.2.2:
-    resolution: {integrity: sha512-1NB+BKqhtNipMsov4xI/NnhCKp9XG9NamYp5PVm9klAT0fsrNPjaFICsCFhNhwZJKNh7zB/3q8qXz0E9oaMNtQ==}
-
   confbox@0.2.4:
     resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
 
@@ -5024,9 +5088,6 @@ packages:
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
-
-  exsolve@1.0.7:
-    resolution: {integrity: sha512-VO5fQUzZtI6C+vx4w/4BWJpg3s/5l+6pRQEHzFRM8WFi4XffSP1Z+4qi7GbjWbvRQEbdIco5mIMq+zX4rPuLrw==}
 
   exsolve@1.1.1:
     resolution: {integrity: sha512-9U/jZUgjnSGyntRr6y5Muu1MJcwFl6kPu7k8qLF0IMNfLqvw0NZ4nnVDq0RVoZ0RvCyumib4Ez3KYrVfilrw+g==}
@@ -5723,9 +5784,6 @@ packages:
     resolution: {integrity: sha512-lKwV/1brpG6mBUFHtb7NUmtABCb2WZZmm2wNiOA5hAb8VdCS4B3dtMWyvcoViccwAW/COERjXLt0zP1zXUN26g==}
     engines: {node: '>=10'}
 
-  mlly@1.8.0:
-    resolution: {integrity: sha512-l8D9ODSRWLe2KHJSifWGwBqpTZXIXTeo8mlKjY+E2HAakaTeNpqAyBZ8GSqLzHgw4XmHmC8whvpjJNMbFZN7/g==}
-
   mlly@1.8.2:
     resolution: {integrity: sha512-d+ObxMQFmbt10sretNDytwt85VrbkhhUA/JBGm1MPaWJ65Cl4wOgLaB1NYvJSZ0Ef03MMEU/0xpPMXUIQ29UfA==}
 
@@ -5978,9 +6036,6 @@ packages:
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
 
-  pkg-types@2.3.0:
-    resolution: {integrity: sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==}
-
   pkg-types@2.3.1:
     resolution: {integrity: sha512-y+ichcgc2LrADuhLNAx8DFjVfgz91pRxfZdI3UDhxHvcVEZsenLO+7XaU5vOp0u/7V/wZ+plyuQxtrDlZJ+yeg==}
 
@@ -6020,16 +6075,16 @@ packages:
     resolution: {integrity: sha512-GwxlMgTTXwIom+ebC7an3k6RaJDwklRQQnfiXsLPGicu8FYV/k/+1/9YY2OU2+r938H2t4X0TDxoif+HP2rjzQ==}
     engines: {node: '>=4'}
 
-  postcss-sorting@10.0.0:
-    resolution: {integrity: sha512-TXbU+h6vVRW+86c/+ewhWq9k7pr7ijASTnepVhCQiC87zAOTkvB1v2dHyWP+ggstSTX/PNvjzS+IOqzejndz9w==}
+  postcss-sorting@11.0.0:
+    resolution: {integrity: sha512-7+2QRoi+2f1h/KP0ZTHQZiwKG5DDQo504XbnY5YB9nmLdTfQ1DKCIB86Zhm3WHGAT13Q+iYBByz9Lj4eedE5cg==}
     peerDependencies:
       postcss: ^8.4.20
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
-  postcss@8.5.33:
-    resolution: {integrity: sha512-RVHEU9/Pp1Fnjr/MpAJsZoADukCKhfIi15OunEYiGktIkYLkPVvC1sioWolGDS7XByMTx9m/IGbro0Js13zhnQ==}
+  postcss@8.5.34:
+    resolution: {integrity: sha512-P1Qzj0XXZjMda74C7qiVnBG90UKNbyNUAOeQRBW8X63RsIMV57gevRqjnkELdwtZ/S2/uQFksJhmwuN8xShLPw==}
     engines: {node: ^10 || ^12 || >=14}
 
   prettier-plugin-ember-template-tag@2.1.6:
@@ -6433,6 +6488,10 @@ packages:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
+  source-map-js@1.2.4:
+    resolution: {integrity: sha512-J7ZjMvHd9O1fcT/5V09QWaaSl2BbWx3F6O08spde82Namf9UB0GxRVIPiNbVsdKkoizHiSpTodo3vp2bAy91MA==}
+    engines: {node: '>=6.0.0'}
+
   source-map-support@0.5.21:
     resolution: {integrity: sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w==}
 
@@ -6552,8 +6611,8 @@ packages:
     peerDependencies:
       stylelint: ^17.0.0 || ^18.0.0
 
-  stylelint-order@8.1.3:
-    resolution: {integrity: sha512-sItAojls5EBcn4iQMe0p0wwcs8twQoEZ3G36yBriXOM4okA0vxScP8XQnE2WfRpnxtEpVcaWmcaFYpxGMuo26w==}
+  stylelint-order@9.0.0:
+    resolution: {integrity: sha512-zcDFbwWU6yDpjkhsiZiv3T27nLYqleYZJS/pSe0pdwp3lHLeR8eXFjRUHyr0D/iEVkZ4yFSGoAS3nesPeggzTg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0 || ^18.0.0
@@ -6681,9 +6740,6 @@ packages:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
     hasBin: true
-
-  ufo@1.6.1:
-    resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -9851,7 +9907,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.3.5
       '@tailwindcss/oxide': 4.3.5
-      postcss: 8.5.33
+      postcss: 8.5.34
       tailwindcss: 4.3.5
 
   '@tailwindcss/vite@4.3.5(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))':
@@ -10718,8 +10774,6 @@ snapshots:
 
   confbox@0.1.8: {}
 
-  confbox@0.2.2: {}
-
   confbox@0.2.4: {}
 
   connect-history-api-fallback@1.6.0: {}
@@ -11207,8 +11261,6 @@ snapshots:
 
   expect-type@1.4.0: {}
 
-  exsolve@1.0.7: {}
-
   exsolve@1.1.1: {}
 
   ext@1.7.0:
@@ -11678,8 +11730,8 @@ snapshots:
 
   local-pkg@1.2.1:
     dependencies:
-      mlly: 1.8.0
-      pkg-types: 2.3.0
+      mlly: 1.8.2
+      pkg-types: 2.3.1
       quansync: 0.2.11
 
   lodash-es@4.18.1: {}
@@ -12117,13 +12169,6 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
-  mlly@1.8.0:
-    dependencies:
-      acorn: 8.18.0
-      pathe: 2.0.3
-      pkg-types: 1.3.1
-      ufo: 1.6.1
-
   mlly@1.8.2:
     dependencies:
       acorn: 8.18.0
@@ -12455,13 +12500,7 @@ snapshots:
   pkg-types@1.3.1:
     dependencies:
       confbox: 0.1.8
-      mlly: 1.8.0
-      pathe: 2.0.3
-
-  pkg-types@2.3.0:
-    dependencies:
-      confbox: 0.2.2
-      exsolve: 1.0.7
+      mlly: 1.8.2
       pathe: 2.0.3
 
   pkg-types@2.3.1:
@@ -12485,32 +12524,32 @@ snapshots:
       path-data-parser: 0.1.0
       points-on-curve: 0.2.0
 
-  postcss-html@2.0.1(postcss@8.5.33):
+  postcss-html@2.0.1(postcss@8.5.34):
     dependencies:
       htmlparser2: 9.1.0
       js-tokens: 9.0.1
-      postcss: 8.5.33
-      postcss-safe-parser: 7.1.0(postcss@8.5.33)
+      postcss: 8.5.34
+      postcss-safe-parser: 7.1.0(postcss@8.5.34)
 
-  postcss-safe-parser@7.1.0(postcss@8.5.33):
+  postcss-safe-parser@7.1.0(postcss@8.5.34):
     dependencies:
-      postcss: 8.5.33
+      postcss: 8.5.34
 
   postcss-selector-parser@7.2.1:
     dependencies:
       util-deprecate: 1.0.2
 
-  postcss-sorting@10.0.0(postcss@8.5.33):
+  postcss-sorting@11.0.0(postcss@8.5.34):
     dependencies:
-      postcss: 8.5.33
+      postcss: 8.5.34
 
   postcss-value-parser@4.2.0: {}
 
-  postcss@8.5.33:
+  postcss@8.5.34:
     dependencies:
       nanoid: 3.3.20
       picocolors: 1.1.1
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
 
   prettier-plugin-ember-template-tag@2.1.6(prettier@3.10.1)(supports-color@7.2.0):
     dependencies:
@@ -12964,6 +13003,8 @@ snapshots:
 
   source-map-js@1.2.2: {}
 
+  source-map-js@1.2.4: {}
+
   source-map-support@0.5.21:
     dependencies:
       buffer-from: 1.1.2
@@ -13055,15 +13096,15 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@2.0.0(postcss-html@2.0.1(postcss@8.5.33))(stylelint@18.1.0):
+  stylelint-config-html@2.0.0(postcss-html@2.0.1(postcss@8.5.34))(stylelint@18.1.0):
     dependencies:
-      postcss-html: 2.0.1(postcss@8.5.33)
+      postcss-html: 2.0.1(postcss@8.5.34)
       stylelint: 18.1.0
 
-  stylelint-config-recess-order@7.10.1(stylelint-order@8.1.3(stylelint@18.1.0))(stylelint@18.1.0):
+  stylelint-config-recess-order@7.10.1(stylelint-order@9.0.0(stylelint@18.1.0))(stylelint@18.1.0):
     dependencies:
       stylelint: 18.1.0
-      stylelint-order: 8.1.3(stylelint@18.1.0)
+      stylelint-order: 9.0.0(stylelint@18.1.0)
 
   stylelint-config-recommended@19.0.0(stylelint@18.1.0):
     dependencies:
@@ -13078,10 +13119,10 @@ snapshots:
     dependencies:
       stylelint: 18.1.0
 
-  stylelint-order@8.1.3(stylelint@18.1.0):
+  stylelint-order@9.0.0(stylelint@18.1.0):
     dependencies:
-      postcss: 8.5.33
-      postcss-sorting: 10.0.0(postcss@8.5.33)
+      postcss: 8.5.34
+      postcss-sorting: 11.0.0(postcss@8.5.34)
       stylelint: 18.1.0
 
   stylelint@18.1.0:
@@ -13099,8 +13140,8 @@ snapshots:
       ignore: 7.0.14
       import-meta-resolve: 4.2.0
       picomatch: 4.0.7
-      postcss: 8.5.33
-      postcss-safe-parser: 7.1.0(postcss@8.5.33)
+      postcss: 8.5.34
+      postcss-safe-parser: 7.1.0(postcss@8.5.34)
       postcss-selector-parser: 7.2.1
       postcss-value-parser: 4.2.0
       tinyglobby: 0.2.17
@@ -13253,8 +13294,6 @@ snapshots:
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
 
-  ufo@1.6.1: {}
-
   ufo@1.6.4: {}
 
   unbash@6.0.4: {}
@@ -13373,11 +13412,12 @@ snapshots:
       '@iconify/utils': 3.1.7
       local-pkg: 1.2.1
       obug: 2.2.1
-      unplugin: 3.3.0(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
+      unplugin: 3.7.0(rolldown@1.3.4)(vite@8.4.0(@types/node@26.6.11)(jiti@2.7.0)(less@4.9.1(supports-color@7.2.0))(terser@5.36.0)(yaml@2.9.1))
     optionalDependencies:
       '@svgr/core': 8.1.0(supports-color@7.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@farmfe/core'
+      - '@rsbuild/core'
       - '@rspack/core'
       - bun-types-no-globals
       - esbuild
@@ -13515,7 +13555,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
-      postcss: 8.5.33
+      postcss: 8.5.34
       rolldown: 1.3.4
       tinyglobby: 0.2.17
     optionalDependencies:

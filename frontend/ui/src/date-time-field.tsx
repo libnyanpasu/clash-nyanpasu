@@ -71,12 +71,12 @@ export default function DateTimeField({
           className="group flex min-w-0 flex-col gap-1"
         >
           <Label className="text-on-surface-variant text-xs">{label}</Label>
-          <Group className="border-outline-variant bg-surface text-on-surface group-data-invalid:border-error focus-within:border-primary focus-within:ring-primary flex min-h-14 min-w-0 items-center gap-1 rounded-xl border px-2 focus-within:ring-1">
+          <Group className="border-outline-variant bg-surface-container-highest text-on-surface group-data-invalid:border-error focus-within:border-primary focus-within:ring-primary rounded-medium flex min-h-14 min-w-0 items-center gap-1 border px-2 focus-within:ring-1">
             <DateInput className="flex min-w-0 flex-1 flex-wrap items-center px-1 text-sm tabular-nums">
               {(segment) => (
                 <DateSegment
                   segment={segment}
-                  className="data-placeholder:text-on-surface-variant data-focused:bg-primary data-focused:text-on-primary rounded px-0.5 outline-none data-[type=literal]:px-0"
+                  className="data-placeholder:text-on-surface-variant data-focused:bg-primary data-focused:text-on-primary rounded-extra-small px-0.5 outline-none data-[type=literal]:px-0"
                 />
               )}
             </DateInput>
@@ -101,7 +101,7 @@ export default function DateTimeField({
           <Popover
             UNSTABLE_portalContainer={container ?? undefined}
             data-slot="date-picker-popover"
-            className="bg-surface text-on-surface border-outline-variant z-50 max-w-[calc(100vw-2rem)] rounded-3xl border p-4 shadow-lg"
+            className="bg-surface-container-high text-on-surface border-outline-variant/50 shadow-shadow/15 rounded-extra-large z-50 max-w-[calc(100vw-2rem)] border p-4 shadow-lg"
             placement="bottom start"
             offset={8}
           >
@@ -139,7 +139,7 @@ export default function DateTimeField({
                     {(date) => (
                       <CalendarCell
                         date={date}
-                        className="hover:bg-surface-variant/40 data-selected:bg-primary data-selected:text-on-primary data-today:border-primary focus-visible:ring-primary mx-auto grid size-9 cursor-pointer place-items-center rounded-full border border-transparent text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-disabled:cursor-default data-disabled:opacity-40 data-outside-month:invisible data-today:border"
+                        className="hover:bg-on-surface/8 data-selected:bg-primary data-selected:text-on-primary data-today:border-primary focus-visible:ring-primary mx-auto grid size-9 cursor-pointer place-items-center rounded-full border border-transparent text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-offset-2 data-disabled:cursor-default data-disabled:opacity-40 data-outside-month:invisible data-today:border"
                       />
                     )}
                   </CalendarGridBody>

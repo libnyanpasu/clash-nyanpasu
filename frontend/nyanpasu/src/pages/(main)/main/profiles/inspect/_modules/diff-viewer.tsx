@@ -254,7 +254,7 @@ export default function DiffViewer({
       role="region"
       aria-label={m.inspect_diff()}
       tabIndex={0}
-      className="bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto font-mono text-[12.5px] leading-5 focus-visible:outline-2 focus-visible:-outline-offset-2"
+      className="bg-surface-container-lowest text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto font-mono text-[12.5px] leading-5 focus-visible:outline-2 focus-visible:-outline-offset-2"
       style={
         {
           '--number': `calc(${String(lastNumber).length}ch + ${NUMBER_PADDING}px)`,

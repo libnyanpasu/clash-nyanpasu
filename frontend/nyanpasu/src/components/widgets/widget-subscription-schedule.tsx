@@ -55,7 +55,7 @@ function SubscriptionSchedulePreview() {
         className="gap-2 pt-3 text-[length:var(--w-text-meta)]"
         data-slot="subscription-schedule-preview"
       >
-        <div className="bg-surface-variant/30 flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-hidden rounded-2xl px-4 py-3">
+        <div className="bg-surface-container-high rounded-large flex min-h-0 flex-1 flex-col justify-center gap-1 overflow-hidden px-4 py-3">
           <p className="shrink-0 truncate text-[length:var(--w-text-body)] font-medium">
             Japan Premium
           </p>
@@ -310,7 +310,7 @@ function SubscriptionScheduleTarget({
       <motion.div
         ref={contentRef}
         className={cn(
-          'bg-surface-variant/30 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden rounded-2xl px-4 py-3',
+          'bg-surface-container-high rounded-large flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-4 py-3',
           compact && 'gap-0.5 px-3 py-1',
           (activeRun || notice) && 'justify-center',
         )}
@@ -343,7 +343,7 @@ function SubscriptionScheduleTarget({
                 role={noticeIsError ? 'alert' : 'status'}
                 aria-label={notice}
               >
-                <span className="bg-surface-variant/40 flex size-8 shrink-0 items-center justify-center rounded-xl">
+                <span className="bg-surface-container-high rounded-medium flex size-8 shrink-0 items-center justify-center">
                   {noticeIsError ? (
                     <ErrorOutlineRounded
                       className="size-5"
@@ -363,7 +363,7 @@ function SubscriptionScheduleTarget({
                 role="status"
                 data-slot="subscription-schedule-active"
               >
-                <span className="bg-surface-variant/40 flex size-8 shrink-0 items-center justify-center rounded-xl">
+                <span className="bg-surface-container-high rounded-medium flex size-8 shrink-0 items-center justify-center">
                   <motion.span
                     className="flex"
                     animate={{

@@ -391,7 +391,7 @@ function SubscriptionQuotaLive() {
         profile &&
         !targetMessage && (
           <Link
-            className="hover:bg-on-surface/5 active:bg-on-surface/10 focus-visible:outline-primary absolute inset-0 z-10 rounded-3xl transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
+            className="hover:bg-on-surface/5 active:bg-on-surface/10 focus-visible:outline-primary rounded-extra-large absolute inset-0 z-10 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
             data-slot="subscription-quota-details"
             aria-label={`${profile.name}: ${m.dashboard_widget_subscription_quota_details()}`}
             aria-disabled={!interactive}

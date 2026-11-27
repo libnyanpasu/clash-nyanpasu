@@ -94,7 +94,7 @@ export function DelayHistoryTooltip({ children }: { children: ReactNode }) {
   return (
     <SharedTooltip
       openDelay={300}
-      className="bg-surface text-on-surface max-w-[calc(100vw-2rem)] rounded-xl px-3 py-2 text-xs shadow-lg"
+      className="bg-surface text-on-surface rounded-medium max-w-[calc(100vw-2rem)] px-3 py-2 text-xs shadow-lg"
     >
       {children}
     </SharedTooltip>

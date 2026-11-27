@@ -1,4 +1,10 @@
 import { useMemo } from 'react'
+import {
+  Item,
+  ItemContent,
+  ItemTitle,
+  ItemTrailing,
+} from '@nyanpasu/ui/item-group'
 import { Switch } from '@nyanpasu/ui/switch'
 import { RequireCapability } from '@/components/auth/capabilities'
 import { m } from '@/paraglide/messages'
@@ -6,11 +12,6 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useLockFn } from '@nyanpasu/hooks'
 import { useClashAccess, useClashConfig } from '@nyanpasu/query'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelText,
-} from '../../../../_modules/settings-card'
 import LanAddressesDialog from './lan-addresses-dialog'
 
 export default function AllowLanSwitch() {
@@ -34,17 +35,12 @@ export default function AllowLanSwitch() {
   })
 
   return (
-    <ItemContainer data-slot="allow-lan-switch-container">
-      <ItemLabel>
-        <ItemLabelText>
-          {m.settings_clash_settings_allow_lan_label()}
-        </ItemLabelText>
-      </ItemLabel>
+    <Item data-slot="allow-lan-switch-container">
+      <ItemContent>
+        <ItemTitle>{m.settings_clash_settings_allow_lan_label()}</ItemTitle>
+      </ItemContent>
 
-      <div
-        className="flex items-center gap-3"
-        data-slot="allow-lan-switch-actions"
-      >
+      <ItemTrailing className="gap-3" data-slot="allow-lan-switch-actions">
         <RequireCapability permission="remote:read">
           <LanAddressesDialog
             allowLan={Boolean(value)}
@@ -57,7 +53,7 @@ export default function AllowLanSwitch() {
           onCheckedChange={handleAllowLan}
           loading={upsert.isPending}
         />
-      </div>
-    </ItemContainer>
+      </ItemTrailing>
+    </Item>
   )
 }

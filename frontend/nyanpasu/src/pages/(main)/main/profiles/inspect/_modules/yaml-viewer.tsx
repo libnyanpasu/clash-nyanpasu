@@ -28,7 +28,7 @@ const MAX_BARS = 1000
 // of the text that is selected, copied or searched. The gutter fits the
 // longest number, `--gutter` wide.
 const viewerClassName = cn(
-  'bg-code text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto',
+  'bg-surface-container-lowest text-on-surface focus-visible:outline-primary min-h-0 flex-1 overflow-auto',
   'font-mono text-[12.5px] leading-5 focus-visible:-outline-offset-2 focus-visible:outline-2',
   '[&_.line]:before:content-[attr(data-line)]',
   '[&_.line]:before:text-tc [&_.line]:before:inline-block [&_.line]:before:w-(--gutter)',

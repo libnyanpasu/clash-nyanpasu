@@ -128,6 +128,50 @@ export function checkFrontendBoundaries(
       }
     }
 
+    if (pkg.name === '@nyanpasu/gallery') {
+      const blockedGalleryDependencies = [
+        '@nyanpasu/nyanpasu',
+        '@nyanpasu/interface',
+        '@nyanpasu/rpc',
+        '@nyanpasu/query',
+        '@nyanpasu/platform',
+        '@tauri-apps/api',
+      ]
+      const blockedGalleryImports = [
+        ...blockedGalleryDependencies,
+        '@tauri-apps/',
+      ]
+
+      for (const blocked of blockedGalleryDependencies) {
+        if (matchesPackage(pkg, blocked)) {
+          issues.add(
+            `${pkg.name}: dependency on ${blocked} crosses its package boundary`,
+          )
+        }
+      }
+
+      for (const source of pkg.sources) {
+        for (const specifier of source.imports) {
+          if (appPathForSpecifier(source.path, specifier, workspaceRoot)) {
+            issues.add(
+              `${pkg.name}: import into frontend/nyanpasu in ${source.path}`,
+            )
+          }
+          if (
+            blockedGalleryImports.some((blocked) =>
+              blocked.endsWith('/')
+                ? specifier.startsWith(blocked)
+                : specifier === blocked || specifier.startsWith(`${blocked}/`),
+            )
+          ) {
+            issues.add(
+              `${pkg.name}: import ${specifier} crosses its package boundary`,
+            )
+          }
+        }
+      }
+    }
+
     if (pkg.role !== 'shared') continue
 
     if (pkg.private !== true) {

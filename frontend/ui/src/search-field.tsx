@@ -13,14 +13,14 @@ import { glassSurfaceVariants } from './glass-surface'
 export const searchFieldVariants = cva(
   [
     'relative flex h-10 min-w-0 items-center rounded-full',
-    'bg-surface-variant dark:bg-surface-variant/30 text-on-surface',
+    'bg-surface-container-highest text-on-surface',
     'focus-within:outline-primary focus-within:outline-2',
   ],
   {
     variants: {
       variant: {
         basic: null,
-        glass: [glassSurfaceVariants(), 'dark:bg-surface-variant h-11'],
+        glass: [glassSurfaceVariants(), 'h-11'],
       },
     },
     defaultVariants: {

@@ -11,7 +11,7 @@ export type { LabelPart, ProfileLookup } from '@/utils/profile-label'
 
 const profileTagClassName = cn(
   'bg-tertiary-container text-on-tertiary-container',
-  'inline-block max-w-full rounded-md px-1.5 py-0.5 text-xs [overflow-wrap:anywhere]',
+  'inline-block max-w-full rounded-small px-1.5 py-0.5 text-xs [overflow-wrap:anywhere]',
 )
 
 /** A profile that no longer exists falls back to its raw id. */

@@ -1,10 +1,10 @@
 import { clamp } from 'motion/react'
-import { ComponentProps, useRef } from 'react'
+import { ComponentProps, useRef, useState } from 'react'
 import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 const THUMB_TARGET_SIZE_PX = 48
-const THUMB_GAP_OFFSET_PX = 8
+const THUMB_GAP_OFFSET_PX = 6
 
 export function Slider({
   className,
@@ -14,6 +14,7 @@ export function Slider({
   max = 100,
   disabled,
   step = 1,
+  size = 'md',
   onValueChange,
   onValueCommit,
   onPointerDown,
@@ -24,12 +25,13 @@ export function Slider({
   ...props
 }: Omit<
   ComponentProps<'input'>,
-  'type' | 'value' | 'defaultValue' | 'min' | 'max' | 'onChange'
+  'type' | 'value' | 'defaultValue' | 'min' | 'max' | 'onChange' | 'size'
 > & {
   value?: number
   defaultValue?: number
   min?: number
   max?: number
+  size?: 'sm' | 'md'
   onValueChange?: (value: number) => void
   onValueCommit?: (value: number) => void
 }) {
@@ -46,6 +48,7 @@ export function Slider({
     },
   })
 
+  const [isDragging, setIsDragging] = useState(false)
   const currentValue = clamp(min, max, rawValue ?? min)
   const pendingValue = useRef<number | null>(null)
 
@@ -74,19 +77,27 @@ export function Slider({
     onValueCommit?.(nextValue)
   }
 
+  const isMedium = size === 'md'
+
   return (
     <div
       data-slot="slider"
-      data-disabled={String(disabled)}
+      data-disabled={String(Boolean(disabled))}
+      data-size={size}
       className={cn(
         'relative flex h-12 w-full touch-none items-center select-none',
-        'has-focus-visible:ring-primary rounded-full has-focus-visible:ring-2 has-focus-visible:ring-offset-2 data-[disabled=true]:opacity-50',
+        'has-focus-visible:ring-primary rounded-full has-focus-visible:ring-2 has-focus-visible:ring-offset-2 data-[disabled=true]:opacity-38',
         className,
       )}
     >
       <span
         data-slot="slider-range"
-        className="bg-primary pointer-events-none absolute left-0 h-4 rounded-l-full rounded-r-xs"
+        className={cn(
+          'bg-primary pointer-events-none absolute left-0',
+          isMedium
+            ? 'rounded-l-small rounded-r-extra-small h-6'
+            : 'rounded-r-extra-small h-4 rounded-l-full',
+        )}
         style={{
           width: rangeWidth,
         }}
@@ -94,15 +105,32 @@ export function Slider({
 
       <span
         data-slot="slider-track"
-        className="bg-secondary-container pointer-events-none absolute right-0 h-4 rounded-l-xs rounded-r-full"
+        className={cn(
+          'bg-surface-container-highest pointer-events-none absolute right-0',
+          isMedium
+            ? 'rounded-l-extra-small rounded-r-small h-6'
+            : 'rounded-l-extra-small h-4 rounded-r-full',
+        )}
         style={{
           width: trackWidth,
         }}
-      />
+      >
+        {ratio < 0.96 && (
+          <span
+            aria-hidden
+            data-slot="slider-stop"
+            className="bg-primary absolute top-1/2 right-1.5 size-1 -translate-y-1/2 rounded-full"
+          />
+        )}
+      </span>
 
       <span
         data-slot="slider-thumb"
-        className="bg-primary pointer-events-none absolute top-1/2 h-11 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        className={cn(
+          'bg-primary pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-[width] duration-150 motion-reduce:transition-none',
+          isMedium ? 'h-10' : 'h-8',
+          isDragging ? 'w-0.5' : 'w-1',
+        )}
         style={{
           left: thumbLeft,
         }}
@@ -119,14 +147,17 @@ export function Slider({
         onPointerDown={(event) => {
           onPointerDown?.(event)
           if (!event.defaultPrevented && !disabled) {
+            setIsDragging(true)
             event.currentTarget.setPointerCapture(event.pointerId)
           }
         }}
         onPointerUp={(event) => {
+          setIsDragging(false)
           commitValue()
           onPointerUp?.(event)
         }}
         onPointerCancel={(event) => {
+          setIsDragging(false)
           commitValue()
           onPointerCancel?.(event)
         }}
@@ -135,6 +166,7 @@ export function Slider({
           onKeyUp?.(event)
         }}
         onBlur={(event) => {
+          setIsDragging(false)
           commitValue()
           onBlur?.(event)
         }}

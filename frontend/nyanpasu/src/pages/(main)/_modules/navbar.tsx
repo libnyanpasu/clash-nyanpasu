@@ -14,6 +14,7 @@ import { Button } from '@nyanpasu/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@nyanpasu/ui/dropdown-menu'
@@ -60,7 +61,9 @@ function NavbarButton<
 
   return (
     <AnimatedTabsItem
-      className={cn('md:min-w-max md:flex-none [&_svg]:size-5')}
+      className={cn(
+        'text-on-secondary-container/80 hover:text-on-secondary-container data-[active=true]:text-on-primary-container md:min-w-max md:flex-none [&_svg]:size-5',
+      )}
       data-active={String(isActive)}
       data-slot="animated-tabs-item"
       isActive={isActive}
@@ -139,8 +142,7 @@ export const DefaultNavbar = () => {
     <AnimatedTabs
       className={cn(
         'bg-transparent!',
-        '**:data-[slot=animated-tabs-indicator]:bg-inverse-primary',
-        '**:dark:data-[slot=animated-tabs-indicator]:bg-primary-container',
+        '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
       )}
       data-slot="app-navbar"
       variant="pill"
@@ -209,8 +211,7 @@ export const MobileNavbar = () => {
     <AnimatedTabs
       className={cn(
         'h-full w-full bg-transparent! py-2',
-        '**:data-[slot=animated-tabs-indicator]:bg-inverse-primary',
-        '**:dark:data-[slot=animated-tabs-indicator]:bg-on-primary',
+        '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
       )}
       variant="pill"
       size="sm"
@@ -247,7 +248,7 @@ export const MobileNavbar = () => {
         {m.navbar_label_settings()}
       </MoblieNavbarContainer>
 
-      <DropdownMenu>
+      <DropdownMenu variant="launcher">
         <MoblieNavbarContainer>
           <DropdownMenuTrigger asChild>
             <Button
@@ -262,45 +263,47 @@ export const MobileNavbar = () => {
         </MoblieNavbarContainer>
 
         <DropdownMenuContent>
-          <DropdownMenuItem asChild>
-            <Link
-              to="/main/profiles/$type"
-              params={{
-                type: 'profile',
-              }}
-            >
-              <GridViewOutlineRounded />
-              <span>{m.navbar_label_profiles()}</span>
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/main/profiles/$type"
+                params={{
+                  type: 'profile',
+                }}
+              >
+                <GridViewOutlineRounded />
+                <span>{m.navbar_label_profiles()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/topology">
-              <SchemaRounded />
-              <span>{m.topology_title()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/topology">
+                <SchemaRounded />
+                <span>{m.topology_title()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/rules">
-              <DesignServicesRounded />
-              <span>{m.navbar_label_rules()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/rules">
+                <DesignServicesRounded />
+                <span>{m.navbar_label_rules()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/logs">
-              <TerminalRounded />
-              <span>{m.navbar_label_logs()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/logs">
+                <TerminalRounded />
+                <span>{m.navbar_label_logs()}</span>
+              </Link>
+            </DropdownMenuItem>
 
-          <DropdownMenuItem asChild>
-            <Link to="/main/providers">
-              <Apps />
-              <span>{m.navbar_label_providers()}</span>
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/main/providers">
+                <Apps />
+                <span>{m.navbar_label_providers()}</span>
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </AnimatedTabs>

@@ -92,6 +92,7 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             enable_memory_usage,
             lighten_animation_effects,
             enable_service_mode,
+            profile_file_opener: _,
             enable_auto_launch,
             enable_silent_start,
             enable_system_proxy,
@@ -191,6 +192,17 @@ mod tests {
 
     fn serialized(config: &NyanpasuAppConfig) -> String {
         serde_json::to_string(&ApplicationSettings::from(config)).unwrap()
+    }
+
+    #[test]
+    fn editor_path_is_not_in_the_public_settings_view() {
+        let config = NyanpasuAppConfig {
+            profile_file_opener: super::super::ProfileFileOpener::Custom {
+                path: "private-editor-path".into(),
+            },
+            ..Default::default()
+        };
+        assert!(!serialized(&config).contains("private-editor-path"));
     }
 
     #[test]

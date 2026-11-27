@@ -31,7 +31,7 @@ export function StageLabel({
       {index !== undefined && (
         <span
           data-slot="stage-label-index"
-          className="bg-surface-variant text-on-surface-variant grid size-[18px] shrink-0 place-items-center rounded-full text-[10px]"
+          className="bg-surface-container-highest text-on-surface-variant grid size-[18px] shrink-0 place-items-center rounded-full text-[10px]"
         >
           {index}
         </span>
@@ -57,9 +57,9 @@ export function StepGroup({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="step-group"
       className={cn(
-        'flex min-w-0 flex-col gap-0.5 *:rounded-sm *:transition-[border-radius]',
-        '[&>:first-child]:rounded-t-3xl [&>:last-child]:rounded-b-3xl',
-        '[&>[data-selected]]:rounded-2xl!',
+        '*:rounded-extra-small flex min-w-0 flex-col gap-0.5 *:transition-[border-radius]',
+        '[&>:first-child]:rounded-t-extra-large [&>:last-child]:rounded-b-extra-large',
+        '[&>[data-selected]]:rounded-large!',
         className,
       )}
       {...props}

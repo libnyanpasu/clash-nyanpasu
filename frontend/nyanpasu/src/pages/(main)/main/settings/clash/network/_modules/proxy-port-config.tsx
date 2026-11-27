@@ -1,44 +1,35 @@
-import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
-import { AnimatePresence } from 'motion/react'
 import { PropsWithChildren } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@nyanpasu/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@nyanpasu/ui/card'
+import {
+  Dialog,
+  DialogTrigger,
+  FormDialogContent,
+  FormDialogError,
+  useDialog,
+} from '@nyanpasu/ui/dialog'
 import { NumericInput } from '@nyanpasu/ui/input'
 import {
-  Modal,
-  ModalClose,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-  useModal,
-} from '@nyanpasu/ui/modal'
+  Item,
+  ItemAction,
+  ItemContent,
+  ItemSplitSwitch,
+  ItemTitle,
+} from '@nyanpasu/ui/item-group'
 import {
   SegmentedButton,
   SegmentedButtonItem,
 } from '@nyanpasu/ui/segmented-button'
-import { Switch } from '@nyanpasu/ui/switch'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useLockFn } from '@nyanpasu/hooks'
 import { useClashConfig, useClashSystemSetting } from '@nyanpasu/query'
 import {
   type ClashApiConfig,
   type PortStrategy,
   type PortStrategyKind,
 } from '@nyanpasu/rpc/types'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../../../_modules/settings-card'
 
 const PORT_STRATEGY_KINDS = [
   'fixed',
@@ -120,9 +111,9 @@ const PortStrategyDialog = (
     onApply: (strategy: PortStrategy) => Promise<void>
   }>,
 ) => (
-  <Modal>
+  <Dialog>
     <PortStrategyForm {...props} />
-  </Modal>
+  </Dialog>
 )
 
 const PortStrategyForm = ({
@@ -135,7 +126,7 @@ const PortStrategyForm = ({
   value: PortStrategy
   onApply: (strategy: PortStrategy) => Promise<void>
 }>) => {
-  const { setOpen } = useModal()
+  const { setOpen } = useDialog()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -144,120 +135,76 @@ const PortStrategyForm = ({
 
   const kind = form.watch('kind')
 
-  const handleSubmit = useLockFn(
-    form.handleSubmit(async (data) => {
-      try {
-        await onApply(data)
+  const handleSubmit = form.handleSubmit(async (data) => {
+    try {
+      await onApply(data)
 
-        setOpen(false)
-      } catch (error) {
-        reportError(error)
-      }
-    }),
-  )
+      setOpen(false)
+    } catch (error) {
+      reportError(error)
+    }
+  })
 
   return (
     <>
       {children}
 
-      <ModalContent
-        dismissible={!form.formState.isSubmitting}
-        onOpenAutoFocus={() => form.reset(value)}
+      <FormDialogContent
+        title={title}
+        submitLabel={m.common_apply()}
+        cancelLabel={m.common_close()}
+        submitting={form.formState.isSubmitting}
+        onOpen={() => form.reset(value)}
+        onSubmit={handleSubmit}
       >
-        <Card className="flex min-w-96 flex-col">
-          <CardHeader>
-            <ModalTitle>{title}</ModalTitle>
-          </CardHeader>
-
-          <CardContent asChild>
-            <form
-              className="flex flex-col gap-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                handleSubmit(event)
-              }}
-            >
-              <Controller
-                name="kind"
-                control={form.control}
-                render={({ field }) => (
-                  <div className="flex flex-col gap-2">
-                    <SegmentedButton
-                      value={field.value}
-                      onValueChange={(next) => {
-                        if (next) field.onChange(next)
-                      }}
-                    >
-                      {PORT_STRATEGY_KINDS.map((item) => (
-                        <SegmentedButtonItem key={item} value={item}>
-                          {STRATEGY_LABELS[item]()}
-                        </SegmentedButtonItem>
-                      ))}
-                    </SegmentedButton>
-
-                    <p className="text-on-surface-variant px-4 text-sm">
-                      {STRATEGY_DESCRIPTIONS[field.value]()}
-                    </p>
-                  </div>
-                )}
-              />
-
-              <Controller
-                name="start_port"
-                control={form.control}
-                render={({ field, fieldState }) => {
-                  const handleChange = (value: number | null) => {
-                    field.onChange(value)
-                  }
-
-                  return (
-                    <>
-                      <NumericInput
-                        variant="outlined"
-                        label={m.settings_clash_settings_port_number_label()}
-                        value={field.value}
-                        onChange={handleChange}
-                        disabled={kind === 'random'}
-                        allowNegative={false}
-                        decimalScale={0}
-                      />
-
-                      <AnimatePresence>
-                        {fieldState.error && (
-                          <SettingsCardAnimatedItem className="text-error">
-                            {fieldState.error.message}
-                          </SettingsCardAnimatedItem>
-                        )}
-                      </AnimatePresence>
-                    </>
-                  )
+        <Controller
+          name="kind"
+          control={form.control}
+          render={({ field }) => (
+            <div className="flex flex-col gap-2">
+              <SegmentedButton
+                value={field.value}
+                onValueChange={(next) => {
+                  if (next) field.onChange(next)
                 }}
+              >
+                {PORT_STRATEGY_KINDS.map((item) => (
+                  <SegmentedButtonItem key={item} value={item}>
+                    {STRATEGY_LABELS[item]()}
+                  </SegmentedButtonItem>
+                ))}
+              </SegmentedButton>
+
+              <p className="text-on-surface-variant px-1 text-sm">
+                {STRATEGY_DESCRIPTIONS[field.value]()}
+              </p>
+            </div>
+          )}
+        />
+
+        <Controller
+          name="start_port"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <div className="flex flex-col gap-2">
+              <NumericInput
+                variant="outlined"
+                label={m.settings_clash_settings_port_number_label()}
+                value={field.value}
+                onChange={(next) => field.onChange(next)}
+                disabled={kind === 'random'}
+                allowNegative={false}
+                decimalScale={0}
               />
-            </form>
-          </CardContent>
 
-          <CardFooter className="gap-2">
-            <Button
-              variant="flat"
-              onClick={handleSubmit}
-              loading={form.formState.isSubmitting}
-              disabled={form.formState.isSubmitting}
-            >
-              {m.common_apply()}
-            </Button>
-
-            <ModalClose disabled={form.formState.isSubmitting}>
-              {m.common_close()}
-            </ModalClose>
-          </CardFooter>
-        </Card>
-      </ModalContent>
+              <FormDialogError message={fieldState.error?.message} />
+            </div>
+          )}
+        />
+      </FormDialogContent>
     </>
   )
 }
-
-const ROW_BUTTON_CLASS =
-  'text-on-surface! h-auto w-full rounded-none px-5 text-left text-base'
 
 export function MixedPortConfig() {
   const mixedPort = useClashSystemSetting('mixed_port')
@@ -266,46 +213,33 @@ export function MixedPortConfig() {
 
   const strategy = mixedPort.value
 
-  const label = (
-    <ItemLabel>
-      <ItemLabelText>
-        {m.settings_clash_settings_mixed_port_label()}
-      </ItemLabelText>
-
-      {strategy && (
-        <ItemLabelDescription>
-          {describeStrategy(strategy, clashConfig.query.data?.['mixed-port'])}
-        </ItemLabelDescription>
-      )}
-    </ItemLabel>
-  )
+  if (!strategy) {
+    return (
+      <Item data-slot="mixed-port-config-card">
+        <ItemContent>
+          <ItemTitle>{m.settings_clash_settings_mixed_port_label()}</ItemTitle>
+        </ItemContent>
+      </Item>
+    )
+  }
 
   return (
-    <SettingsCard data-slot="mixed-port-config-card">
-      {strategy ? (
-        <PortStrategyDialog
+    <PortStrategyDialog
+      title={m.settings_clash_settings_mixed_port_label()}
+      value={strategy}
+      onApply={(next) => mixedPort.upsert(next)}
+    >
+      <DialogTrigger asChild>
+        <ItemAction
+          data-slot="mixed-port-config-card"
           title={m.settings_clash_settings_mixed_port_label()}
-          value={strategy}
-          onApply={(next) => mixedPort.upsert(next)}
-        >
-          <SettingsCardContent asChild>
-            <ModalTrigger asChild>
-              <Button className={ROW_BUTTON_CLASS}>
-                <ItemContainer>
-                  {label}
-
-                  <ArrowForwardIosRounded />
-                </ItemContainer>
-              </Button>
-            </ModalTrigger>
-          </SettingsCardContent>
-        </PortStrategyDialog>
-      ) : (
-        <SettingsCardContent>
-          <ItemContainer>{label}</ItemContainer>
-        </SettingsCardContent>
-      )}
-    </SettingsCard>
+          description={describeStrategy(
+            strategy,
+            clashConfig.query.data?.['mixed-port'],
+          )}
+        />
+      </DialogTrigger>
+    </PortStrategyDialog>
   )
 }
 
@@ -344,49 +278,36 @@ export function OptionalPortConfig({
     }
   }
 
-  const itemLabel = (
-    <ItemLabel>
-      <ItemLabelText>{label()}</ItemLabelText>
+  const description = strategy
+    ? describeStrategy(strategy, clashConfig.query.data?.[runtimeKey])
+    : m.settings_clash_settings_port_disabled()
 
-      <ItemLabelDescription>
-        {strategy
-          ? describeStrategy(strategy, clashConfig.query.data?.[runtimeKey])
-          : m.settings_clash_settings_port_disabled()}
-      </ItemLabelDescription>
-    </ItemLabel>
-  )
+  if (!strategy) {
+    return (
+      <ItemSplitSwitch
+        data-slot={`${field}-config-card`}
+        title={label()}
+        description={description}
+        checked={false}
+        onCheckedChange={handleToggle}
+        loading={setting.isPending}
+      />
+    )
+  }
 
   return (
-    <SettingsCard data-slot={`${field}-config-card`}>
-      <div className="flex items-stretch">
-        {strategy ? (
-          <PortStrategyDialog
-            title={label()}
-            value={strategy}
-            onApply={handleApply}
-          >
-            <SettingsCardContent className="min-w-0 flex-1" asChild>
-              <ModalTrigger asChild>
-                <Button className={ROW_BUTTON_CLASS}>{itemLabel}</Button>
-              </ModalTrigger>
-            </SettingsCardContent>
-          </PortStrategyDialog>
-        ) : (
-          <SettingsCardContent className="min-w-0 flex-1">
-            {itemLabel}
-          </SettingsCardContent>
-        )}
-
-        <div className="flex items-center gap-4 pr-5">
-          {strategy && <div className="bg-outline-variant h-8 w-px" />}
-
-          <Switch
-            checked={Boolean(strategy)}
-            onCheckedChange={handleToggle}
-            loading={setting.isPending}
-          />
-        </div>
-      </div>
-    </SettingsCard>
+    <PortStrategyDialog title={label()} value={strategy} onApply={handleApply}>
+      <ItemSplitSwitch
+        data-slot={`${field}-config-card`}
+        title={label()}
+        description={description}
+        checked
+        onCheckedChange={handleToggle}
+        loading={setting.isPending}
+        actionAsChild
+      >
+        <DialogTrigger type="button" />
+      </ItemSplitSwitch>
+    </PortStrategyDialog>
   )
 }

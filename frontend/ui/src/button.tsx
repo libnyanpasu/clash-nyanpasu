@@ -18,53 +18,55 @@ import { useRipple } from './ripple'
 
 export const buttonVariants = cva(
   [
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap',
     'cursor-pointer select-none',
     'focus:outline-hidden',
     'relative overflow-hidden',
     'h-10 text-sm font-medium',
     'rounded-full',
     'transition-[background-color,color,shadow,filter]',
+    '[&_svg]:shrink-0',
   ],
   {
     variants: {
       variant: {
         basic: [
           'px-4',
-          'text-primary dark:text-primary',
-          'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
-          'hover:bg-primary-container dark:hover:bg-surface-variant',
+          'text-primary',
+          'bg-transparent-fallback-surface',
+          'hover:bg-on-surface/8',
         ],
         raised: [
           'px-6',
-          'text-primary dark:text-on-surface',
+          'text-primary',
           'shadow-xs hover:shadow-sm focus:shadow-sm',
-          'bg-surface',
-          'hover:bg-surface-variant',
+          'bg-surface-container-low',
+          'hover:bg-surface-container',
         ],
         glass: [
           glassSurfaceVariants(),
-          'h-11 px-6 text-on-surface-variant dark:text-on-surface-variant',
-          'hover:shadow-sm focus:shadow-sm hover:bg-surface-variant',
+          'h-11 px-6 text-on-surface-variant',
+          'hover:bg-surface-container-highest',
         ],
         stroked: [
           'px-6',
           'text-primary',
-          'border border-primary',
-          'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
-          'hover:bg-primary-container dark:hover:bg-surface-variant',
+          'border border-outline',
+          'bg-transparent-fallback-surface',
+          'hover:bg-on-surface/8',
         ],
         flat: [
           'px-6',
-          'text-surface dark:text-on-surface',
-          'bg-primary dark:bg-primary-container',
-          'dark:hover:bg-on-primary',
+          'text-on-primary',
+          'bg-primary',
+          'hover:brightness-95 dark:hover:brightness-105',
         ],
         fab: [
           'px-4 h-14',
-          'rounded-2xl',
+          'rounded-large',
           'shadow-sm',
-          'text-on-primary-container dark:text-on-primary-container',
-          'bg-primary-container dark:bg-on-primary',
+          'text-on-primary-container',
+          'bg-primary-container',
           'hover:shadow-md',
           'hover:brightness-95 dark:hover:brightness-105',
         ],
@@ -74,7 +76,7 @@ export const buttonVariants = cva(
         false: '',
       },
       icon: {
-        true: 'p-0 grid place-content-center',
+        true: 'p-0',
         false: 'min-w-16',
       },
     },
@@ -82,28 +84,30 @@ export const buttonVariants = cva(
       {
         variant: 'basic',
         disabled: true,
-        className: 'text-zinc-900/40 hover:bg-transparent',
+        className: 'bg-transparent text-on-surface/38 hover:bg-transparent',
       },
       {
         variant: 'raised',
         disabled: true,
-        className: 'bg-gray-900/20 text-zinc-900/40 hover:bg-gray-900/20',
+        className: 'bg-on-surface/12 text-on-surface/38 hover:bg-on-surface/12',
       },
       {
         variant: 'stroked',
         disabled: true,
-        className: 'text-zinc-900/40 hover:bg-transparent border-zinc-300',
+        className:
+          'border-on-surface/12 bg-transparent text-on-surface/38 hover:bg-transparent',
       },
       {
         variant: 'flat',
         disabled: true,
-        className: 'bg-gray-900/20 text-gray-900/40 hover:bg-primary',
+        className:
+          'bg-on-surface/12 text-on-surface/38 hover:bg-on-surface/12 hover:brightness-100',
       },
       {
         variant: 'fab',
         disabled: true,
         className:
-          'bg-gray-900/20 text-gray-900/40 hover:brightness-100 hover:shadow-container-xl',
+          'bg-on-surface/12 text-on-surface/38 hover:bg-on-surface/12 hover:brightness-100 hover:shadow-none',
       },
       {
         icon: true,

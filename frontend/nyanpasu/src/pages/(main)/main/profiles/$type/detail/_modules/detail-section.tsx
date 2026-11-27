@@ -1,25 +1,15 @@
-import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import { ComponentProps, ReactNode, useId } from 'react'
 import {
-  cloneElement,
-  ComponentProps,
-  isValidElement,
-  PropsWithChildren,
-  ReactNode,
-  useId,
-} from 'react'
-import { Button } from '@nyanpasu/ui/button'
-import { Switch } from '@nyanpasu/ui/switch'
-import { cn } from '@nyanpasu/utils'
-import {
-  ItemContainer,
-  ItemLabel,
-  ItemLabelDescription,
-  ItemLabelText,
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../../../../_modules/settings-card'
+  ItemAction,
+  ItemGroup,
+  ItemSection,
+  ItemSectionDescription,
+  ItemSectionHeader,
+  ItemSectionTitle,
+  ItemSwitch,
+  type ItemActionProps,
+} from '@nyanpasu/ui/item-group'
+import { CircularProgress } from '@nyanpasu/ui/progress'
 
 /** A titled group of rows on the detail page. */
 export function DetailSection({
@@ -39,27 +29,47 @@ export function DetailSection({
   const headingId = useId()
 
   return (
-    <section
+    <ItemSection
       aria-labelledby={headingId}
       data-slot="profile-detail-section"
       className={className}
       {...props}
     >
-      <SettingsLabel className="flex items-center justify-between gap-2">
-        <h2 id={headingId}>{title}</h2>
+      <ItemSectionHeader>
+        <ItemSectionTitle id={headingId}>{title}</ItemSectionTitle>
 
         {action}
-      </SettingsLabel>
+      </ItemSectionHeader>
 
-      {description && (
-        <p className="text-on-surface-variant px-4 pb-2 text-sm">
-          {description}
-        </p>
+      {description != null && (
+        <ItemSectionDescription>{description}</ItemSectionDescription>
       )}
 
-      <SettingsGroup>{children}</SettingsGroup>
-    </section>
+      <ItemGroup>{children}</ItemGroup>
+    </ItemSection>
   )
+}
+
+type DetailRowProps = Omit<
+  ItemActionProps,
+  | 'title'
+  | 'description'
+  | 'value'
+  | 'leading'
+  | 'trailing'
+  | 'destructive'
+  | 'asChild'
+> & {
+  label: ReactNode
+  description?: ReactNode
+  /** The current setting, shown before the trailing icon. */
+  value?: ReactNode
+  leading?: ReactNode
+  trailing?: ReactNode
+  destructive?: boolean
+  asChild?: boolean
+  loading?: boolean
+  children?: ReactNode
 }
 
 /**
@@ -71,81 +81,41 @@ export function DetailRow({
   description,
   value,
   leading,
-  trailing = (
-    <ChevronRightRounded
-      className="text-on-surface-variant size-5 shrink-0"
-      aria-hidden
-    />
-  ),
+  trailing,
   destructive,
+  loading,
+  disabled,
   asChild,
   className,
   children,
   ...props
-}: Omit<ComponentProps<typeof Button>, 'children' | 'label'> & {
-  label: ReactNode
-  description?: ReactNode
-  /** The current setting, shown before the trailing icon. */
-  value?: ReactNode
-  leading?: ReactNode
-  trailing?: ReactNode
-  destructive?: boolean
-  // Triggers hand their own layers over as children. With `asChild` the
-  // child is the element that carries the row, such as a link.
-  children?: ReactNode
-}) {
-  const row = (
-    <ItemContainer>
-      {leading}
-
-      <ItemLabel className="min-w-0 flex-1">
-        <ItemLabelText>{label}</ItemLabelText>
-
-        {description && (
-          <ItemLabelDescription className={cn(destructive && 'text-error/80')}>
-            {description}
-          </ItemLabelDescription>
-        )}
-      </ItemLabel>
-
-      {value && (
-        <span
-          data-slot="profile-detail-row-value"
-          className="text-on-surface-variant max-w-[55%] min-w-0 truncate text-sm font-normal"
-        >
-          {value}
-        </span>
-      )}
-
-      {trailing}
-    </ItemContainer>
-  )
-
+}: DetailRowProps) {
   return (
-    <SettingsCard>
-      <SettingsCardContent asChild>
-        <Button
-          data-slot="profile-detail-row"
-          asChild={asChild}
-          className={cn(
-            'h-auto w-full rounded-none px-5 text-left text-base',
-            destructive ? 'text-error!' : 'text-on-surface!',
-            className,
-          )}
-          {...props}
-        >
-          {asChild && isValidElement<PropsWithChildren>(children) ? (
-            cloneElement(children, {}, row)
-          ) : (
-            <>
-              {row}
-
-              {children}
-            </>
-          )}
-        </Button>
-      </SettingsCardContent>
-    </SettingsCard>
+    <ItemAction
+      data-slot="profile-detail-row"
+      asChild={asChild}
+      leading={leading}
+      title={label}
+      description={description}
+      value={
+        value != null ? (
+          <span data-slot="profile-detail-row-value">{value}</span>
+        ) : undefined
+      }
+      trailing={
+        loading ? (
+          <CircularProgress className="size-5" indeterminate />
+        ) : (
+          trailing
+        )
+      }
+      destructive={destructive}
+      disabled={disabled || loading}
+      className={className}
+      {...props}
+    >
+      {children}
+    </ItemAction>
   )
 }
 
@@ -163,28 +133,14 @@ export function DetailSwitchRow({
   onCheckedChange: (checked: boolean) => void
   loading?: boolean
 }) {
-  const labelId = useId()
-
   return (
-    <SettingsCard data-slot="profile-detail-switch-row">
-      <SettingsCardContent>
-        <ItemContainer>
-          <ItemLabel className="min-w-0 flex-1">
-            <ItemLabelText id={labelId}>{label}</ItemLabelText>
-
-            {description && (
-              <ItemLabelDescription>{description}</ItemLabelDescription>
-            )}
-          </ItemLabel>
-
-          <Switch
-            aria-labelledby={labelId}
-            checked={checked}
-            onCheckedChange={onCheckedChange}
-            loading={loading}
-          />
-        </ItemContainer>
-      </SettingsCardContent>
-    </SettingsCard>
+    <ItemSwitch
+      data-slot="profile-detail-switch-row"
+      title={label}
+      description={description}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      loading={loading}
+    />
   )
 }

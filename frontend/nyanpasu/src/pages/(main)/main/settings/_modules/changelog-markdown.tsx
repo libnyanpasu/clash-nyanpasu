@@ -37,7 +37,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
     <div
       data-slot="changelog-markdown-code-block"
-      className="bg-surface-variant/30 my-3 overflow-x-auto rounded-xl p-3 text-xs [&_.shiki]:!bg-transparent [&_.shiki_span]:!bg-transparent [&_pre]:m-0 [&_pre]:font-mono [&_pre]:leading-relaxed"
+      className="bg-surface-container-high rounded-medium my-3 overflow-x-auto p-3 text-xs [&_.shiki]:!bg-transparent [&_.shiki_span]:!bg-transparent [&_pre]:m-0 [&_pre]:font-mono [&_pre]:leading-relaxed"
     >
       {highlighted?.code === code ? (
         <div dangerouslySetInnerHTML={{ __html: highlighted.html }} />
@@ -100,13 +100,13 @@ const changelogMarkdownVariants = cva([
   // The unlayered normalize reset zeroes input margins, hence the `!`.
   '[&_.task-list-item]:list-none [&_.task-list-item_input]:-ml-5! [&_.task-list-item_input]:mr-1.5!',
   '[&_input]:accent-primary [&_input]:align-middle dark:[&_input]:[color-scheme:dark]',
-  '[&_:not(pre)>code]:bg-surface-variant/50 [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.9em]',
+  '[&_:not(pre)>code]:bg-surface-container-high [&_:not(pre)>code]:rounded [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:text-[0.9em]',
   '[&_blockquote]:border-outline-variant [&_blockquote]:text-on-surface-variant [&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:pl-3',
   '[&_hr]:border-outline-variant [&_hr]:my-4',
   '[&_table]:my-3 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:border-collapse [&_table]:text-left',
   '[&_td]:border-outline-variant [&_td]:border [&_td]:px-2 [&_td]:py-1',
-  '[&_th]:border-outline-variant [&_th]:bg-surface-variant/30 [&_th]:border [&_th]:px-2 [&_th]:py-1 [&_th]:font-semibold',
-  '[&_img]:my-2 [&_img]:inline-block [&_img]:max-w-full [&_img]:rounded-lg',
+  '[&_th]:border-outline-variant [&_th]:bg-surface-container-high [&_th]:border [&_th]:px-2 [&_th]:py-1 [&_th]:font-semibold',
+  '[&_img]:my-2 [&_img]:inline-block [&_img]:max-w-full [&_img]:rounded-small',
 ])
 
 /** Renders GitHub-flavored release notes; links open in the system browser. */

@@ -52,7 +52,7 @@ export default function SingleValueCard({
                   type="button"
                   aria-pressed={active}
                   className={cn(
-                    'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-sm outline-none',
+                    'rounded-medium flex w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm outline-none',
                     'focus-visible:ring-primary focus-visible:ring-2',
                     'hover:bg-on-surface/8 transition-colors',
                     active && 'bg-secondary-container',
@@ -84,7 +84,7 @@ export default function SingleValueCard({
                 </button>
               </TooltipTrigger>
 
-              <TooltipContent className="max-w-96 rounded-2xl break-all">
+              <TooltipContent className="rounded-large max-w-96 break-all">
                 {label.title}
               </TooltipContent>
             </Tooltip>

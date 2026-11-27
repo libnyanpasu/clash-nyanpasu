@@ -45,7 +45,7 @@ function AllowLanDisabledNotice({ allowLan }: { allowLan: boolean }) {
     <p
       role="note"
       data-slot="allow-lan-addresses-disabled-notice"
-      className="bg-secondary-container text-on-secondary-container rounded-xl px-4 py-3 text-sm"
+      className="bg-secondary-container text-on-secondary-container rounded-medium px-4 py-3 text-sm"
     >
       {m.settings_clash_settings_allow_lan_addresses_disabled_notice()}
     </p>
@@ -61,7 +61,7 @@ function ControllerLoopbackNotice({ address }: { address: string | null }) {
     <p
       role="note"
       data-slot="allow-lan-addresses-controller-loopback-notice"
-      className="bg-surface-variant/60 text-on-surface-variant rounded-xl px-4 py-3 text-sm"
+      className="bg-surface-container-high text-on-surface-variant rounded-medium px-4 py-3 text-sm"
     >
       {m.settings_clash_settings_allow_lan_addresses_controller_loopback_notice(
         { address },
@@ -120,7 +120,7 @@ function LanAddressGroupCard({
 }) {
   return (
     <section
-      className="bg-surface-variant/30 flex flex-col gap-2 rounded-2xl p-4"
+      className="bg-surface-container-high rounded-large flex flex-col gap-2 p-4"
       data-slot="allow-lan-addresses-group"
     >
       <div className="flex items-baseline justify-between gap-2">

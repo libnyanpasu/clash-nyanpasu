@@ -80,7 +80,7 @@ export function DetailPanelSlot({
 }
 
 const detailPanelVariants = cva(
-  'bg-mixed-background flex min-h-0 min-w-0 flex-col outline-none',
+  'bg-surface-container-low dark:bg-surface flex min-h-0 min-w-0 flex-col outline-none',
   {
     variants: {
       layout: {
@@ -156,7 +156,8 @@ export function DetailPanel({
         <div className="flex min-w-0 flex-1 flex-col">
           <Title
             id={titleId}
-            className="text-on-surface truncate text-base leading-6 font-semibold"
+            // `!` overrides unlayered normalize.css `h1 { font-size: 2em; margin: 0.67em 0 }` in narrow layout.
+            className="text-on-surface m-0! truncate text-base! leading-6 font-semibold"
           >
             {title}
           </Title>

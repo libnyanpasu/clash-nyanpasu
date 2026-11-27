@@ -99,7 +99,7 @@ export default function WidgetConfigMenu({
               type="button"
               aria-label={m.dashboard_widget_config_title()}
               data-slot="widget-config-trigger"
-              className="border-outline/30 bg-surface text-on-surface hover:bg-surface-variant data-[state=open]:bg-primary-container data-[state=open]:text-on-primary-container focus-visible:ring-primary pointer-events-auto absolute -bottom-1 left-1/2 z-20 grid h-6 w-9 -translate-x-1/2 cursor-pointer place-items-center rounded-full border shadow-sm outline-none focus-visible:ring-2"
+              className="border-outline/30 bg-surface text-on-surface hover:bg-on-surface/8 data-[state=open]:bg-primary-container data-[state=open]:text-on-primary-container focus-visible:ring-primary pointer-events-auto absolute -bottom-1 left-1/2 z-20 grid h-6 w-9 -translate-x-1/2 cursor-pointer place-items-center rounded-full border shadow-sm outline-none focus-visible:ring-2"
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
@@ -140,7 +140,7 @@ export default function WidgetConfigMenu({
           </LauncherMenuGroup>
 
           <ScrollArea
-            className="min-h-0 flex-auto rounded-3xl"
+            className="rounded-extra-large min-h-0 flex-auto"
             data-slot="widget-config-scroll-area"
           >
             {ConfigForm && (

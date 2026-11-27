@@ -35,9 +35,9 @@ function ColumnItem({
     <div
       ref={ref}
       className={cn(
-        'flex h-12 items-center gap-2 rounded-xl pr-3 pl-4 select-none',
-        'bg-surface-variant/30 dark:bg-surface-variant/10',
-        'hover:bg-surface-variant/60 cursor-grab active:cursor-grabbing',
+        'rounded-medium flex h-12 items-center gap-2 pr-3 pl-4 select-none',
+        'bg-surface-container dark:bg-surface-container-high',
+        'hover:bg-on-surface/8 cursor-grab active:cursor-grabbing',
         'focus-visible:outline-primary focus-visible:outline-2 focus-visible:-outline-offset-2',
         isDragging && 'opacity-60',
       )}

@@ -27,8 +27,8 @@ export const ProxyButton = ({
       className={cn(
         'group h-14 font-semibold text-nowrap',
         'flex items-center justify-between gap-2',
-        'data-[active=false]:bg-surface data-[active=false]:text-on-surface',
-        'disabled:bg-surface disabled:text-on-surface/40 disabled:shadow-sm',
+        'data-[active=false]:bg-surface-container-lowest dark:data-[active=false]:bg-surface-container data-[active=false]:text-on-surface data-[active=false]:shadow-none',
+        'disabled:bg-surface-container-lowest dark:disabled:bg-surface-container disabled:text-on-surface/38 disabled:shadow-none',
         className,
       )}
       data-active={String(Boolean(isActive))}

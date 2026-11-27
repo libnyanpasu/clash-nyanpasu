@@ -16,7 +16,7 @@ const traffic = (bytes: number) => parseTraffic(bytes).join(' ')
 /** The tooltip the ranking rows inside it share, for their full labels. */
 export function RankingRowTooltip({ children }: { children: ReactNode }) {
   return (
-    <SharedTooltip className="max-w-96 rounded-2xl break-all">
+    <SharedTooltip className="rounded-large max-w-96 break-all">
       {children}
     </SharedTooltip>
   )
@@ -86,8 +86,8 @@ export default function RankingRow({
     'aria-pressed': active,
     className: cn(
       layout === 'table'
-        ? 'grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))] items-center gap-2 rounded-xl px-2 py-2 text-left outline-none @max-lg:grid-cols-[minmax(0,1fr)_auto] @max-lg:grid-rows-[auto_auto] @max-lg:gap-x-3 @max-lg:gap-y-1'
-        : 'flex w-full min-w-0 cursor-pointer flex-col gap-0.5 rounded-xl px-3 py-2 text-left outline-none',
+        ? 'grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))] items-center gap-2 rounded-medium px-2 py-2 text-left outline-none @max-lg:grid-cols-[minmax(0,1fr)_auto] @max-lg:grid-rows-[auto_auto] @max-lg:gap-x-3 @max-lg:gap-y-1'
+        : 'flex w-full min-w-0 cursor-pointer flex-col gap-0.5 rounded-medium px-3 py-2 text-left outline-none',
       'focus-visible:ring-primary focus-visible:ring-2',
       'hover:bg-on-surface/8 transition-colors',
       first && 'bg-secondary-container/60',

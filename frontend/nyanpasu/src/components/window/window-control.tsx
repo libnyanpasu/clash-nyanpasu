@@ -20,7 +20,7 @@ const CtrlButton = ({ className, ...props }: ButtonProps) => {
   return (
     <Button
       className={cn(
-        'hover:bg-primary-container dark:hover:bg-on-primary size-8',
+        'text-on-primary-container/80 hover:bg-on-primary-container/10 hover:text-on-primary-container size-8',
         className,
       )}
       icon

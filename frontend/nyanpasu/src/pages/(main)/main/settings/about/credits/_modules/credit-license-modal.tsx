@@ -64,7 +64,7 @@ export default function CreditLicenseModal({
                   {pkg.textIds.map((id) => (
                     <pre
                       key={id}
-                      className="bg-surface-variant/40 dark:bg-surface-variant/20 rounded-2xl p-4 font-mono text-xs break-words whitespace-pre-wrap"
+                      className="bg-surface-container dark:bg-surface-container-high rounded-large p-4 font-mono text-xs break-words whitespace-pre-wrap"
                       data-slot="credits-license-text"
                     >
                       {texts[id]}

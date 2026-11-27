@@ -45,7 +45,7 @@ function StatCard({
       data-slot="traffic-stat"
       tabIndex={hint ? 0 : undefined}
     >
-      <div className="bg-secondary-container text-on-secondary-container grid size-8 shrink-0 place-content-center rounded-xl">
+      <div className="bg-secondary-container text-on-secondary-container rounded-medium grid size-8 shrink-0 place-content-center">
         <Icon className="size-4" />
       </div>
 
@@ -67,7 +67,7 @@ function StatCard({
     <Tooltip>
       <TooltipTrigger asChild>{card}</TooltipTrigger>
 
-      <TooltipContent className="max-w-80 rounded-2xl">{hint}</TooltipContent>
+      <TooltipContent className="rounded-large max-w-80">{hint}</TooltipContent>
     </Tooltip>
   ) : (
     card

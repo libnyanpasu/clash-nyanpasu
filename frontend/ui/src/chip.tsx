@@ -32,11 +32,11 @@ export const FilterChip = ({
     <TogglePrimitive.Root
       data-slot="filter-chip"
       className={cn(
-        'inline-flex h-8 items-center gap-2 rounded-lg px-4',
+        'rounded-small inline-flex h-8 items-center gap-2 px-4',
         'cursor-pointer text-sm font-medium whitespace-nowrap select-none',
         'transition-[background-color,border-color,color,padding]',
         'border-outline-variant text-on-surface-variant border',
-        'hover:bg-on-surface-variant/8',
+        'hover:bg-on-surface/8',
         'data-[state=on]:bg-secondary-container data-[state=on]:border-transparent',
         'data-[state=on]:text-on-secondary-container data-[state=on]:pl-2',
         'data-[state=on]:hover:bg-secondary-container data-[state=on]:hover:brightness-95',

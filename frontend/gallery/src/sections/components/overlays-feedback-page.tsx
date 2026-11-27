@@ -20,6 +20,8 @@ import {
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
+  Dialog,
+  DialogTrigger,
   Drawer,
   DrawerClose,
   DrawerContent,
@@ -39,6 +41,11 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  FormDialogContent,
+  FormDialogError,
+  Input,
+  ItemAction,
+  ItemGroup,
   LinearProgress,
   LoadingIndicator,
   Modal,
@@ -48,6 +55,7 @@ import {
   ModalDescription,
   ModalTitle,
   ModalTrigger,
+  NumericInput,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -58,9 +66,136 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  useDialog,
   useModal,
 } from '@nyanpasu/ui'
 import { PageHeader, SpecimenCard } from '../../studio/stage'
+
+function DeviceNameEditRow() {
+  const { setOpen } = useDialog()
+  const [deviceName, setDeviceName] = useState('WayDroid x86_64 Device')
+  const [draft, setDraft] = useState(deviceName)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed) {
+      setError('Device name cannot be empty.')
+      return
+    }
+
+    setError(null)
+    setSaving(true)
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    setDeviceName(trimmed)
+    setSaving(false)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          title="Device Name"
+          description={deviceName}
+          showChevron={false}
+        />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title="Device Name"
+        submitLabel="Confirm"
+        cancelLabel="Cancel"
+        submitting={saving}
+        onOpen={() => {
+          setDraft(deviceName)
+          setError(null)
+        }}
+        onSubmit={handleSubmit}
+      >
+        <Input
+          variant="underlined"
+          aria-label="Device Name"
+          aria-invalid={Boolean(error)}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (error) setError(null)
+          }}
+          autoFocus
+        />
+        <FormDialogError message={error} />
+      </FormDialogContent>
+    </>
+  )
+}
+
+function PortEditRow() {
+  const { setOpen } = useDialog()
+  const [port, setPort] = useState<number>(7890)
+  const [draft, setDraft] = useState<number | null>(port)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = () => {
+    if (draft == null || draft < 1024 || draft > 65535) {
+      setError('Enter a valid port between 1024 and 65535.')
+      return
+    }
+
+    setError(null)
+    setPort(draft)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction title="Mixed Port" description={`Fixed · ${port}`} />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title="Mixed Port"
+        description="Configure the local listening port for HTTP and SOCKS5 traffic."
+        submitLabel="Apply"
+        cancelLabel="Cancel"
+        extraActions={
+          <Button
+            type="button"
+            variant="basic"
+            onClick={() => {
+              setDraft(7890)
+              setError(null)
+            }}
+          >
+            Reset
+          </Button>
+        }
+        onOpen={() => {
+          setDraft(port)
+          setError(null)
+        }}
+        onSubmit={handleSubmit}
+      >
+        <NumericInput
+          variant="outlined"
+          label="Port Number"
+          aria-invalid={Boolean(error)}
+          value={draft}
+          min={1}
+          max={65535}
+          allowNegative={false}
+          decimalScale={0}
+          onChange={(next) => {
+            setDraft(next)
+            if (error) setError(null)
+          }}
+        />
+        <FormDialogError message={error} />
+      </FormDialogContent>
+    </>
+  )
+}
 
 function AnchorMenuTrigger() {
   const { setOpen } = useModal()
@@ -105,6 +240,8 @@ export function OverlaysFeedbackPage() {
         title="Modals, Drawers, Menus, Tooltips & Feedback"
         description="Persistent modal lifecycle with shared-layout origin morphing, Android 17 surface-container-high overlays, start-aligned menu items, and M3 progress/snackbar feedback."
         badges={[
+          'Dialog',
+          'FormDialog',
           'Modal',
           'Drawer',
           'Popover',
@@ -117,6 +254,40 @@ export function OverlaysFeedbackPage() {
           'Snackbar',
         ]}
       />
+
+      <SpecimenCard
+        title="Dialog & FormDialog (Android 17 Edit-in-Dialog Pattern)"
+        description="Built on Modal to preserve shared-layout origin morphing, focus return, and persistent mounting. Uses surface-container-high, 28px corners, trailing Cancel/Confirm actions, and built-in async submission lock."
+        defaultSurface="canvas"
+        slots={['dialog-surface', 'form-dialog-form', 'form-dialog-error']}
+        code={`<Dialog>
+  <DialogTrigger asChild>
+    <ItemAction title="Device Name" description={name} />
+  </DialogTrigger>
+  <FormDialogContent
+    title="Device Name"
+    submitLabel="Confirm"
+    cancelLabel="Cancel"
+    submitting={saving}
+    onOpen={() => setDraft(name)}
+    onSubmit={handleSave}
+  >
+    <Input variant="underlined" value={draft} onChange={...} />
+    <FormDialogError message={error} />
+  </FormDialogContent>
+</Dialog>`}
+      >
+        <div className="mx-auto max-w-2xl">
+          <ItemGroup>
+            <Dialog>
+              <DeviceNameEditRow />
+            </Dialog>
+            <Dialog>
+              <PortEditRow />
+            </Dialog>
+          </ItemGroup>
+        </div>
+      </SpecimenCard>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SpecimenCard

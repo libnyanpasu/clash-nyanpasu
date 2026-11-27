@@ -22,6 +22,7 @@ import {
   Slider,
   Switch,
   SwitchItem,
+  Textarea,
 } from '@nyanpasu/ui'
 import { PageHeader, SpecimenCard } from '../../studio/stage'
 
@@ -62,9 +63,10 @@ export function InputsPage() {
 
       <SpecimenCard
         title="Text, Numeric & Search Fields"
-        description="Filled fields use surface-container-highest; outlined fields use semantic outline borders."
+        description="Filled fields use surface-container-highest; outlined fields use semantic outline borders; underlined fields match lightweight Android 17 edit dialogs."
         code={`<Input variant="filled" label="Mixed Port" value={value} onChange={...} />
 <Input variant="outlined" label="Controller Address" value={value} onChange={...} />
+<Input variant="underlined" label="Device Name" value={value} onChange={...} />
 <SearchField variant="filled" value={query} onValueChange={setQuery} placeholder="Search rules..." clearLabel="Clear" />`}
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -80,6 +82,12 @@ export function InputsPage() {
             value={textValue}
             onChange={(event) => setTextValue(event.target.value)}
           />
+          <Input
+            variant="underlined"
+            label="Device Name (Underlined)"
+            value={textValue}
+            onChange={(event) => setTextValue(event.target.value)}
+          />
           <NumericInput
             variant="outlined"
             label="Mixed Port (NumericInput)"
@@ -88,7 +96,15 @@ export function InputsPage() {
             max={65535}
             onChange={setPortValue}
           />
-          <div className="flex flex-col justify-center gap-2">
+          <div className="md:col-span-2">
+            <Textarea
+              variant="underlined"
+              label="System Proxy Bypass (Textarea)"
+              rows={3}
+              defaultValue="localhost;127.;192.168.;10.;172.16.;172.17.;172.18.;172.19.;172.20.;172.21.;172.22.;172.23.;172.24.;172.25.;172.26.;172.27.;172.28.;172.29.;172.30.;172.31.*"
+            />
+          </div>
+          <div className="flex flex-col justify-center gap-2 md:col-span-2">
             <SearchField
               variant="basic"
               value={searchValue}

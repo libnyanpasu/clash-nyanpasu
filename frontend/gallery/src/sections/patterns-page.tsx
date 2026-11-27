@@ -22,6 +22,8 @@ import {
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -35,7 +37,22 @@ import {
   DropdownMenuSubTrigger,
   ExpressiveChoice,
   FilterChip,
+  FormDialogContent,
+  FormDialogError,
   GlassControlGroup,
+  Input,
+  Item,
+  ItemAction,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSection,
+  ItemSectionHeader,
+  ItemSectionTitle,
+  ItemSplitSwitch,
+  ItemSwitch,
+  ItemTitle,
+  ItemTrailing,
   Menubar,
   MenubarCheckboxItem,
   MenubarContent,
@@ -48,24 +65,90 @@ import {
   MenubarSubContent,
   MenubarSubTrigger,
   MenubarTrigger,
-  NumberStepper,
   SegmentedButton,
   SegmentedButtonItem,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   ShapeToggle,
   Slider,
   Sparkline,
-  Switch,
+  useDialog,
 } from '@nyanpasu/ui'
-import { cn } from '@nyanpasu/utils'
 import { PageHeader, SpecimenCard } from '../studio/stage'
 
 const SAMPLE_THROUGHPUT = [14, 18, 22, 19, 31, 44, 38, 52, 49, 61, 55, 68]
 
+function ListenAddressRow({
+  value,
+  onSave,
+}: {
+  value: string
+  onSave: (next: string) => void
+}) {
+  const { setOpen } = useDialog()
+  const [draft, setDraft] = useState(value)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = () => {
+    const trimmed = draft.trim()
+    if (trimmed && !/^[^:\s]+:\d{1,5}$/.test(trimmed)) {
+      setError('Expected host:port, e.g. 127.0.0.1:1053')
+      return
+    }
+
+    setError(null)
+    onSave(trimmed)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <DialogTrigger asChild>
+        <ItemAction
+          title="Listen Address"
+          description={value || 'Not set (default)'}
+        />
+      </DialogTrigger>
+
+      <FormDialogContent
+        title="Listen Address"
+        submitLabel="Confirm"
+        cancelLabel="Cancel"
+        onOpen={() => {
+          setDraft(value)
+          setError(null)
+        }}
+        onSubmit={handleSubmit}
+      >
+        <Input
+          variant="underlined"
+          aria-label="Listen Address"
+          placeholder="127.0.0.1:1053"
+          aria-invalid={Boolean(error)}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (error) setError(null)
+          }}
+          autoFocus
+        />
+        <FormDialogError message={error} />
+      </FormDialogContent>
+    </>
+  )
+}
+
 export function PatternsPage() {
   const [sysProxy, setSysProxy] = useState(true)
   const [tun, setTun] = useState(false)
-  const [ipv6, setIpv6] = useState(true)
-  const [port, setPort] = useState(7890)
+  const [proxyGuard, setProxyGuard] = useState(true)
+  const [dnsEnabled, setDnsEnabled] = useState(true)
+  const [enhancedMode, setEnhancedMode] = useState('fake-ip')
+  const [listenAddress, setListenAddress] = useState('127.0.0.1:1053')
+  const [guardNotice, setGuardNotice] = useState<string | null>(null)
   const [dockTab, setDockTab] = useState('all')
   const [widgetWidth, setWidgetWidth] = useState(340)
   const [widgetHeight, setWidgetHeight] = useState(172)
@@ -456,67 +539,95 @@ export function PatternsPage() {
 
       {/* Pattern 1: Android 17 Asymmetric Grouped Settings */}
       <SpecimenCard
-        title="Android 17 Asymmetric Grouped Settings List"
-        description="Stacked rows share outer 24px corners and tight 4px inner corners with a 4px gap revealing the canvas — zero divider clutter or card soup."
+        title="Android 17 Asymmetric Grouped Settings & Edit-in-Dialog"
+        description="Composed directly from @nyanpasu/ui ItemSection, ItemGroup, ItemSwitch, ItemSplitSwitch, ItemAction, and FormDialog — replacing inline text fields and ad-hoc row buttons."
         defaultSurface="canvas"
+        controls={
+          guardNotice ? (
+            <div className="text-primary text-xs font-medium">
+              {guardNotice}
+            </div>
+          ) : (
+            <div className="text-on-surface-variant text-xs">
+              Click &ldquo;Listen Address&rdquo; to edit in an A17 FormDialog,
+              or toggle &ldquo;System Proxy Guard&rdquo; to lock/unlock detail
+              navigation.
+            </div>
+          )
+        }
       >
-        <div className="mx-auto flex max-w-2xl flex-col gap-1">
-          <div className="text-primary px-3 py-2 text-sm font-medium">
-            Network &amp; Core
-          </div>
+        <div className="mx-auto flex max-w-2xl flex-col gap-4">
+          <ItemSection>
+            <ItemSectionHeader>
+              <ItemSectionTitle>Proxy Guard</ItemSectionTitle>
+            </ItemSectionHeader>
 
-          <div
-            className={cn(
-              'flex flex-col gap-1',
-              '[&>*:first-child:not(:only-child)]:rounded-b-extra-small',
-              '[&>*:last-child:not(:only-child)]:rounded-t-extra-small',
-              '[&>*:not(:first-child):not(:last-child)]:rounded-extra-small',
-            )}
-          >
-            <Card>
-              <CardContent className="flex-row items-center justify-between gap-4 px-5 py-4">
-                <div>
-                  <div className="text-on-surface text-sm font-medium">
-                    System Proxy
-                  </div>
-                  <div className="text-on-surface-variant text-xs">
-                    Route desktop OS traffic through the local mixed port
-                  </div>
-                </div>
-                <Switch checked={sysProxy} onCheckedChange={setSysProxy} />
-              </CardContent>
-            </Card>
+            <ItemGroup>
+              <ItemSplitSwitch
+                leading={<ShieldRounded />}
+                title="System Proxy Guard"
+                description={
+                  proxyGuard
+                    ? 'Enabled · Re-apply every 10s'
+                    : 'Disabled · Turn on to configure'
+                }
+                checked={proxyGuard}
+                onCheckedChange={(next) => {
+                  setProxyGuard(next)
+                  setGuardNotice(null)
+                }}
+                onAction={() =>
+                  setGuardNotice('Opened System Proxy Guard detail page')
+                }
+              />
+            </ItemGroup>
+          </ItemSection>
 
-            <Card>
-              <CardContent className="flex-row items-center justify-between gap-4 px-5 py-4">
-                <div>
-                  <div className="text-on-surface text-sm font-medium">
-                    IPv6 Stack
-                  </div>
-                  <div className="text-on-surface-variant text-xs">
-                    Accept dual-stack DNS and outbound proxy sockets
-                  </div>
-                </div>
-                <Switch checked={ipv6} onCheckedChange={setIpv6} />
-              </CardContent>
-            </Card>
+          <ItemSection>
+            <ItemSectionHeader>
+              <ItemSectionTitle>General DNS</ItemSectionTitle>
+            </ItemSectionHeader>
 
-            <Card>
-              <CardContent className="px-5 py-4">
-                <NumberStepper
-                  label="Mixed Port"
-                  variant="tonal"
-                  layout="inline"
-                  value={port}
-                  min={1024}
-                  max={65535}
-                  decrementLabel="Decrease port"
-                  incrementLabel="Increase port"
-                  onChange={setPort}
+            <ItemGroup>
+              <ItemSwitch
+                title="Enable DNS"
+                checked={dnsEnabled}
+                onCheckedChange={setDnsEnabled}
+              />
+
+              <Item>
+                <ItemContent>
+                  <ItemTitle>Enhanced Mode</ItemTitle>
+                  <ItemDescription>
+                    Controls how DNS responses map to outbound traffic
+                  </ItemDescription>
+                </ItemContent>
+                <ItemTrailing>
+                  <Select
+                    variant="chip"
+                    value={enhancedMode}
+                    onValueChange={setEnhancedMode}
+                  >
+                    <SelectTrigger aria-label="Enhanced Mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fake-ip">Fake-IP</SelectItem>
+                      <SelectItem value="redir-host">Redir-Host</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </ItemTrailing>
+              </Item>
+
+              <Dialog>
+                <ListenAddressRow
+                  value={listenAddress}
+                  onSave={setListenAddress}
                 />
-              </CardContent>
-            </Card>
-          </div>
+              </Dialog>
+            </ItemGroup>
+          </ItemSection>
         </div>
       </SpecimenCard>
 

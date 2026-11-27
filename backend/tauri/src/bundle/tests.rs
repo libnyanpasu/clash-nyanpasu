@@ -482,7 +482,7 @@ fn sourceforge_metadata_decodes_equivalent_url_path_components() {
 
 #[test]
 fn release_channel_never_downgrades_beta_when_returning_to_stable() {
-    let now = time::OffsetDateTime::UNIX_EPOCH;
+    let now = jiff::Timestamp::UNIX_EPOCH;
     let local = semver::Version::parse("2.1.0-beta.2").unwrap();
     for (version, expected) in [
         ("2.0.0", false),
@@ -517,7 +517,7 @@ fn release_channel_only_nightly_accepts_newer_build_of_same_version() {
                 ReleaseChannel::Nightly,
                 &local,
                 &remote,
-                time::OffsetDateTime::UNIX_EPOCH
+                jiff::Timestamp::UNIX_EPOCH
             ),
             expected
         );
@@ -525,7 +525,7 @@ fn release_channel_only_nightly_accepts_newer_build_of_same_version() {
             ReleaseChannel::Beta,
             &local,
             &remote,
-            time::OffsetDateTime::UNIX_EPOCH
+            jiff::Timestamp::UNIX_EPOCH
         ));
     }
 }

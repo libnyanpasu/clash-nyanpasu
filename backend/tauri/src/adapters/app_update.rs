@@ -54,10 +54,7 @@ impl AppUpdateBackend for TauriAppUpdateBackend {
         let check = async {
             let channel = settings.channel;
             let local = semver::Version::parse(self.bundle_metadata.app_version)?;
-            let build_time = time::OffsetDateTime::parse(
-                self.bundle_metadata.build_date,
-                &time::format_description::well_known::Rfc3339,
-            )?;
+            let build_time = self.bundle_metadata.build_date.parse::<jiff::Timestamp>()?;
             let mut builder = self
                 .app
                 .updater_builder()

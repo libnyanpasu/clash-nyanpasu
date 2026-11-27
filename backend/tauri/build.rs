@@ -1,4 +1,4 @@
-use chrono::{DateTime, SecondsFormat, Utc};
+use jiff::Timestamp;
 use rustc_version::version_meta;
 use serde::Deserialize;
 use std::{
@@ -86,14 +86,11 @@ fn main() {
     };
     println!("cargo:rustc-env=COMMIT_HASH={commit_hash}");
     println!("cargo:rustc-env=COMMIT_AUTHOR={commit_author}");
-    let commit_date = DateTime::parse_from_rfc3339(&commit_date)
-        .unwrap()
-        .with_timezone(&Utc)
-        .to_rfc3339_opts(SecondsFormat::Millis, true);
+    let commit_date = format!("{:.3}", commit_date.parse::<Timestamp>().unwrap());
     println!("cargo:rustc-env=COMMIT_DATE={commit_date}");
 
     // Build Date
-    let build_date = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let build_date = format!("{:.3}", Timestamp::now());
     println!("cargo:rustc-env=BUILD_DATE={build_date}");
 
     // Build Profile

@@ -83,7 +83,7 @@ tracing-subscriber = { version = '0.3', features = ['env-filter', 'json'] }
 flexi_logger = { version = '0.32', default-features = false }
 
 [build-dependencies]
-chrono = '0.4'
+jiff = '1'
 serde_json = '1'
 
 [dev-dependencies]

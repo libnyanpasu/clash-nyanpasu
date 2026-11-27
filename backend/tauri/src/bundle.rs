@@ -282,7 +282,7 @@ pub fn is_newer_release(
     channel: ReleaseChannel,
     local: &semver::Version,
     remote: &tauri_plugin_updater::RemoteRelease,
-    build_time: time::OffsetDateTime,
+    build_time: jiff::Timestamp,
 ) -> bool {
     use std::cmp::Ordering;
     if channel == ReleaseChannel::Stable && !remote.version.pre.is_empty() {
@@ -296,7 +296,9 @@ pub fn is_newer_release(
                 && !local.build.is_empty()
                 && !remote.version.build.is_empty()
                 && local.build != remote.version.build
-                && remote.pub_date.is_none_or(|date| date > build_time)
+                && remote
+                    .pub_date
+                    .is_none_or(|date| date.unix_timestamp_nanos() > build_time.as_nanosecond())
         }
     }
 }

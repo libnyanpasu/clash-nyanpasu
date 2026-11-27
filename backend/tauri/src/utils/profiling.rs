@@ -22,7 +22,7 @@ pub struct Profilers {
 fn output_file(dir: &Path, kind: &str) -> std::path::PathBuf {
     dir.join(format!(
         "{kind}-{}.json",
-        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
+        jiff::ZonedDateTime::now().strftime("%Y-%m-%d_%H-%M-%S")
     ))
 }
 

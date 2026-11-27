@@ -508,7 +508,7 @@ mod tests {
             bundle_metadata: nyanpasu_contracts::bundle_metadata::TEST_BUNDLE_METADATA,
             storage: StorageSource::Live(&storage),
             kind: BackupKind::Manual,
-            now: time::OffsetDateTime::UNIX_EPOCH,
+            now: jiff::Timestamp::UNIX_EPOCH,
         })
         .unwrap_err();
 

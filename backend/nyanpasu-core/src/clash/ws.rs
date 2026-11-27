@@ -464,15 +464,15 @@ impl State {
                             .and_then(|s| s.applied_kind)
                             .map(|kind| format!("{kind:?}")),
                     };
-                    let now = chrono::Local::now();
+                    let now = jiff::ZonedDateTime::now();
                     let _ = self
                         .args
                         .logs
                         .append(CoreLogRecord {
                             source,
-                            received_at: now.timestamp_millis(),
+                            received_at: now.timestamp().as_millisecond(),
                             log_type: sample.level.as_str().to_owned(),
-                            time: Some(now.format("%H:%M:%S").to_string()),
+                            time: Some(now.strftime("%H:%M:%S").to_string()),
                             payload: sample.payload,
                         })
                         .await;

@@ -39,7 +39,7 @@ pub(super) fn parse_subscription_userinfo(
         expire: field("expire")
             .filter(|secs| *secs != 0)
             .and_then(|secs| i64::try_from(secs).ok())
-            .and_then(|secs| time::OffsetDateTime::from_unix_timestamp(secs).ok()),
+            .and_then(|secs| jiff::Timestamp::from_second(secs).ok()),
     }
 }
 
@@ -160,6 +160,24 @@ mod tests {
         assert_eq!(
             parse_profile_title(&headers).as_deref(),
             Some("fallback.yaml")
+        );
+    }
+
+    #[test]
+    fn subscription_expiry_preserves_epoch_seconds() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "subscription-userinfo",
+            reqwest::header::HeaderValue::from_static("expire=1720954186"),
+        );
+        let parsed = parse_subscription_userinfo(&headers);
+        assert_eq!(
+            parsed.expire,
+            Some(jiff::Timestamp::from_second(1_720_954_186).unwrap())
+        );
+        assert_eq!(
+            serde_json::to_value(parsed).unwrap(),
+            serde_json::json!({"expire": 1_720_954_186})
         );
     }
 

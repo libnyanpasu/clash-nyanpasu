@@ -637,7 +637,7 @@ async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
                 binding: LocalBinding::Managed {
                     materialized: MaterializedFile {
                         file: ManagedProfilePath::new("client-supplied.lua").unwrap(),
-                        updated_at: Some(time::OffsetDateTime::UNIX_EPOCH),
+                        updated_at: Some(jiff::Timestamp::UNIX_EPOCH),
                     },
                 },
             },

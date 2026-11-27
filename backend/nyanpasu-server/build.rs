@@ -10,6 +10,21 @@ fn main() {
     );
     println!(
         "cargo:rustc-env=BUILD_DATE={}",
-        chrono::Utc::now().to_rfc3339()
+        build_date(jiff::Timestamp::now())
     );
+}
+
+// Chrono RFC3339 AutoSi used 0, 3, 6 or 9 fractional digits and a numeric UTC offset.
+fn build_date(timestamp: jiff::Timestamp) -> String {
+    let nanos = timestamp.subsec_nanosecond();
+    let format = if nanos == 0 {
+        "%Y-%m-%dT%H:%M:%S+00:00"
+    } else if nanos % 1_000_000 == 0 {
+        "%Y-%m-%dT%H:%M:%S%.3f+00:00"
+    } else if nanos % 1_000 == 0 {
+        "%Y-%m-%dT%H:%M:%S%.6f+00:00"
+    } else {
+        "%Y-%m-%dT%H:%M:%S%.9f+00:00"
+    };
+    timestamp.strftime(format).to_string()
 }

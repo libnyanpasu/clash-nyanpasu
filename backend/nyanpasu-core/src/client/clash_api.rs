@@ -560,6 +560,21 @@ mod tests {
     }
 
     #[test]
+    fn provider_dto_writes_a_utc_update_time_with_a_numeric_offset() {
+        let provider = serde_json::from_value(serde_json::json!({
+            "name":"provider", "updatedAt":"2026-09-07T02:00:00.5Z"
+        }))
+        .unwrap();
+
+        let item = rule_provider_item(provider).unwrap();
+
+        assert_eq!(
+            item.updated_at.as_deref(),
+            Some("2026-09-07T02:00:00.500+00:00")
+        );
+    }
+
+    #[test]
     fn provider_dto_rejects_counts_outside_the_ui_contract() {
         for count in [-1, i64::from(u32::MAX) + 1] {
             let provider =

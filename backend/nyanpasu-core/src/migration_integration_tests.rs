@@ -33,7 +33,7 @@ fn a_live_storage_is_exported_as_a_consistent_copy() {
         bundle_metadata: TEST_BUNDLE_METADATA,
         storage: StorageSource::Live(&storage),
         kind: BackupKind::Manual,
-        now: time::OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap(),
+        now: jiff::Timestamp::from_second(1_790_000_000).unwrap(),
     })
     .unwrap();
 

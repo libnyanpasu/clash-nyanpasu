@@ -1,8 +1,7 @@
 //! Decode the RPC serialization of canonical Clash values. Their upstream API
 //! decoder collects unknown flattened fields, whereas RPC preserves named `_extra` maps.
 
-use chrono::{DateTime, FixedOffset};
-use clash_api::{Connection, ConnectionMetadata, api::ConnectionMetadataFields};
+use clash_api::{Connection, ConnectionMetadata, OffsetTimestamp, api::ConnectionMetadataFields};
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
@@ -16,7 +15,7 @@ struct ReceivedConnection {
     metadata: Option<ConnectionMetadata>,
     upload: i64,
     download: i64,
-    start: DateTime<FixedOffset>,
+    start: OffsetTimestamp,
     chains: Vec<String>,
     #[serde(default)]
     provider_chains: Option<Vec<String>>,

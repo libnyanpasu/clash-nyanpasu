@@ -1,9 +1,9 @@
 use std::num::NonZeroU64;
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use struct_patch::Patch;
-use time::OffsetDateTime;
 use url::Url;
 
 use super::*;
@@ -98,11 +98,11 @@ pub struct MaterializedFile {
     /// Last successful materialization time.
     #[serde(
         default,
-        with = "time::serde::timestamp::option",
+        with = "super::timestamp_seconds",
         skip_serializing_if = "Option::is_none"
     )]
     #[specta(type = Option<i64>)]
-    pub updated_at: Option<OffsetDateTime>,
+    pub updated_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Patch)]
@@ -191,10 +191,10 @@ pub struct SubscriptionInfo {
 
     #[serde(
         default,
-        with = "time::serde::timestamp::option",
+        with = "super::timestamp_seconds",
         skip_serializing_if = "Option::is_none"
     )]
-    pub expire: Option<OffsetDateTime>,
+    pub expire: Option<Timestamp>,
 }
 
 #[allow(dead_code)]
@@ -208,7 +208,7 @@ struct ProfileSubscriptionInfo {
     #[specta(optional)]
     total: Option<u64>,
     #[specta(optional, type = Option<i64>)]
-    expire: Option<OffsetDateTime>,
+    expire: Option<Timestamp>,
 }
 
 impl SubscriptionInfo {
@@ -244,7 +244,7 @@ mod specta_wire {
             file: crate::profile::ManagedProfilePath,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[specta(type = Option<i64>)]
-            updated_at: Option<time::OffsetDateTime>,
+            updated_at: Option<jiff::Timestamp>,
             url: url::Url,
             #[serde(default)]
             option: crate::profile::RemoteProfileOptions,
@@ -265,13 +265,13 @@ mod specta_wire {
             file: crate::profile::ManagedProfilePath,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[specta(type = Option<i64>)]
-            updated_at: Option<time::OffsetDateTime>,
+            updated_at: Option<jiff::Timestamp>,
         },
         External {
             file: crate::profile::ManagedProfilePath,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             #[specta(type = Option<i64>)]
-            updated_at: Option<time::OffsetDateTime>,
+            updated_at: Option<jiff::Timestamp>,
             target: crate::profile::ExternalProfilePath,
             mode: crate::profile::ExternalMode,
         },

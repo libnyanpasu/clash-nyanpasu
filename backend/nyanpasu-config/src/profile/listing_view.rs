@@ -7,9 +7,9 @@
 //! subscription reads the full document.
 
 use indexmap::IndexMap;
+use jiff::Timestamp;
 use serde::Serialize;
 use specta::Type;
-use time::OffsetDateTime;
 
 use super::{
     CompositionConfig, ConfigDefinition, ExternalMode, FileConfig, LocalBinding, ProfileDefinition,
@@ -94,11 +94,11 @@ pub enum ProfileListingSource {
     Remote {
         #[serde(
             default,
-            with = "time::serde::timestamp::option",
+            with = "super::timestamp_seconds",
             skip_serializing_if = "Option::is_none"
         )]
         #[specta(type = Option<i64>)]
-        updated_at: Option<OffsetDateTime>,
+        updated_at: Option<Timestamp>,
         option: RemoteListingOptions,
         /// Byte counts and an expiry: numbers cannot carry a credential.
         #[serde(skip_serializing_if = "SubscriptionInfo::is_empty")]
@@ -112,21 +112,21 @@ pub enum ProfileListingBinding {
     Managed {
         #[serde(
             default,
-            with = "time::serde::timestamp::option",
+            with = "super::timestamp_seconds",
             skip_serializing_if = "Option::is_none"
         )]
         #[specta(type = Option<i64>)]
-        updated_at: Option<OffsetDateTime>,
+        updated_at: Option<Timestamp>,
     },
     /// The target path is the user's file system layout: only its mode is listed.
     External {
         #[serde(
             default,
-            with = "time::serde::timestamp::option",
+            with = "super::timestamp_seconds",
             skip_serializing_if = "Option::is_none"
         )]
         #[specta(type = Option<i64>)]
-        updated_at: Option<OffsetDateTime>,
+        updated_at: Option<Timestamp>,
         mode: ExternalMode,
     },
 }

@@ -44,7 +44,7 @@ export const inputContainerVariants = cva(
       },
     ],
     defaultVariants: {
-      variant: 'filled',
+      variant: 'outlined',
       haveLabel: false,
     },
   },
@@ -103,7 +103,7 @@ export const inputVariants = cva(
       },
     ],
     defaultVariants: {
-      variant: 'filled',
+      variant: 'outlined',
       haveValue: false,
       haveLabel: false,
     },
@@ -135,6 +135,7 @@ export const inputLabelVariants = cva(
           'group-data-[state=open]:text-xs',
           'group-data-[state=open]:text-primary',
           'peer-focus:top-0 peer-focus:text-xs peer-focus:text-primary',
+          'peer-aria-invalid:text-error',
         ],
         underlined: [
           'left-0 top-3 text-on-surface-variant',
@@ -166,7 +167,7 @@ export const inputLabelVariants = cva(
       },
     ],
     defaultVariants: {
-      variant: 'filled',
+      variant: 'outlined',
       focus: false,
     },
   },
@@ -213,7 +214,7 @@ export const inputLineVariants = cva('', {
     },
   },
   defaultVariants: {
-    variant: 'filled',
+    variant: 'outlined',
   },
 })
 
@@ -238,11 +239,12 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
         'group-data-[state=open]:border-primary',
         'peer-not-focus:border-outline-variant',
         'peer-focus:border-primary',
+        'peer-aria-invalid:border-error',
       ],
     },
   },
   defaultVariants: {
-    variant: 'filled',
+    variant: 'outlined',
   },
 })
 
@@ -274,7 +276,7 @@ export const inputLabelLegendVariants = cva('', {
     },
   ],
   defaultVariants: {
-    variant: 'filled',
+    variant: 'outlined',
     haveValue: false,
   },
 })
@@ -341,7 +343,7 @@ export type InputProps = ComponentProps<'input'> & {
 } & InputContainerVariants
 
 export const Input = ({
-  variant,
+  variant = 'outlined',
   className,
   label,
   children,
@@ -411,30 +413,31 @@ export const Input = ({
           {...props}
         />
 
-        {label && (
-          <>
-            <fieldset
+        {/* The outlined border is the fieldset, so it renders without a
+            label too; only the label's notch needs one. */}
+        <fieldset
+          className={cn(
+            inputLabelFieldsetVariants({
+              variant,
+            }),
+            !label && 'top-0',
+          )}
+        >
+          {label && (
+            <legend
               className={cn(
-                inputLabelFieldsetVariants({
+                inputLabelLegendVariants({
                   variant,
+                  haveValue,
                 }),
               )}
             >
-              <legend
-                className={cn(
-                  inputLabelLegendVariants({
-                    variant,
-                    haveValue,
-                  }),
-                )}
-              >
-                {label}
-              </legend>
-            </fieldset>
+              {label}
+            </legend>
+          )}
+        </fieldset>
 
-            <InputLabel>{label}</InputLabel>
-          </>
-        )}
+        {label && <InputLabel>{label}</InputLabel>}
 
         {children}
 
@@ -629,7 +632,7 @@ export const textareaContainerVariants = cva(
       },
     ],
     defaultVariants: {
-      variant: 'filled',
+      variant: 'outlined',
       haveLabel: false,
     },
   },
@@ -641,7 +644,7 @@ export type TextareaProps = ComponentProps<'textarea'> & {
 }
 
 export const Textarea = ({
-  variant = 'filled',
+  variant = 'outlined',
   className,
   label,
   rows = 3,
@@ -690,30 +693,31 @@ export const Textarea = ({
           {...props}
         />
 
-        {label && (
-          <>
-            <fieldset
+        {/* The outlined border is the fieldset, so it renders without a
+            label too; only the label's notch needs one. */}
+        <fieldset
+          className={cn(
+            inputLabelFieldsetVariants({
+              variant,
+            }),
+            !label && 'top-0',
+          )}
+        >
+          {label && (
+            <legend
               className={cn(
-                inputLabelFieldsetVariants({
+                inputLabelLegendVariants({
                   variant,
+                  haveValue,
                 }),
               )}
             >
-              <legend
-                className={cn(
-                  inputLabelLegendVariants({
-                    variant,
-                    haveValue,
-                  }),
-                )}
-              >
-                {label}
-              </legend>
-            </fieldset>
+              {label}
+            </legend>
+          )}
+        </fieldset>
 
-            <InputLabel>{label}</InputLabel>
-          </>
-        )}
+        {label && <InputLabel>{label}</InputLabel>}
 
         <InputLine />
       </div>

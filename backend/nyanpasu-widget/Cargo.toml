@@ -50,6 +50,6 @@ windows-sys = { version = '0.61', features = ['Win32_UI_Input_Ime'] }
 resvg = { version = '0.49.0', default-features = false }
 
 [build-dependencies]
-slint-build = { version = '=1.19.0', default-features = false, features = [
+slint-build = { version = '=1.19.1', default-features = false, features = [
   'compat-1-18',
 ] }

@@ -378,7 +378,7 @@ const CurrentCoreCard = ({
     <Button
       variant="raised"
       className={cn(
-        'group grid h-auto min-w-0 flex-1 rounded-[20px] px-2.5 py-0 text-left',
+        'group grid h-auto min-w-0 flex-1 grid-cols-1 justify-stretch rounded-[20px] px-2.5 py-0 text-left',
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',
@@ -486,7 +486,7 @@ function CoreShortcutsPreviewCard({
       variant="raised"
       disabled
       className={cn(
-        'grid h-full w-full min-w-0 rounded-[20px] px-2.5 py-0 text-left',
+        'grid h-full w-full min-w-0 grid-cols-1 justify-stretch rounded-[20px] px-2.5 py-0 text-left',
         config.showChannel
           ? 'grid-rows-[minmax(3.5rem,1fr)_minmax(2rem,0.6fr)]'
           : 'grid-rows-1',

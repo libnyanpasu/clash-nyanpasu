@@ -72,7 +72,10 @@ export function SettingsCardContent({
 export function ItemContainer({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex items-center justify-between gap-4', className)}
+      className={cn(
+        'flex w-full min-w-0 items-center justify-between gap-4 whitespace-normal',
+        className,
+      )}
       data-slot="settings-card-content-item-container"
       {...props}
     />
@@ -82,7 +85,10 @@ export function ItemContainer({ className, ...props }: ComponentProps<'div'>) {
 export function ItemLabel({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex flex-col gap-0.5', className)}
+      className={cn(
+        'flex min-w-0 flex-1 flex-col gap-0.5 text-left',
+        className,
+      )}
       data-slot="settings-card-content-item-label"
       {...props}
     />

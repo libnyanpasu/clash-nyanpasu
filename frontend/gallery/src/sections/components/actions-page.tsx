@@ -43,6 +43,7 @@ export function ActionsPage() {
   )
   const ripple = useRipple()
   const handleRippleClick = ripple.onClick
+  const handleRipplePointerDown = ripple.onPointerDown
   const handleRippleClear = ripple.onClear
 
   return (
@@ -235,9 +236,10 @@ export function ActionsPage() {
             <button
               type="button"
               onClick={handleRippleClick}
+              onPointerDown={handleRipplePointerDown}
               className="bg-primary-container text-on-primary-container rounded-large relative overflow-hidden px-5 py-3 text-sm font-medium"
             >
-              <span>Click anywhere for standalone Ripple</span>
+              <span>Press and hold for standalone Ripple</span>
               <Ripple ripples={ripple.ripples} onClear={handleRippleClear} />
             </button>
           </div>

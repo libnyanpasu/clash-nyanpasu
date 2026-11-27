@@ -692,6 +692,7 @@ export const DATA_SLOTS = [
   'resize-handle',
   'resize-handle-icon',
   'return-button',
+  'ripple-canvas',
   'ripple-item',
   'rules-header',
   'rules-row',

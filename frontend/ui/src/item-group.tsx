@@ -9,6 +9,7 @@ import {
   type ComponentProps,
   type MouseEvent,
   type MouseEventHandler,
+  type PointerEvent,
   type PropsWithChildren,
   type ReactNode,
   type RefObject,
@@ -358,6 +359,7 @@ export function ItemAction({
   className,
   children,
   onClick,
+  onPointerDown,
   ...props
 }: ItemActionProps) {
   const ripple = useRipple()
@@ -412,10 +414,14 @@ export function ItemAction({
       return
     }
 
-    if (event.detail > 0) {
-      ripple.onClick(event)
-    }
     onClick?.(event as MouseEvent<HTMLButtonElement>)
+  }
+
+  const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (!disabled) {
+      ripple.onPointerDown(event)
+    }
+    onPointerDown?.(event as PointerEvent<HTMLButtonElement>)
   }
 
   if (
@@ -431,6 +437,7 @@ export function ItemAction({
         aria-disabled={disabled || undefined}
         tabIndex={disabled ? -1 : props.tabIndex}
         onClick={handleClick}
+        onPointerDown={handlePointerDown}
         className={cn(
           itemVariants({
             interactive: !disabled,
@@ -456,6 +463,7 @@ export function ItemAction({
       aria-current={selected ? 'true' : undefined}
       disabled={disabled}
       onClick={disabled ? undefined : handleClick}
+      onPointerDown={handlePointerDown}
       className={cn(
         itemVariants({
           interactive: !disabled,
@@ -499,6 +507,7 @@ export function ItemSwitch({
   switchLabel,
   className,
   onClick,
+  onPointerDown,
   ...props
 }: ItemSwitchProps) {
   const switchId = useId()
@@ -512,11 +521,12 @@ export function ItemSwitch({
     <Item
       data-slot="item-switch"
       disabled={disabled}
-      onClick={(event) => {
-        if (!isInert && event.detail > 0) {
-          ripple.onClick(event)
+      onClick={onClick}
+      onPointerDown={(event) => {
+        if (!isInert) {
+          ripple.onPointerDown(event)
         }
-        onClick?.(event)
+        onPointerDown?.(event)
       }}
       className={cn(
         'p-0',
@@ -620,6 +630,7 @@ export function ItemSplitSwitch({
   className,
   children,
   onClick,
+  onPointerDown,
   ...props
 }: ItemSplitSwitchProps) {
   const switchId = useId()
@@ -692,10 +703,6 @@ export function ItemSplitSwitch({
     }
 
     if (!isActionDisabled) {
-      if (event.detail > 0) {
-        ripple.onClick(event)
-      }
-
       const hitAction = Boolean(
         target?.closest('[data-slot="item-split-switch-action"]'),
       )
@@ -708,6 +715,17 @@ export function ItemSplitSwitch({
     onClick?.(event)
   }
 
+  const handleRootPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null
+    const hitSwitch = Boolean(target?.closest('[data-slot="switch"]'))
+
+    if (!disabled && !isActionDisabled && !hitSwitch) {
+      ripple.onPointerDown(event)
+    }
+
+    onPointerDown?.(event)
+  }
+
   return (
     <div
       data-slot="item-split-switch"
@@ -715,6 +733,7 @@ export function ItemSplitSwitch({
       data-disabled={disabled ? '' : undefined}
       data-action-disabled={isActionDisabled ? '' : undefined}
       onClick={handleRootClick}
+      onPointerDown={handleRootPointerDown}
       className={cn(
         itemSplitSwitchVariants({
           disabled,

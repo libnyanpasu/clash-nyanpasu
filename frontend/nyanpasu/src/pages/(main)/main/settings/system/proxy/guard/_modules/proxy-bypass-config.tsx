@@ -109,7 +109,6 @@ function ProxyBypassConfigForm() {
           render={({ field }) => (
             <div className="flex flex-col gap-2">
               <Textarea
-                variant="underlined"
                 rows={4}
                 aria-label={m.settings_system_proxy_proxy_bypass_label()}
                 aria-invalid={!!form.formState.errors.systemProxyBypass}

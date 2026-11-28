@@ -119,7 +119,6 @@ function DnsTextFieldDialog({
         onSubmit={handleSubmit}
       >
         <Input
-          variant="underlined"
           aria-label={label}
           placeholder={placeholder}
           value={value}

@@ -78,7 +78,6 @@ function UpdateIntervalEditorForm({
             <div className="space-y-2">
               <NumericInput
                 label={m.profile_update_interval_label()}
-                variant="underlined"
                 min={1}
                 step={1}
                 {...field}

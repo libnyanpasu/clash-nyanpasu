@@ -117,11 +117,7 @@ function SubscriptionUrlEditorForm({
           name="url"
           render={({ field }) => (
             <div className="space-y-2">
-              <Input
-                label={m.profile_subscription_url_label()}
-                variant="underlined"
-                {...field}
-              />
+              <Input label={m.profile_subscription_url_label()} {...field} />
 
               <FormDialogError message={form.formState.errors.url?.message} />
             </div>

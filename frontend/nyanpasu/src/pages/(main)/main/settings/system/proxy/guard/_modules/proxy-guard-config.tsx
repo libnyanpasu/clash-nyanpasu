@@ -97,7 +97,6 @@ function ProxyGuardConfigForm() {
           render={({ field }) => (
             <div className="flex flex-col gap-2" data-slot="proxy-guard-form">
               <NumericInput
-                variant="underlined"
                 value={field.value}
                 disabled={isSubmitting}
                 aria-label={m.settings_system_proxy_proxy_guard_interval_label()}

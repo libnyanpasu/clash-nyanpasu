@@ -199,7 +199,6 @@ function LatencyTestConfigForm() {
               return (
                 <>
                   <Input
-                    variant="underlined"
                     label={m.settings_clash_latency_test_url_label()}
                     aria-label={m.settings_clash_latency_test_url_label()}
                     value={field.value}
@@ -232,7 +231,6 @@ function LatencyTestConfigForm() {
               return (
                 <>
                   <NumericInput
-                    variant="underlined"
                     label={m.settings_clash_latency_test_timeout_label()}
                     aria-label={m.settings_clash_latency_test_timeout_label()}
                     value={field.value}

@@ -119,7 +119,7 @@
     "@vitejs/plugin-react": "6.3.0",
     "@vitest/browser-playwright": "5.1.2",
     "knip": "6.49.0",
-    "lint-staged": "17.6.2",
+    "lint-staged": "17.6.3",
     "npm-run-all2": "9.1.0",
     "oxlint": "1.95.0",
     "playwright": "1.65.1",

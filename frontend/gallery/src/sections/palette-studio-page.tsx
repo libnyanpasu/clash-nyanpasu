@@ -1,8 +1,17 @@
+import CheckRounded from '~icons/material-symbols/check-rounded'
 import DarkModeRounded from '~icons/material-symbols/dark-mode-rounded'
 import LightModeRounded from '~icons/material-symbols/light-mode-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import SplitscreenLeftRounded from '~icons/material-symbols/splitscreen-left-rounded'
-import { useDeferredValue, useMemo, useState, type ReactNode } from 'react'
+import UndoRounded from '~icons/material-symbols/undo-rounded'
+import { AnimatePresence, motion } from 'motion/react'
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   createTheme,
   DEFAULT_COLOR,
@@ -21,10 +30,12 @@ import {
 } from '@nyanpasu/theme'
 import { THEME_PRESET_SEEDS, THEME_VARIANT_SPECS } from '@nyanpasu/theme/spec'
 import {
+  ActionSwapText,
   Button,
   Card,
   ColorSchemeSwatch,
   ColorSchemeSwatchGroup,
+  GlassControlGroup,
   HctColorPicker,
   HctColorPickerHexField,
   HctColorPickerSlider,
@@ -192,20 +203,91 @@ function StudioSection({
   )
 }
 
-function PalettePreviewSection({
-  draft,
-  previewMode,
-  onPreviewModeChange,
+/** How long the dock confirms an applied theme before it leaves. */
+const APPLIED_NOTICE_MS = 2000
+
+// The settings page's save dock. It sits above the gallery's own floating
+// studio dock.
+function PaletteSaveDock({
   dirty,
   onDiscard,
   onApply,
 }: {
-  draft: ThemeDraft
-  previewMode: PreviewMode
-  onPreviewModeChange: (mode: PreviewMode) => void
   dirty: boolean
   onDiscard: () => void
   onApply: () => void
+}) {
+  const [applied, setApplied] = useState(false)
+
+  useEffect(() => {
+    if (!applied) {
+      return
+    }
+
+    const timer = setTimeout(() => setApplied(false), APPLIED_NOTICE_MS)
+
+    return () => clearTimeout(timer)
+  }, [applied])
+
+  const status = dirty ? 'Unsaved changes' : applied ? 'Theme applied' : null
+
+  return (
+    <AnimatePresence>
+      {status !== null && (
+        <motion.div
+          data-slot="palette-studio-save-dock"
+          className="fixed right-4 bottom-20 z-40"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 16 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+        >
+          <GlassControlGroup role="status" className="gap-1.5 pl-4">
+            <ActionSwapText
+              className="text-on-surface text-sm font-medium whitespace-nowrap"
+              value={status}
+            />
+
+            <Button
+              variant="glass"
+              className="gap-1.5"
+              disabled={!dirty}
+              onClick={() => {
+                setApplied(false)
+                onDiscard()
+              }}
+            >
+              <UndoRounded className="size-4" />
+              Discard
+            </Button>
+
+            <Button
+              variant="flat"
+              className="gap-1.5"
+              disabled={!dirty}
+              onClick={() => {
+                onApply()
+                setApplied(true)
+              }}
+            >
+              <CheckRounded className="size-4" />
+              Apply
+            </Button>
+          </GlassControlGroup>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function PalettePreviewSection({
+  draft,
+  previewMode,
+  onPreviewModeChange,
+}: {
+  draft: ThemeDraft
+  previewMode: PreviewMode
+  onPreviewModeChange: (mode: PreviewMode) => void
 }) {
   const deferredDraft = useDeferredValue(draft)
 
@@ -227,7 +309,7 @@ function PalettePreviewSection({
       data-slot="palette-studio-preview"
       className="flex flex-col gap-4 p-4 sm:p-5"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex justify-center">
         <SegmentedButton
           aria-label="Preview mode"
           className="w-auto"
@@ -251,25 +333,6 @@ function PalettePreviewSection({
             Both
           </SegmentedButtonItem>
         </SegmentedButton>
-
-        <div
-          data-slot="palette-studio-actions"
-          className="flex items-center gap-2"
-        >
-          {dirty && (
-            <span className="bg-tertiary-container text-on-tertiary-container rounded-full px-3 py-1 text-xs font-medium">
-              Unsaved changes
-            </span>
-          )}
-
-          <Button variant="stroked" disabled={!dirty} onClick={onDiscard}>
-            Discard
-          </Button>
-
-          <Button variant="flat" disabled={!dirty} onClick={onApply}>
-            Apply
-          </Button>
-        </div>
       </div>
 
       <div
@@ -408,9 +471,6 @@ export function PaletteStudioPage() {
         draft={draft}
         previewMode={previewMode}
         onPreviewModeChange={setPreviewMode}
-        dirty={dirty}
-        onDiscard={() => setEdits(null)}
-        onApply={handleApply}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -655,6 +715,12 @@ export function PaletteStudioPage() {
           ))}
         </div>
       </StudioSection>
+
+      <PaletteSaveDock
+        dirty={dirty}
+        onDiscard={() => setEdits(null)}
+        onApply={handleApply}
+      />
     </div>
   )
 }

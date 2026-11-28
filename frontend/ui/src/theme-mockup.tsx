@@ -77,6 +77,7 @@ export function ThemeMockup({
         canvasVariants({ mode: resolved }),
         'm-0 aspect-[16/10] w-full overflow-hidden',
         'border-outline-variant/40 rounded-large border',
+        resolved === 'dark' ? 'dark' : '',
         className,
       )}
       style={{ colorScheme: resolved, ...style }}
@@ -86,7 +87,7 @@ export function ThemeMockup({
 
       <div
         data-slot="theme-mockup-titlebar"
-        className="bg-primary-container flex h-6 shrink-0 items-center gap-1.5 px-2.5"
+        className="dark:bg-primary-container bg-primary-fixed-dim flex h-6 shrink-0 items-center gap-1.5 px-2.5"
       >
         <span className={cn(titlebarMarkVariants(), 'w-12')} />
         <span className={cn(titlebarMarkVariants(), 'w-5')} />
@@ -100,7 +101,7 @@ export function ThemeMockup({
 
       <div
         data-slot="theme-mockup-navbar"
-        className="bg-secondary-container flex h-7 shrink-0 items-center gap-1.5 px-2"
+        className="dark:bg-on-primary bg-primary-container flex h-7 shrink-0 items-center gap-1.5 px-2"
       >
         {Array.from({ length: NAV_ITEM_COUNT }, (_, index) => (
           <span
@@ -108,7 +109,7 @@ export function ThemeMockup({
             className={cn(
               'h-3.5 w-10 rounded-full',
               index === 0
-                ? 'bg-primary-container'
+                ? 'dark:bg-primary-container bg-primary-fixed-dim'
                 : 'bg-on-secondary-container/16',
             )}
           />

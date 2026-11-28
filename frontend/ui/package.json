@@ -19,6 +19,7 @@
     "@internationalized/date": "3.12.4",
     "@material/material-color-utilities": "0.4.0",
     "@nyanpasu/hooks": "workspace:^",
+    "@nyanpasu/theme": "workspace:^",
     "@nyanpasu/utils": "workspace:^",
     "@radix-ui/react-use-controllable-state": "1.3.0",
     "class-variance-authority": "0.7.1",

@@ -34,7 +34,7 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@iconify/json": "2.2.562",
+    "@iconify/json": "2.2.563",
     "@types/d3": "7.4.3",
     "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",

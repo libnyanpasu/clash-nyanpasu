@@ -1,8 +1,5 @@
 import CheckRounded from '~icons/material-symbols/check-rounded'
-import DarkModeRounded from '~icons/material-symbols/dark-mode-rounded'
-import LightModeRounded from '~icons/material-symbols/light-mode-rounded'
 import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
-import SplitscreenLeftRounded from '~icons/material-symbols/splitscreen-left-rounded'
 import UndoRounded from '~icons/material-symbols/undo-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -47,8 +44,6 @@ import {
 import { cn } from '@nyanpasu/utils'
 import { PageHeader } from '../studio/stage'
 import { useThemeStudio } from '../studio/theme-studio-context'
-
-type PreviewMode = 'light' | 'dark' | 'split'
 
 type ThemeDraft = {
   seedColor: string
@@ -280,18 +275,14 @@ function PaletteSaveDock({
   )
 }
 
-function PalettePreviewSection({
-  draft,
-  previewMode,
-  onPreviewModeChange,
-}: {
-  draft: ThemeDraft
-  previewMode: PreviewMode
-  onPreviewModeChange: (mode: PreviewMode) => void
-}) {
-  const deferredDraft = useDeferredValue(draft)
+const PREVIEW_MODES: readonly ResolvedThemeMode[] = [
+  ThemeMode.LIGHT,
+  ThemeMode.DARK,
+]
 
-  const { seedColor, variant, contrastLevel, specVersion } = deferredDraft
+function PalettePreviewSection({ draft }: { draft: ThemeDraft }) {
+  const { seedColor, variant, contrastLevel, specVersion } =
+    useDeferredValue(draft)
 
   const palette = useMemo(
     () =>
@@ -299,52 +290,13 @@ function PalettePreviewSection({
     [seedColor, variant, contrastLevel, specVersion],
   )
 
-  const modes: ResolvedThemeMode[] =
-    previewMode === 'split'
-      ? [ThemeMode.LIGHT, ThemeMode.DARK]
-      : [previewMode === 'dark' ? ThemeMode.DARK : ThemeMode.LIGHT]
-
   return (
-    <Card
-      data-slot="palette-studio-preview"
-      className="flex flex-col gap-4 p-4 sm:p-5"
-    >
-      <div className="flex justify-center">
-        <SegmentedButton
-          aria-label="Preview mode"
-          className="w-auto"
-          value={previewMode}
-          onValueChange={(next) => {
-            if (next) onPreviewModeChange(next as PreviewMode)
-          }}
-        >
-          <SegmentedButtonItem value="light" className="gap-1.5">
-            <LightModeRounded className="size-4" />
-            Light
-          </SegmentedButtonItem>
-
-          <SegmentedButtonItem value="dark" className="gap-1.5">
-            <DarkModeRounded className="size-4" />
-            Dark
-          </SegmentedButtonItem>
-
-          <SegmentedButtonItem value="split" className="gap-1.5">
-            <SplitscreenLeftRounded className="size-4" />
-            Both
-          </SegmentedButtonItem>
-        </SegmentedButton>
-      </div>
-
+    <Card data-slot="palette-studio-preview" className="p-4 sm:p-5">
       <div
         data-slot="palette-studio-preview-frames"
-        className={cn(
-          'grid justify-center gap-4',
-          previewMode === 'split'
-            ? 'sm:grid-cols-[repeat(2,minmax(0,20rem))]'
-            : 'grid-cols-[minmax(0,20rem)]',
-        )}
+        className="grid justify-center gap-4 sm:grid-cols-[repeat(2,minmax(0,20rem))]"
       >
-        {modes.map((mode) => (
+        {PREVIEW_MODES.map((mode) => (
           <ThemeMockup
             key={mode}
             palette={palette}
@@ -370,7 +322,6 @@ export function PaletteStudioPage() {
   // `null` mirrors the applied theme, so changes made elsewhere (the
   // floating dock) show up until the user starts editing here.
   const [edits, setEdits] = useState<ThemeDraft | null>(null)
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('split')
 
   const draft = edits ?? applied
   const deferredDraft = useDeferredValue(draft)
@@ -381,13 +332,8 @@ export function PaletteStudioPage() {
     draft.contrastLevel !== applied.contrastLevel ||
     draft.specVersion !== applied.specVersion
 
-  // Swatches follow the mode being previewed; "Both" uses the gallery mode.
-  const swatchMode: ResolvedThemeMode =
-    previewMode === 'split'
-      ? studio.resolvedMode
-      : previewMode === 'dark'
-        ? ThemeMode.DARK
-        : ThemeMode.LIGHT
+  // Swatches follow the gallery mode.
+  const swatchMode = studio.resolvedMode
 
   const { seedColor, variant, contrastLevel, specVersion } = deferredDraft
 
@@ -467,11 +413,7 @@ export function PaletteStudioPage() {
         badges={['createTheme', 'DynamicScheme', `${swatchMode} swatches`]}
       />
 
-      <PalettePreviewSection
-        draft={draft}
-        previewMode={previewMode}
-        onPreviewModeChange={setPreviewMode}
-      />
+      <PalettePreviewSection draft={draft} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <StudioSection

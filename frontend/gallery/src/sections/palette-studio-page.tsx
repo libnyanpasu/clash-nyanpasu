@@ -1,5 +1,4 @@
 import CheckRounded from '~icons/material-symbols/check-rounded'
-import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import UndoRounded from '~icons/material-symbols/undo-rounded'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -11,10 +10,6 @@ import {
 } from 'react'
 import {
   createTheme,
-  DEFAULT_COLOR,
-  DEFAULT_CONTRAST_LEVEL,
-  DEFAULT_THEME_SPEC_VERSION,
-  DEFAULT_THEME_VARIANT,
   getContrastRatio,
   getThemeScheme,
   hexFromArgb,
@@ -50,13 +45,6 @@ type ThemeDraft = {
   variant: ThemeVariant
   contrastLevel: number
   specVersion: ThemeSpecVersion
-}
-
-const DEFAULT_DRAFT: ThemeDraft = {
-  seedColor: DEFAULT_COLOR,
-  variant: DEFAULT_THEME_VARIANT,
-  contrastLevel: DEFAULT_CONTRAST_LEVEL,
-  specVersion: DEFAULT_THEME_SPEC_VERSION,
 }
 
 const CONTRAST_OPTIONS = [
@@ -167,13 +155,11 @@ const toKebab = (role: string) =>
 function StudioSection({
   title,
   description,
-  action,
   className,
   children,
 }: {
   title: string
   description: string
-  action?: ReactNode
   className?: string
   children: ReactNode
 }) {
@@ -182,15 +168,11 @@ function StudioSection({
       data-slot="palette-studio-section"
       className={cn('flex flex-col gap-4 p-5', className)}
     >
-      <header className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="text-on-surface text-base font-semibold">{title}</h2>
-          <p className="text-on-surface-variant text-xs leading-5">
-            {description}
-          </p>
-        </div>
-
-        {action}
+      <header className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-on-surface text-base font-semibold">{title}</h2>
+        <p className="text-on-surface-variant text-xs leading-5">
+          {description}
+        </p>
       </header>
 
       {children}
@@ -291,21 +273,19 @@ function PalettePreviewSection({ draft }: { draft: ThemeDraft }) {
   )
 
   return (
-    <Card data-slot="palette-studio-preview" className="p-4 sm:p-5">
-      <div
-        data-slot="palette-studio-preview-frames"
-        className="grid justify-center gap-4 sm:grid-cols-[repeat(2,minmax(0,20rem))]"
-      >
-        {PREVIEW_MODES.map((mode) => (
-          <ThemeMockup
-            key={mode}
-            palette={palette}
-            mode={mode}
-            aria-label={`Clash Nyanpasu preview (${mode})`}
-          />
-        ))}
-      </div>
-    </Card>
+    <div
+      data-slot="palette-studio-preview"
+      className="grid justify-center gap-4 sm:grid-cols-[repeat(2,minmax(0,20rem))]"
+    >
+      {PREVIEW_MODES.map((mode) => (
+        <ThemeMockup
+          key={mode}
+          palette={palette}
+          mode={mode}
+          aria-label={`Clash Nyanpasu preview (${mode})`}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -420,18 +400,6 @@ export function PaletteStudioPage() {
           title="Source color"
           description="Every role is derived from one seed. Pick a preset or dial in any HCT color."
           className="lg:row-span-2"
-          action={
-            <Button
-              variant="basic"
-              icon
-              className="size-9 shrink-0"
-              aria-label="Restore defaults"
-              title="Restore defaults"
-              onClick={() => setEdits(DEFAULT_DRAFT)}
-            >
-              <RestartAltRounded className="size-5" />
-            </Button>
-          }
         >
           <ColorSchemeSwatchGroup
             aria-label="Preset source colors"

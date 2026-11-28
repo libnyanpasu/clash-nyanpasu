@@ -473,6 +473,15 @@ async fn add_profile(f: &Fixture) -> nyanpasu_config::profile::ProfileId {
         .into_value()
 }
 
+async fn stop_api_consumers(f: &Fixture) {
+    f.client.inner.geo_index.stop_for_test().await.unwrap();
+    f.client.inner.proxies.stop_for_test().await.unwrap();
+    f.client.inner.core_api.api_client().await.unwrap();
+    f.client.inner.core_api.release_api_for_test().await;
+    f.client.inner.core_api.refresh_status().await.unwrap();
+    f.endpoint.api_queries.store(0, Ordering::SeqCst);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn profile_activation_and_deselection_interrupt_only_actual_current_changes() {
     let f = Fixture::new(false).await;
@@ -709,12 +718,7 @@ async fn profile_policy_and_noop_gates_do_not_acquire_a_source() {
     (async {
         // Only this workflow may read the binding counted below. Stop background
         // consumers, then drain the lease monitor they may already have started.
-        f.client.inner.geo_index.stop_for_test().await.unwrap();
-        f.client.inner.proxies.stop_for_test().await.unwrap();
-        f.client.inner.core_api.api_client().await.unwrap();
-        f.client.inner.core_api.release_api_for_test().await;
-        f.client.inner.core_api.refresh_status().await.unwrap();
-        f.endpoint.api_queries.store(0, Ordering::SeqCst);
+        stop_api_consumers(&f).await;
 
         let uid = add_profile(&f).await;
         let mut config = f.client.get_clash_config().await.unwrap();
@@ -1288,6 +1292,7 @@ async fn invalid_subscription_refresh_preserves_files_and_records_rejection() {
 async fn deferred_mode_change_interrupts_connections_once_on_retry() {
     for fail_close in [false, true] {
         let f = Fixture::new(false).await;
+        stop_api_consumers(&f).await;
         let previous = f.endpoint.delegate.status().await.unwrap();
         f.endpoint.delegate.set_status(
             Some(CoreStateDetail::Starting { epoch: 2 }),
@@ -1343,6 +1348,7 @@ async fn deferred_mode_change_interrupts_connections_once_on_retry() {
 async fn deferred_profile_change_interrupts_connections_once_on_retry() {
     for fail_close in [false, true] {
         let f = Fixture::new(false).await;
+        stop_api_consumers(&f).await;
         let uid = add_profile(&f).await;
         let previous = f.endpoint.delegate.status().await.unwrap();
         f.endpoint.delegate.set_status(

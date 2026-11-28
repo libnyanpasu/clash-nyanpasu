@@ -212,6 +212,7 @@ export const STATIC_ALLOWLIST: ReadonlyArray<StaticAllowlistEntry> = [
     'TUN_MIPS',
     'SCRIPT_MODE',
     'DNS_CONTROL',
+    'MANAGEABLE_ACCESS_FIELDS',
   ]),
   ...migrationModuleStatics('profiles', [
     'NULL_VALUE',

@@ -11,8 +11,8 @@ import { PageTitle } from '@/components/page-title'
 import { m } from '@/paraglide/messages'
 import { PlatformLinux } from '@nyanpasu/platform/react'
 import { createFileRoute } from '@tanstack/react-router'
-import AllowLanSwitch from './_modules/allow-lan-switch'
-import IPv6Switch from './_modules/ipv6-switch'
+import ManagedGuardFieldSelector from '../_modules/managed-guard-field-selector'
+import AllowLanSettings from './_modules/allow-lan-settings'
 import MipsCongestionControllerSelector from './_modules/mips-congestion-controller-selector'
 import {
   MixedPortConfig,
@@ -56,9 +56,9 @@ const LanSettings = () => {
       </ItemSectionHeader>
 
       <ItemGroup>
-        <AllowLanSwitch />
+        <AllowLanSettings />
 
-        <IPv6Switch />
+        <ManagedGuardFieldSelector field="ipv6" />
       </ItemGroup>
     </ItemSection>
   )

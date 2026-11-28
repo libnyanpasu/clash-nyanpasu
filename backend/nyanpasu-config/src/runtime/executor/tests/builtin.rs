@@ -42,7 +42,7 @@ fn apply_tun_and_cache(config: &ConfigValue, tun: &TunParams) -> ConfigValue {
 /// Fixed-secret guard input; the default constructor generates a fresh uuid.
 pub fn fixed_overrides() -> ClashGuardOverrides {
     yaml_serde::from_str(
-        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
+        "log-level: info\nallow-lan: {kind: managed, value: false}\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: {kind: managed, value: false}\n",
     )
     .unwrap()
 }
@@ -51,7 +51,7 @@ pub fn fixed_overrides() -> ClashGuardOverrides {
 /// profiles.
 pub fn unmanaged_overrides() -> ClashGuardOverrides {
     yaml_serde::from_str(
-        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: unmanaged}\ntcp-concurrent: {kind: unmanaged}\nipv6: false\n",
+        "log-level: info\nallow-lan: {kind: managed, value: false}\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: unmanaged}\ntcp-concurrent: {kind: unmanaged}\nipv6: {kind: managed, value: false}\n",
     )
     .unwrap()
 }

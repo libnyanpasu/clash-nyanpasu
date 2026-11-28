@@ -199,7 +199,9 @@ async fn not_submitted_internal_is_refused_without_replay() {
     let outcome = client
         .patch_runtime_overrides(
             nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch {
-                ipv6: Some(true),
+                ipv6: Some(
+                    nyanpasu_config::clash::config::overrides::ManageableField::Managed(true),
+                ),
                 ..Default::default()
             },
         )

@@ -306,14 +306,20 @@ mod tests {
         let (client, _dir) = test_client().await;
         let before = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         let left = serde_json::from_value(serde_json::json!({"mode":"global"})).unwrap();
-        let right = serde_json::from_value(serde_json::json!({"allow-lan":true})).unwrap();
+        let right = serde_json::from_value(
+            serde_json::json!({"allow-lan":{"kind":"managed","value":true}}),
+        )
+        .unwrap();
         let (left, right) =
             tokio::join!(client.patch_overrides(left), client.patch_overrides(right));
         left.unwrap();
         right.unwrap();
         let after = serde_json::to_value(client.snapshot().state.overrides).unwrap();
         assert_eq!(after["mode"], "global");
-        assert_eq!(after["allow-lan"], true);
+        assert_eq!(
+            after["allow-lan"],
+            serde_json::json!({"kind": "managed", "value": true})
+        );
         assert_eq!(after["secret"], before["secret"]);
         assert_eq!(after["ipv6"], before["ipv6"]);
     }

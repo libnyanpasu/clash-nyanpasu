@@ -17,7 +17,7 @@ use crate::request::{FieldsRejected, reject_present};
 #[serde(default, rename_all = "kebab-case")]
 pub struct ClashOverridesSettingsPatch {
     pub log_level: Option<LogLevel>,
-    pub ipv6: Option<bool>,
+    pub ipv6: Option<ManageableField<bool>>,
     pub unified_delay: Option<ManageableField<bool>>,
     pub tcp_concurrent: Option<ManageableField<bool>>,
 }
@@ -28,7 +28,7 @@ pub struct ClashOverridesSettingsPatch {
 #[derive(Debug, Clone, Default, Serialize, Type)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ClashAccessPatch {
-    pub allow_lan: Option<bool>,
+    pub allow_lan: Option<ManageableField<bool>>,
     pub secret: Option<String>,
 }
 
@@ -190,11 +190,13 @@ mod tests {
     fn changed_values() -> Vec<(&'static str, Value)> {
         vec![
             ("mode", json!("global")),
-            ("allow-lan", json!(true)),
+            ("allow-lan", json!({"kind": "managed", "value": true})),
+            ("allow-lan", json!({"kind": "unmanaged"})),
             ("secret", json!("")),
             ("secret", json!("changed")),
             ("log-level", json!("debug")),
-            ("ipv6", json!(true)),
+            ("ipv6", json!({"kind": "managed", "value": true})),
+            ("ipv6", json!({"kind": "unmanaged"})),
             ("unified-delay", json!({"kind": "unmanaged"})),
             ("unified-delay", json!({"kind": "managed", "value": false})),
             ("tcp-concurrent", json!({"kind": "managed", "value": true})),
@@ -219,11 +221,12 @@ mod tests {
             assert_refused::<ClashGuardOverridesPatch, ClashOverridesSettingsPatch>(
                 "clash override settings",
                 &field,
-                json!({ &field: value, "ipv6": false }),
+                json!({ &field: value, "ipv6": {"kind": "unmanaged"} }),
             );
         }
         let error =
-            settings(json!({"mode": "global", "secret": "x", "allow-lan": true})).unwrap_err();
+            settings(json!({"mode": "global", "secret": "x", "allow-lan": {"kind": "unmanaged"}}))
+                .unwrap_err();
         assert!(
             error.contains("[\"mode\", \"allow-lan\", \"secret\"]"),
             "{error}"
@@ -247,7 +250,7 @@ mod tests {
             assert_refused::<ClashGuardOverridesPatch, ClashAccessPatch>(
                 "clash access",
                 &field,
-                json!({ &field: value, "allow-lan": false }),
+                json!({ &field: value, "allow-lan": {"kind": "unmanaged"} }),
             );
         }
     }
@@ -275,9 +278,12 @@ mod tests {
         assert_eq!(full.log_level, Some(LogLevel::Debug));
         assert!(full.ipv6.is_none() && full.mode.is_none() && full.secret.is_none());
 
-        let patch = access(json!({"allow-lan": true, "secret": null, "log-level": null})).unwrap();
+        let patch = access(json!({
+            "allow-lan": {"kind": "managed", "value": true}, "secret": null, "log-level": null,
+        }))
+        .unwrap();
         let full = ClashGuardOverridesPatch::from(patch);
-        assert_eq!(full.allow_lan, Some(true));
+        assert_eq!(full.allow_lan, Some(ManageableField::Managed(true)));
         assert!(full.secret.is_none());
     }
 
@@ -286,11 +292,11 @@ mod tests {
         let full = ClashGuardOverridesPatch::from(Mode::Global);
         assert_eq!(written_keys(&full), ["mode"]);
         let full = ClashGuardOverridesPatch::from(
-            access(json!({"allow-lan": false, "secret": ""})).unwrap(),
+            access(json!({"allow-lan": {"kind": "unmanaged"}, "secret": ""})).unwrap(),
         );
         assert_eq!(written_keys(&full), ["allow-lan", "secret"]);
         let full = ClashGuardOverridesPatch::from(
-            settings(json!({"log-level": "info", "ipv6": false})).unwrap(),
+            settings(json!({"log-level": "info", "ipv6": {"kind": "unmanaged"}})).unwrap(),
         );
         assert_eq!(written_keys(&full), ["ipv6", "log-level"]);
     }

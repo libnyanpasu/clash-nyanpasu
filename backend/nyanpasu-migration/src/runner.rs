@@ -1905,7 +1905,7 @@ tray_menu_close_behavior: hide
             .expect("a stamped revision 2 is behind this build, not lost");
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         let mut expected = payload;
         expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
         insert_dns_control(&mut expected);
@@ -1929,7 +1929,7 @@ tray_menu_close_behavior: hide
         ] {
             assert_eq!(state.task_state(step), None, "{step} is already applied");
         }
-        assert_eq!(state.module_state("clash_config").applied_revision, 5);
+        assert_eq!(state.module_state("clash_config").applied_revision, 6);
     }
 
     /// Stamped at revision 4, before the DNS settings. The profiles keep
@@ -1965,7 +1965,7 @@ tray_menu_close_behavior: hide
             .expect("a stamped revision 4 is behind this build, not lost");
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         let mut expected = payload;
         insert_dns_control(&mut expected);
         assert_eq!(clash_config_file(&case).into_payload(), expected);
@@ -1978,7 +1978,7 @@ tray_menu_close_behavior: hide
             state.task_state("clash_config/dns_control"),
             Some(MigrationState::Completed)
         );
-        assert_eq!(state.module_state("clash_config").applied_revision, 5);
+        assert_eq!(state.module_state("clash_config").applied_revision, 6);
     }
 
     fn insert_dns_control(payload: &mut yaml_serde::Mapping) {
@@ -2030,11 +2030,11 @@ tray_menu_close_behavior: hide
         // that `typed_config` is about to create at head.
         assert_eq!(
             runner.store.module_state("clash_config"),
-            at_revision(5, false)
+            at_revision(6, false)
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         for step in [
             "clash_config/manageable_guard_fields",
             "clash_config/tun_overrides",
@@ -2048,7 +2048,7 @@ tray_menu_close_behavior: hide
             );
         }
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config"), at_revision(5, true));
+        assert_eq!(state.module_state("clash_config"), at_revision(6, true));
         assert_clash_config_loads(&case);
     }
 
@@ -2058,14 +2058,14 @@ tray_menu_close_behavior: hide
 
         case.runner().run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         assert_eq!(clash_guard_field(&case, "tcp-concurrent"), managed(true));
         assert_eq!(
             clash_config_file(&case).into_payload()["tun"],
             managed_auto_route()
         );
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
-        assert_eq!(state.module_state("clash_config").applied_revision, 5);
+        assert_eq!(state.module_state("clash_config").applied_revision, 6);
         assert!(state.module_state("clash_config").stamped);
         assert_clash_config_loads(&case);
     }
@@ -2083,6 +2083,11 @@ tray_menu_close_behavior: hide
             .unwrap();
         overrides.insert("unified-delay".into(), managed(true));
         overrides.insert("tcp-concurrent".into(), managed(false));
+        for key in ["allow-lan", "ipv6"] {
+            if let Some(yaml_serde::Value::Bool(value)) = overrides.get(key).cloned() {
+                overrides.insert(key.into(), managed(value));
+            }
+        }
         expected.insert("tun".into(), managed_auto_route());
         expected.insert("tun_mips".into(), yaml_serde::Mapping::new().into());
         insert_dns_control(&mut expected);
@@ -2094,7 +2099,7 @@ tray_menu_close_behavior: hide
         );
         runner.run_pending().unwrap();
 
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         assert_eq!(clash_config_file(&case).into_payload(), expected);
         assert_clash_config_loads(&case);
         let state = MigrationStore::load(&case.ctx.state_path()).unwrap();
@@ -2103,13 +2108,14 @@ tray_menu_close_behavior: hide
             "clash_config/tun_overrides",
             "clash_config/tun_mips",
             "clash_config/dns_control",
+            "clash_config/manageable_access_fields",
         ] {
             assert_eq!(state.task_state(step), Some(MigrationState::Completed));
         }
         assert_eq!(
             state.module_state("clash_config"),
             ModuleState {
-                applied_revision: 5,
+                applied_revision: 6,
                 baseline_revision: 0,
                 stamped: true,
             }
@@ -2196,7 +2202,7 @@ tray_menu_close_behavior: hide
             yaml_serde::to_value(vec!["clash_mode_rule,Ctrl+R"]).unwrap()
         );
         assert_eq!(application_stamp(&case), Some(4));
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         assert_application_loads(&case);
         assert_clash_config_loads(&case);
         case.runner().run_pending().unwrap();
@@ -2271,7 +2277,7 @@ tray_menu_close_behavior: hide
             yaml_serde::to_value(vec!["clash_mode_global,Ctrl+G"]).unwrap()
         );
         assert_eq!(application_stamp(&case), Some(4));
-        assert_eq!(clash_config_stamp(&case), Some(5));
+        assert_eq!(clash_config_stamp(&case), Some(6));
         for step in ["application/script_hotkeys", "clash_config/script_mode"] {
             assert_eq!(
                 runner.store.task_state(step),

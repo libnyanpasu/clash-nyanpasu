@@ -75,24 +75,24 @@ pub enum Mode {
 #[serde(rename_all = "kebab-case")]
 pub struct ClashGuardOverrides {
     log_level: LogLevel,
-    allow_lan: bool,
+    allow_lan: ManageableField<bool>,
     mode: Mode,
     secret: String,
     unified_delay: ManageableField<bool>,
     tcp_concurrent: ManageableField<bool>,
-    ipv6: bool,
+    ipv6: ManageableField<bool>,
 }
 
 impl Default for ClashGuardOverrides {
     fn default() -> Self {
         Self {
             log_level: LogLevel::Info,
-            allow_lan: false,
+            allow_lan: ManageableField::Unmanaged,
             mode: Mode::Rule,
             secret: uuid::Uuid::new_v4().to_string().to_lowercase(),
-            unified_delay: ManageableField::Managed(true),
-            tcp_concurrent: ManageableField::Managed(true),
-            ipv6: false,
+            unified_delay: ManageableField::Unmanaged,
+            tcp_concurrent: ManageableField::Unmanaged,
+            ipv6: ManageableField::Unmanaged,
         }
     }
 }
@@ -118,11 +118,11 @@ impl ClashGuardOverrides {
 #[serde(rename_all = "kebab-case")]
 pub struct ClashOverridesSettings {
     pub log_level: LogLevel,
-    pub allow_lan: bool,
+    pub allow_lan: ManageableField<bool>,
     pub mode: Mode,
     pub unified_delay: ManageableField<bool>,
     pub tcp_concurrent: ManageableField<bool>,
-    pub ipv6: bool,
+    pub ipv6: ManageableField<bool>,
 }
 
 impl From<&ClashGuardOverrides> for ClashOverridesSettings {
@@ -159,14 +159,14 @@ mod patch_tests {
     #[test]
     fn patch_uses_kebab_case_and_applies() {
         let patch: ClashGuardOverridesPatch =
-            yaml_serde::from_str("allow-lan: true\nlog-level: debug\n")
+            yaml_serde::from_str("allow-lan: {kind: managed, value: true}\nlog-level: debug\n")
                 .expect("kebab-case patch must deserialize");
 
         let mut overrides = ClashGuardOverrides::default();
         let kept_secret = overrides.secret.clone();
         overrides.apply(patch);
 
-        assert!(overrides.allow_lan);
+        assert_eq!(overrides.allow_lan, ManageableField::Managed(true));
         assert_eq!(overrides.log_level, LogLevel::Debug);
         assert_eq!(overrides.mode, Mode::Rule, "absent field unchanged");
         assert_eq!(overrides.secret, kept_secret, "absent secret unchanged");
@@ -197,8 +197,10 @@ mod patch_tests {
     fn unmanaged_fields_are_left_to_the_profiles() {
         use crate::runtime::{post_process::Ownership, value::ConfigValue};
 
-        let mut overrides = ClashGuardOverrides::default();
-        overrides.tcp_concurrent = ManageableField::Unmanaged;
+        let overrides = ClashGuardOverrides {
+            unified_delay: ManageableField::Managed(true),
+            ..Default::default()
+        };
 
         let owned = overrides.ownership_entries();
 
@@ -206,16 +208,30 @@ mod patch_tests {
         assert!(owned.contains(&("unified-delay", Ownership::Forced(ConfigValue::Bool(true)))));
     }
 
+    /// A fresh install forces none of the profile-facing fields: a
+    /// subscription's `allow-lan`, `ipv6`, `unified-delay` and
+    /// `tcp-concurrent` reach the core as written.
+    #[test]
+    fn a_fresh_install_leaves_profile_facing_fields_to_the_profiles() {
+        use crate::runtime::post_process::Ownership;
+
+        let owned = ClashGuardOverrides::default().ownership_entries();
+
+        for key in ["allow-lan", "ipv6", "unified-delay", "tcp-concurrent"] {
+            assert!(owned.contains(&(key, Ownership::Inherited)), "{key}");
+        }
+    }
+
     /// A serialized patch keeps the `kebab-case` keys and skips absent fields.
     #[test]
     fn patch_serializes_kebab_case_and_skips_none() {
         let mut patch = ClashGuardOverrides::new_empty_patch();
-        patch.allow_lan = Some(true);
+        patch.log_level = Some(LogLevel::Debug);
 
         let dumped = yaml_serde::to_string(&patch).expect("serialize patch");
-        assert!(dumped.contains("allow-lan: true"), "got:\n{dumped}");
+        assert!(dumped.contains("log-level: debug"), "got:\n{dumped}");
         assert!(
-            !dumped.contains("log-level"),
+            !dumped.contains("allow-lan"),
             "absent skipped, got:\n{dumped}"
         );
     }

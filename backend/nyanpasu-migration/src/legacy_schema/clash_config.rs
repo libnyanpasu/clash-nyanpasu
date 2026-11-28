@@ -26,7 +26,12 @@ pub(super) fn clash_config_from_legacy(
     legacy_clash: &Mapping,
 ) -> Result<ClashConfig, Error> {
     let mut legacy_clash = normalize_legacy_clash_overrides(legacy_clash);
-    crate::modules::clash_config::manage_override_fields(&mut legacy_clash)?;
+    for keys in [
+        crate::modules::clash_config::MANAGEABLE_GUARD_KEYS,
+        crate::modules::clash_config::MANAGEABLE_ACCESS_KEYS,
+    ] {
+        crate::modules::clash_config::manage_override_fields(&mut legacy_clash, &keys)?;
+    }
     crate::modules::clash_config::normalize_override_mode(&mut legacy_clash);
     let mut next = ClashConfig {
         overrides: super::yaml_convert(&legacy_clash)?,

@@ -126,7 +126,10 @@ mod tests {
         };
         let value = serde_json::to_value(ClashSettings::from(&config)).unwrap();
         assert_eq!(value["enable_tun_mode"], true);
-        assert_eq!(value["overrides"]["allow-lan"], false);
+        assert_eq!(
+            value["overrides"]["allow-lan"],
+            serde_json::json!({"kind": "unmanaged"})
+        );
         assert_eq!(value["mixed_port"]["start_port"], 7890);
     }
 }

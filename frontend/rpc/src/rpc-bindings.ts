@@ -3073,7 +3073,7 @@ export type ClashAccessPatch =
  *  secret that guards its controller.
  */
 export type ClashAccessPatch_Deserialize = {
-  'allow-lan'?: boolean | null
+  'allow-lan'?: ManageableField<boolean> | null
   secret?: string | null
 }
 
@@ -3082,7 +3082,7 @@ export type ClashAccessPatch_Deserialize = {
  *  secret that guards its controller.
  */
 export type ClashAccessPatch_Serialize = {
-  'allow-lan'?: boolean
+  'allow-lan'?: ManageableField<boolean>
   secret?: string
 }
 
@@ -3414,12 +3414,12 @@ export type ClashCore_Serialize =
 
 export type ClashGuardOverrides = {
   'log-level': LogLevel
-  'allow-lan': boolean
+  'allow-lan': ManageableField<boolean>
   mode: Mode
   secret: string
   'unified-delay': ManageableField<boolean>
   'tcp-concurrent': ManageableField<boolean>
-  ipv6: boolean
+  ipv6: ManageableField<boolean>
 }
 
 export type ClashInfo = ClashInfo_Serialize | ClashInfo_Deserialize
@@ -3449,11 +3449,11 @@ export type ClashInfo_Serialize = {
  */
 export type ClashOverridesSettings = {
   'log-level': LogLevel
-  'allow-lan': boolean
+  'allow-lan': ManageableField<boolean>
   mode: Mode
   'unified-delay': ManageableField<boolean>
   'tcp-concurrent': ManageableField<boolean>
-  ipv6: boolean
+  ipv6: ManageableField<boolean>
 }
 
 /**
@@ -3470,7 +3470,7 @@ export type ClashOverridesSettingsPatch =
  */
 export type ClashOverridesSettingsPatch_Deserialize = {
   'log-level'?: LogLevel | null
-  ipv6?: boolean | null
+  ipv6?: ManageableField<boolean> | null
   'unified-delay'?: ManageableField<boolean> | null
   'tcp-concurrent'?: ManageableField<boolean> | null
 }
@@ -3481,7 +3481,7 @@ export type ClashOverridesSettingsPatch_Deserialize = {
  */
 export type ClashOverridesSettingsPatch_Serialize = {
   'log-level'?: LogLevel
-  ipv6?: boolean
+  ipv6?: ManageableField<boolean>
   'unified-delay'?: ManageableField<boolean>
   'tcp-concurrent'?: ManageableField<boolean>
 }

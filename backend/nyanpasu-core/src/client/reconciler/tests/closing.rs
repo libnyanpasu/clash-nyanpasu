@@ -83,7 +83,9 @@ async fn shutdown_waits_for_an_application_already_submitted() {
         async move {
             client
                 .patch_runtime_overrides(ClashGuardOverridesPatch {
-                    ipv6: Some(true),
+                    ipv6: Some(
+                        nyanpasu_config::clash::config::overrides::ManageableField::Managed(true),
+                    ),
                     ..Default::default()
                 })
                 .await
@@ -262,7 +264,9 @@ async fn shutdown_reports_closed_for_a_committed_change_waiting_to_apply() {
         async move {
             client
                 .patch_runtime_overrides(ClashGuardOverridesPatch {
-                    ipv6: Some(true),
+                    ipv6: Some(
+                        nyanpasu_config::clash::config::overrides::ManageableField::Managed(true),
+                    ),
                     ..Default::default()
                 })
                 .await

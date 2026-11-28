@@ -35,7 +35,7 @@ const BASE_CONFIG: &str = "mode: direct\nproxies: []\nextra-key: keep\ncustom-fi
 /// nyanpasu-config overrides/mod.rs:75;先例 executor tests/builtin.rs:19-24)。
 fn fixed_overrides() -> ClashGuardOverrides {
     yaml_serde::from_str(
-        "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: false\n",
+        "log-level: info\nallow-lan: {kind: managed, value: false}\nmode: rule\nsecret: golden-secret\nunified-delay: {kind: managed, value: true}\ntcp-concurrent: {kind: managed, value: true}\nipv6: {kind: managed, value: false}\n",
     )
     .unwrap()
 }

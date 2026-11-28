@@ -326,6 +326,8 @@
   "settings_user_interface_theme_preview_mode": "预览模式",
   "settings_user_interface_theme_preview_both": "两者",
   "settings_user_interface_theme_unsaved": "未保存的更改",
+  "settings_user_interface_theme_applying": "正在应用…",
+  "settings_user_interface_theme_applied": "主题已应用",
   "settings_user_interface_theme_discard": "放弃更改",
   "settings_user_interface_theme_restore_defaults": "恢复默认值",
   "settings_user_interface_theme_source_title": "源颜色",

@@ -335,6 +335,8 @@
   "settings_user_interface_theme_preview_mode": "Preview mode",
   "settings_user_interface_theme_preview_both": "Both",
   "settings_user_interface_theme_unsaved": "Unsaved changes",
+  "settings_user_interface_theme_applying": "Applying…",
+  "settings_user_interface_theme_applied": "Theme applied",
   "settings_user_interface_theme_discard": "Discard",
   "settings_user_interface_theme_restore_defaults": "Restore defaults",
   "settings_user_interface_theme_source_title": "Source Color",

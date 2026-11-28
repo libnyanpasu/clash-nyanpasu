@@ -21,6 +21,7 @@ import {
   ThemePreviewSection,
   type ThemePreviewMode,
 } from './_modules/theme-preview-section'
+import { ThemeSaveDock } from './_modules/theme-save-dock'
 import { ThemeSourceColorSection } from './_modules/theme-source-color-section'
 import { ThemeStyleSection } from './_modules/theme-style-section'
 
@@ -66,18 +67,23 @@ function RouteComponent() {
   const update = (patch: Partial<ThemeOptions>) =>
     setEdits((current) => ({ ...(current ?? themeOptions), ...patch }))
 
+  // Resolves whether the draft was saved.
   const handleApply = async () => {
     setApplying(true)
 
     try {
       await setThemeOptions(draft)
       setEdits(null)
+
+      return true
     } catch (error) {
       message(`Update theme failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
         error,
       })
+
+      return false
     } finally {
       setApplying(false)
     }
@@ -88,15 +94,11 @@ function RouteComponent() {
       <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
-        <div className="space-y-4 px-4 pb-4">
+        <div className="space-y-4 px-4 pb-24">
           <ThemePreviewSection
             draft={draft}
             previewMode={previewMode}
             onPreviewModeChange={setPreviewMode}
-            dirty={dirty}
-            applying={applying}
-            onDiscard={() => setEdits(null)}
-            onApply={handleApply}
           />
 
           <ThemeSourceColorSection
@@ -118,6 +120,13 @@ function RouteComponent() {
             onSpecVersionChange={(specVersion) => update({ specVersion })}
           />
         </div>
+
+        <ThemeSaveDock
+          dirty={dirty}
+          applying={applying}
+          onDiscard={() => setEdits(null)}
+          onApply={handleApply}
+        />
       </ReadOnlyScope>
     </>
   )

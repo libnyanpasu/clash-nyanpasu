@@ -326,6 +326,8 @@
   "settings_user_interface_theme_preview_mode": "プレビューモード",
   "settings_user_interface_theme_preview_both": "両方",
   "settings_user_interface_theme_unsaved": "未保存の変更",
+  "settings_user_interface_theme_applying": "適用中…",
+  "settings_user_interface_theme_applied": "テーマを適用しました",
   "settings_user_interface_theme_discard": "変更を破棄",
   "settings_user_interface_theme_restore_defaults": "既定値に戻す",
   "settings_user_interface_theme_source_title": "ソースカラー",

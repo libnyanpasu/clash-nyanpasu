@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
+import { page } from 'vitest/browser'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
 import { createTheme } from '@nyanpasu/theme'
@@ -86,22 +87,26 @@ async function renderPage(
     hex: view.getByRole('textbox', {
       name: m.settings_user_interface_theme_color_hex_source(),
     }),
-    apply: view.getByRole('button', { name: m.common_apply() }),
-    discard: view.getByRole('button', {
+    // The save dock renders into `body`, outside the view.
+    apply: page.getByRole('button', { name: m.common_apply() }),
+    discard: page.getByRole('button', {
       name: m.settings_user_interface_theme_discard(),
     }),
-    unsaved: () =>
-      view.getByText(m.settings_user_interface_theme_unsaved()).query(),
+    dockStatus: () =>
+      document.querySelector(
+        '[data-slot="theme-save-dock"] [data-slot="action-swap-text"]',
+      )?.textContent ?? null,
   }
 }
 
 test('editing previews on the mockups and leaves the app theme alone', async ({
   onTestFinished,
 }) => {
-  const { view, hex, apply } = await renderPage(onTestFinished)
+  const { view, hex, apply, dockStatus } = await renderPage(onTestFinished)
 
-  // The saved color differs from the picker's lowercase hex only in case.
-  await expect.element(apply).toBeDisabled()
+  // The saved color differs from the picker's lowercase hex only in case,
+  // so there is nothing to save and no dock.
+  expect(dockStatus()).toBeNull()
   expect(
     view
       .getByRole('radio', {
@@ -118,15 +123,16 @@ test('editing previews on the mockups and leaves the app theme alone', async ({
   await hex.fill('#00ff00')
 
   await expect.poll(mockup).not.toBe(before)
+  await expect.poll(dockStatus).toBe(m.settings_user_interface_theme_unsaved())
   await expect.element(apply).toBeEnabled()
   expect(customStyle()).toBe(createTheme(SAVED).cssVars)
   expect(backend.save).not.toHaveBeenCalled()
 })
 
-test('Apply saves every changed option in one patch', async ({
+test('Apply saves every changed option in one patch, then the dock confirms and leaves', async ({
   onTestFinished,
 }) => {
-  const { view, apply, unsaved } = await renderPage(onTestFinished)
+  const { view, apply, dockStatus } = await renderPage(onTestFinished)
 
   press(
     view.getByRole('radio', {
@@ -143,7 +149,7 @@ test('Apply saves every changed option in one patch', async ({
       name: m.settings_user_interface_theme_spec_2021(),
     }),
   )
-  await expect.poll(unsaved).not.toBeNull()
+  await expect.poll(dockStatus).toBe(m.settings_user_interface_theme_unsaved())
 
   await apply.click()
 
@@ -165,20 +171,23 @@ test('Apply saves every changed option in one patch', async ({
       specVersion: '2021',
     }).cssVars,
   )
-  await expect.poll(unsaved).toBeNull()
+  await expect.poll(dockStatus).toBe(m.settings_user_interface_theme_applied())
+  await expect.poll(dockStatus, { timeout: 4000 }).toBeNull()
 })
 
 test('Discard drops the draft and Restore defaults drafts the defaults', async ({
   onTestFinished,
 }) => {
-  const { view, hex, apply, discard } = await renderPage(onTestFinished)
+  const { view, hex, apply, discard, dockStatus } =
+    await renderPage(onTestFinished)
 
   await hex.fill('#00ff00')
   await expect.element(apply).toBeEnabled()
 
   await discard.click()
 
-  await expect.element(apply).toBeDisabled()
+  // Nothing is left to save or confirm, so the dock leaves.
+  await expect.poll(dockStatus).toBeNull()
   await expect
     .poll(() => (hex.element() as HTMLInputElement).value)
     .toBe('#1867c0')
@@ -199,7 +208,7 @@ test('Discard drops the draft and Restore defaults drafts the defaults', async (
 test('a failed save reports the error and keeps the draft', async ({
   onTestFinished,
 }) => {
-  const { hex, apply } = await renderPage(onTestFinished)
+  const { hex, apply, dockStatus } = await renderPage(onTestFinished)
   backend.save.mockRejectedValue(new Error('boom'))
 
   await hex.fill('#00ff00')
@@ -207,6 +216,8 @@ test('a failed save reports the error and keeps the draft', async ({
 
   await expect.poll(() => notify.mock.calls.length).toBe(1)
   await expect.element(apply).toBeEnabled()
+  // The status rolls back from "Applying…" once the save has failed.
+  await expect.poll(dockStatus).toBe(m.settings_user_interface_theme_unsaved())
   expect((hex.element() as HTMLInputElement).value).toBe('#00ff00')
   expect(customStyle()).toBe(createTheme(SAVED).cssVars)
 })

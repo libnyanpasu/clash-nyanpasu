@@ -315,6 +315,8 @@
   "settings_user_interface_theme_preview_mode": "Режим предпросмотра",
   "settings_user_interface_theme_preview_both": "Оба",
   "settings_user_interface_theme_unsaved": "Несохранённые изменения",
+  "settings_user_interface_theme_applying": "Применение…",
+  "settings_user_interface_theme_applied": "Тема применена",
   "settings_user_interface_theme_discard": "Отменить изменения",
   "settings_user_interface_theme_restore_defaults": "Восстановить по умолчанию",
   "settings_user_interface_theme_source_title": "Исходный цвет",

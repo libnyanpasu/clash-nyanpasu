@@ -327,7 +327,6 @@
   "settings_user_interface_theme_applying": "適用中…",
   "settings_user_interface_theme_applied": "テーマを適用しました",
   "settings_user_interface_theme_discard": "変更を破棄",
-  "settings_user_interface_theme_restore_defaults": "既定値に戻す",
   "settings_user_interface_theme_source_title": "ソースカラー",
   "settings_user_interface_theme_source_description": "すべてのカラーロールは 1 つのソースカラーから派生します。プリセットを選ぶか、任意の HCT カラーに調整してください。",
   "settings_user_interface_theme_style_title": "配色スタイル",

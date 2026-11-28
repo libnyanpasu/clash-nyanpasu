@@ -175,11 +175,10 @@ test('Apply saves every changed option in one patch, then the dock confirms and 
   await expect.poll(dockStatus, { timeout: 4000 }).toBeNull()
 })
 
-test('Discard drops the draft and Restore defaults drafts the defaults', async ({
+test('Discard drops the draft and the dock leaves', async ({
   onTestFinished,
 }) => {
-  const { view, hex, apply, discard, dockStatus } =
-    await renderPage(onTestFinished)
+  const { hex, apply, discard, dockStatus } = await renderPage(onTestFinished)
 
   await hex.fill('#00ff00')
   await expect.element(apply).toBeEnabled()
@@ -191,17 +190,6 @@ test('Discard drops the draft and Restore defaults drafts the defaults', async (
   await expect
     .poll(() => (hex.element() as HTMLInputElement).value)
     .toBe('#1867c0')
-
-  await view
-    .getByRole('button', {
-      name: m.settings_user_interface_theme_restore_defaults(),
-    })
-    .click()
-
-  await expect.element(apply).toBeEnabled()
-  await expect
-    .poll(() => (hex.element() as HTMLInputElement).value)
-    .toBe('#3e64a7')
   expect(backend.save).not.toHaveBeenCalled()
 })
 

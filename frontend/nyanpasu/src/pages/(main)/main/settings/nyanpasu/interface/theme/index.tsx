@@ -8,12 +8,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  DEFAULT_COLOR,
-  DEFAULT_CONTRAST_LEVEL,
-  DEFAULT_THEME_SPEC_VERSION,
-  DEFAULT_THEME_VARIANT,
-} from '@nyanpasu/theme'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { ThemeContrastSection } from './_modules/theme-contrast-section'
 import { ThemePreviewSection } from './_modules/theme-preview-section'
@@ -29,13 +24,6 @@ export const Route = createFileRoute(
     crumb: { title: () => m.settings_user_interface_theme_color_label() },
   },
 })
-
-const DEFAULT_THEME_OPTIONS: ThemeOptions = {
-  color: DEFAULT_COLOR,
-  variant: DEFAULT_THEME_VARIANT,
-  contrastLevel: DEFAULT_CONTRAST_LEVEL,
-  specVersion: DEFAULT_THEME_SPEC_VERSION,
-}
 
 const isSameThemeOptions = (a: ThemeOptions, b: ThemeOptions) =>
   a.color.toLowerCase() === b.color.toLowerCase() &&
@@ -93,23 +81,29 @@ function RouteComponent() {
           <div className="@container">
             <div
               data-slot="theme-settings-grid"
-              className="grid grid-cols-1 gap-4 @3xl:grid-cols-2"
+              className={cn(
+                'grid grid-cols-1 gap-4',
+                // Style heading, style card, a gap, contrast heading and
+                // contrast card; the source color spans them all.
+                '@3xl:grid-cols-2 @3xl:grid-rows-[auto_auto_1rem_auto_1fr] @3xl:gap-y-0',
+              )}
             >
               <ThemeSourceColorSection
-                className="@3xl:row-span-2"
+                className="@3xl:col-start-1 @3xl:row-start-1"
                 draft={draft}
                 swatchMode={currentThemeMode}
                 onChange={(color) => update({ color })}
-                onRestoreDefaults={() => setEdits(DEFAULT_THEME_OPTIONS)}
               />
 
               <ThemeStyleSection
+                className="@3xl:col-start-2 @3xl:row-start-1"
                 draft={draft}
                 swatchMode={currentThemeMode}
                 onChange={(variant) => update({ variant })}
               />
 
               <ThemeContrastSection
+                className="@3xl:col-start-2 @3xl:row-start-4"
                 draft={draft}
                 onContrastLevelChange={(contrastLevel) =>
                   update({ contrastLevel })

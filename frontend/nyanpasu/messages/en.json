@@ -336,7 +336,6 @@
   "settings_user_interface_theme_applying": "Applying…",
   "settings_user_interface_theme_applied": "Theme applied",
   "settings_user_interface_theme_discard": "Discard",
-  "settings_user_interface_theme_restore_defaults": "Restore defaults",
   "settings_user_interface_theme_source_title": "Source Color",
   "settings_user_interface_theme_source_description": "Every color role is derived from one source color. Pick a preset or dial in any HCT color.",
   "settings_user_interface_theme_style_title": "Scheme Style",

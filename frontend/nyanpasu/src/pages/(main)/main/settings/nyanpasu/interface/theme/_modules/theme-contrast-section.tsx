@@ -35,10 +35,12 @@ const SPEC_OPTIONS: readonly {
 const fieldLabelVariants = cva('text-on-surface-variant text-xs font-medium')
 
 export function ThemeContrastSection({
+  className,
   draft,
   onContrastLevelChange,
   onSpecVersionChange,
 }: {
+  className?: string
   draft: ThemeOptions
   onContrastLevelChange: (contrastLevel: number) => void
   onSpecVersionChange: (specVersion: ThemeSpecVersion) => void
@@ -48,6 +50,7 @@ export function ThemeContrastSection({
   return (
     <ThemeSection
       data-slot="theme-contrast-section"
+      className={className}
       title={m.settings_user_interface_theme_contrast_title()}
       description={m.settings_user_interface_theme_contrast_description()}
     >

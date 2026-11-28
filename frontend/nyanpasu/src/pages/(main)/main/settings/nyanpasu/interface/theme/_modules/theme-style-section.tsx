@@ -11,10 +11,12 @@ import { ThemeSection } from './theme-section'
 import { themeSwatchColors } from './theme-swatches'
 
 export function ThemeStyleSection({
+  className,
   draft,
   swatchMode,
   onChange,
 }: {
+  className?: string
   draft: ThemeOptions
   swatchMode: ResolvedThemeMode
   onChange: (variant: ThemeVariant) => void
@@ -39,6 +41,7 @@ export function ThemeStyleSection({
   return (
     <ThemeSection
       data-slot="theme-style-section"
+      className={className}
       title={m.settings_user_interface_theme_style_title()}
       description={m.settings_user_interface_theme_style_description()}
     >

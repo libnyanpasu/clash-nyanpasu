@@ -1,6 +1,4 @@
-import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import { useDeferredValue, useMemo } from 'react'
-import { Button } from '@nyanpasu/ui/button'
 import {
   ColorSchemeSwatch,
   ColorSchemeSwatchGroup,
@@ -40,13 +38,11 @@ export function ThemeSourceColorSection({
   draft,
   swatchMode,
   onChange,
-  onRestoreDefaults,
 }: {
   className?: string
   draft: ThemeOptions
   swatchMode: ResolvedThemeMode
   onChange: (color: string) => void
-  onRestoreDefaults: () => void
 }) {
   const { systemAccentColor } = useSystemAccentColor()
 
@@ -84,22 +80,10 @@ export function ThemeSourceColorSection({
   return (
     <ThemeSection
       data-slot="theme-source-color-section"
+      span="tall"
       className={className}
       title={m.settings_user_interface_theme_source_title()}
       description={m.settings_user_interface_theme_source_description()}
-      action={
-        <Button
-          data-slot="theme-source-color-restore"
-          variant="basic"
-          icon
-          className="size-9 shrink-0"
-          aria-label={m.settings_user_interface_theme_restore_defaults()}
-          title={m.settings_user_interface_theme_restore_defaults()}
-          onClick={onRestoreDefaults}
-        >
-          <RestartAltRounded className="size-5" />
-        </Button>
-      }
     >
       <ColorSchemeSwatchGroup
         aria-label={m.settings_user_interface_theme_color_presets()}

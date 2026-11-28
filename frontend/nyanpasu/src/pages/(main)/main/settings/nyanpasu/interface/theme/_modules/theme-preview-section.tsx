@@ -1,5 +1,4 @@
 import { useDeferredValue, useMemo } from 'react'
-import { Item, ItemGroup } from '@nyanpasu/ui/item-group'
 import { ThemeMockup } from '@nyanpasu/ui/theme-mockup'
 import type { ThemeOptions } from '@/components/providers/theme-provider'
 import { m } from '@/paraglide/messages'
@@ -25,24 +24,20 @@ export function ThemePreviewSection({ draft }: { draft: ThemeOptions }) {
   )
 
   return (
-    <ItemGroup data-slot="theme-preview-section">
-      <Item className="flex-col items-stretch">
-        <div
-          data-slot="theme-preview-frames"
-          className="grid justify-center gap-4 sm:grid-cols-[repeat(2,minmax(0,20rem))]"
-        >
-          {PREVIEW_MODES.map(({ mode, label }) => (
-            <ThemeMockup
-              key={mode}
-              palette={palette}
-              mode={mode}
-              aria-label={m.settings_user_interface_theme_preview_mockup({
-                mode: label(),
-              })}
-            />
-          ))}
-        </div>
-      </Item>
-    </ItemGroup>
+    <div
+      data-slot="theme-preview-section"
+      className="grid justify-center gap-4 sm:grid-cols-[repeat(2,minmax(0,20rem))]"
+    >
+      {PREVIEW_MODES.map(({ mode, label }) => (
+        <ThemeMockup
+          key={mode}
+          palette={palette}
+          mode={mode}
+          aria-label={m.settings_user_interface_theme_preview_mockup({
+            mode: label(),
+          })}
+        />
+      ))}
+    </div>
   )
 }

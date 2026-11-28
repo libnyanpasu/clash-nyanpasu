@@ -327,7 +327,6 @@
   "settings_user_interface_theme_applying": "正在应用…",
   "settings_user_interface_theme_applied": "主题已应用",
   "settings_user_interface_theme_discard": "放弃更改",
-  "settings_user_interface_theme_restore_defaults": "恢复默认值",
   "settings_user_interface_theme_source_title": "源颜色",
   "settings_user_interface_theme_source_description": "所有颜色角色都派生自同一个源颜色。选择一个预设，或调出任意 HCT 颜色。",
   "settings_user_interface_theme_style_title": "配色方案风格",

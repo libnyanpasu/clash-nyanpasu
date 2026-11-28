@@ -316,7 +316,6 @@
   "settings_user_interface_theme_applying": "Применение…",
   "settings_user_interface_theme_applied": "Тема применена",
   "settings_user_interface_theme_discard": "Отменить изменения",
-  "settings_user_interface_theme_restore_defaults": "Восстановить по умолчанию",
   "settings_user_interface_theme_source_title": "Исходный цвет",
   "settings_user_interface_theme_source_description": "Все цветовые роли выводятся из одного исходного цвета. Выберите пресет или настройте любой цвет HCT.",
   "settings_user_interface_theme_style_title": "Стиль схемы",

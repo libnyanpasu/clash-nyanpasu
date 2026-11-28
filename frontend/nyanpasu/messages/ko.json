@@ -327,7 +327,6 @@
   "settings_user_interface_theme_applying": "적용 중…",
   "settings_user_interface_theme_applied": "테마를 적용했습니다",
   "settings_user_interface_theme_discard": "변경 취소",
-  "settings_user_interface_theme_restore_defaults": "기본값 복원",
   "settings_user_interface_theme_source_title": "소스 색상",
   "settings_user_interface_theme_source_description": "모든 색상 역할은 하나의 소스 색상에서 파생됩니다. 프리셋을 선택하거나 원하는 HCT 색상으로 조정하세요.",
   "settings_user_interface_theme_style_title": "색 구성표 스타일",

@@ -6614,9 +6614,9 @@ dependencies = [
 
 [[package]]
 name = "netdev"
-version = "0.48.0"
+version = "0.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4f5a27ff6938fbf60f38cdac74cc92c79f6311f0e1f527fcfe5529a1e2bd5fd"
+checksum = "f5d2d03a8549713c9017d647eeb25c7e472c3fdb5ee35da3c2060c1b604b8ae8"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
@@ -11119,7 +11119,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8050abb251097357e24aff63ba2c52a6309ecb7d23a5474023df960a02694d8"
 dependencies = [
  "annotate-snippets",
- "base64 0.23.1",
+ "base64 0.21.7",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",

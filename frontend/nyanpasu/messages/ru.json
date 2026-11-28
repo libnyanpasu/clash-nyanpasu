@@ -312,8 +312,6 @@
   "settings_user_interface_theme_color_tone": "Тон",
   "settings_user_interface_theme_color_entry_description": "{color} · {style}",
   "settings_user_interface_theme_preview_mockup": "Предпросмотр Clash Nyanpasu ({mode})",
-  "settings_user_interface_theme_preview_mode": "Режим предпросмотра",
-  "settings_user_interface_theme_preview_both": "Оба",
   "settings_user_interface_theme_unsaved": "Несохранённые изменения",
   "settings_user_interface_theme_applying": "Применение…",
   "settings_user_interface_theme_applied": "Тема применена",

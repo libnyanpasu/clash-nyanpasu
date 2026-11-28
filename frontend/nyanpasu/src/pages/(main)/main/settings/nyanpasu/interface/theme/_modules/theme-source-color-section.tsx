@@ -36,11 +36,13 @@ const PRESETS = [
 ]
 
 export function ThemeSourceColorSection({
+  className,
   draft,
   swatchMode,
   onChange,
   onRestoreDefaults,
 }: {
+  className?: string
   draft: ThemeOptions
   swatchMode: ResolvedThemeMode
   onChange: (color: string) => void
@@ -82,6 +84,7 @@ export function ThemeSourceColorSection({
   return (
     <ThemeSection
       data-slot="theme-source-color-section"
+      className={className}
       title={m.settings_user_interface_theme_source_title()}
       description={m.settings_user_interface_theme_source_description()}
       action={

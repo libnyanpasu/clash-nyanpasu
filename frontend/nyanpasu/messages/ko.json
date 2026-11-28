@@ -323,8 +323,6 @@
   "settings_user_interface_theme_color_tone": "명도",
   "settings_user_interface_theme_color_entry_description": "{color} · {style}",
   "settings_user_interface_theme_preview_mockup": "Clash Nyanpasu 미리보기 ({mode})",
-  "settings_user_interface_theme_preview_mode": "미리보기 모드",
-  "settings_user_interface_theme_preview_both": "둘 다",
   "settings_user_interface_theme_unsaved": "저장되지 않은 변경 사항",
   "settings_user_interface_theme_applying": "적용 중…",
   "settings_user_interface_theme_applied": "테마를 적용했습니다",

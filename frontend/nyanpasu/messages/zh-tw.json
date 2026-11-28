@@ -323,8 +323,6 @@
   "settings_user_interface_theme_color_tone": "色調",
   "settings_user_interface_theme_color_entry_description": "{color} · {style}",
   "settings_user_interface_theme_preview_mockup": "Clash Nyanpasu 預覽（{mode}）",
-  "settings_user_interface_theme_preview_mode": "預覽模式",
-  "settings_user_interface_theme_preview_both": "兩者",
   "settings_user_interface_theme_unsaved": "未儲存的變更",
   "settings_user_interface_theme_applying": "正在套用…",
   "settings_user_interface_theme_applied": "主題已套用",

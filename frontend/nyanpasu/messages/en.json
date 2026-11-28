@@ -332,8 +332,6 @@
   "settings_user_interface_theme_color_tone": "Tone",
   "settings_user_interface_theme_color_entry_description": "{color} · {style}",
   "settings_user_interface_theme_preview_mockup": "Clash Nyanpasu preview ({mode})",
-  "settings_user_interface_theme_preview_mode": "Preview mode",
-  "settings_user_interface_theme_preview_both": "Both",
   "settings_user_interface_theme_unsaved": "Unsaved changes",
   "settings_user_interface_theme_applying": "Applying…",
   "settings_user_interface_theme_applied": "Theme applied",

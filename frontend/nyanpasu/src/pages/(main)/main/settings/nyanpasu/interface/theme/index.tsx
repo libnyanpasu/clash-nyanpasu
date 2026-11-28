@@ -13,14 +13,10 @@ import {
   DEFAULT_CONTRAST_LEVEL,
   DEFAULT_THEME_SPEC_VERSION,
   DEFAULT_THEME_VARIANT,
-  type ResolvedThemeMode,
 } from '@nyanpasu/theme'
 import { createFileRoute } from '@tanstack/react-router'
 import { ThemeContrastSection } from './_modules/theme-contrast-section'
-import {
-  ThemePreviewSection,
-  type ThemePreviewMode,
-} from './_modules/theme-preview-section'
+import { ThemePreviewSection } from './_modules/theme-preview-section'
 import { ThemeSaveDock } from './_modules/theme-save-dock'
 import { ThemeSourceColorSection } from './_modules/theme-source-color-section'
 import { ThemeStyleSection } from './_modules/theme-style-section'
@@ -53,15 +49,10 @@ function RouteComponent() {
 
   // `null` mirrors the saved options until the user edits one.
   const [edits, setEdits] = useState<ThemeOptions | null>(null)
-  const [previewMode, setPreviewMode] = useState<ThemePreviewMode>('both')
   const [applying, setApplying] = useState(false)
 
   const draft = edits ?? themeOptions
   const dirty = !isSameThemeOptions(draft, themeOptions)
-
-  // Swatches follow the previewed mode; "both" follows the app.
-  const swatchMode: ResolvedThemeMode =
-    previewMode === 'both' ? currentThemeMode : previewMode
 
   // Edits made before the next render must build on each other.
   const update = (patch: Partial<ThemeOptions>) =>
@@ -94,31 +85,39 @@ function RouteComponent() {
       <PageTitle />
 
       <ReadOnlyScope permissions={['settings:write']}>
-        <div className="space-y-4 px-4 pb-24">
-          <ThemePreviewSection
-            draft={draft}
-            previewMode={previewMode}
-            onPreviewModeChange={setPreviewMode}
-          />
+        <div className="flex flex-col gap-4 px-4 pb-24">
+          <ThemePreviewSection draft={draft} />
 
-          <ThemeSourceColorSection
-            draft={draft}
-            swatchMode={swatchMode}
-            onChange={(color) => update({ color })}
-            onRestoreDefaults={() => setEdits(DEFAULT_THEME_OPTIONS)}
-          />
+          {/* The source color runs down one column beside the style and
+              contrast sections once the page is wide enough. */}
+          <div className="@container">
+            <div
+              data-slot="theme-settings-grid"
+              className="grid grid-cols-1 gap-4 @3xl:grid-cols-2"
+            >
+              <ThemeSourceColorSection
+                className="@3xl:row-span-2"
+                draft={draft}
+                swatchMode={currentThemeMode}
+                onChange={(color) => update({ color })}
+                onRestoreDefaults={() => setEdits(DEFAULT_THEME_OPTIONS)}
+              />
 
-          <ThemeStyleSection
-            draft={draft}
-            swatchMode={swatchMode}
-            onChange={(variant) => update({ variant })}
-          />
+              <ThemeStyleSection
+                draft={draft}
+                swatchMode={currentThemeMode}
+                onChange={(variant) => update({ variant })}
+              />
 
-          <ThemeContrastSection
-            draft={draft}
-            onContrastLevelChange={(contrastLevel) => update({ contrastLevel })}
-            onSpecVersionChange={(specVersion) => update({ specVersion })}
-          />
+              <ThemeContrastSection
+                draft={draft}
+                onContrastLevelChange={(contrastLevel) =>
+                  update({ contrastLevel })
+                }
+                onSpecVersionChange={(specVersion) => update({ specVersion })}
+              />
+            </div>
+          </div>
         </div>
 
         <ThemeSaveDock

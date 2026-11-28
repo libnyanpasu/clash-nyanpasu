@@ -3,7 +3,6 @@ import {
   PropsWithChildren,
   useCallback,
   useContext,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -11,14 +10,20 @@ import {
 } from 'react'
 import { insertStyle } from '@/utils/styled'
 import { createWindowAdapter } from '@nyanpasu/platform'
-import { useSetting } from '@nyanpasu/query'
+import { useSetting, useSettings } from '@nyanpasu/query'
+import type { ApplicationSettings_Serialize } from '@nyanpasu/rpc/types'
 import {
   createTheme,
   DEFAULT_COLOR,
+  DEFAULT_CONTRAST_LEVEL,
+  DEFAULT_THEME_SPEC_VERSION,
+  DEFAULT_THEME_VARIANT,
   isValidThemePalette,
   ThemeMode,
   type ResolvedThemeMode,
   type Theme,
+  type ThemeSpecVersion,
+  type ThemeVariant,
 } from '@nyanpasu/theme'
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
@@ -89,20 +94,36 @@ const applyRootThemeClass = (mode: ResolvedThemeMode) => {
   }
 }
 
-export type ThemePreview = {
-  color?: string
-  mode?: ThemeMode
+type SettingsThemeVariant = ApplicationSettings_Serialize['theme_variant']
+
+/** The saved values every color role is generated from. */
+export type ThemeOptions = {
+  color: string
+  variant: ThemeVariant
+  contrastLevel: number
+  specVersion: ThemeSpecVersion
 }
+
+// Settings spell the variants in snake_case, the theme package in camelCase.
+const toThemeVariant = (variant: SettingsThemeVariant): ThemeVariant =>
+  variant.replace(/_([a-z])/g, (_, letter: string) =>
+    letter.toUpperCase(),
+  ) as ThemeVariant
+
+const toSettingsVariant = (variant: ThemeVariant): SettingsThemeVariant =>
+  variant.replace(
+    /[A-Z]/g,
+    (letter) => `_${letter.toLowerCase()}`,
+  ) as SettingsThemeVariant
 
 const ThemeContext = createContext<{
   themePalette: Theme
   themeCssVars: string
-  themeColor: string
-  setThemeColor: (color: string) => Promise<void>
+  themeOptions: ThemeOptions
+  setThemeOptions: (options: ThemeOptions) => Promise<void>
   themeMode: ThemeMode
   currentThemeMode: ResolvedThemeMode
   setThemeMode: (mode: ThemeMode) => Promise<void>
-  setThemePreview: (preview: ThemePreview | null) => void
 } | null>(null)
 
 export function useExperimentalThemeContext() {
@@ -125,16 +146,23 @@ export function ExperimentalThemeProvider({
   const themeMode = useSetting('theme_mode', { enabled })
 
   const themeColor = useSetting('theme_color', { enabled })
+  const themeVariant = useSetting('theme_variant', { enabled })
+  const themeContrastLevel = useSetting('theme_contrast_level', { enabled })
+  const themeSpecVersion = useSetting('theme_spec_version', { enabled })
+  const { upsert: patchSettings } = useSettings({ enabled })
+
   const [resolvedThemeMode, setResolvedThemeMode] =
     useState<ResolvedThemeMode>(getSystemThemeMode())
 
-  // An unsaved color / mode shown on top of the saved settings.
-  const [preview, setPreview] = useState<ThemePreview | null>(null)
+  const effectiveMode = themeMode.value
 
-  // Dragging a color changes it faster than themes rebuild; let React skip
-  // the intermediate ones.
-  const effectiveColor = useDeferredValue(preview?.color ?? themeColor.value)
-  const effectiveMode = preview?.mode ?? themeMode.value
+  const color = themeColor.value
+  const variant =
+    themeVariant.value === undefined
+      ? DEFAULT_THEME_VARIANT
+      : toThemeVariant(themeVariant.value)
+  const contrastLevel = themeContrastLevel.value ?? DEFAULT_CONTRAST_LEVEL
+  const specVersion = themeSpecVersion.value ?? DEFAULT_THEME_SPEC_VERSION
 
   // The theme of the last session paints the window until the settings have
   // loaded; `theme_color` is always present once they have.
@@ -142,13 +170,11 @@ export function ExperimentalThemeProvider({
 
   const theme = useMemo(
     () =>
-      effectiveColor === undefined ? cachedTheme : createTheme(effectiveColor),
-    [effectiveColor, cachedTheme],
+      color === undefined
+        ? cachedTheme
+        : createTheme(color, { variant, contrastLevel, specVersion }),
+    [color, variant, contrastLevel, specVersion, cachedTheme],
   )
-
-  // Only the saved color is cached for the next launch, never a preview
-  // (including the deferred frame right after a preview is cleared).
-  const isSavedTheme = effectiveColor === themeColor.value
 
   // automatically insert custom theme css vars into document head
   useEffect(() => {
@@ -156,7 +182,7 @@ export function ExperimentalThemeProvider({
   }, [theme.cssVars])
 
   useEffect(() => {
-    if (theme === cachedTheme || !isSavedTheme) {
+    if (theme === cachedTheme) {
       return
     }
 
@@ -166,28 +192,54 @@ export function ExperimentalThemeProvider({
     } catch {
       // ignore quota / security errors
     }
-  }, [theme, cachedTheme, isSavedTheme])
+  }, [theme, cachedTheme])
+
+  const themeOptions = useMemo<ThemeOptions>(
+    () => ({
+      color: color || DEFAULT_COLOR,
+      variant,
+      contrastLevel,
+      specVersion,
+    }),
+    [color, variant, contrastLevel, specVersion],
+  )
 
   // The setting hooks return new objects every render; the setters read
   // them through refs so the context value stays stable.
-  const themeColorRef = useRef(themeColor)
-  themeColorRef.current = themeColor
+  const themeOptionsRef = useRef(themeOptions)
+  themeOptionsRef.current = themeOptions
+
+  const patchSettingsRef = useRef(patchSettings)
+  patchSettingsRef.current = patchSettings
 
   const themeModeRef = useRef(themeMode)
   themeModeRef.current = themeMode
 
-  const setThemeColor = useCallback(async (color: string) => {
-    if (color !== themeColorRef.current.value) {
-      await themeColorRef.current.upsert(color)
-    }
-  }, [])
+  // One patch saves every changed option, so the theme never rebuilds from
+  // a half-applied set.
+  const setThemeOptions = useCallback(async (next: ThemeOptions) => {
+    const saved = themeOptionsRef.current
+    const patch: Parameters<typeof patchSettings.mutateAsync>[0] = {}
 
-  const setThemePreview = useCallback((next: ThemePreview | null) => {
-    setPreview((current) =>
-      current?.color === next?.color && current?.mode === next?.mode
-        ? current
-        : next,
-    )
+    if (next.color.toLowerCase() !== saved.color.toLowerCase()) {
+      patch.theme_color = next.color
+    }
+
+    if (next.variant !== saved.variant) {
+      patch.theme_variant = toSettingsVariant(next.variant)
+    }
+
+    if (next.contrastLevel !== saved.contrastLevel) {
+      patch.theme_contrast_level = next.contrastLevel
+    }
+
+    if (next.specVersion !== saved.specVersion) {
+      patch.theme_spec_version = next.specVersion
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await patchSettingsRef.current.mutateAsync(patch)
+    }
   }, [])
 
   const applyThemeMode = useCallback((mode: ResolvedThemeMode) => {
@@ -274,27 +326,23 @@ export function ExperimentalThemeProvider({
     applyRootThemeClass(currentThemeMode)
   }, [currentThemeMode])
 
-  const color = themeColor.value || DEFAULT_COLOR
-
   const value = useMemo(
     () => ({
       themePalette: theme.palette,
       themeCssVars: theme.cssVars,
-      themeColor: color,
-      setThemeColor,
+      themeOptions,
+      setThemeOptions,
       themeMode: themeMode.value as ThemeMode,
       currentThemeMode,
       setThemeMode,
-      setThemePreview,
     }),
     [
       theme,
-      color,
-      setThemeColor,
+      themeOptions,
+      setThemeOptions,
       themeMode.value,
       currentThemeMode,
       setThemeMode,
-      setThemePreview,
     ],
   )
 

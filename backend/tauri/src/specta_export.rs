@@ -1024,6 +1024,9 @@ mod tests {
                 "proxy_layout_column",
                 // Ordinary null is a no-op and the field is optional, so both are in the contract.
                 "theme_color?: string | null",
+                "theme_variant?: ThemeVariant | null",
+                "theme_contrast_level?: number | null",
+                "theme_spec_version?: ThemeSpecVersion | null",
                 // The clearable preference accepts an explicit null.
                 "release_channel?: ReleaseChannel | null",
             ],

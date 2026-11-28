@@ -406,6 +406,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn theme_contrast_level_outside_range_is_rejected() {
+        let (client, _dir) = test_client().await;
+        let committed_version = client.snapshot().version;
+        for invalid in [-1.01, 1.01, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.theme_contrast_level = Some(invalid);
+            assert!(matches!(
+                client.patch(patch).await,
+                Err(ConfigError::InvalidThemeContrastLevel { .. })
+            ));
+            assert_eq!(client.snapshot().version, committed_version);
+            assert_eq!(client.snapshot().state.theme_contrast_level, 0.0);
+        }
+        for valid in [-1.0, 0.5, 1.0] {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.theme_contrast_level = Some(valid);
+            assert_eq!(
+                client
+                    .patch(patch)
+                    .await
+                    .unwrap()
+                    .state
+                    .theme_contrast_level,
+                valid
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn release_channel_persists_and_non_nightly_builds_can_choose_nightly() {
         let (client, _dir) = test_client().await;
         for channel in [

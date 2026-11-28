@@ -23,7 +23,8 @@ use crate::request::{FieldsRejected, reject_present};
 use super::{
     CoreLogSettings, I18nLanguage, IpLookupProvider, LoggingLevel, NetworkStatisticWidgetConfig,
     NetworkStatisticWidgetLogo, NyanpasuAppConfigPatch, ProxiesSelectorMode, ReleaseChannel,
-    StunServer, ThemeMode, TrafficRetention, TrayMenuMode, UpdateSource, WindowCloseSettingsPatch,
+    StunServer, ThemeMode, ThemeSpecVersion, ThemeVariant, TrafficRetention, TrayMenuMode,
+    UpdateSource, WindowCloseSettingsPatch,
 };
 
 /// A patch of the ordinary preferences.
@@ -50,6 +51,9 @@ pub struct ApplicationPreferencesPatch {
     pub enable_silent_start: Option<bool>,
     #[specta(type = Option<String>)]
     pub theme_color: Option<CssColor>,
+    pub theme_variant: Option<ThemeVariant>,
+    pub theme_contrast_level: Option<f64>,
+    pub theme_spec_version: Option<ThemeSpecVersion>,
     pub default_latency_test: Option<String>,
     pub default_latency_timeout_ms: Option<u64>,
     pub enable_builtin_enhanced: Option<bool>,
@@ -105,6 +109,9 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             system_proxy_bypass,
             proxy_guard_interval,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             core,
             hotkeys,
             default_latency_test,
@@ -163,6 +170,9 @@ impl TryFrom<NyanpasuAppConfigPatch> for ApplicationPreferencesPatch {
             lighten_animation_effects,
             enable_silent_start,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             default_latency_test,
             default_latency_timeout_ms,
             enable_builtin_enhanced,
@@ -205,6 +215,9 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             lighten_animation_effects,
             enable_silent_start,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             default_latency_test,
             default_latency_timeout_ms,
             enable_builtin_enhanced,
@@ -242,6 +255,9 @@ impl From<ApplicationPreferencesPatch> for NyanpasuAppConfigPatch {
             lighten_animation_effects,
             enable_silent_start,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             default_latency_test,
             default_latency_timeout_ms,
             enable_builtin_enhanced,
@@ -381,6 +397,9 @@ mod tests {
             "proxy_layout_column": 7,
             "release_channel": null,
             "theme_color": null,
+            "theme_variant": null,
+            "theme_contrast_level": null,
+            "theme_spec_version": null,
             "window_close": {"global": "hide"},
         });
         // A null field of another class writes nothing, so it is accepted (`pac_url` is the one
@@ -397,6 +416,9 @@ mod tests {
         assert!(full.remote_access.is_none() && full.core.is_none());
         // Ordinary null is a no-op ...
         assert!(full.theme_color.is_none());
+        assert!(full.theme_variant.is_none());
+        assert!(full.theme_contrast_level.is_none());
+        assert!(full.theme_spec_version.is_none());
         // ... while the clearable preference clears on an explicit null.
         assert_eq!(full.release_channel, Some(None));
         // The nested patch carries only the window kinds that were named.
@@ -453,5 +475,22 @@ mod tests {
             );
         }
         assert!(rendered.contains("\"proxy_layout_column\""));
+        assert!(rendered.contains("\"theme_variant\""));
+        assert!(rendered.contains("\"theme_contrast_level\""));
+        assert!(rendered.contains("\"theme_spec_version\""));
+    }
+
+    #[test]
+    fn theme_fields_are_ordinary_preferences() {
+        let patch = decode(json!({
+            "theme_variant": "rainbow",
+            "theme_contrast_level": 0.5,
+            "theme_spec_version": "2021",
+        }))
+        .unwrap();
+        let full = NyanpasuAppConfigPatch::from(patch);
+        assert_eq!(full.theme_variant, Some(ThemeVariant::Rainbow));
+        assert_eq!(full.theme_contrast_level, Some(0.5));
+        assert_eq!(full.theme_spec_version, Some(ThemeSpecVersion::V2021));
     }
 }

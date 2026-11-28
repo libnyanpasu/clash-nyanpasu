@@ -318,6 +318,7 @@ pub enum PublicConfigError {
     InvalidCoreLogs,
     InvalidPublicIpProbeSources,
     InvalidLatencyTimeout,
+    InvalidThemeContrastLevel,
     InvalidRemoteAccess {
         reason: PublicRemoteAccessErrorKind,
     },

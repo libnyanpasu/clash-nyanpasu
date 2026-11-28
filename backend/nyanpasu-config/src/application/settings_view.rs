@@ -18,7 +18,8 @@ use super::{
     ClashCore, CoreLogSettings, I18nLanguage, IpLookupProvider, LoggingLevel,
     NetworkStatisticWidgetConfig, NetworkStatisticWidgetLogo, NyanpasuAppConfig,
     ProxiesSelectorMode, ReleaseChannel, RemoteAccessConfig, StunServer, ThemeMode,
-    TrafficRetention, TrayMenuMode, UpdateSource, WindowCloseSettings,
+    ThemeSpecVersion, ThemeVariant, TrafficRetention, TrayMenuMode, UpdateSource,
+    WindowCloseSettings,
 };
 
 /// The secret-free view of [`NyanpasuAppConfig`].
@@ -44,6 +45,9 @@ pub struct ApplicationSettings {
     pub proxy_guard_interval: u64,
     #[specta(type = String)]
     pub theme_color: csscolorparser::Color,
+    pub theme_variant: ThemeVariant,
+    pub theme_contrast_level: f64,
+    pub theme_spec_version: ThemeSpecVersion,
     pub core: ClashCore,
     pub hotkeys: Vec<String>,
     /// Whether a default latency test URL is set. The URL itself is only in the full config; a
@@ -100,6 +104,9 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             system_proxy_bypass,
             proxy_guard_interval,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             core,
             hotkeys,
             default_latency_test,
@@ -148,6 +155,9 @@ impl From<&NyanpasuAppConfig> for ApplicationSettings {
             system_proxy_bypass: system_proxy_bypass.clone(),
             proxy_guard_interval: *proxy_guard_interval,
             theme_color: *theme_color,
+            theme_variant: *theme_variant,
+            theme_contrast_level: *theme_contrast_level,
+            theme_spec_version: *theme_spec_version,
             core: *core,
             hotkeys: hotkeys.clone(),
             latency_test_configured: !default_latency_test.is_empty(),

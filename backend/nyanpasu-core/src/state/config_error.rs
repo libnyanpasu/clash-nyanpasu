@@ -39,6 +39,8 @@ pub enum ConfigError {
     TransparentProxyRequiresServiceMode,
     #[snafu(display("invalid latency test timeout: {reason}"))]
     InvalidLatencyTimeout { reason: String },
+    #[snafu(display("invalid theme contrast level: {reason}"))]
+    InvalidThemeContrastLevel { reason: String },
     #[snafu(display("the remote access settings are invalid: {reason}"))]
     InvalidRemoteAccess { reason: RemoteAccessError },
     #[snafu(display("invalid network automation: {reason}"))]

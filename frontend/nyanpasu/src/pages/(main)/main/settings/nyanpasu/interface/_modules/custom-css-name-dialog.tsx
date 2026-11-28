@@ -48,7 +48,6 @@ export default function CustomCssNameDialog({
       onSubmit={handleSubmit}
     >
       <Input
-        variant="underlined"
         className="w-full"
         label={m.settings_user_interface_custom_css_name()}
         aria-label={m.settings_user_interface_custom_css_name()}

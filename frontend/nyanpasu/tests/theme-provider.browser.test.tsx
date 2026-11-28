@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
-import { createTheme, ThemeMode } from '@nyanpasu/theme'
+import { createTheme } from '@nyanpasu/theme'
 import {
   ExperimentalThemeProvider,
   THEME_CSS_VARS_KEY,
@@ -12,14 +12,21 @@ import {
 const settings = vi.hoisted(() => ({
   theme_mode: 'light' as string | undefined,
   theme_color: '#ff0000' as string | undefined,
+  theme_variant: undefined as string | undefined,
+  theme_contrast_level: undefined as number | undefined,
+  theme_spec_version: undefined as string | undefined,
 }))
 const upsert = vi.hoisted(() => vi.fn(async () => {}))
+const patch = vi.hoisted(() =>
+  vi.fn<(patch: object) => Promise<void>>(async () => {}),
+)
 // Like the real hook, every call returns a new object.
 vi.mock('@nyanpasu/query', () => ({
   useSetting: (key: keyof typeof settings) => ({
     value: settings[key],
     upsert,
   }),
+  useSettings: () => ({ upsert: { mutateAsync: patch } }),
 }))
 const themes = vi.hoisted(() => ({ created: 0 }))
 vi.mock('@nyanpasu/theme', async (importOriginal) => {
@@ -108,66 +115,61 @@ test('the cached theme paints until the theme color loads', async ({
   expect(localStorage.getItem(CSS_VARS_KEY)).toBe(JSON.stringify(customStyle()))
 })
 
-test('a color preview repaints without saving or caching it', async ({
-  onTestFinished,
-}) => {
-  localStorage.clear()
-  upsert.mockClear()
-  settings.theme_mode = 'light'
+test('the theme follows every saved option', async ({ onTestFinished }) => {
   settings.theme_color = '#ff0000'
+  settings.theme_variant = 'fruit_salad'
+  settings.theme_contrast_level = 1
+  settings.theme_spec_version = '2021'
+  onTestFinished(() => {
+    settings.theme_variant = undefined
+    settings.theme_contrast_level = undefined
+    settings.theme_spec_version = undefined
+  })
   const view = await render(<Harness />)
   onTestFinished(() => view.unmount())
-  const saved = createTheme('#ff0000').cssVars
-  const preview = createTheme('#0000ff').cssVars
-  await expect.poll(() => customStyle()).toBe(saved)
+
   await expect
-    .poll(() => localStorage.getItem(CSS_VARS_KEY))
-    .toBe(JSON.stringify(saved))
-  const setItem = vi.spyOn(Storage.prototype, 'setItem')
-  onTestFinished(() => setItem.mockRestore())
-
-  context!.setThemePreview({ color: '#0000ff' })
-
-  await expect.poll(() => customStyle()).toBe(preview)
-  expect(context!.themeColor).toBe('#ff0000')
-  expect(setItem).not.toHaveBeenCalled()
-
-  context!.setThemePreview(null)
-
-  await expect.poll(() => customStyle()).toBe(saved)
-  // The frame that still paints the deferred preview color is not cached.
-  await expect
-    .poll(() => localStorage.getItem(CSS_VARS_KEY))
-    .toBe(JSON.stringify(saved))
-  expect(
-    setItem.mock.calls.some(([, value]) => value === JSON.stringify(preview)),
-  ).toBe(false)
-  expect(upsert).not.toHaveBeenCalled()
+    .poll(() => customStyle())
+    .toBe(
+      createTheme('#ff0000', {
+        variant: 'fruitSalad',
+        contrastLevel: 1,
+        specVersion: '2021',
+      }).cssVars,
+    )
+  expect(context!.themeOptions).toEqual({
+    color: '#ff0000',
+    variant: 'fruitSalad',
+    contrastLevel: 1,
+    specVersion: '2021',
+  })
 })
 
-test('a mode preview switches the color scheme without saving it', async ({
+test('setThemeOptions saves only the changed options in one patch', async ({
   onTestFinished,
 }) => {
-  upsert.mockClear()
-  settings.theme_mode = 'light'
+  patch.mockClear()
   settings.theme_color = '#ff0000'
   const view = await render(<Harness />)
   onTestFinished(() => view.unmount())
-  const root = document.documentElement
-  await expect.poll(() => root.classList.contains('light')).toBe(true)
+  await expect.poll(() => customStyle()).toBeTruthy()
 
-  context!.setThemePreview({ mode: ThemeMode.DARK })
+  await context!.setThemeOptions({
+    ...context!.themeOptions,
+    color: '#FF0000',
+    variant: 'tonalSpot',
+  })
+  expect(patch).not.toHaveBeenCalled()
 
-  await expect.poll(() => root.classList.contains('dark')).toBe(true)
-  expect(root.classList.contains('light')).toBe(false)
-  expect(context!.themeMode).toBe(ThemeMode.LIGHT)
-  expect(context!.currentThemeMode).toBe(ThemeMode.DARK)
-
-  context!.setThemePreview(null)
-
-  await expect.poll(() => root.classList.contains('light')).toBe(true)
-  expect(root.classList.contains('dark')).toBe(false)
-  expect(upsert).not.toHaveBeenCalled()
+  await context!.setThemeOptions({
+    color: '#00ff00',
+    variant: 'fruitSalad',
+    contrastLevel: 0,
+    specVersion: '2025',
+  })
+  expect(patch.mock.calls).toEqual([
+    [{ theme_color: '#00ff00', theme_variant: 'fruit_salad' }],
+  ])
 })
 
 test('ignores legacy v1 cache and invalid v2 cache on startup', async ({

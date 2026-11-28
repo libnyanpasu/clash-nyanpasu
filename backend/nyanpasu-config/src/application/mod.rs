@@ -73,6 +73,32 @@ pub enum ThemeMode {
     System,
 }
 
+/// The Material color scheme variant the application theme is built from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeVariant {
+    #[default]
+    TonalSpot,
+    Expressive,
+    Fidelity,
+    Content,
+    Neutral,
+    Monochrome,
+    Vibrant,
+    Rainbow,
+    FruitSalad,
+}
+
+/// The Material color specification the application theme follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+pub enum ThemeSpecVersion {
+    #[default]
+    #[serde(rename = "2025")]
+    V2025,
+    #[serde(rename = "2021")]
+    V2021,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ReleaseChannel {
@@ -170,6 +196,18 @@ pub struct NyanpasuAppConfig {
     #[specta(type = String)]
     #[patch(attribute(specta(type = String)))]
     pub theme_color: CssColor,
+
+    /// Material color scheme variant the theme is built from.
+    #[serde(default)]
+    pub theme_variant: ThemeVariant,
+
+    /// Material contrast level, from -1.0 to 1.0.
+    #[serde(default)]
+    pub theme_contrast_level: f64,
+
+    /// Material color specification the theme follows.
+    #[serde(default)]
+    pub theme_spec_version: ThemeSpecVersion,
 
     /// clash core path
     #[patch(attribute(serde(alias = "clash_core")))]
@@ -321,6 +359,15 @@ pub fn validate_latency_timeout(timeout_ms: u64) -> Result<(), &'static str> {
     }
 }
 
+/// A Material contrast level is finite and within the builder's `-1..=1` range.
+pub fn validate_theme_contrast_level(level: f64) -> Result<(), &'static str> {
+    if level.is_finite() && (-1.0..=1.0).contains(&level) {
+        Ok(())
+    } else {
+        Err("the theme contrast level must be a finite value between -1 and 1")
+    }
+}
+
 fn default_max_log_file_size() -> u64 {
     10
 }
@@ -345,6 +392,9 @@ impl Default for NyanpasuAppConfig {
             system_proxy_bypass: String::new(),
             proxy_guard_interval: 30,
             theme_color: CssColor::from_rgba8(24, 103, 192, 255),
+            theme_variant: ThemeVariant::default(),
+            theme_contrast_level: 0.0,
+            theme_spec_version: ThemeSpecVersion::default(),
             core: ClashCore::default(),
             hotkeys: Vec::new(),
             default_latency_test: "http://www.gstatic.com/generate_204".into(),
@@ -422,6 +472,87 @@ mod patch_tests {
         assert!(validate_latency_timeout(30000).is_ok());
         assert!(validate_latency_timeout(999).is_err());
         assert!(validate_latency_timeout(30001).is_err());
+    }
+
+    #[test]
+    fn theme_preferences_default_when_missing() {
+        let mut value = serde_json::to_value(NyanpasuAppConfig::default()).unwrap();
+        for field in [
+            "theme_variant",
+            "theme_contrast_level",
+            "theme_spec_version",
+        ] {
+            value.as_object_mut().unwrap().remove(field);
+        }
+        let config: NyanpasuAppConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.theme_variant, ThemeVariant::TonalSpot);
+        assert_eq!(config.theme_contrast_level, 0.0);
+        assert_eq!(config.theme_spec_version, ThemeSpecVersion::V2025);
+    }
+
+    #[test]
+    fn theme_variant_wire_values_round_trip() {
+        for (text, variant) in [
+            ("tonal_spot", ThemeVariant::TonalSpot),
+            ("expressive", ThemeVariant::Expressive),
+            ("fidelity", ThemeVariant::Fidelity),
+            ("content", ThemeVariant::Content),
+            ("neutral", ThemeVariant::Neutral),
+            ("monochrome", ThemeVariant::Monochrome),
+            ("vibrant", ThemeVariant::Vibrant),
+            ("rainbow", ThemeVariant::Rainbow),
+            ("fruit_salad", ThemeVariant::FruitSalad),
+        ] {
+            let encoded = serde_json::to_string(&variant).unwrap();
+            assert_eq!(encoded, format!("\"{text}\""));
+            assert_eq!(
+                serde_json::from_str::<ThemeVariant>(&encoded).unwrap(),
+                variant
+            );
+
+            let patch: NyanpasuAppConfigPatch =
+                serde_json::from_str(&format!(r#"{{"theme_variant":"{text}"}}"#)).unwrap();
+            assert_eq!(patch.theme_variant, Some(variant));
+        }
+        assert!(
+            serde_json::from_str::<NyanpasuAppConfigPatch>(r#"{"theme_variant":"unknown"}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn theme_spec_version_wire_values_round_trip() {
+        for (text, version) in [
+            ("2025", ThemeSpecVersion::V2025),
+            ("2021", ThemeSpecVersion::V2021),
+        ] {
+            let encoded = serde_json::to_string(&version).unwrap();
+            assert_eq!(encoded, format!("\"{text}\""));
+            assert_eq!(
+                serde_json::from_str::<ThemeSpecVersion>(&encoded).unwrap(),
+                version
+            );
+
+            let patch: NyanpasuAppConfigPatch =
+                serde_json::from_str(&format!(r#"{{"theme_spec_version":"{text}"}}"#)).unwrap();
+            assert_eq!(patch.theme_spec_version, Some(version));
+        }
+        assert!(
+            serde_json::from_str::<NyanpasuAppConfigPatch>(r#"{"theme_spec_version":"2023"}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn theme_contrast_level_is_finite_and_bounded() {
+        assert!(validate_theme_contrast_level(-1.0).is_ok());
+        assert!(validate_theme_contrast_level(0.0).is_ok());
+        assert!(validate_theme_contrast_level(1.0).is_ok());
+        assert!(validate_theme_contrast_level(-1.01).is_err());
+        assert!(validate_theme_contrast_level(1.01).is_err());
+        assert!(validate_theme_contrast_level(f64::NAN).is_err());
+        assert!(validate_theme_contrast_level(f64::INFINITY).is_err());
+        assert!(validate_theme_contrast_level(f64::NEG_INFINITY).is_err());
     }
 
     #[test]

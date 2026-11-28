@@ -689,6 +689,9 @@ importers:
       '@nyanpasu/hooks':
         specifier: workspace:^
         version: link:../hooks
+      '@nyanpasu/theme':
+        specifier: workspace:^
+        version: link:../theme
       '@nyanpasu/utils':
         specifier: workspace:^
         version: link:../utils

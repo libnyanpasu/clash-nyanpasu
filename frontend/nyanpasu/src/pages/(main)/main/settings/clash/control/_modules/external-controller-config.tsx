@@ -95,7 +95,6 @@ function ExternalControllerConfigForm() {
             return (
               <>
                 <Input
-                  variant="underlined"
                   label={m.settings_clash_settings_external_controll_label()}
                   aria-label={m.settings_clash_settings_external_controll_label()}
                   value={field.value ?? ''}

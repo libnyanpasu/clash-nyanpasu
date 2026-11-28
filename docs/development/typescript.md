@@ -130,6 +130,13 @@ and
 Preserve dark-mode, focus, disabled, loading, and keyboard behavior; avoid a
 parallel design system.
 
+Text fields use the outlined variant, which is the `Input` and `Textarea`
+default; do not pass a `variant` to get one. Use the underlined or filled
+variant only when an outline cannot fit, such as an inline edit inside a dense
+row, and say why at the call site. Do not hand-build a text field with its own
+border or underline: compose `Input`, passing a leading or trailing element as
+its children.
+
 Use `cva()` from `class-variance-authority` for reusable class definitions, including
 styles without variants. Name these definitions in camelCase with a `Variants`
 suffix and call them at the use site. Do not extract class strings into

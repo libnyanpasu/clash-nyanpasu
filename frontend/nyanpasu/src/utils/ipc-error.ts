@@ -309,6 +309,10 @@ export function configErrorMessage(
       })
     case 'invalid_latency_timeout':
       return m.error_config_invalid_latency_timeout({ reason: error.reason })
+    case 'invalid_theme_contrast_level':
+      return m.error_config_invalid_theme_contrast_level({
+        reason: error.reason,
+      })
     case 'invalid_remote_access':
       return remoteAccessErrorMessage(error.reason)
     case 'invalid_network_automation':
@@ -782,6 +786,8 @@ function publicConfigErrorMessage(error: PublicConfigError): string {
       return m.error_public_config_invalid_public_ip_probe_sources()
     case 'invalid_latency_timeout':
       return m.error_public_config_invalid_latency_timeout()
+    case 'invalid_theme_contrast_level':
+      return m.error_public_config_invalid_theme_contrast_level()
     case 'invalid_remote_access':
       return publicRemoteAccessErrorMessage(error.reason)
     case 'invalid_network_automation':

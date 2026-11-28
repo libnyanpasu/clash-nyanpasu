@@ -673,6 +673,9 @@ pub enum ConfigError {
     InvalidLatencyTimeout {
         reason: String,
     },
+    InvalidThemeContrastLevel {
+        reason: String,
+    },
     InvalidRemoteAccess {
         reason: RemoteAccessError,
     },

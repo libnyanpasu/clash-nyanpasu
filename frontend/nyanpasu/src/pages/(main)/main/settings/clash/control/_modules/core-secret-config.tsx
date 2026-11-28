@@ -142,7 +142,6 @@ function CoreSecretConfigForm() {
             return (
               <>
                 <Input
-                  variant="underlined"
                   label={m.settings_clash_settings_core_secret_label()}
                   aria-label={m.settings_clash_settings_core_secret_label()}
                   value={field.value ?? ''}

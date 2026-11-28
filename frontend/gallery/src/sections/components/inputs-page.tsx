@@ -1,7 +1,15 @@
 import { useState } from 'react'
-import { THEME_PRESET_SEEDS } from '@nyanpasu/theme/spec'
+import {
+  createTheme,
+  getThemeScheme,
+  hexFromArgb,
+  ThemeMode,
+} from '@nyanpasu/theme'
+import { THEME_PRESET_SEEDS, THEME_VARIANT_SPECS } from '@nyanpasu/theme/spec'
 import {
   Checkbox,
+  ColorSchemeSwatch,
+  ColorSchemeSwatchGroup,
   DateTimeField,
   FilterChip,
   HctColorPicker,
@@ -26,6 +34,26 @@ import {
 } from '@nyanpasu/ui'
 import { PageHeader, SpecimenCard } from '../../studio/stage'
 
+const SCHEME_SWATCH_SEED = '#3e64a7'
+
+const SCHEME_SWATCHES = THEME_VARIANT_SPECS.map((variant) => {
+  const scheme = getThemeScheme(
+    createTheme(SCHEME_SWATCH_SEED, { variant: variant.id }).palette,
+    ThemeMode.LIGHT,
+  )
+
+  return {
+    value: variant.id,
+    label: variant.label,
+    colors: {
+      primary: hexFromArgb(scheme.primary),
+      secondary: hexFromArgb(scheme.secondary),
+      tertiary: hexFromArgb(scheme.tertiary),
+      surface: hexFromArgb(scheme.surface),
+    },
+  }
+})
+
 export function InputsPage() {
   const [textValue, setTextValue] = useState('127.0.0.1:7890')
   const [portValue, setPortValue] = useState<number | null>(7890)
@@ -40,6 +68,7 @@ export function InputsPage() {
   const [chipTcp, setChipTcp] = useState(true)
   const [chipUdp, setChipUdp] = useState(false)
   const [pickerColor, setPickerColor] = useState('#3e64a7')
+  const [schemeVariant, setSchemeVariant] = useState('tonalSpot')
 
   return (
     <div className="flex flex-col gap-6" data-slot="gallery-inputs-page">
@@ -331,6 +360,28 @@ export function InputsPage() {
             </div>
           </HctColorPicker>
         </div>
+      </SpecimenCard>
+
+      <SpecimenCard
+        title="ColorSchemeSwatch"
+        description="Android Wallpaper & style color options: a selectable tile that previews a generated scheme and morphs when selected."
+        code={`<ColorSchemeSwatchGroup aria-label="Color scheme" value={variant} onValueChange={setVariant}>
+  <ColorSchemeSwatch
+    value="tonalSpot"
+    label="Tonal Spot"
+    colors={{ primary, secondary, tertiary, surface }}
+  />
+</ColorSchemeSwatchGroup>`}
+      >
+        <ColorSchemeSwatchGroup
+          aria-label="Color scheme"
+          value={schemeVariant}
+          onValueChange={setSchemeVariant}
+        >
+          {SCHEME_SWATCHES.map((swatch) => (
+            <ColorSchemeSwatch key={swatch.value} {...swatch} />
+          ))}
+        </ColorSchemeSwatchGroup>
       </SpecimenCard>
     </div>
   )

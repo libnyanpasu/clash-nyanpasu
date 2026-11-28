@@ -871,6 +871,9 @@ cases!(
     InvalidLatencyTimeout {
         reason: "field-57/路徑\\file.yaml".to_owned(),
     },
+    InvalidThemeContrastLevel {
+        reason: "field-59/路徑\\file.yaml".to_owned(),
+    },
     InvalidRemoteAccess {
         reason: nyanpasu_config::application::RemoteAccessError::PortZero,
     },

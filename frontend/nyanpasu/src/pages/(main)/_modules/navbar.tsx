@@ -142,7 +142,8 @@ export const DefaultNavbar = () => {
     <AnimatedTabs
       className={cn(
         'bg-transparent!',
-        '**:data-[slot=animated-tabs-indicator]:bg-primary-container',
+        '**:data-[slot=animated-tabs-indicator]:bg-primary-fixed-dim',
+        '**:data-[slot=animated-tabs-indicator]:dark:bg-primary-container',
       )}
       data-slot="app-navbar"
       variant="pill"

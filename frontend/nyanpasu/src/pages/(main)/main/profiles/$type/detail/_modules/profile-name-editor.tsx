@@ -89,11 +89,7 @@ function ProfileNameEditorForm({
           name="name"
           render={({ field }) => (
             <div className="space-y-2">
-              <Input
-                label={m.profile_name_label()}
-                variant="underlined"
-                {...field}
-              />
+              <Input label={m.profile_name_label()} {...field} />
 
               <FormDialogError message={form.formState.errors.name?.message} />
             </div>

@@ -225,8 +225,8 @@ mod tests {
     use nyanpasu_config::{
         application::{
             ClashCore, I18nLanguage, LoggingLevel, NetworkStatisticWidgetConfig,
-            ProxiesSelectorMode, ReleaseChannel, StatisticWidgetVariant, ThemeMode, TrayMenuMode,
-            WindowCloseBehavior, WindowCloseSettings,
+            ProxiesSelectorMode, ReleaseChannel, StatisticWidgetVariant, ThemeMode,
+            ThemeSpecVersion, ThemeVariant, TrayMenuMode, WindowCloseBehavior, WindowCloseSettings,
         },
         clash::config::{
             ClashConfigPatch,
@@ -624,6 +624,24 @@ mod tests {
                 // Mutated in place: the color type is re-exported by neither
                 // crate, so a case cannot name it to build one.
                 mutate: |app| app.theme_color.r = 1.0,
+                impact: false,
+                owners: &[],
+            },
+            AppCase {
+                field: "theme_variant",
+                mutate: |app| app.theme_variant = ThemeVariant::Expressive,
+                impact: false,
+                owners: &[],
+            },
+            AppCase {
+                field: "theme_contrast_level",
+                mutate: |app| app.theme_contrast_level = 0.5,
+                impact: false,
+                owners: &[],
+            },
+            AppCase {
+                field: "theme_spec_version",
+                mutate: |app| app.theme_spec_version = ThemeSpecVersion::V2021,
                 impact: false,
                 owners: &[],
             },

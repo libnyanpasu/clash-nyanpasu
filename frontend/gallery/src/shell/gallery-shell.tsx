@@ -5,6 +5,7 @@ import CategoryRounded from '~icons/material-symbols/category-rounded'
 import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DrawRounded from '~icons/material-symbols/draw-rounded'
 import FactCheckRounded from '~icons/material-symbols/fact-check-rounded'
+import FormatPaintRounded from '~icons/material-symbols/format-paint-rounded'
 import InputRounded from '~icons/material-symbols/input-rounded'
 import LayersRounded from '~icons/material-symbols/layers-rounded'
 import MenuRounded from '~icons/material-symbols/menu-rounded'
@@ -54,6 +55,7 @@ import { SurfacesPage } from '../sections/foundations/surfaces-page'
 import { TypographyPage } from '../sections/foundations/typography-page'
 import { GuidelinesPage } from '../sections/guidelines-page'
 import { OverviewPage } from '../sections/overview-page'
+import { PaletteStudioPage } from '../sections/palette-studio-page'
 import { PatternsPage } from '../sections/patterns-page'
 import { FloatingStudioDock } from '../studio/floating-studio-dock'
 import { useThemeStudio, VIEWPORT_WIDTHS } from '../studio/theme-studio-context'
@@ -88,6 +90,8 @@ function pageIcon(id: string): ReactNode {
       return <WidgetsRounded />
     case 'patterns':
       return <CategoryRounded />
+    case 'patterns/palette-studio':
+      return <FormatPaintRounded />
     case 'guidelines':
       return <FactCheckRounded />
     default:
@@ -188,6 +192,8 @@ export function GalleryShell() {
         return <OverlaysFeedbackPage />
       case 'patterns':
         return <PatternsPage />
+      case 'patterns/palette-studio':
+        return <PaletteStudioPage />
       case 'guidelines':
         return <GuidelinesPage />
       default:

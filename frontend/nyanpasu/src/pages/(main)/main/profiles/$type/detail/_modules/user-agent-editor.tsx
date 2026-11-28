@@ -61,11 +61,7 @@ function UserAgentEditorForm({
           name="user_agent"
           render={({ field }) => (
             <div className="space-y-2">
-              <Input
-                label={m.profile_user_agent_label()}
-                variant="underlined"
-                {...field}
-              />
+              <Input label={m.profile_user_agent_label()} {...field} />
 
               <p className="text-on-surface-variant px-1 text-xs">
                 {m.profile_user_agent_editor_hint()}

@@ -166,6 +166,10 @@ impl ApplicationActor {
             .map_err(|reason| ConfigError::InvalidLatencyTimeout {
                 reason: reason.into(),
             })?;
+        nyanpasu_config::application::validate_theme_contrast_level(next.theme_contrast_level)
+            .map_err(|reason| ConfigError::InvalidThemeContrastLevel {
+                reason: reason.into(),
+            })?;
         next.network_automation.validate().map_err(|source| {
             ConfigError::InvalidNetworkAutomation {
                 reason: source.to_string(),

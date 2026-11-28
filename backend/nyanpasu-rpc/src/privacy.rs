@@ -907,6 +907,9 @@ fn project_config_error(error: &ConfigError) -> PublicConfigError {
             PublicConfigError::InvalidPublicIpProbeSources
         }
         ConfigError::InvalidLatencyTimeout { .. } => PublicConfigError::InvalidLatencyTimeout,
+        ConfigError::InvalidThemeContrastLevel { .. } => {
+            PublicConfigError::InvalidThemeContrastLevel
+        }
         ConfigError::InvalidRemoteAccess { reason } => PublicConfigError::InvalidRemoteAccess {
             reason: match reason {
                 RemoteAccessError::PortZero => PublicRemoteAccessErrorKind::PortZero,

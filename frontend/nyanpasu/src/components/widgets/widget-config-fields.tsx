@@ -103,6 +103,7 @@ export function ConfigStepper({
   disabled: boolean
   onChange: (value: number) => void
 }) {
+  // Dense inline widget row; the outlined control does not fit.
   return (
     <NumberStepper
       variant="filled"

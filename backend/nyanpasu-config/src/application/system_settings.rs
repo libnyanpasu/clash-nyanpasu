@@ -65,6 +65,9 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             system_proxy_bypass,
             proxy_guard_interval,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             core,
             hotkeys,
             default_latency_test,
@@ -113,6 +116,9 @@ impl TryFrom<NyanpasuAppConfigPatch> for SystemSettingsPatch {
             lighten_animation_effects,
             enable_silent_start,
             theme_color,
+            theme_variant,
+            theme_contrast_level,
+            theme_spec_version,
             default_latency_test,
             default_latency_timeout_ms,
             enable_builtin_enhanced,
@@ -242,7 +248,7 @@ mod tests {
         fields
     }
 
-    const REFUSED: [&str; 36] = [
+    const REFUSED: [&str; 39] = [
         "hotkeys",
         "enable_service_mode",
         "profile_file_opener",
@@ -258,6 +264,9 @@ mod tests {
         "lighten_animation_effects",
         "enable_silent_start",
         "theme_color",
+        "theme_variant",
+        "theme_contrast_level",
+        "theme_spec_version",
         "default_latency_test",
         "default_latency_timeout_ms",
         "enable_builtin_enhanced",

@@ -1,11 +1,11 @@
 import Check from '~icons/material-symbols/check-rounded'
+import { cva } from 'class-variance-authority'
 import { Slider as SliderPrimitive } from 'radix-ui'
 import {
   ComponentProps,
   createContext,
   MouseEvent,
   useContext,
-  useId,
   useMemo,
   useState,
 } from 'react'
@@ -16,6 +16,7 @@ import {
 } from '@material/material-color-utilities'
 import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
+import { Input } from './input'
 
 export type HctChannel = 'hue' | 'chroma' | 'tone'
 
@@ -32,6 +33,10 @@ const CHANNEL_MAX = {
 const ACHROMATIC_CHROMA = 3
 
 const GRADIENT_STOPS = 100
+
+// The handle is this wide, so its center travels from half of it to the
+// width minus half of it.
+const HANDLE_WIDTH_PX = 4
 
 const FALLBACK_HEX = '#000000'
 
@@ -71,7 +76,8 @@ const hctFromHex = (hex: string, previous?: HctValue): HctValue => {
 const buildGradient = (colorAt: (ratio: number) => string) => {
   const stops = Array.from(
     { length: GRADIENT_STOPS },
-    (_, index) => `${colorAt(index / GRADIENT_STOPS)} ${index}%`,
+    (_, index) =>
+      `${colorAt(index / GRADIENT_STOPS)} calc(${HANDLE_WIDTH_PX / 2}px + (100% - ${HANDLE_WIDTH_PX}px) * ${index / GRADIENT_STOPS})`,
   )
 
   return `linear-gradient(to right, ${stops.join(', ')})`
@@ -95,6 +101,46 @@ const buildChannelGradient = (channel: HctChannel, hue: number) => {
       )
   }
 }
+
+const presetVariants = cva([
+  'grid size-11 shrink-0 cursor-pointer place-items-center',
+  'border-outline-variant/40 border',
+  'outline-primary outline-offset-2',
+  'transition-[border-radius,outline-offset,outline-width] duration-200 ease-[cubic-bezier(0.2,0,0,1)]',
+  'focus-visible:outline-[3px] motion-reduce:transition-none',
+  'data-[state=checked]:rounded-medium data-[state=checked]:outline-2',
+  'data-[state=unchecked]:rounded-exl data-[state=unchecked]:hover:rounded-large',
+])
+
+const slidersVariants = cva([
+  'bg-surface-container text-on-surface-variant rounded-extra-large',
+  'flex flex-col gap-5 px-5 py-4',
+])
+
+const sliderTrackVariants = cva([
+  'rounded-full relative h-5 grow overflow-hidden',
+  'shadow-[inset_0_0_0_1px_var(--color-outline-variant)]',
+])
+
+const sliderThumbVariants = cva([
+  'group relative block h-11 cursor-pointer outline-hidden',
+  'before:absolute before:-inset-x-3 before:inset-y-0 before:content-[""]',
+])
+
+const sliderHandleVariants = cva([
+  'rounded-full bg-on-surface ring-surface absolute inset-0 ring-2',
+  'origin-center transition-[transform,background-color,box-shadow] duration-150 ease-[cubic-bezier(0.2,0,0,1)]',
+  'group-hover:bg-primary group-focus-visible:bg-primary group-focus-visible:ring-primary/40 group-focus-visible:ring-4',
+  'group-active:scale-x-50 motion-reduce:transition-none',
+])
+
+const sliderBubbleVariants = cva([
+  'bg-inverse-surface text-inverse-on-surface rounded-full',
+  'absolute bottom-[calc(100%+4px)] left-1/2 grid min-h-7 min-w-9 -translate-x-1/2 place-items-center px-2',
+  'text-xs leading-4 font-medium tabular-nums',
+  'origin-bottom scale-0 transition-transform duration-100 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+  'group-hover:scale-100 group-focus-visible:scale-100 group-active:scale-100',
+])
 
 type HctColorPickerContextValue = {
   hex: string
@@ -180,7 +226,7 @@ export function HctColorPickerPresets({
     <div
       role="radiogroup"
       data-slot="hct-color-picker-presets"
-      className={cn('flex flex-wrap items-center gap-2', className)}
+      className={cn('flex flex-wrap items-center gap-3 p-1', className)}
       {...props}
     />
   )
@@ -227,8 +273,7 @@ export function HctColorPickerPreset({
       data-slot="hct-color-picker-preset"
       data-state={checked ? 'checked' : 'unchecked'}
       className={cn(
-        'border-outline-variant grid size-8 cursor-pointer place-items-center rounded-full border',
-        'focus-visible:outline-primary outline-offset-2 focus-visible:outline-2',
+        presetVariants(),
         isLight ? 'text-black' : 'text-white',
         className,
       )}
@@ -236,7 +281,9 @@ export function HctColorPickerPreset({
       onClick={handleClick}
       {...props}
     >
-      {checked && <Check className="size-5" />}
+      {checked && (
+        <Check data-slot="hct-color-picker-preset-check" className="size-6" />
+      )}
     </button>
   )
 }
@@ -248,8 +295,6 @@ export function HctColorPickerHexField({
 }: Omit<ComponentProps<'div'>, 'children'> & { label: string }) {
   const { hex, setHex } = useHctColorPickerContext()
 
-  const inputId = useId()
-
   // The text being edited; null while the field shows the current color.
   const [text, setText] = useState<string | null>(null)
 
@@ -258,60 +303,41 @@ export function HctColorPickerHexField({
   return (
     <div
       data-slot="hct-color-picker-hex-field"
-      className={cn(
-        'bg-surface-container text-on-surface-variant rounded-extra-large flex items-center gap-3 py-3 pr-3 pl-5',
-        className,
-      )}
+      className={cn('flex', className)}
       {...props}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <label
-          data-slot="hct-color-picker-hex-label"
-          htmlFor={inputId}
-          className="text-sm"
-        >
-          {label}
-        </label>
+      <Input
+        label={label}
+        // `Input` renders its floating label without `htmlFor`.
+        aria-label={label}
+        data-slot="hct-color-picker-hex-input"
+        className="font-mono"
+        value={text ?? hex}
+        aria-invalid={invalid || undefined}
+        onFocus={() => setText(hex)}
+        onChange={(event) => {
+          setText(event.target.value)
 
-        <input
-          id={inputId}
-          data-slot="hct-color-picker-hex-input"
-          className={cn(
-            'w-full border-b-2 border-transparent bg-transparent font-mono text-base outline-hidden',
-            'focus:border-primary',
-            'aria-[invalid=true]:text-error aria-[invalid=true]:focus:border-error',
-          )}
-          value={text ?? hex}
-          aria-invalid={invalid || undefined}
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          onFocus={() => setText(hex)}
-          onChange={(event) => {
-            setText(event.target.value)
+          const parsed = parseHexColor(event.target.value)
 
-            const parsed = parseHexColor(event.target.value)
-
-            if (parsed !== null) {
-              setHex(parsed)
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              setText(hex)
-            }
-          }}
-          onBlur={() => setText(null)}
+          if (parsed !== null) {
+            setHex(parsed)
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            setText(hex)
+          }
+        }}
+        onBlur={() => setText(null)}
+      >
+        <span
+          aria-hidden
+          data-slot="hct-color-picker-swatch"
+          className="border-outline-variant size-6 shrink-0 rounded-full border"
+          style={{ backgroundColor: hex }}
         />
-      </div>
-
-      <span
-        aria-hidden
-        data-slot="hct-color-picker-swatch"
-        className="border-outline size-12 shrink-0 rounded-full border"
-        style={{ backgroundColor: hex }}
-      />
+      </Input>
     </div>
   )
 }
@@ -323,10 +349,7 @@ export function HctColorPickerSliders({
   return (
     <div
       data-slot="hct-color-picker-sliders"
-      className={cn(
-        'bg-surface-container-low text-on-surface-variant rounded-extra-large flex flex-col gap-4 px-5 py-4',
-        className,
-      )}
+      className={cn(slidersVariants(), className)}
       {...props}
     />
   )
@@ -351,23 +374,35 @@ export function HctColorPickerSlider({
     [channel, gradientHue],
   )
 
+  const current = Math.round(hct[channel])
+
   return (
     <div
       data-slot="hct-color-picker-slider"
       className={cn('flex flex-col gap-1', className)}
       {...props}
     >
-      {/* The thumb center travels from 10px to width - 10px, so the label, track and gradient are inset mx-2.5 to line the thumb up with the gradient color of its value. */}
-      <span
-        data-slot="hct-color-picker-slider-label"
-        className="mx-2.5 text-sm"
-      >
-        {label}
-      </span>
+      <div className="flex items-baseline justify-between">
+        <span
+          data-slot="hct-color-picker-slider-label"
+          className="text-sm font-medium"
+        >
+          {label}
+        </span>
 
+        <span
+          aria-hidden
+          data-slot="hct-color-picker-slider-readout"
+          className="text-on-surface font-mono text-sm tabular-nums"
+        >
+          {current}
+        </span>
+      </div>
+
+      {/* The gradient is the track. The handle center travels from half its width to width minus half, and the gradient stops are inset by the same amount, so the handle sits on the color of its value. */}
       <SliderPrimitive.Root
         data-slot="hct-color-picker-slider-root"
-        className="relative flex h-10 w-full touch-none items-center select-none"
+        className="relative flex h-11 w-full touch-none items-center select-none"
         value={[hct[channel]]}
         min={0}
         max={CHANNEL_MAX[channel]}
@@ -376,45 +411,37 @@ export function HctColorPickerSlider({
       >
         <SliderPrimitive.Track
           data-slot="hct-color-picker-slider-track"
-          className="bg-on-surface-variant relative mx-2.5 h-1 grow rounded-full"
+          className={sliderTrackVariants()}
         >
-          <SliderPrimitive.Range
-            data-slot="hct-color-picker-slider-range"
-            className="bg-primary absolute h-full rounded-full"
+          <span
+            aria-hidden
+            data-slot="hct-color-picker-gradient"
+            className="absolute inset-0"
+            style={{ background: gradient }}
           />
         </SliderPrimitive.Track>
 
         <SliderPrimitive.Thumb
           aria-label={label}
           data-slot="hct-color-picker-slider-thumb"
-          className={cn(
-            'group bg-primary relative block size-5 cursor-pointer rounded-full shadow-sm outline-hidden',
-            'before:bg-primary before:absolute before:-inset-2.5 before:rounded-full before:opacity-0 before:transition-opacity',
-            'hover:before:opacity-[0.08] focus:before:opacity-[0.12] active:before:opacity-[0.12]',
-          )}
+          className={sliderThumbVariants()}
+          style={{ width: HANDLE_WIDTH_PX }}
         >
           <span
             aria-hidden
+            data-slot="hct-color-picker-slider-handle"
+            className={sliderHandleVariants()}
+          />
+
+          <span
+            aria-hidden
             data-slot="hct-color-picker-slider-value"
-            className={cn(
-              'bg-primary text-on-primary absolute bottom-[calc(100%+10px)] left-1/2 grid min-h-7 min-w-7 origin-bottom -translate-x-1/2 scale-0 place-items-center rounded-full p-1 text-xs leading-4 font-medium tabular-nums',
-              'transition-transform duration-100 ease-[cubic-bezier(0.2,0,0,1)]',
-              'before:bg-primary before:absolute before:-bottom-[2.8px] before:left-1/2 before:size-3.5 before:-translate-x-1/2 before:rotate-45',
-              'after:bg-primary after:absolute after:inset-0 after:rounded-full',
-              'group-hover:scale-100 group-focus:scale-100 group-active:scale-100',
-            )}
+            className={sliderBubbleVariants()}
           >
-            <span className="relative z-10">{Math.round(hct[channel])}</span>
+            {current}
           </span>
         </SliderPrimitive.Thumb>
       </SliderPrimitive.Root>
-
-      <div
-        aria-hidden
-        data-slot="hct-color-picker-gradient"
-        className="mx-2.5 h-6 rounded-full border border-current"
-        style={{ background: gradient }}
-      />
     </div>
   )
 }

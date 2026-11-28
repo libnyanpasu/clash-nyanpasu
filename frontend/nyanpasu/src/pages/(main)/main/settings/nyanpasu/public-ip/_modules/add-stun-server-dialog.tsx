@@ -182,7 +182,6 @@ export default function AddStunServerDialog({
         <div className="flex flex-col gap-4" data-slot="add-stun-server-dialog">
           <div className="flex gap-2" data-slot="add-stun-server-form">
             <Input
-              variant="underlined"
               className="flex-1"
               label={m.settings_public_ip_stun_host()}
               aria-label={m.settings_public_ip_stun_host()}
@@ -199,7 +198,6 @@ export default function AddStunServerDialog({
             />
 
             <NumericInput
-              variant="underlined"
               className="w-28"
               label={m.settings_public_ip_stun_port()}
               aria-label={m.settings_public_ip_stun_port()}

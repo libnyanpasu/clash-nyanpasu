@@ -134,6 +134,8 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'chip',
       'hct',
       'color',
+      'color-scheme',
+      'swatch',
     ],
     uiModules: [
       'input',
@@ -146,6 +148,7 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'slider',
       'chip',
       'hct-color-picker',
+      'color-scheme-swatch',
     ],
   },
   {
@@ -273,6 +276,26 @@ export const GALLERY_PAGES: readonly GalleryPageMeta[] = [
       'dashboard',
       'container',
     ],
+  },
+  {
+    id: 'patterns/palette-studio',
+    section: 'patterns',
+    title: 'Palette Studio',
+    subtitle: 'Theme settings prototype with a live app preview',
+    color: 'purple',
+    keywords: [
+      'palette',
+      'theme',
+      'studio',
+      'seed',
+      'variant',
+      'contrast',
+      'spec',
+      'preview',
+      'settings',
+      'mockup',
+    ],
+    uiModules: ['theme-mockup'],
   },
   {
     id: 'guidelines',

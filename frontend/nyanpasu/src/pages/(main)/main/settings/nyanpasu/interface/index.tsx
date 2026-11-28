@@ -15,7 +15,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { SettingsLinkRow } from '../../_modules/settings-link-row'
 import LanguageSelector from './_modules/language-selector'
 import ProfileFileOpenerSelector from './_modules/profile-file-opener-selector'
-import ThemeColorConfig from './_modules/theme-color-config'
+import ThemeColorEntry from './_modules/theme-color-entry'
 import ThemeModeSelector from './_modules/theme-mode-selector'
 
 export const Route = createFileRoute(
@@ -52,7 +52,7 @@ const ThemeModeSettings = () => {
       <ItemGroup>
         <ThemeModeSelector />
 
-        <ThemeColorConfig />
+        <ThemeColorEntry />
       </ItemGroup>
     </ItemSection>
   )

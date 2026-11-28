@@ -278,7 +278,7 @@ test('provider refresh requires a successful read-only check before another upda
   await expect.element(check).toBeEnabled()
   expect(updateCount()).toBe(1)
 
-  await userEvent.click(check)
+  await check.click()
   await expect
     .element(page.getByRole('button', { name: refreshName }))
     .toBeEnabled()

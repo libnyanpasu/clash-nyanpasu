@@ -2692,6 +2692,9 @@ export type ApplicationPreferencesPatch_Deserialize = {
   lighten_animation_effects?: boolean | null
   enable_silent_start?: boolean | null
   theme_color?: string | null
+  theme_variant?: ThemeVariant | null
+  theme_contrast_level?: number | null
+  theme_spec_version?: ThemeSpecVersion | null
   default_latency_test?: string | null
   default_latency_timeout_ms?: number | null
   enable_builtin_enhanced?: boolean | null
@@ -2740,6 +2743,9 @@ export type ApplicationPreferencesPatch_Serialize = {
   lighten_animation_effects?: boolean
   enable_silent_start?: boolean
   theme_color?: string
+  theme_variant?: ThemeVariant
+  theme_contrast_level?: number | null
+  theme_spec_version?: ThemeSpecVersion
   default_latency_test?: string
   default_latency_timeout_ms?: number
   enable_builtin_enhanced?: boolean
@@ -2798,6 +2804,9 @@ export type ApplicationSettings_Deserialize = {
   system_proxy_bypass: string
   proxy_guard_interval: number
   theme_color: string
+  theme_variant: ThemeVariant
+  theme_contrast_level: number | null
+  theme_spec_version: ThemeSpecVersion
   core: ClashCore_Deserialize
   hotkeys: string[]
   /**
@@ -2861,6 +2870,9 @@ export type ApplicationSettings_Serialize = {
   system_proxy_bypass: string
   proxy_guard_interval: number
   theme_color: string
+  theme_variant: ThemeVariant
+  theme_contrast_level: number | null
+  theme_spec_version: ThemeSpecVersion
   core: ClashCore_Serialize
   hotkeys: string[]
   /**
@@ -3992,6 +4004,7 @@ export type ConfigError_Deserialize =
     }
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
+  | { kind: 'invalid_theme_contrast_level'; reason: string }
   | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
   | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
@@ -4027,6 +4040,7 @@ export type ConfigError_Serialize =
     }
   | { kind: 'transparent_proxy_requires_service_mode' }
   | { kind: 'invalid_latency_timeout'; reason: string }
+  | { kind: 'invalid_theme_contrast_level'; reason: string }
   | { kind: 'invalid_remote_access'; reason: RemoteAccessError }
   | { kind: 'invalid_network_automation'; reason: string }
   | { kind: 'validate_hotkeys'; source: HotkeyParseError }
@@ -7810,6 +7824,12 @@ export type NyanpasuAppConfig_Deserialize = {
   proxy_guard_interval: number
   /**  theme setting */
   theme_color: string
+  /**  Material color scheme variant the theme is built from. */
+  theme_variant?: ThemeVariant
+  /**  Material contrast level, from -1.0 to 1.0. */
+  theme_contrast_level?: number | null
+  /**  Material color specification the theme follows. */
+  theme_spec_version?: ThemeSpecVersion
   /**  clash core path */
   core: ClashCore_Deserialize
   /**
@@ -7954,6 +7974,12 @@ export type NyanpasuAppConfig_Serialize = {
   proxy_guard_interval: number
   /**  theme setting */
   theme_color: string
+  /**  Material color scheme variant the theme is built from. */
+  theme_variant: ThemeVariant
+  /**  Material contrast level, from -1.0 to 1.0. */
+  theme_contrast_level: number | null
+  /**  Material color specification the theme follows. */
+  theme_spec_version: ThemeSpecVersion
   /**  clash core path */
   core: ClashCore_Serialize
   /**
@@ -10232,6 +10258,7 @@ export type PublicConfigError_Deserialize =
   | { kind: 'invalid_core_logs' }
   | { kind: 'invalid_public_ip_probe_sources' }
   | { kind: 'invalid_latency_timeout' }
+  | { kind: 'invalid_theme_contrast_level' }
   | { kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind }
   /**
    *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
@@ -10260,6 +10287,7 @@ export type PublicConfigError_Serialize =
   | { kind: 'invalid_core_logs' }
   | { kind: 'invalid_public_ip_probe_sources' }
   | { kind: 'invalid_latency_timeout' }
+  | { kind: 'invalid_theme_contrast_level' }
   | { kind: 'invalid_remote_access'; reason: PublicRemoteAccessErrorKind }
   /**
    *  A network rule was refused. The reason names rules, Wi-Fi names and gateway addresses, so
@@ -12910,6 +12938,21 @@ export type SystemSettingsPatch_Serialize = {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+/**  The Material color specification the application theme follows. */
+export type ThemeSpecVersion = '2025' | '2021'
+
+/**  The Material color scheme variant the application theme is built from. */
+export type ThemeVariant =
+  | 'tonal_spot'
+  | 'expressive'
+  | 'fidelity'
+  | 'content'
+  | 'neutral'
+  | 'monochrome'
+  | 'vibrant'
+  | 'rainbow'
+  | 'fruit_salad'
 
 /**  The certificate's fields, as a certificate viewer names them. */
 export type TlsCertificateDetails = {

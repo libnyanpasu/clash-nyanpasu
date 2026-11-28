@@ -42,6 +42,16 @@ const entryName = () =>
 const libraryEntry = () =>
   document.querySelector<HTMLElement>('[data-slot=widget-sheet-entry]')
 
+const drawerOffset = () => {
+  const drawer = document.querySelector<HTMLElement>(
+    '[data-slot=drawer-content]',
+  )
+
+  return drawer
+    ? new DOMMatrix(getComputedStyle(drawer).transform).m42
+    : Number.POSITIVE_INFINITY
+}
+
 function Harness({
   onPageAction,
   placed,
@@ -164,6 +174,7 @@ test('closing a library opened by the context menu restores page clicks', async 
     page.getByRole('menuitem', { name: 'Add from context menu' }),
   )
   await expect.element(page.getByRole('dialog')).toBeVisible()
+  await expect.poll(drawerOffset, { timeout: 5000 }).toBeLessThan(1)
   await userEvent.click(
     page.getByRole('button', {
       name: m.dashboard_widget_config_close_library(),
@@ -183,14 +194,7 @@ test('dragging a source out closes the library and restores page clicks', async 
   await expect
     .element(page.getByRole('button', { name: entryName() }))
     .toBeVisible()
-  await expect
-    .poll(() => {
-      const drawer = document.querySelector<HTMLElement>(
-        '[data-slot=drawer-content]',
-      )!
-      return new DOMMatrix(getComputedStyle(drawer).transform).m42
-    })
-    .toBeLessThan(1)
+  await expect.poll(drawerOffset, { timeout: 5000 }).toBeLessThan(1)
   // The modal overlay covers the destination until the first drag movement
   // closes the library. Move there without waiting for target actionability.
   await page
@@ -300,14 +304,7 @@ test('the drawer slides out and the overlay fades before unmounting', async ({
 }) => {
   await mount(onTestFinished)
   await userEvent.click(page.getByRole('button', { name: 'Open library' }))
-  await expect
-    .poll(() => {
-      const drawer = document.querySelector<HTMLElement>(
-        '[data-slot=drawer-content]',
-      )!
-      return new DOMMatrix(getComputedStyle(drawer).transform).m42
-    })
-    .toBeLessThan(1)
+  await expect.poll(drawerOffset, { timeout: 5000 }).toBeLessThan(1)
 
   const drawer = document.querySelector<HTMLElement>(
     '[data-slot=drawer-content]',
